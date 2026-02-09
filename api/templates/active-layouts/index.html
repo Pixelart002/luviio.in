@@ -1,6 +1,4 @@
 {% import "macros/components/buttons/btn-1.html" as buttons %}
-{% import "macros/components/header/header-macro-1.html" as layout %}
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -15,8 +13,7 @@
 </head>
 
 <body>
-    {{ layout.render_header(active_page='home') }}
-
+   
     <main id="main-content">
         {{ buttons.nav_link('/profile', '#main-content', 'View Profile') }}
     </main>
