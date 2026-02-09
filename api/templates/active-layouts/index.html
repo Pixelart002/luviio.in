@@ -1,37 +1,32 @@
-
 {% import "macros/components/buttons/btn-1.html" as buttons %}
 {% import "macros/components/header/header-macro-1.html" as layout %}
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Luviio Portal</title>
+    
     <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/unpoly@3.10.1/unpoly.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 </head>
 
 <body>
     {{ layout.render_header(active_page='home') }}
 
     <main id="main-content">
-    {{ buttons.nav_link('/profile', '#main-content', 'View Profile') }}
-</main>
+        {{ buttons.nav_link('/profile', '#main-content', 'View Profile') }}
+    </main>
 
- <script>
-        // UP Compiler: Dynamic elements par behaviors lagane ke liye
+    <script>
+        // Unpoly Compiler for dynamic animations
         up.compiler('.auth-card', function(element) {
             console.log("Login Card Loaded!");
-            // Yahan aap GSAP ya koi bhi logic daal sakte hain
-            gsap.from(element, { opacity: 0, scale: 0.9, duration: 0.5 });
+            gsap.from(element, { opacity: 0, scale: 0.9, duration: 0.5, ease: "power2.out" });
         });
     </script>
 </body>
-
-
-
 </html>
-
-
-    <!--- <div id="main-content">
-        </div>-->
-
-   
