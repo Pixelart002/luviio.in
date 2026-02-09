@@ -1,14 +1,16 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title></title>
+    <meta charset="UTF-8">
+    <title>FastAPI Jinja2 Example</title>
+    <link rel="stylesheet" href="/api/main/static/style.css">
 </head>
-
 <body>
-  hello world 
+    <h1>Welcome {{ user_name }}!</h1>
+    <ul>
+        {% for item in items %}
+            <li>{{ item }}</li>
+        {% endfor %}
+    </ul>
 </body>
-
 </html>
