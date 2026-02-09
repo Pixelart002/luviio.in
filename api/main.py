@@ -5,11 +5,10 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
-# Sahi path set karne ke liye
-# Ye line 'api' folder se bahar nikal kar root folder tak pahunchegi
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Current 'api' folder ka path
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Static aur Templates ka rasta fix karein
+# Templates aur Static ka path set karein
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
