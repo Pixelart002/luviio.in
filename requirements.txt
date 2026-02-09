@@ -2,5 +2,3 @@ fastapi
 uvicorn
 resend
 pydantic
-jinja2
-python-multipart
