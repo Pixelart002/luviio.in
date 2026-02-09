@@ -15,7 +15,7 @@ templates = Jinja2Templates(directory="../templates")  # <- templates folder at 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     return templates.TemplateResponse(
-        "index.html",  # <- exact file name in templates folder
+        "/home.html",  # <- exact file name in templates folder
         {
             "request": request,   # mandatory
             "user_name": "Anya",
