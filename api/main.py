@@ -1,12 +1,12 @@
-# api/main.py
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
-@app.get("/")
-async def home():
-    return {"message": "Hello FastAPI!"}
+# Templates folder (create folder "templates" in your project)
+templates = Jinja2Templates(directory="templates")
 
-@app.get("/pe")
-async def pe():
-    return {"message": "This is /pe route"}
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request, "user_name": "Anya"})
