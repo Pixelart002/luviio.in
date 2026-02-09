@@ -19,7 +19,7 @@ async def get_home(request: Request, x_up_target: str = Header(None)):
     
     # Unpoly Fragment handling
     if x_up_target == "#main-content":
-        return templates.TemplateResponse("fragments/login_form.html", context)
+        return templates.TemplateResponse("/layout-components/login_macros.html", context)
         
     # Default: Poora page serve karein
     return templates.TemplateResponse("active-layouts/index.html", context)
