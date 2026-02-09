@@ -15,4 +15,4 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 @app.get("/")
 async def home(request: Request):
-    return templates.TemplateResponse("/api/templates/active-pages/index.html", {"request": request})
+    return templates.TemplateResponse("/active-pages/index.html", {"request": request})
