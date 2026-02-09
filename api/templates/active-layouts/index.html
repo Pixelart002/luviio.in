@@ -1,18 +1,22 @@
 
 {% import "macros/components/buttons/btn-1.html" as buttons %}
+{% import "macros/components/header/header-macro-1.html" as layout %}
 
+<!DOCTYPE html>
+<html>
 <head>
     <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/unpoly@3.10.1/unpoly.min.css">
 </head>
 
 <body>
-    <div id="main-content">
-        </div>
-<main id="main-content">
+    {{ layout.render_header(active_page='home') }}
+
+    <main id="main-content">
     {{ buttons.nav_link('/profile', '#main-content', 'View Profile') }}
 </main>
-    <script>
+
+ <script>
         // UP Compiler: Dynamic elements par behaviors lagane ke liye
         up.compiler('.auth-card', function(element) {
             console.log("Login Card Loaded!");
@@ -21,3 +25,13 @@
         });
     </script>
 </body>
+
+
+
+</html>
+
+
+    <!--- <div id="main-content">
+        </div>-->
+
+   

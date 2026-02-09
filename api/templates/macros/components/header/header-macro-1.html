@@ -1,14 +1,94 @@
-<!DOCTYPE html>
-<html>
+{% macro render_header(active_page='home', user=None) %}
+<nav class="glass-nav">
+    <div class="nav-container">
+        <a href="/" up-target="#main-content" class="brand">
+            <div class="logo-accent"></div>
+            <span>LUVIIO</span>
+        </a>
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title></title>
-</head>
+        <div class="nav-menu">
+            <a href="/" 
+               up-target="#main-content" 
+               class="nav-link {{ 'active' if active_page == 'home' }}">
+               Home
+            </a>
+            <a href="/features" 
+               up-target="#main-content" 
+               class="nav-link {{ 'active' if active_page == 'features' }}">
+               Features
+            </a>
+            <a href="/pricing" 
+               up-target="#main-content" 
+               class="nav-link {{ 'active' if active_page == 'pricing' }}">
+               Pricing
+            </a>
+        </div>
 
-<body>
-  
-</body>
+        <div class="nav-actions">
+            {% if user %}
+                <a href="/dashboard" up-target="#main-content" class="btn-dashboard">
+                    <i class="ri-dashboard-line"></i> Dashboard
+                </a>
+            {% else %}
+                <a href="/login" up-target="#main-content" class="nav-link">Login</a>
+                <a href="/signup" up-target="#main-content" class="btn-primary-sm">Get Started</a>
+            {% endif %}
+        </div>
+    </div>
+</nav>
 
-</html>
+<style>
+    .glass-nav {
+        width: 100%;
+        padding: 15px 0;
+        border-bottom: 1px solid var(--border);
+        background: rgba(5, 5, 5, 0.8);
+        backdrop-filter: blur(12px);
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+    }
+    .nav-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 20px;
+    }
+    .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 800;
+        font-size: 1.2rem;
+        text-decoration: none;
+        color: white;
+    }
+    .logo-accent {
+        width: 12px;
+        height: 12px;
+        background: var(--accent);
+        border-radius: 3px;
+        box-shadow: 0 0 10px var(--accent-glow);
+    }
+    .nav-menu { display: flex; gap: 30px; }
+    .nav-link {
+        color: var(--text-dim);
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: 0.3s;
+    }
+    .nav-link:hover, .nav-link.active { color: white; }
+    .btn-primary-sm {
+        background: white;
+        color: black;
+        padding: 8px 18px;
+        border-radius: 100px;
+        font-size: 0.85rem;
+        font-weight: 700;
+        text-decoration: none;
+    }
+</style>
+{% endmacro %}
