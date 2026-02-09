@@ -1,24 +1,22 @@
+import os
 from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-import os
 
 app = FastAPI()
 
-# Static files (optional)
-app.mount("/static", StaticFiles(directory="../static"), name="static")
+# Current file (main.py) ki location nikalne ke liye
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Templates folder
-templates = Jinja2Templates(directory="../templates")  # <- templates folder at project root
+# Agar templates folder 'api' ke bahar root mein hai toh:
+# Path ko ek level up le jayein (.. use karke)
+template_path = os.path.join(BASE_DIR, "..", "templates")
+static_path = os.path.join(BASE_DIR, "..", "static")
 
-@app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
-    return templates.TemplateResponse(
-        "/home.html",  # <- exact file name in templates folder
-        {
-            "request": request,   # mandatory
-            "user_name": "Anya",
-            "items": ["Apple", "Banana", "Cherry"]
-        }
-    )
+templates = Jinja2Templates(directory=template_path)
+app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+@app.get("/")
+async def home(request: Request):
+    # 'home.html' file 'templates' folder ke andar honi chahiye
+    return templates.TemplateResponse("home.html", {"request": request, "title": "My Pixel Art"})
