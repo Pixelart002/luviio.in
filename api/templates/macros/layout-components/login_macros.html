@@ -1,14 +1,10 @@
-<!DOCTYPE html>
-<html>
+{% extends "layouts/auth_layout.html" %}
+{% import "macros/components/forms.html" as forms %}
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title></title>
-</head>
-
-<body>
-  
-</body>
-
-</html>
+{% block content %}
+<div class="auth-card">
+  {{ forms.input(type="email", id="email", label="Email Address") }}
+  {{ forms.input(type="password", id="pass", label="Password") }}
+  {{ forms.submit_btn("Login") }}
+</div>
+{% endblock %}
