@@ -2,31 +2,30 @@
 
 {% block content %}
 <section class="flex-1 flex flex-col justify-center items-center text-center px-6 py-12">
-    <style>
-        .tagline { font-size: 0.65rem; letter-spacing: 1.5px; border: 1px solid var(--border); padding: 6px 14px; border-radius: 50px; color: #777; margin-bottom: 2rem; opacity: 0; }
-        h1 { font-size: clamp(2rem, 10vw, 5rem); line-height: 1.1; font-weight: 800; background: linear-gradient(180deg, #fff 40%, #666 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1.5rem; opacity: 0; }
-        p { font-size: clamp(1rem, 4vw, 1.2rem); color: var(--gray); max-width: 480px; line-height: 1.6; margin-bottom: 3rem; opacity: 0; }
-        .cta-box { opacity: 0; }
-    </style>
+    <div class="tagline opacity-0 translate-y-4 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-[10px] uppercase tracking-widest text-gray-500 mb-8">
+        The Trust Layer
+    </div>
+    
+    <h1 class="hero-title opacity-0 translate-y-4 text-[clamp(2.3rem,10vw,5rem)] font-extrabold leading-[1.1] tracking-tight mb-6 bg-gradient-to-b from-white to-gray-500 bg-clip-text text-transparent">
+        Infrastructure for <br class="hidden sm:block"> Verified Markets.
+    </h1>
+    
+    <p class="hero-desc opacity-0 translate-y-4 text-gray-400 text-lg sm:text-xl max-w-lg mb-10">
+        We verify, secure, and streamline marketplace infrastructure.
+    </p>
 
-    <div class="tagline">The Trust Layer</div>
-    <h1>Infrastructure for <br class="hidden sm:block"> Verified Markets.</h1>
-    <p>We verify, secure, and streamline <br class="hidden sm:block"> marketplace infrastructure.</p>
-
-    <div class="cta-box">
-        <a href="/waitlist/" class="bg-white text-black font-bold px-10 py-4 rounded-full inline-flex items-center gap-3 transition-transform active:scale-95 shadow-xl shadow-white/5">
-            Join Waitlist <span>→</span>
+    <div class="cta-box opacity-0 translate-y-4">
+        <a href="/waitlist" class="bg-white text-black font-bold px-10 py-4 rounded-full hover:shadow-[0_0_30px_rgba(255,255,255,0.1)] transition-all inline-block">
+            Join Waitlist →
         </a>
     </div>
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            if (typeof gsap !== 'undefined') {
-                gsap.timeline({ defaults: { ease: "power4.out", duration: 1.2 } })
-                    .to(".tagline", { opacity: 1, y: 0, delay: 0.2 })
-                    .to("h1", { opacity: 1, y: 0 }, "-=0.9")
-                    .to("section p", { opacity: 1, y: 0 }, "-=0.9")
-                    .to(".cta-box", { opacity: 1, y: 0 }, "-=0.9");
+            if(window.gsap) {
+                gsap.to(".tagline, .hero-title, .hero-desc, .cta-box", { 
+                    opacity: 1, y: 0, duration: 1, stagger: 0.2, ease: "power4.out" 
+                });
             }
         });
     </script>
