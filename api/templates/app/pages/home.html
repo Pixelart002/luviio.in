@@ -1,0 +1,15 @@
+{# Conditional Inheritance: Agar Unpoly request hai toh layout bypass karo #}
+{% extends "app/base.html" if not up_fragment else "" %}
+
+{% block content %}
+<div class="card bg-base-100 shadow-xl border border-white/5">
+  <div class="card-body">
+    <h2 class="card-title text-primary text-3xl">Setup Successful!</h2>
+    <p class="opacity-70">Aapka layout ab 'app/base.html' se inherit ho raha hai.</p>
+    
+    <div class="card-actions justify-end mt-6">
+      <a href="/test" up-target="#main-content" class="btn btn-outline">Test Unpoly Connection</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

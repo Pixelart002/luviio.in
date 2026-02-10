@@ -14,7 +14,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 # 3. Include Routers
-app.include_router(admin_router) # Saare auth routes register ho gaye
+app.include_router(auth_router) # Saare auth routes register ho gaye
 
 # Global error handlers ya health checks yahan rakh sakte hain
 @app.get("/health")
