@@ -1,13 +1,29 @@
 {% macro render_header(active_page='home') %}
-<nav class="w-full px-6 h-20 flex justify-between items-center border-b border-white/5 bg-[#050505]/80 backdrop-blur-lg z-[100]">
-  <a href="/" class="flex items-center gap-2" up-target="#main-content">
-    {# Broken path fix: static folder use karein #}
-    <div class="font-black text-xl tracking-tighter text-white">LUVIIO</div>
+<style>
+  .site-nav { width: 100%; padding: 1.5rem 2rem; display: flex; justify-content: space-between; align-items: center; background: rgba(5,5,5,0.8); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+  .nav-menu { display: flex; gap: 2rem; align-items: center; }
+  .mobile-toggle { display: none; cursor: pointer; flex-direction: column; gap: 5px; }
+  .mobile-toggle span { width: 22px; height: 2px; background: #fff; }
+
+  @media (max-width: 768px) {
+    .nav-menu { position: fixed; top: 80px; left: -100%; width: 100%; height: auto; background: #050505; flex-direction: column; padding: 2rem; transition: 0.3s; border-bottom: 1px solid var(--border); }
+    .nav-menu.active { left: 0; }
+    .mobile-toggle { display: flex; }
+  }
+</style>
+
+<nav class="site-nav">
+  <a href="/" class="brand-link" style="text-decoration: none; display: flex; align-items: center; gap: 10px;">
+    <span style="font-weight: 800; font-size: 1.25rem; color: #fff; letter-spacing: -0.04em;">LUVIIO</span>
   </a>
-  
-  <div class="flex items-center gap-4 sm:gap-8">
-    <a href="mailto:contact@luviio.in" class="text-xs font-semibold text-gray-400 hover:text-white transition-colors">Contact</a>
-    <a href="/login" class="bg-white text-black text-[10px] sm:text-xs font-bold px-4 py-2 rounded-full" up-target="#main-content">Sign In</a>
+
+  <div class="mobile-toggle" onclick="document.querySelector('.nav-menu').classList.toggle('active')">
+    <span></span><span></span><span></span>
+  </div>
+
+  <div class="nav-menu">
+    <a href="mailto:contact@luviio.in" style="color: #9ca3af; text-decoration: none; font-size: 0.9rem; font-weight: 600;">Contact</a>
+    <a href="/login" style="background: #fff; color: #000; padding: 10px 24px; border-radius: 50px; text-decoration: none; font-weight: 700; font-size: 0.85rem;">Sign In</a>
   </div>
 </nav>
 {% endmacro %}

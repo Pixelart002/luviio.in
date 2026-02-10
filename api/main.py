@@ -19,8 +19,6 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 # Directory points to 'api/templates'
 app.state.templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-# 4. Include Routers
-app.include_router(auth_router)
 
 @app.get("/health")
 def health_check():
