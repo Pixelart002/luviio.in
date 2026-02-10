@@ -1,0 +1,17 @@
+{% import "macros/components/header.html" as components %}
+
+<!DOCTYPE html>
+<html data-theme="dark">
+<head>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.19/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+</head>
+<body>
+    {{ components.render_header(user=user, active_page='home', flags={'sticky': True}) }}
+    
+    <main id="main-content">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
