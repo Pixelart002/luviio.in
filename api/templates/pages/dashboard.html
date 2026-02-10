@@ -1,0 +1,36 @@
+{% extends "active-layouts/index.html" if not up_fragment else "" %}
+{% import "macros/components/ui.html" as ui %}
+{% import "macros/components/stats_cards.html" as stats_ui %}
+
+{% block content %}
+<div class="space-y-8 animate-in fade-in duration-500">
+    <div class="flex justify-between items-center">
+        <h1 class="text-3xl font-black">Admin Command Center</h1>
+        {{ ui.btn("Refresh Data", "/admin/dashboard", color="ghost") }}
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {{ stats_ui.stat_card("Total Revenue", stats.revenue, "+12%", "ri-money-rupee-circle-line", "primary") }}
+        {{ stats_ui.stat_card("Active Customers", stats.users, "+5%", "ri-user-smile-line", "secondary") }}
+        {{ stats_ui.stat_card("Total Orders", stats.orders, "+8%", "ri-shopping-cart-2-line", "accent") }}
+    </div>
+
+    <div class="bg-base-100 rounded-3xl border border-white/5 overflow-hidden">
+        <table class="table w-full">
+            <thead class="bg-base-200">
+                <tr><th>Order ID</th><th>Customer</th><th>Amount</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for order in recent_orders %}
+                <tr class="hover:bg-base-200/50 transition-colors">
+                    <td class="font-mono text-xs">{{ order.id[:8] }}...</td>
+                    <td>{{ order.profiles.full_name }}</td>
+                    <td class="font-bold">₹{{ order.total_amount }}</td>
+                    <td><div class="badge badge-success badge-sm">{{ order.status }}</div></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
