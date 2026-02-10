@@ -1,37 +1,22 @@
 {% extends "app/base.html" if not up_fragment else "" %}
 
 {% block content %}
-<section class="hero flex flex-col items-center text-center px-5">
-  <style>
-    .tagline { font-size: 0.75rem; letter-spacing: 1.5px; text-transform: uppercase; color: #777; border: 1px solid var(--border); padding: 6px 14px; border-radius: 50px; margin-bottom: 24px; opacity: 0; }
-    h1 { font-size: clamp(2.5rem, 8vw, 5.5rem); line-height: 1.05; font-weight: 800; margin-bottom: 24px; background: linear-gradient(180deg, #fff 15%, #666 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; opacity: 0; }
-    .hero p { color: #9ca3af; font-size: clamp(1rem, 3vw, 1.25rem); max-width: 540px; line-height: 1.6; margin-bottom: 40px; opacity: 0; }
-    .cta-container { opacity: 0; }
-    .cta-button { background: white; color: black; padding: 16px 36px; border-radius: 100px; text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 10px; }
-  </style>
-
-  <div class="tagline">The Trust Layer</div>
-  <h1>Infrastructure for <br> Verified Markets.</h1>
-  <p>We verify, secure, and streamline <br> marketplace infrastructure.</p>
-
-  <div class="cta-container">
-    <a href="/waitlist/" id="main-cta" class="cta-button">
-      <span id="cta-text">Join Waitlist</span> 
-      <svg id="cta-icon" style="width:18px; height:18px; fill:currentColor;" viewBox="0 0 448 512"><path d="M438.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L338.8 224 32 224c-17.7 0-32 14.3-32 32s14.3 32 32 32l306.7 0L233.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160z"/></svg>
-    </a>
+<section class="flex-1 flex flex-col items-center justify-center text-center px-6 py-12">
+  <div class="inline-block px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-8">
+    The Trust Layer
   </div>
-
-  <script>
-    // Unpoly Compiler ensures animation runs even on fragment swap
-    up.compiler('.hero', function(element) {
-        if (typeof gsap !== 'undefined') {
-            const tl = gsap.timeline({ defaults: { ease: "power3.out", duration: 1.2 } });
-            tl.to(".tagline", { opacity: 1, y: 0, delay: 0.1 })
-              .to("h1", { opacity: 1, y: 0 }, "-=0.9")
-              .to(".hero p", { opacity: 1, y: 0 }, "-=0.9")
-              .to(".cta-container", { opacity: 1, y: 0 }, "-=0.9");
-        }
-    });
-  </script>
+  
+  <h1 class="text-[clamp(2.5rem,10vw,5rem)] font-extrabold leading-[1.1] tracking-tight mb-6 bg-gradient-to-b from-white to-gray-500 bg-clip-text text-transparent">
+    Infrastructure for <br class="hidden sm:block"> Verified Markets.
+  </h1>
+  
+  <p class="text-gray-400 text-lg sm:text-xl max-w-lg mb-12 leading-relaxed">
+    We verify, secure, and streamline marketplace infrastructure.
+  </p>
+  
+  <a href="/waitlist" class="group relative px-8 py-4 bg-white text-black font-bold rounded-full overflow-hidden transition-all hover:pr-12" up-target="#main-content">
+    <span>Join Waitlist</span>
+    <span class="absolute right-4 opacity-0 group-hover:opacity-100 transition-all">→</span>
+  </a>
 </section>
 {% endblock %}

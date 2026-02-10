@@ -1,50 +1,34 @@
 {% import "macros/nav.html" as nav %}
 <!DOCTYPE html>
-<html lang="en-IN" prefix="og: https://ogp.me/ns#">
+<html lang="en-IN">
 <head>
-  <meta name="google-adsense-account" content="ca-pub-8360942174797973">
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-  
-  {# Security & Performance Headers #}
-  <meta http-equiv="X-Frame-Options" content="DENY">
-  <meta http-equiv="X-Content-Type-Options" content="nosniff">
-  <meta name="referrer" content="strict-origin-when-cross-origin">
-  
-  <link rel="dns-prefetch" href="https://enqcujmzxtrbfkaungpm.supabase.co">
-  <link rel="preconnect" href="https://enqcujmzxtrbfkaungpm.supabase.co" crossorigin>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
-  <title>{{ title | default('Luviio - The Trust Layer for Marketplaces') }}</title>
-  <meta name="description" content="Luviio is the verified operating system for online listings.">
-  <meta name="theme-color" content="#050505">
-
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  
-  <style>
-    :root { --bg: #050505; --text: #fff; --gray: #9ca3af; --border: rgba(255,255,255,0.08); --accent: #3b82f6; --ease-smooth: cubic-bezier(0.25, 1, 0.5, 1); }
-    * { -webkit-tap-highlight-color: transparent; outline: none; }
-    body { background: var(--bg); color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100dvh; width: 100vw; overflow-x: hidden; display: flex; flex-direction: column; user-select: none; -webkit-font-smoothing: antialiased; }
-    .grid-bg { position: fixed; inset: 0; z-index: -1; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 60px 60px; opacity: 0.1; mask-image: radial-gradient(circle at center, black 40%, transparent 80%); transform: translateZ(0); }
-    .site-footer { width: 100%; padding: 30px 20px; text-align: center; border-top: 1px solid var(--border); background: rgba(3,3,3,0.6); backdrop-filter: blur(10px); }
-  </style>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-  <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    {# Defensive Title: Agar backend se 'title' na aaye toh crash nahi hoga #}
+    <title>{{ title | default('Luviio - Verified Markets') }}</title>
+    
+    <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root { --bg: #050505; --border: rgba(255,255,255,0.08); }
+        body { background: var(--bg); color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; overflow-x: hidden; }
+        .grid-bg { position: fixed; inset: 0; z-index: -1; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 50px 50px; opacity: 0.1; mask-image: radial-gradient(circle at center, black 40%, transparent 90%); }
+    </style>
 </head>
-<body>
-  <div class="grid-bg"></div>
+<body class="min-h-screen flex flex-col">
+    <div class="grid-bg"></div>
 
-  {{ nav.render_header(active_page|default('home')) }}
+    {# Macro call with safe defaults #}
+    {{ nav.render_header(active_page | default('home')) }}
 
-  <main id="main-content" class="flex-1 flex flex-col justify-center">
-    {% block content %}{% endblock %}
-  </main>
+    <main id="main-content" class="flex-1 flex flex-col pt-20">
+        {% block content %}{% endblock %}
+    </main>
 
-  <footer class="site-footer">
-    <div class="copyright">&copy; 2026 Luviio Technologies.</div>
-  </footer>
+    <footer class="p-8 text-center border-t border-white/5 opacity-40 text-sm">
+        &copy; 2026 Luviio Technologies.
+    </footer>
 </body>
 </html>
