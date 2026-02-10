@@ -10,35 +10,34 @@ app = FastAPI()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 2. Mount Static & Templates
+# Static files (CSS/Images) aur Templates folder connect kar rahe hain
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # --- ROUTES ---
 
+# 1. Home Page
 @app.get("/", response_class=HTMLResponse)
 async def render_home(request: Request, x_up_target: str = Header(None)):
-    # Header capture ho raha hai taaki fragment logic handle ho sake
     return templates.TemplateResponse("app/pages/home.html", {
         "request": request,
         "title": "LUVIIO | Verified Markets",
-        "active_page": "home",
-        "up_fragment": x_up_target is not None # Template ko pata chalega ye fragment hai
+        "active_page": "home"
     })
 
+# 2. Login Page
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, x_up_target: str = Header(None)):
+async def login_page(request: Request):
     return templates.TemplateResponse("app/pages/login.html", {
         "request": request,
-        "title": "Login | LUVIIO",
-        "up_fragment": x_up_target is not None
+        "title": "Login | LUVIIO"
     })
 
+# 3. NEW: Waitlist Fragment (Ye naya add kiya hai)
 @app.get("/waitlist", response_class=HTMLResponse)
-async def render_waitlist(request: Request, x_up_target: str = Header(None)):
-    # STRICT HEADER IMPLEMENTATION
+async def render_waitlist(request: Request):
     return templates.TemplateResponse("app/pages/waitlist.html", {
         "request": request,
         "title": "Join Waitlist | LUVIIO", 
-        "active_page": "home",
-        "up_fragment": x_up_target is not None
+        "active_page": "home" # Active page home hi rakha taaki nav bar change na ho
     })
