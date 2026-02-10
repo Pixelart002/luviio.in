@@ -1,29 +1,20 @@
-{% import "macros/components/buttons/btn-1.html" as buttons %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Luviio Portal</title>
+    <main id="main-content" class="p-10 space-y-6">
     
-    <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/unpoly@3.10.1/unpoly.min.css">
+    <h1 class="text-2xl font-bold">Button Variants Preview</h1>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-</head>
-
-<body>
-   
-    <main id="main-content">
-        {{ buttons.nav_link('/profile', '#main-content', 'View Profile') }}
-    </main>
-
-    <script>
-        // Unpoly Compiler for dynamic animations
-        up.compiler('.auth-card', function(element) {
-            console.log("Login Card Loaded!");
-            gsap.from(element, { opacity: 0, scale: 0.9, duration: 0.5, ease: "power2.out" });
-        });
-    </script>
-</body>
-</html>
+    <div class="flex flex-wrap gap-4">
+        
+        {{ buttons.nav_link('/profile', '#main-content', 'Primary Button', 'primary') }}
+        
+        {{ buttons.nav_link('/profile', '#main-content', 'Secondary Button', 'secondary') }}
+        
+        {{ buttons.nav_link('/profile', '#main-content', 'Outline Button', 'outline') }}
+        
+        {{ buttons.nav_link('/profile', '#main-content', 'Ghost Button', 'ghost') }}
+        
+        {# fallback test #}
+        {{ buttons.nav_link('/profile', '#main-content', 'Default Button', 'unknown') }}
+        
+    </div>
+    
+</main>

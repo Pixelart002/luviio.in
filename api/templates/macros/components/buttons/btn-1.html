@@ -1,5 +1,35 @@
-{% macro nav_link(url, target, label) %}
-<a href="{{ url }}" up-target="{{ target }}" class="nav-link">
-  {{ label }}
+{# macros/components/buttons/btn-1.html #}
+
+{% macro nav_link(url, target, label, variant="primary") %}
+
+{% set ui = {
+  "primary": {
+    "class": "btn btn-primary btn-wide shadow-lg hover:shadow-xl transition-all duration-300",
+    "icon": "➜"
+  },
+  "secondary": {
+    "class": "btn btn-secondary btn-wide shadow-md hover:shadow-lg transition-all duration-300",
+    "icon": "➜"
+  },
+  "outline": {
+    "class": "btn btn-outline btn-primary btn-wide hover:bg-primary hover:text-white transition-all duration-300",
+    "icon": "→"
+  },
+  "ghost": {
+    "class": "btn btn-ghost text-primary hover:bg-base-200 transition-all duration-300",
+    "icon": "→"
+  }
+} %}
+
+{% set btn = ui.get(variant, ui["primary"]) %}
+
+<a
+  href="{{ url }}"
+  up-target="{{ target }}"
+  class="{{ btn.class }} auth-card"
+>
+  <span>{{ label }}</span>
+  <span class="ml-2 text-lg">{{ btn.icon }}</span>
 </a>
+
 {% endmacro %}
