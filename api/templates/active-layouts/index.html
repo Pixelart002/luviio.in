@@ -1,64 +1,18 @@
-{% import "macros/components/buttons/btn-1.html" as buttons %}
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Luviio Portal</title>
-
-  <!-- Tailwind + DaisyUI -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      plugins: [daisyui],
-      daisyui: {
-        themes: ["light", "dark"]
-      }
-    }
-  </script>
-
-  <!-- Unpoly -->
-  <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
-  <link rel="stylesheet" href="https://unpkg.com/unpoly@3.10.1/unpoly.min.css">
-
-  <!-- GSAP -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-</head>
-
-<body class="min-h-screen bg-base-200">
-
-  <main id="main-content" class="p-10 space-y-6">
-
-    <h1 class="text-2xl font-bold">DaisyUI Button Preview</h1>
-
-    <div class="flex flex-wrap gap-4">
-
-      {{ buttons.nav_link('/profile', '#main-content', 'Primary Button', 'primary') }}
-
-      {{ buttons.nav_link('/profile', '#main-content', 'Secondary Button', 'secondary') }}
-
-      {{ buttons.nav_link('/profile', '#main-content', 'Outline Button', 'outline') }}
-
-      {{ buttons.nav_link('/profile', '#main-content', 'Ghost Button', 'ghost') }}
-
-      {{ buttons.nav_link('/profile', '#main-content', 'Default Button') }}
-
+<body>
+  
+  <!-- 🔒 NAV / BUTTONS (PERSISTENT) -->
+  <header class="p-6 border-b">
+    <h1 class="text-xl font-bold">Button Preview</h1>
+    
+    <div class="mt-4 flex gap-4">
+      {{ buttons.nav_link('/profile', '#page', 'Profile', 'primary') }}
+      {{ buttons.nav_link('/settings', '#page', 'Settings', 'secondary') }}
     </div>
-
+  </header>
+  
+  <!-- 🔁 PAGE CONTENT ONLY -->
+  <main id="page" class="p-6">
+    <p>Select a page</p>
   </main>
-
-  <script>
-    // Unpoly + GSAP animation
-    up.compiler('.auth-card', function (el) {
-      gsap.from(el, {
-        opacity: 0,
-        scale: 0.9,
-        duration: 0.4,
-        ease: "power2.out"
-      })
-    })
-  </script>
-
+  
 </body>
-</html>
