@@ -1,32 +1,62 @@
-import os
-from fastapi import APIRouter, Request, Header
-from fastapi.responses import HTMLResponse
+{% macro render_header(user=None, active_page='home', flags={'sticky': True, 'glass': True}) %}
+{# 
+   Flags Explanation:
+   - sticky: Header scrolls with page
+   - glass: Backdrop blur effect (Vercel style)
+#}
 
-router = APIRouter()
+<div class="{{ 'sticky top-0 z-[100]' if flags.sticky }}">
+  <header class="navbar bg-base-100/70 {{ 'backdrop-blur-md' if flags.glass }} border-b border-white/5 px-4 lg:px-8 transition-all duration-300">
+    
+    <div class="navbar-start">
+      <div class="dropdown">
+        <label tabindex="0" class="btn btn-ghost lg:hidden p-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16" /></svg>
+        </label>
+        <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-200 rounded-box w-52 border border-white/5" up-nav>
+            {{ nav_items(active_page) }}
+        </ul>
+      </div>
+      <a href="/" up-target="#main-content" class="text-xl font-black tracking-tighter hover:opacity-80 transition-opacity">
+        LUVIIO<span class="text-primary">.</span>
+      </a>
+    </div>
 
-@router.get("/", response_class=HTMLResponse)
-async def render_home(request: Request, x_up_target: str = Header(None)):
-"""
-Home Page Route:
-Supports Responsive Header Macro with Blazing Fast Unpoly Fragments.
-"""
-# Global template engine access (from app.state in main.py)
-templates = request.app.state.templates
+    <div class="navbar-center hidden lg:flex">
+      <ul class="menu menu-horizontal px-1 gap-2 font-medium text-sm" up-nav>
+        {{ nav_items(active_page) }}
+      </ul>
+    </div>
 
-# Context dictionary: Macro ke parameters ke saath sync kiya gaya hai
-context = {
-"request": request,
-"title": "LUVIIO | Overview",
-"active_page": "home", # Macro: active_page highlight ke liye
-"user": None, # Future: Supabase auth session yahan jayega
-"up_fragment": x_up_target is not None, # Unpoly logic
+    <div class="navbar-end gap-2">
+      {% if not user %}
+        <a href="/login" up-target="#main-content" class="btn btn-ghost btn-sm hidden sm:inline-flex">Sign in</a>
+        <a href="/signup" up-target="#main-content" class="btn btn-primary btn-sm px-6 shadow-lg shadow-primary/20">Get Started</a>
+      {% else %}
+        <div class="dropdown dropdown-end">
+          <label tabindex="0" class="btn btn-ghost btn-circle avatar border border-white/10">
+            <div class="w-8 rounded-full bg-primary/10 flex items-center justify-center">
+              <span class="text-xs font-bold">{{ user.email[0] | upper }}</span>
+            </div>
+          </label>
+          <ul tabindex="0" class="menu dropdown-content mt-3 z-[1] p-2 shadow-xl bg-base-200 rounded-2xl w-52 border border-white/5">
+            <li class="menu-title opacity-50">{{ user.email }}</li>
+            <li><a href="/profile" up-target="#main-content">Profile</a></li>
+            <li><a href="/settings" up-target="#main-content">Settings</a></li>
+            <div class="divider my-0"></div>
+            <li><a href="/logout" class="text-error">Logout</a></li>
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+  </header>
+</div>
 
-# Macro Flags: State machines for UI behavior
-"nav_flags": {
-"sticky": True,
-"glass": True
-}
-}
+{# Sub-macro for cleaner nav items #}
+{% macro nav_items(active_page) %}
+  <li><a href="/" up-target="#main-content" class="{{ 'active text-primary bg-primary/10' if active_page == 'home' }}">Overview</a></li>
+  <li><a href="/admin/dashboard" up-target="#main-content" class="{{ 'active text-primary bg-primary/10' if active_page == 'dashboard' }}">Analytics</a></li>
+  <li><a href="/docs" up-target="#main-content" class="{{ 'active text-primary bg-primary/10' if active_page == 'docs' }}">API</a></li>
+{% endmacro %}
 
-# Path: api/templates/app/pages/home.html
-return templates.TemplateResponse("app/pages/home.html", context)
+{% endmacro %}
