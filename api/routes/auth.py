@@ -1,13 +1,18 @@
 from fastapi import APIRouter, Request, Header
+from fastapi.responses import HTMLResponse
 
 router = APIRouter()
 
-@router.get("/")
+@router.get("/", response_class=HTMLResponse)
 async def render_home(request: Request, x_up_target: str = Header(None)):
+    # Global templates object access karein
+    templates = request.app.state.templates
+    
     context = {
         "request": request,
-        "title": "Home Page",
-        "up_fragment": x_up_target is not None # Unpoly logic
+        "title": "Home | LUVIIO",
+        "up_fragment": x_up_target is not None
     }
-    # Path relative to 'api/templates'
-    return templates.TemplateResponse("pages/home.html", context)
+    
+    # Path: api/templates/app/pages/home.html
+    return templates.TemplateResponse("app/pages/home.html", context)
