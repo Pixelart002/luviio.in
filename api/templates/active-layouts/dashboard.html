@@ -1,0 +1,21 @@
+{% extends "active-layouts/index.html" %}
+{% import "macros/components/buttons/btn-1.html" as buttons %}
+
+{% block body %}
+<header class="admin-header">
+    <h1>Overview</h1>
+    {{ buttons.nav_link('/admin/export', '#main-content', 'Download Report') }}
+</header>
+
+<div class="stats-grid">
+    <div class="glass-card stat-item">
+        <p>Total Revenue</p>
+        <h3>{{ stats.revenue }}</h3>
+        <span class="trend">{{ stats.growth }}</span>
+    </div>
+</div>
+
+<div class="glass-card table-section">
+    <h3>Recent Orders</h3>
+</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% macro render_sidebar(user) %}
+<aside class="admin-sidebar">
+  <div class="sidebar-brand">
+    <div class="logo-box">L</div>
+    <span>LUVIIO ADMIN</span>
+  </div>
+  
+  <nav class="sidebar-nav" up-nav>
+    <a href="/admin/dashboard" up-target="#main-content" class="nav-item">
+      <i class="ri-dashboard-fill"></i> Dashboard
+    </a>
+    <a href="/admin/orders" up-target="#main-content" class="nav-item">
+      <i class="ri-shopping-cart-2-fill"></i> Orders
+    </a>
+    <a href="/admin/products" up-target="#main-content" class="nav-item">
+      <i class="ri-stack-fill"></i> Products
+    </a>
+    <a href="/admin/customers" up-target="#main-content" class="nav-item">
+      <i class="ri-group-fill"></i> Customers
+    </a>
+  </nav>
+  
+  <div class="sidebar-footer">
+    <div class="user-mini-card">
+      <img src="https://ui-avatars.com/api/?name={{ user.name }}" alt="User">
+      <div class="user-meta">
+        <p>{{ user.name }}</p>
+        <span>Store Owner</span>
+      </div>
+    </div>
+  </div>
+</aside>
+{% endmacro %}
