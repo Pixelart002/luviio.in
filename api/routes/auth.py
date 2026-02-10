@@ -23,3 +23,20 @@ async def get_home(request: Request, x_up_target: str = Header(None)):
         
     # Default: Poora page serve karein
     return templates.TemplateResponse("active-layouts/index.html", context)
+
+@router.post("/api/v1/update-profile")
+@db_safe_execute
+async def update_profile(request: Request, x_up_target: str = Header(None)):
+    form_data = await request.form()
+    # Supabase update call
+    supabase.table("profiles").update({
+        "full_name": form_data.get("full_name"),
+        "bio": form_data.get("bio")
+    }).eq("id", "current-user-id").execute()
+
+    # Unpoly Fragment Response
+    if x_up_target == "#profile-section":
+        # Sirf update hua card wapas bhejein
+        user_data = {"full_name": form_data.get("full_name"), "bio": form_data.get("bio")}
+        return templates.TemplateResponse("macros/page-specific/profile_macros.html", 
+                                       {"request": request, "user": user_data})
