@@ -1,30 +1,30 @@
 {% extends "app/base.html" %}
 
 {% block content %}
-<section class="flex-1 flex flex-col justify-center items-center text-center px-6 py-12">
-    <div class="tagline opacity-0 translate-y-4 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-[10px] uppercase tracking-widest text-gray-500 mb-8">
-        The Trust Layer
-    </div>
-    
-    <h1 class="hero-title opacity-0 translate-y-4 text-[clamp(2.3rem,10vw,5rem)] font-extrabold leading-[1.1] tracking-tight mb-6 bg-gradient-to-b from-white to-gray-500 bg-clip-text text-transparent">
-        Infrastructure for <br class="hidden sm:block"> Verified Markets.
-    </h1>
-    
-    <p class="hero-desc opacity-0 translate-y-4 text-gray-400 text-lg sm:text-xl max-w-lg mb-10">
-        We verify, secure, and streamline marketplace infrastructure.
-    </p>
+<section class="hero-section flex-1 w-full flex flex-col items-center justify-center text-center px-6 pt-32 pb-20 overflow-hidden">
+    <style>
+        .tagline { font-size: 0.7rem; letter-spacing: 1.5px; text-transform: uppercase; color: #777; border: 1px solid var(--border); padding: 6px 14px; border-radius: 50px; margin-bottom: 24px; opacity: 0; transform: translateY(15px); }
+        .hero-title { font-size: clamp(2.3rem, 10vw, 5.5rem); line-height: 1.1; font-weight: 800; background: linear-gradient(180deg, #fff 15%, #666 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; opacity: 0; transform: translateY(15px); margin-bottom: 20px; }
+        .hero-desc { color: #9ca3af; font-size: clamp(1rem, 4vw, 1.25rem); max-width: 500px; line-height: 1.6; margin-bottom: 40px; opacity: 0; transform: translateY(15px); }
+        .cta-container { opacity: 0; transform: translateY(15px); }
+    </style>
 
-    <div class="cta-box opacity-0 translate-y-4">
-        <a href="/waitlist" class="bg-white text-black font-bold px-10 py-4 rounded-full hover:shadow-[0_0_30px_rgba(255,255,255,0.1)] transition-all inline-block">
+    <div class="tagline">The Trust Layer</div>
+    <h1 class="hero-title">Infrastructure for <br class="hidden sm:block"> Verified Markets.</h1>
+    <p class="hero-desc">We verify, secure, and streamline marketplace infrastructure.</p>
+
+    <div class="cta-container">
+        <a href="/waitlist" class="bg-white text-black font-bold px-10 py-4 rounded-full transition-transform hover:scale-105 active:scale-95 inline-block" up-target="#main-content">
             Join Waitlist →
         </a>
     </div>
 
     <script>
-        document.addEventListener("DOMContentLoaded", () => {
+        // GSAP Animation Logic within Unpoly context
+        up.compiler('.hero-section', function() {
             if(window.gsap) {
-                gsap.to(".tagline, .hero-title, .hero-desc, .cta-box", { 
-                    opacity: 1, y: 0, duration: 1, stagger: 0.2, ease: "power4.out" 
+                gsap.to(".tagline, .hero-title, .hero-desc, .cta-container", { 
+                    opacity: 1, y: 0, duration: 1, stagger: 0.15, ease: "power4.out" 
                 });
             }
         });
