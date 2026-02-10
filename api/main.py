@@ -10,7 +10,6 @@ app = FastAPI()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 2. Mount Static & Templates
-# Static files (CSS/Images) aur Templates folder connect kar rahe hain
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
@@ -22,22 +21,25 @@ async def render_home(request: Request, x_up_target: str = Header(None)):
     return templates.TemplateResponse("app/pages/home.html", {
         "request": request,
         "title": "LUVIIO | Verified Markets",
-        "active_page": "home"
+        "active_page": "home",
+        "up_fragment": x_up_target is not None # IMPORTANT: Ye batata hai ki partial update hai ya full
     })
 
 # 2. Login Page
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
+async def login_page(request: Request, x_up_target: str = Header(None)):
     return templates.TemplateResponse("app/pages/login.html", {
         "request": request,
-        "title": "Login | LUVIIO"
+        "title": "Login | LUVIIO",
+        "up_fragment": x_up_target is not None
     })
 
-# 3. NEW: Waitlist Fragment (Ye naya add kiya hai)
+# 3. Waitlist Fragment
 @app.get("/waitlist", response_class=HTMLResponse)
-async def render_waitlist(request: Request):
+async def render_waitlist(request: Request, x_up_target: str = Header(None)):
     return templates.TemplateResponse("app/pages/waitlist.html", {
         "request": request,
         "title": "Join Waitlist | LUVIIO", 
-        "active_page": "home" # Active page home hi rakha taaki nav bar change na ho
+        "active_page": "home",
+        "up_fragment": x_up_target is not None # IMPORTANT
     })
