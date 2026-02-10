@@ -1,29 +1,13 @@
 {% macro render_header(active_page='home') %}
-<style>
-  nav { width: 100%; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; position: absolute; top: 0; left: 0; z-index: 100; }
-  .nav-links { display: flex; gap: 30px; align-items: center; }
-  .hamburger { display: none; cursor: pointer; flex-direction: column; gap: 5px; z-index: 110; }
-  .hamburger span { width: 25px; height: 2px; background: #fff; transition: 0.3s; }
-
-  @media (max-width: 768px) {
-    .nav-links { position: fixed; top: 0; right: -100%; width: 70%; height: 100vh; background: #0a0a0a; flex-direction: column; justify-content: center; transition: 0.4s; border-left: 1px solid var(--border); }
-    .nav-links.active { right: 0; }
-    .hamburger { display: flex; }
-  }
-</style>
-
-<nav>
-  <a href="/" class="brand-link" style="text-decoration: none; display: flex; align-items: center; gap: 12px;">
-    <span style="font-weight: 800; font-size: 1.2rem; color: #fff; letter-spacing: -0.02em;">LUVIIO</span>
+<nav class="w-full px-6 h-20 flex justify-between items-center border-b border-white/5 bg-[#050505]/80 backdrop-blur-lg z-[100]">
+  <a href="/" class="flex items-center gap-2" up-target="#main-content">
+    {# Broken path fix: static folder use karein #}
+    <div class="font-black text-xl tracking-tighter text-white">LUVIIO</div>
   </a>
-
-  <div class="hamburger" onclick="document.querySelector('.nav-links').classList.toggle('active')">
-    <span></span><span></span><span></span>
-  </div>
-
-  <div class="nav-links">
-    <a href="mailto:contact@luviio.in" style="color: var(--gray); text-decoration: none; font-size: 0.9rem; font-weight: 600;">Contact</a>
-    <a href="/login" style="background: #fff; color: #000; padding: 10px 24px; border-radius: 50px; text-decoration: none; font-weight: 700; font-size: 0.85rem;">Sign In</a>
+  
+  <div class="flex items-center gap-4 sm:gap-8">
+    <a href="mailto:contact@luviio.in" class="text-xs font-semibold text-gray-400 hover:text-white transition-colors">Contact</a>
+    <a href="/login" class="bg-white text-black text-[10px] sm:text-xs font-bold px-4 py-2 rounded-full" up-target="#main-content">Sign In</a>
   </div>
 </nav>
 {% endmacro %}

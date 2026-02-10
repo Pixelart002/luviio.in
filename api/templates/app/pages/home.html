@@ -1,104 +1,48 @@
 {% extends "app/base.html" %}
 
 {% block content %}
-<section class="hero flex-1 flex flex-col justify-center items-center text-center px-6 py-20 sm:py-32">
+<section class="flex-1 flex flex-col justify-center items-center text-center px-6 py-10">
   <style>
-    /* Responsive Fluid Typography */
+    /* Mobile-First Adjustments */
     .tagline { 
-      font-size: 0.7rem; 
-      letter-spacing: 1.5px; 
-      text-transform: uppercase; 
-      color: #777; 
+      font-size: 0.65rem; 
+      letter-spacing: 1.2px; 
       border: 1px solid var(--border); 
-      padding: 6px 14px; 
-      border-radius: 50px; 
-      margin-bottom: 20px; 
-      opacity: 0; 
-      background: rgba(255,255,255,0.02);
+      padding: 4px 12px; 
+      border-radius: 100px; 
+      margin-bottom: 1.5rem; 
+      color: #777;
     }
     
     h1 { 
-      /* Mobile: 2.2rem, Desktop: up to 5rem */
-      font-size: clamp(2.2rem, 10vw, 5rem); 
+      /* Mobile: 2.2rem se shuru ho kar desktop par 5rem tak jaye */
+      font-size: clamp(2.2rem, 12vw, 5rem); 
       line-height: 1.1; 
       font-weight: 800; 
-      background: linear-gradient(180deg, #fff 15%, #666 100%); 
-      -webkit-background-clip: text; 
-      -webkit-text-fill-color: transparent; 
-      opacity: 0; 
-      margin-bottom: 20px; 
-      max-width: 950px;
+      margin-bottom: 1.5rem;
+      background: linear-gradient(180deg, #fff 30%, #666 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
     
     p { 
+      font-size: clamp(1rem, 4vw, 1.2rem); 
       color: var(--gray); 
-      /* Mobile: 1rem, Desktop: 1.25rem */
-      font-size: clamp(1rem, 4vw, 1.25rem); 
-      max-width: 500px; 
-      line-height: 1.6; 
-      margin-bottom: 35px; 
-      opacity: 0; 
-      padding: 0 10px;
+      max-width: 450px; 
+      line-height: 1.5;
+      margin-bottom: 2.5rem;
     }
-    
-    .cta-container { opacity: 0; }
-    
-    .cta-button { 
-      background: white; 
-      color: black; 
-      padding: 14px 32px; 
-      border-radius: 100px; 
-      text-decoration: none; 
-      font-weight: 700; 
-      display: inline-flex; 
-      align-items: center; 
-      gap: 10px; 
-      transition: transform 0.3s ease, box-shadow 0.3s ease; 
-    }
-    
-    .cta-button:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(255,255,255,0.1); }
   </style>
 
   <div class="tagline">The Trust Layer</div>
   
-  {# Mobile par <br> hata diya gaya hai taaki text natural break ho #}
   <h1>Infrastructure for <br class="hidden sm:block"> Verified Markets.</h1>
   
   <p>We verify, secure, and streamline marketplace infrastructure.</p>
 
-  <div class="cta-container">
-    <a href="/waitlist/" id="main-cta" class="cta-button">
-      <span id="cta-text">Join Waitlist</span> 
-      <svg style="width:16px;height:16px" viewBox="0 0 448 512" fill="currentColor"><path d="M438.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L338.8 224 32 224c-17.7 0-32 14.3-32 32s14.3 32 32 32l306.7 0L233.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160z"/></svg>
-    </a>
-  </div>
-
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      // GSAP Animation Logic
-      if (typeof gsap !== 'undefined') {
-        const tl = gsap.timeline({ defaults: { ease: "power3.out", duration: 1.2 } });
-        tl.to(".tagline", { opacity: 1, y: 0, delay: 0.2 })
-          .to("h1", { opacity: 1, y: 0 }, "-=0.9")
-          .to(".hero p", { opacity: 1, y: 0 }, "-=0.9")
-          .to(".cta-container", { opacity: 1, y: 0 }, "-=0.9");
-      }
-
-      // Supabase Auth State Machine
-      async function checkAuth() {
-        if (typeof supabase !== 'undefined') {
-          const client = supabase.createClient('https://enqcujmzxtrbfkaungpm.supabase.co', 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd');
-          const { data: { session } } = await client.auth.getSession();
-          if (session) {
-            const txt = document.getElementById('cta-text');
-            const btn = document.getElementById('main-cta');
-            if(txt) txt.innerText = "Dashboard";
-            if(btn) btn.href = "/dashboard";
-          }
-        }
-      }
-      checkAuth();
-    });
-  </script>
+  <a href="/waitlist/" class="bg-white text-black font-bold px-8 py-4 rounded-full flex items-center gap-3 transition-transform active:scale-95">
+    <span>Join Waitlist</span>
+    <svg class="w-4 h-4" viewBox="0 0 448 512" fill="currentColor"><path d="M438.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L338.8 224 32 224c-17.7 0-32 14.3-32 32s14.3 32 32 32l306.7 0L233.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160z"/></svg>
+  </a>
 </section>
 {% endblock %}
