@@ -2,41 +2,49 @@
 <!DOCTYPE html>
 <html lang="en-IN" prefix="og: https://ogp.me/ns#">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>{{ title | default('Luviio - The Trust Layer') }}</title>
-    
-    {# SEO & Security Headers from your HTML #}
-    <meta name="description" content="{{ description | default('Luviio is the verified operating system for online listings.') }}">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://enqcujmzxtrbfkaungpm.supabase.co; img-src 'self' data:; object-src 'none'; base-uri 'self'; upgrade-insecure-requests;">
-    
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    
-    {# Critical CSS for Global Styles #}
-    <style>
-        :root { --bg: #050505; --text: #fff; --gray: #9ca3af; --border: rgba(255,255,255,0.08); --accent: #3b82f6; }
-        body { background: var(--bg); color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; overflow-x: hidden; user-select: none; }
-        .grid-bg { position: fixed; inset: 0; z-index: -1; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 60px 60px; opacity: 0.1; mask-image: radial-gradient(circle at center, black 40%, transparent 80%); }
-        /* Footer Styles from your HTML */
-        .site-footer { width: 100%; padding: 30px 20px; text-align: center; border-top: 1px solid var(--border); backdrop-filter: blur(10px); }
-    </style>
+  <meta name="google-adsense-account" content="ca-pub-8360942174797973">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  
+  {# Security & Performance Headers #}
+  <meta http-equiv="X-Frame-Options" content="DENY">
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  
+  <link rel="dns-prefetch" href="https://enqcujmzxtrbfkaungpm.supabase.co">
+  <link rel="preconnect" href="https://enqcujmzxtrbfkaungpm.supabase.co" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-    <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
+  <title>{{ title | default('Luviio - The Trust Layer for Marketplaces') }}</title>
+  <meta name="description" content="Luviio is the verified operating system for online listings.">
+  <meta name="theme-color" content="#050505">
+
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    :root { --bg: #050505; --text: #fff; --gray: #9ca3af; --border: rgba(255,255,255,0.08); --accent: #3b82f6; --ease-smooth: cubic-bezier(0.25, 1, 0.5, 1); }
+    * { -webkit-tap-highlight-color: transparent; outline: none; }
+    body { background: var(--bg); color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100dvh; width: 100vw; overflow-x: hidden; display: flex; flex-direction: column; user-select: none; -webkit-font-smoothing: antialiased; }
+    .grid-bg { position: fixed; inset: 0; z-index: -1; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 60px 60px; opacity: 0.1; mask-image: radial-gradient(circle at center, black 40%, transparent 80%); transform: translateZ(0); }
+    .site-footer { width: 100%; padding: 30px 20px; text-align: center; border-top: 1px solid var(--border); background: rgba(3,3,3,0.6); backdrop-filter: blur(10px); }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
 </head>
 <body>
-    <div class="grid-bg"></div>
-    
-    {{ nav.render_header(active_page) }}
+  <div class="grid-bg"></div>
 
-    <main id="main-content" class="min-h-screen flex flex-col">
-        {% block content %}{% endblock %}
-    </main>
+  {{ nav.render_header(active_page|default('home')) }}
 
-    <footer class="site-footer">
-        <div class="copyright">&copy; 2026 Luviio Technologies.</div>
-    </footer>
+  <main id="main-content" class="flex-1 flex flex-col justify-center">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="copyright">&copy; 2026 Luviio Technologies.</div>
+  </footer>
 </body>
 </html>
