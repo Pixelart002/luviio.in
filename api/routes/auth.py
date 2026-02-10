@@ -1,19 +1,12 @@
-from fastapi import APIRouter, Request, Header
-from fastapi.responses import HTMLResponse
-
-router = APIRouter()
-
-@router.get("/", response_class=HTMLResponse)
+@router.get("/")
 async def render_home(request: Request, x_up_target: str = Header(None)):
-    # request.app.state se templates uthayein (jo main.py mein define kiya tha)
     templates = request.app.state.templates
-    
     context = {
         "request": request,
-        "title": "Home | LUVIIO",
+        "title": "LUVIIO | Overview",
         "up_fragment": x_up_target is not None,
-        "active_page": "home"
+        "active_page": "home", # Nav items highlight karne ke liye
+        "user": None, # Session logic yahan aayega
+        "nav_flags": {"sticky": True, "glass": True} # Macro flags
     }
-    
-    # PATH FIX: 'app/pages/home.html' likhna zaroori hai
     return templates.TemplateResponse("app/pages/home.html", context)
