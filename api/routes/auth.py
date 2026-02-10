@@ -1,12 +1,20 @@
-@router.get("/")
+from fastapi import APIRouter, Request, Header
+from fastapi.responses import HTMLResponse
+
+router = APIRouter()
+
+@router.get("/", response_class=HTMLResponse)
 async def render_home(request: Request, x_up_target: str = Header(None)):
+    # Global state se templates uthayein
     templates = request.app.state.templates
+    
     context = {
         "request": request,
-        "title": "LUVIIO | Overview",
-        "up_fragment": x_up_target is not None,
-        "active_page": "home", # Nav items highlight karne ke liye
-        "user": None, # Session logic yahan aayega
-        "nav_flags": {"sticky": True, "glass": True} # Macro flags
+        "title": "Home | LUVIIO",
+        "up_fragment": x_up_target is not None, # Unpoly flag
+        "active_page": "home"
     }
+    
+    # Path based on your folder structure:
+    # api/templates/app/pages/home.html
     return templates.TemplateResponse("app/pages/home.html", context)
