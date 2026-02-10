@@ -1,62 +1,61 @@
-{% macro render_header(user=None, active_page='home', flags={'sticky': True, 'glass': True}) %}
-{# 
-   Flags Explanation:
-   - sticky: Header scrolls with page
-   - glass: Backdrop blur effect (Vercel style)
-#}
+{# api/templates/macros/nav.html #}
 
+{# 1. Pehle Sub-macro define karein (Hoisting Fix) #}
+{% macro nav_items(active_page) %}
+<li><a href="/" up-target="#main-content" class="{{ 'active text-primary bg-primary/10' if active_page == 'home' }}">Overview</a></li>
+<li><a href="/admin/dashboard" up-target="#main-content" class="{{ 'active text-primary bg-primary/10' if active_page == 'dashboard' }}">Analytics</a></li>
+<li><a href="/docs" up-target="#main-content" class="{{ 'active text-primary bg-primary/10' if active_page == 'docs' }}">API</a></li>
+{% endmacro %}
+
+{# 2. Ab main Header macro jisme nav_items call ho raha hai #}
+{% macro render_header(user=None, active_page='home', flags={'sticky': True, 'glass': True}) %}
 <div class="{{ 'sticky top-0 z-[100]' if flags.sticky }}">
   <header class="navbar bg-base-100/70 {{ 'backdrop-blur-md' if flags.glass }} border-b border-white/5 px-4 lg:px-8 transition-all duration-300">
     
     <div class="navbar-start">
       <div class="dropdown">
         <label tabindex="0" class="btn btn-ghost lg:hidden p-2">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16" />
+          </svg>
         </label>
         <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-200 rounded-box w-52 border border-white/5" up-nav>
-            {{ nav_items(active_page) }}
+          {# Yahan call ho raha hai #}
+          {{ nav_items(active_page) }}
         </ul>
       </div>
       <a href="/" up-target="#main-content" class="text-xl font-black tracking-tighter hover:opacity-80 transition-opacity">
         LUVIIO<span class="text-primary">.</span>
       </a>
     </div>
-
+    
     <div class="navbar-center hidden lg:flex">
       <ul class="menu menu-horizontal px-1 gap-2 font-medium text-sm" up-nav>
+        {# Desktop call #}
         {{ nav_items(active_page) }}
       </ul>
     </div>
-
+    
     <div class="navbar-end gap-2">
       {% if not user %}
-        <a href="/login" up-target="#main-content" class="btn btn-ghost btn-sm hidden sm:inline-flex">Sign in</a>
-        <a href="/signup" up-target="#main-content" class="btn btn-primary btn-sm px-6 shadow-lg shadow-primary/20">Get Started</a>
+      <a href="/login" up-target="#main-content" class="btn btn-ghost btn-sm hidden sm:inline-flex">Sign in</a>
+      <a href="/signup" up-target="#main-content" class="btn btn-primary btn-sm px-6 shadow-lg shadow-primary/20">Get Started</a>
       {% else %}
-        <div class="dropdown dropdown-end">
-          <label tabindex="0" class="btn btn-ghost btn-circle avatar border border-white/10">
-            <div class="w-8 rounded-full bg-primary/10 flex items-center justify-center">
-              <span class="text-xs font-bold">{{ user.email[0] | upper }}</span>
-            </div>
-          </label>
-          <ul tabindex="0" class="menu dropdown-content mt-3 z-[1] p-2 shadow-xl bg-base-200 rounded-2xl w-52 border border-white/5">
-            <li class="menu-title opacity-50">{{ user.email }}</li>
-            <li><a href="/profile" up-target="#main-content">Profile</a></li>
-            <li><a href="/settings" up-target="#main-content">Settings</a></li>
-            <div class="divider my-0"></div>
-            <li><a href="/logout" class="text-error">Logout</a></li>
-          </ul>
-        </div>
+      <div class="dropdown dropdown-end">
+        <label tabindex="0" class="btn btn-ghost btn-circle avatar border border-white/10">
+          <div class="w-8 rounded-full bg-primary/10 flex items-center justify-center">
+            <span class="text-xs font-bold">{{ user.email[0] | upper if user.email else 'U' }}</span>
+          </div>
+        </label>
+        <ul tabindex="0" class="menu dropdown-content mt-3 z-[1] p-2 shadow-xl bg-base-200 rounded-2xl w-52 border border-white/5">
+          <li class="menu-title opacity-50">{{ user.email }}</li>
+          <li><a href="/profile" up-target="#main-content">Profile</a></li>
+          <div class="divider my-0"></div>
+          <li><a href="/logout" class="text-error">Logout</a></li>
+        </ul>
+      </div>
       {% endif %}
     </div>
   </header>
 </div>
-
-{# Sub-macro for cleaner nav items #}
-{% macro nav_items(active_page) %}
-  <li><a href="/" up-target="#main-content" class="{{ 'active text-primary bg-primary/10' if active_page == 'home' }}">Overview</a></li>
-  <li><a href="/admin/dashboard" up-target="#main-content" class="{{ 'active text-primary bg-primary/10' if active_page == 'dashboard' }}">Analytics</a></li>
-  <li><a href="/docs" up-target="#main-content" class="{{ 'active text-primary bg-primary/10' if active_page == 'docs' }}">API</a></li>
-{% endmacro %}
-
 {% endmacro %}

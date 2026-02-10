@@ -1,4 +1,6 @@
+{# api/templates/app/base.html #}
 {% import "macros/nav.html" as nav %}
+
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -10,12 +12,11 @@
 </head>
 <body class="bg-base-300 min-h-screen">
     
-    {# Macro call: active_page aur user backend se aayenge #}
-    {{ nav.render_header(user=user, active_page=active_page) }}
+    {# Correct Macro Call #}
+    {{ nav.render_header(user=user, active_page=active_page, flags=nav_flags) }}
 
     <main id="main-content" class="p-6">
         {% block content %}{% endblock %}
     </main>
-
 </body>
 </html>
