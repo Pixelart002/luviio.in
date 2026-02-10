@@ -1,57 +1,82 @@
 {% macro render_header(active_page='home') %}
 <header class="fixed top-0 left-0 w-full h-20 bg-black/80 backdrop-blur-md border-b border-white/10 z-50">
-  <div class="max-w-7xl mx-auto px-6 h-full flex justify-between items-center">
-    
-    <a href="/" class="text-2xl font-black tracking-tighter text-white" up-target="#main-content">
-      LUVIIO<span class="text-blue-500">.</span>
-    </a>
-    
-    <nav class="hidden md:flex items-center gap-8">
-      <a href="mailto:contact@luviio.in" class="text-sm font-medium text-gray-400 hover:text-white transition-colors">Contact</a>
-      <a href="/login" class="bg-white text-black text-xs font-bold px-6 py-2.5 rounded-full hover:scale-105 transition-transform" up-target="#main-content">
-        Sign In
-      </a>
-    </nav>
-    
-    <button id="menu-btn" class="md:hidden flex flex-col gap-1.5 z-50 relative group">
-      <span class="w-6 h-0.5 bg-white transition-all duration-300 group-hover:bg-blue-400"></span>
-      <span class="w-6 h-0.5 bg-white transition-all duration-300 group-hover:bg-blue-400"></span>
-    </button>
-  </div>
+    <div class="max-w-7xl mx-auto px-6 h-full flex justify-between items-center">
+        
+        <a href="/" 
+           class="text-2xl font-black tracking-tighter text-white" 
+           up-target="#main-content" 
+           up-transition="cross-fade">
+            LUVIIO<span class="text-blue-500">.</span>
+        </a>
+        
+        <nav class="hidden md:flex items-center gap-8">
+            <a href="mailto:contact@luviio.in" class="text-sm font-medium text-gray-400 hover:text-white transition-colors">Contact</a>
+            
+            <a href="/login" 
+               class="bg-white text-black text-xs font-bold px-6 py-2.5 rounded-full hover:scale-105 transition-transform" 
+               up-target="#main-content" 
+               up-transition="cross-fade">
+                Sign In
+            </a>
+        </nav>
+        
+        <button id="menu-btn" class="md:hidden flex flex-col gap-1.5 z-50 relative group">
+            <span class="w-6 h-0.5 bg-white transition-all duration-300 group-hover:bg-blue-400"></span>
+            <span class="w-6 h-0.5 bg-white transition-all duration-300 group-hover:bg-blue-400"></span>
+        </button>
+    </div>
 </header>
 
 <div id="mobile-menu" class="fixed inset-0 bg-black z-40 transform translate-x-full transition-transform duration-300 ease-in-out md:hidden flex flex-col justify-center items-center gap-8">
-  <a href="/" class="text-3xl font-bold text-white hover:text-blue-500 transition-colors">Home</a>
-  <a href="mailto:contact@luviio.in" class="text-3xl font-bold text-gray-400 hover:text-white transition-colors">Contact</a>
-  <a href="/login" class="bg-white text-black text-lg font-bold px-10 py-4 rounded-full" up-target="#main-content">Sign In</a>
+    
+    <a href="/" 
+       class="text-3xl font-bold text-white hover:text-blue-500 transition-colors"
+       up-target="#main-content" 
+       up-transition="cross-fade">
+       Home
+    </a>
+
+    <a href="mailto:contact@luviio.in" class="text-3xl font-bold text-gray-400 hover:text-white transition-colors">Contact</a>
+
+    <a href="/login" 
+       class="bg-white text-black text-lg font-bold px-10 py-4 rounded-full" 
+       up-target="#main-content" 
+       up-transition="cross-fade">
+       Sign In
+    </a>
 </div>
 
 <script>
-  // Simple Toggle Logic
-  up.compiler('#menu-btn', function(btn) {
-    const menu = document.getElementById('mobile-menu');
-    const spans = btn.querySelectorAll('span');
-    let isOpen = false;
-    
-    btn.onclick = () => {
-      isOpen = !isOpen;
-      if (isOpen) {
-        menu.classList.remove('translate-x-full'); // Show
-        spans[0].style.transform = 'translateY(4px) rotate(45deg)';
-        spans[1].style.transform = 'translateY(-4px) rotate(-45deg)';
-        document.body.style.overflow = 'hidden'; // Lock Scroll
-      } else {
-        menu.classList.add('translate-x-full'); // Hide
-        spans[0].style.transform = 'none';
-        spans[1].style.transform = 'none';
-        document.body.style.overflow = ''; // Unlock Scroll
-      }
-    };
-    
-    // Close on Link Click
-    menu.querySelectorAll('a').forEach(link => {
-      link.onclick = () => btn.click();
+    // Logic: Menu Toggle & Auto-Close on Click
+    up.compiler('#menu-btn', function(btn) {
+        const menu = document.getElementById('mobile-menu');
+        const spans = btn.querySelectorAll('span');
+        let isOpen = false;
+        
+        const toggleMenu = () => {
+            isOpen = !isOpen;
+            if (isOpen) {
+                menu.classList.remove('translate-x-full');
+                spans[0].style.transform = 'translateY(4px) rotate(45deg)';
+                spans[1].style.transform = 'translateY(-4px) rotate(-45deg)';
+                document.body.style.overflow = 'hidden';
+            } else {
+                menu.classList.add('translate-x-full');
+                spans[0].style.transform = 'none';
+                spans[1].style.transform = 'none';
+                document.body.style.overflow = '';
+            }
+        };
+
+        btn.onclick = toggleMenu;
+        
+        // Close menu when a link inside is clicked
+        menu.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                // Thoda delay taaki user ko click feedback mile, phir close ho
+                if(isOpen) toggleMenu();
+            });
+        });
     });
-  });
 </script>
 {% endmacro %}
