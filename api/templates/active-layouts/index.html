@@ -1,95 +1,18 @@
-{# api/templates/active-layouts/index.html #}
 {% import "macros/components/header.html" as components %}
-
 <!DOCTYPE html>
-<html lang="en" data-theme="dark" class="scroll-smooth">
+<html data-theme="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title if title else 'LUVIIO | Production Portal' }}</title>
-
     <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/unpoly@3.10.1/unpoly.min.css">
-
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.19/dist/full.min.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-
-    <link rel="stylesheet" href="/static/style.css">
-
-    <style>
-        /* Global transitions for Unpoly fragment swaps */
-        .up-request-loader { display: none; }
-        .up-active .up-request-loader { display: block; }
-        
-        #main-content {
-            transition: opacity 0.3s ease-in-out;
-        }
-        .up-loading #main-content {
-            opacity: 0.5;
-            filter: blur(2px);
-        }
-    </style>
 </head>
-<body class="bg-base-300 min-h-screen font-sans antialiased text-base-content">
-
-    {{ components.render_header(user=user, active_page=active_page|default('home'), flags={'sticky': True}) }}
-
-    <div class="up-request-loader fixed top-0 left-0 w-full h-1 z-[200]">
-        <div class="h-full bg-primary animate-pulse"></div>
-    </div>
-
-    <main id="main-content" class="container mx-auto px-4 py-8">
+<body class="bg-base-300 min-h-screen">
+    {{ components.render_header(user=user, active_page=active_page) }}
+    <main id="main-content" class="p-4">
         {% block content %}
-            <div class="flex flex-col items-center justify-center min-h-[60vh] text-center">
-                <h1 class="text-6xl font-black tracking-tighter mb-4 gsap-reveal">
-                    LUVIIO <span class="text-primary">CORE</span>
-                </h1>
-                <p class="max-w-lg opacity-60 mb-8">
-                    Your production stack is initialized. Start by navigating through the header.
-                </p>
-                <div class="flex gap-4">
-                    <a href="/login" up-target="#main-content" class="btn btn-primary px-8">Get Started</a>
-                    <a href="/docs" class="btn btn-ghost">Read Docs</a>
-                </div>
-            </div>
+            <h1 class="text-4xl font-bold text-center mt-20">System Live</h1>
         {% endblock %}
     </main>
-
-    <footer class="footer footer-center p-10 bg-base-200 text-base-content rounded mt-20">
-        <nav class="grid grid-flow-col gap-4">
-            <a class="link link-hover">About</a>
-            <a class="link link-hover">Contact</a>
-            <a class="link link-hover">Privacy Policy</a>
-        </nav> 
-        <aside>
-            <p>Copyright © 2026 - All right reserved by Luviio Technologies</p>
-        </aside>
-    </footer>
-
-    <script>
-        // 1. GSAP Entry Animation for Home Content
-        window.addEventListener('load', () => {
-            gsap.from(".gsap-reveal", {
-                y: 30,
-                opacity: 0,
-                duration: 1,
-                stagger: 0.2,
-                ease: "power4.out"
-            });
-        });
-
-        // 2. Unpoly Compilers (Behaviors for dynamic content)
-        up.compiler('.btn-primary', function(element) {
-            element.addEventListener('mouseenter', () => {
-                gsap.to(element, { scale: 1.05, duration: 0.2 });
-            });
-            element.addEventListener('mouseleave', () => {
-                gsap.to(element, { scale: 1, duration: 0.2 });
-            });
-        });
-    </script>
 </body>
 </html>

@@ -1,146 +1,19 @@
-{# api/templates/macros/components/header.html #}
-
-{% macro render_header(user=None, active_page='home', flags={'sticky': True, 'transparent': False}) %}
-<header 
-    id="main-header"
-    class="navbar bg-base-100/80 backdrop-blur-md z-[100] transition-all duration-300 {{ 'sticky top-0' if flags.sticky }}"
-    data-state="idle" 
-    data-transparent="{{ 'true' if flags.transparent else 'false' }}"
->
-  <div class="navbar-start">
-    <div class="dropdown">
-      <label tabindex="0" class="btn btn-ghost lg:hidden" id="mobile-menu-trigger" data-action="toggle-menu">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="4 6h16M4 12h8m-8 6h16" />
-        </svg>
-      </label>
-      <ul tabindex="0" id="mobile-menu" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52 opacity-0 -translate-y-4 pointer-events-none">
-        <li><a href="/" up-target="#main-content" class="{{ 'active' if active_page == 'home' }}">Home</a></li>
-        <li><a href="/store" up-target="#main-content">Store</a></li>
-        <li><a href="/categories" up-target="#main-content">Categories</a></li>
-      </ul>
+{% macro render_header(user=None, active_page='home', flags={'sticky': True}) %}
+<header id="main-header" class="navbar bg-base-100/80 backdrop-blur-md z-[100] {{ 'sticky top-0' if flags.sticky }}">
+    <div class="navbar-start">
+        <a href="/" up-target="#main-content" class="btn btn-ghost text-xl font-bold">LUVIIO<span class="text-primary">.</span></a>
     </div>
-    <a href="/" up-target="#main-content" class="btn btn-ghost text-xl font-bold tracking-tighter uppercase">
-        LUVIIO<span class="text-primary">.</span>
-    </a>
-  </div>
-
-  <div class="navbar-center hidden lg:flex">
-    <ul class="menu menu-horizontal px-1 gap-2" up-nav>
-      <li>
-        <a href="/" up-target="#main-content" 
-           class="hover:text-primary transition-colors {{ 'text-primary font-bold' if active_page == 'home' }}">
-           Home
-        </a>
-      </li>
-      <li>
-        <a href="/dashboard" up-target="#main-content" 
-           class="hover:text-primary transition-colors {{ 'text-primary font-bold' if active_page == 'dashboard' }}">
-           Dashboard
-        </a>
-      </li>
-      <li tabindex="0">
-        <details>
-          <summary>Explore</summary>
-          <ul class="p-2 bg-base-100 rounded-t-none z-50 shadow-xl border border-white/5">
-            <li><a href="/new" up-target="#main-content">New Arrivals</a></li>
-            <li><a href="/best-sellers" up-target="#main-content">Best Sellers</a></li>
-          </ul>
-        </details>
-      </li>
-    </ul>
-  </div>
-
-  <div class="navbar-end gap-3">
-    {% if not user %}
+    <div class="navbar-center hidden lg:flex">
+        <ul class="menu menu-horizontal px-1 gap-2">
+            <li><a href="/" up-target="#main-content" class="{{ 'text-primary' if active_page == 'home' }}">Home</a></li>
+            <li><a href="/dashboard" up-target="#main-content">Dashboard</a></li>
+        </ul>
+    </div>
+    <div class="navbar-end gap-2">
+        {% if not user %}
         <a href="/login" up-target="#main-content" class="btn btn-ghost btn-sm">Sign In</a>
-        <a href="/signup" up-target="#main-content" class="btn btn-primary btn-sm px-6">Join</a>
-    {% else %}
-        <div class="dropdown dropdown-end">
-            <label tabindex="0" class="btn btn-ghost btn-circle avatar online">
-                <div class="w-10 rounded-full border-2 border-primary">
-                    <img src="https://ui-avatars.com/api/?name={{ user.name }}&background=random" />
-                </div>
-            </label>
-            <ul tabindex="0" class="mt-3 z-[1] p-2 shadow-2xl menu menu-sm dropdown-content bg-base-100 rounded-box w-52 border border-white/5">
-                <li><a href="/profile" up-target="#main-content" class="justify-between">Profile <span class="badge badge-primary badge-outline">New</span></a></li>
-                <li><a href="/settings" up-target="#main-content">Settings</a></li>
-                <hr class="opacity-10 my-1" />
-                <li><a class="text-error" href="/logout">Logout</a></li>
-            </ul>
-        </div>
-    {% endif %}
-  </div>
+        <a href="/signup" up-target="#main-content" class="btn btn-primary btn-sm">Join</a>
+        {% endif %}
+    </div>
 </header>
-
-<script>
-/**
- * Header State Machine & GSAP Animations
- * Purpose: Handles scroll states and mobile menu interactions.
- */
-document.addEventListener('DOMContentLoaded', () => {
-    const header = document.getElementById('main-header');
-    const mobileTrigger = document.querySelector('[data-action="toggle-menu"]');
-    const mobileMenu = document.getElementById('mobile-menu');
-
-    const States = {
-        IDLE: 'idle',
-        SCROLLED: 'scrolled'
-    };
-
-    // 1. Scroll Logic (Updates data-state)
-    window.addEventListener('scroll', () => {
-        if (window.scrollY > 50) {
-            if(header.getAttribute('data-state') !== States.SCROLLED) {
-                header.setAttribute('data-state', States.SCROLLED);
-                gsap.to(header, { 
-                    backgroundColor: 'rgba(15, 15, 15, 0.95)', 
-                    padding: '4px 16px', 
-                    boxShadow: '0 10px 30px -10px rgba(0,0,0,0.5)',
-                    duration: 0.4,
-                    ease: "power2.out"
-                });
-            }
-        } else {
-            if(header.getAttribute('data-state') !== States.IDLE) {
-                header.setAttribute('data-state', States.IDLE);
-                gsap.to(header, { 
-                    backgroundColor: 'rgba(5, 5, 5, 0.8)', 
-                    padding: '12px 24px', 
-                    boxShadow: 'none',
-                    duration: 0.4,
-                    ease: "power2.inOut"
-                });
-            }
-        }
-    });
-
-    // 2. Mobile Menu State Machine
-    let isMenuOpen = false;
-    mobileTrigger.addEventListener('click', () => {
-        isMenuOpen = !isMenuOpen;
-        if (isMenuOpen) {
-            header.setAttribute('data-menu', 'open');
-            gsap.set(mobileMenu, { display: 'block' });
-            gsap.to(mobileMenu, { 
-                opacity: 1, 
-                y: 0, 
-                pointerEvents: 'auto',
-                duration: 0.4, 
-                ease: "back.out(1.7)" 
-            });
-        } else {
-            header.setAttribute('data-menu', 'closed');
-            gsap.to(mobileMenu, { 
-                opacity: 0, 
-                y: -15, 
-                pointerEvents: 'none',
-                duration: 0.3, 
-                ease: "power2.in",
-                onComplete: () => mobileMenu.style.display = 'none'
-            });
-        }
-    });
-});
-</script>
 {% endmacro %}
