@@ -1,9 +1,31 @@
-{# Path from 'templates' root is 'app/base.html' #}
 {% extends "app/base.html" if not up_fragment else "" %}
 
 {% block content %}
-<div id="main-content">
-  <h1 class="text-4xl font-bold">Welcome to LUVIIO</h1>
-  <p>Aapka setup ab 100% proper hai.</p>
-</div>
+<main class="hero flex-1 flex flex-col justify-center items-center text-center px-5">
+    <style>
+        .hero h1 { font-size: clamp(2.5rem, 8vw, 5.5rem); line-height: 1.05; font-weight: 800; background: linear-gradient(180deg, #fff 15%, #666 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; opacity: 0; transform: translateY(20px); }
+        .tagline { font-size: 0.75rem; letter-spacing: 1.5px; text-transform: uppercase; color: #777; border: 1px solid var(--border); padding: 6px 14px; border-radius: 50px; margin-bottom: 24px; opacity: 0; }
+        .cta-button { background: white; color: black; padding: 16px 36px; border-radius: 100px; text-decoration: none; font-weight: 700; opacity: 0; transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1); }
+        .cta-button:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(255,255,255,0.15); }
+    </style>
+
+    <div class="tagline">The Trust Layer</div>
+    <h1>Infrastructure for <br> Verified Markets.</h1>
+    <p class="text-gray-400 mt-6 max-w-lg opacity-0">We verify, secure, and streamline marketplace infrastructure.</p>
+
+    <div class="mt-10">
+        <a href="/waitlist/" id="main-cta" class="cta-button">Join Waitlist</a>
+    </div>
+
+    <script>
+        // Unpoly Compiler for GSAP: Swaps hone par bhi animation chale
+        up.compiler('.hero', function(element) {
+            gsap.timeline({ defaults: { ease: "power3.out", duration: 1.2 } })
+                .to(".tagline", { opacity: 1, y: 0, delay: 0.2 })
+                .to("h1", { opacity: 1, y: 0 }, "-=0.9")
+                .to(".hero p", { opacity: 1, y: 0 }, "-=0.9")
+                .to(".cta-button", { opacity: 1, y: 0 }, "-=0.9");
+        });
+    </script>
+</main>
 {% endblock %}
