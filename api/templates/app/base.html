@@ -1,25 +1,30 @@
+{% import "macros/nav.html" as nav %}
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LUVIIO | {{ title | default('App') }}</title>
-    
     <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.19/dist/full.min.css" rel="stylesheet" />
 </head>
+
 <body class="bg-base-300 min-h-screen">
-    <header class="p-4 bg-base-100 border-b border-white/5">
-        <h1 class="text-xl font-bold">LUVIIO App</h1>
-    </header>
-
+    
+    {# Macro call: active_page aur user backend se aayenge #}
+    {{ nav.render_header(user=user, active_page=active_page) }}
+    
     <main id="main-content" class="p-6">
-        {% block content %}{% endblock %}
+        {% block content %}
+        
+        
+        
+        
+        
+        {% endblock %}
     </main>
-
-    <footer class="p-4 text-center opacity-50 text-xs">
-        © 2026 LUVIIO Admin
-    </footer>
+    
 </body>
+
 </html>

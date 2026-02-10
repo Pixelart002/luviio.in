@@ -1,0 +1,22 @@
+{% macro render_header(user=None, active_page='home') %}
+<header class="navbar bg-base-100 border-b border-white/5 px-4">
+  <div class="flex-1">
+    <a href="/" up-target="#main-content" class="btn btn-ghost text-xl font-bold">LUVIIO</a>
+  </div>
+  <div class="flex-none">
+    <ul class="menu menu-horizontal px-1" up-nav>
+      <li>
+        <a href="/" up-target="#main-content" class="{{ 'active' if active_page == 'home' }}">Home</a>
+      </li>
+      <li>
+        <a href="/admin/dashboard" up-target="#main-content" class="{{ 'active' if active_page == 'dashboard' }}">Dashboard</a>
+      </li>
+      {% if not user %}
+      <li><a href="/login" class="btn btn-primary btn-sm ml-2">Login</a></li>
+      {% else %}
+      <li><span class="text-xs opacity-50">{{ user.email }}</span></li>
+      {% endif %}
+    </ul>
+  </div>
+</header>
+{% endmacro %}
