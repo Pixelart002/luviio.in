@@ -10,10 +10,13 @@ app = FastAPI()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 2. Mount Static & Templates
+# Static files (CSS/Images) aur Templates folder connect kar rahe hain
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-# 3. Routes
+# --- ROUTES ---
+
+# 1. Home Page
 @app.get("/", response_class=HTMLResponse)
 async def render_home(request: Request, x_up_target: str = Header(None)):
     return templates.TemplateResponse("app/pages/home.html", {
@@ -22,6 +25,19 @@ async def render_home(request: Request, x_up_target: str = Header(None)):
         "active_page": "home"
     })
 
+# 2. Login Page
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("app/pages/login.html", {"request": request})
+    return templates.TemplateResponse("app/pages/login.html", {
+        "request": request,
+        "title": "Login | LUVIIO"
+    })
+
+# 3. NEW: Waitlist Fragment (Ye naya add kiya hai)
+@app.get("/waitlist", response_class=HTMLResponse)
+async def render_waitlist(request: Request):
+    return templates.TemplateResponse("app/pages/waitlist.html", {
+        "request": request,
+        "title": "Join Waitlist | LUVIIO", 
+        "active_page": "home" # Active page home hi rakha taaki nav bar change na ho
+    })
