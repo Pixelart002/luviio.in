@@ -1,7 +1,6 @@
 {% import "macros/nav.html" as nav %}
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
-
 <head>
     <meta charset="UTF-8">
     <title>LUVIIO | {{ title | default('App') }}</title>
@@ -9,22 +8,14 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.19/dist/full.min.css" rel="stylesheet" />
 </head>
-
 <body class="bg-base-300 min-h-screen">
     
     {# Macro call: active_page aur user backend se aayenge #}
     {{ nav.render_header(user=user, active_page=active_page) }}
-    
-    <main id="main-content" class="p-6">
-        {% block content %}
-        
-        
-        
-        
-        
-        {% endblock %}
-    </main>
-    
-</body>
 
+    <main id="main-content" class="p-6">
+        {% block content %}{% endblock %}
+    </main>
+
+</body>
 </html>
