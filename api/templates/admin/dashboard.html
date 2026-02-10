@@ -1,0 +1,39 @@
+{% extends "active-layouts/index.html" %}
+
+{% block content %}
+<div class="p-6 space-y-6">
+    <div class="alert {{ 'alert-success' if stats.db_connected else 'alert-error' }} shadow-lg">
+        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        <span>Database Status: <strong>{{ stats.status }}</strong> (Total Profiles: {{ stats.total_users }})</span>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="stats shadow bg-base-100 border border-white/5">
+            <div class="stat">
+                <div class="stat-title">Total Revenue</div>
+                <div class="stat-value text-primary">₹0</div>
+                <div class="stat-desc">21% more than last month</div>
+            </div>
+        </div>
+        
+        <div class="stats shadow bg-base-100 border border-white/5">
+            <div class="stat">
+                <div class="stat-title">Page Views</div>
+                <div class="stat-value text-secondary">2.6M</div>
+                <div class="stat-desc">Jan 1st - Feb 1st</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // GSAP entry animation for dashboard items
+    gsap.from(".stats", {
+        opacity: 0,
+        y: 20,
+        stagger: 0.1,
+        duration: 0.8,
+        ease: "power2.out"
+    });
+</script>
+{% endblock %}
