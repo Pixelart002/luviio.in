@@ -1,34 +1,21 @@
+{# api/templates/app/base.html #}
 {% import "macros/nav.html" as nav %}
 <!DOCTYPE html>
 <html lang="en-IN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-    {# Defensive Title: Agar backend se 'title' na aaye toh crash nahi hoga #}
-    <title>{{ title | default('Luviio - Verified Markets') }}</title>
-    
-    <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700&display=swap" rel="stylesheet">
-    
-    <style>
-        :root { --bg: #050505; --border: rgba(255,255,255,0.08); }
-        body { background: var(--bg); color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; overflow-x: hidden; }
-        .grid-bg { position: fixed; inset: 0; z-index: -1; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 50px 50px; opacity: 0.1; mask-image: radial-gradient(circle at center, black 40%, transparent 90%); }
-    </style>
+    {# ... baaki head content ... #}
+    <title>{{ title | default('Luviio') }}</title>
 </head>
 <body class="min-h-screen flex flex-col">
-    <div class="grid-bg"></div>
+    {# Variable crash rokne ke liye 'default' use karein #}
+    {{ nav.render_header(
+        user=user|default(None), 
+        active_page=active_page|default('home'), 
+        flags=nav_flags|default({'sticky': True, 'glass': True})
+    ) }}
 
-    {# Macro call with safe defaults #}
-    {{ nav.render_header(active_page | default('home')) }}
-
-    <main id="main-content" class="flex-1 flex flex-col pt-20">
+    <main id="main-content" class="flex-1">
         {% block content %}{% endblock %}
     </main>
-
-    <footer class="p-8 text-center border-t border-white/5 opacity-40 text-sm">
-        &copy; 2026 Luviio Technologies.
-    </footer>
 </body>
 </html>
