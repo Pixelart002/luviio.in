@@ -1,21 +1,41 @@
-{# api/templates/app/base.html #}
 {% import "macros/nav.html" as nav %}
 <!DOCTYPE html>
-<html lang="en-IN">
+<html lang="en-IN" prefix="og: https://ogp.me/ns#">
 <head>
-    {# ... baaki head content ... #}
-    <title>{{ title | default('Luviio') }}</title>
-</head>
-<body class="min-h-screen flex flex-col">
-    {# Variable crash rokne ke liye 'default' use karein #}
-    {{ nav.render_header(
-        user=user|default(None), 
-        active_page=active_page|default('home'), 
-        flags=nav_flags|default({'sticky': True, 'glass': True})
-    ) }}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <title>{{ title | default('Luviio - The Trust Layer') }}</title>
+  
+  {# Meta Tags strictly from your HTML #}
+  <meta name="description" content="Verified operating system for online listings.">
+  <meta name="theme-color" content="#050505">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    :root { --bg: #050505; --text: #fff; --gray: #9ca3af; --border: rgba(255,255,255,0.08); --accent: #3b82f6; }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { background: var(--bg); color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100dvh; width: 100vw; display: flex; flex-direction: column; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
+    
+    .grid-bg { position: fixed; inset: 0; z-index: -1; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 60px 60px; opacity: 0.1; mask-image: radial-gradient(circle at center, black 40%, transparent 80%); transform: translateZ(0); }
+    
+    footer.site-footer { width: 100%; padding: 30px 20px; text-align: center; border-top: 1px solid var(--border); background: rgba(3,3,3,0.6); backdrop-filter: blur(10px); margin-top: auto; }
+  </style>
 
-    <main id="main-content" class="flex-1">
-        {% block content %}{% endblock %}
-    </main>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+</head>
+<body>
+  <div class="grid-bg"></div>
+
+  {# Header Macro Call #}
+  {{ nav.render_header(active_page|default('home')) }}
+
+  <main id="main-content" class="flex-1 flex flex-col">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="copyright">&copy; 2026 Luviio Technologies.</div>
+  </footer>
 </body>
 </html>

@@ -1,20 +1,29 @@
-{# api/templates/macros/nav.html #}
-{% macro render_header(user=None, active_page='home', flags={}) %}
-<nav class="fixed top-0 left-0 w-full z-[100] backdrop-blur-xl border-b border-white/5">
-  <div class="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
-    <a href="/" class="flex items-center gap-3 group" up-target="#main-content">
-      <div class="w-8 h-8 bg-white rounded-lg flex items-center justify-center font-black text-black">L</div>
-      <span class="font-extrabold text-xl tracking-tighter">LUVIIO<span class="text-blue-500">.</span></span>
-    </a>
-    
-    <div class="flex items-center gap-6">
-      <a href="mailto:contact@luviio.in" class="text-sm font-medium text-gray-400 hover:text-white transition-colors hidden sm:block">Contact</a>
-      {% if not user %}
-      <a href="/login" class="text-sm font-bold bg-white text-black px-5 py-2 rounded-full hover:scale-105 transition-transform" up-target="#main-content">Sign In</a>
-      {% else %}
-      <span class="text-sm text-gray-400">{{ user.email }}</span>
-      {% endif %}
-    </div>
+{% macro render_header(active_page='home') %}
+<style>
+  nav { width: 100%; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; position: absolute; top: 0; left: 0; z-index: 100; }
+  .nav-links { display: flex; gap: 30px; align-items: center; }
+  .hamburger { display: none; cursor: pointer; flex-direction: column; gap: 5px; z-index: 110; }
+  .hamburger span { width: 25px; height: 2px; background: #fff; transition: 0.3s; }
+
+  @media (max-width: 768px) {
+    .nav-links { position: fixed; top: 0; right: -100%; width: 70%; height: 100vh; background: #0a0a0a; flex-direction: column; justify-content: center; transition: 0.4s; border-left: 1px solid var(--border); }
+    .nav-links.active { right: 0; }
+    .hamburger { display: flex; }
+  }
+</style>
+
+<nav>
+  <a href="/" class="brand-link" style="text-decoration: none; display: flex; align-items: center; gap: 12px;">
+    <span style="font-weight: 800; font-size: 1.2rem; color: #fff; letter-spacing: -0.02em;">LUVIIO</span>
+  </a>
+
+  <div class="hamburger" onclick="document.querySelector('.nav-links').classList.toggle('active')">
+    <span></span><span></span><span></span>
+  </div>
+
+  <div class="nav-links">
+    <a href="mailto:contact@luviio.in" style="color: var(--gray); text-decoration: none; font-size: 0.9rem; font-weight: 600;">Contact</a>
+    <a href="/login" style="background: #fff; color: #000; padding: 10px 24px; border-radius: 50px; text-decoration: none; font-weight: 700; font-size: 0.85rem;">Sign In</a>
   </div>
 </nav>
 {% endmacro %}
