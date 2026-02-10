@@ -1,15 +1,19 @@
 {% macro nav_link(url, target, label, variant="primary") %}
 
 {% if variant == "primary" %}
-  {% set cls = "btn btn-primary btn-wide shadow-lg transition-all duration-300" %}
+  {% set cls = "inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-lg transition-all duration-300" %}
+
 {% elif variant == "secondary" %}
-  {% set cls = "btn btn-secondary btn-wide shadow-md transition-all duration-300" %}
+  {% set cls = "inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold bg-gray-600 text-white hover:bg-gray-700 shadow-md hover:shadow-lg transition-all duration-300" %}
+
 {% elif variant == "outline" %}
-  {% set cls = "btn btn-outline btn-primary btn-wide transition-all duration-300" %}
+  {% set cls = "inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white transition-all duration-300" %}
+
 {% elif variant == "ghost" %}
-  {% set cls = "btn btn-ghost text-primary transition-all duration-300" %}
+  {% set cls = "inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold text-blue-600 hover:bg-blue-100 transition-all duration-300" %}
+
 {% else %}
-  {% set cls = "btn btn-primary btn-wide" %}
+  {% set cls = "inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold bg-blue-600 text-white" %}
 {% endif %}
 
 <a
