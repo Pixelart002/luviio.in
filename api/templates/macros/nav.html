@@ -1,4 +1,5 @@
-{% macro render_header(active_page='home') %}
+{# api/templates/macros/nav.html #}
+{% macro render_header(user=None, active_page='home', flags={}) %}
 <nav class="fixed top-0 left-0 w-full z-[100] backdrop-blur-xl border-b border-white/5">
   <div class="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
     <a href="/" class="flex items-center gap-3 group" up-target="#main-content">
@@ -8,7 +9,11 @@
     
     <div class="flex items-center gap-6">
       <a href="mailto:contact@luviio.in" class="text-sm font-medium text-gray-400 hover:text-white transition-colors hidden sm:block">Contact</a>
+      {% if not user %}
       <a href="/login" class="text-sm font-bold bg-white text-black px-5 py-2 rounded-full hover:scale-105 transition-transform" up-target="#main-content">Sign In</a>
+      {% else %}
+      <span class="text-sm text-gray-400">{{ user.email }}</span>
+      {% endif %}
     </div>
   </div>
 </nav>
