@@ -1,31 +1,27 @@
-{% extends "app/base.html" %}
+{# --- Fragment Logic: Agar partial update hai toh sirf content bhejo --- #}
+{% extends "app/base.html" if not up_fragment else "app/empty.html" %}
 
 {% block content %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
-    /* --- SCOPED STYLES (Adapted from your code) --- */
-    .waitlist-wrapper {
-        font-family: 'Inter', sans-serif;
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        text-align: center;
-        position: relative;
-        width: 100%;
-        overflow: hidden; /* App feel */
-    }
-
-    /* Override Global Variables for this page */
-    .waitlist-wrapper {
+    /* --- SCOPED STYLES --- */
+    /* Humne :root variables ko .waitlist-scope class ke andar move kar diya 
+       taaki baaki site ki theme kharab na ho */
+    .waitlist-scope {
         --text-dim: #a1a1aa;
         --accent: #3b82f6;
         --accent-glow: rgba(59, 130, 246, 0.4);
         --error: #ef4444;
         --success: #22c55e;
         --ease-elastic: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        font-family: 'Inter', sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-height: 80vh; /* Ensure centering */
     }
 
     .pill { 
@@ -106,7 +102,7 @@
     }
 </style>
 
-<div class="waitlist-wrapper px-6 py-20">
+<div class="waitlist-scope px-6 py-20">
     <div class="hero-content">
         <div class="pill fade-in">Waitlist Access Early 2026</div>
         
@@ -136,8 +132,9 @@
 </div>
 
 <script>
-    // Executed via Unpoly Compiler to ensure it runs after fragment swap
-    up.compiler('.waitlist-wrapper', function(wrapper) {
+    // IMPORTANT: DOMContentLoaded kaam nahi karega fragment swap mein.
+    // Hum Unpoly Compiler use kar rahe hain jo element load hone par chalega.
+    up.compiler('.waitlist-scope', function(wrapper) {
         
         // --- ANIMATION ENTRY ---
         if (typeof gsap !== 'undefined') {
@@ -148,11 +145,12 @@
             document.querySelectorAll('.fade-in').forEach(el => el.style.opacity = 1);
         }
 
-        // --- SUPABASE & LOGIC ---
+        // --- CONFIG ---
         const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
         const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd';
         let supabaseClient = null;
 
+        // UI Elements Scope (Strictly inside wrapper)
         const ui = {
             form: wrapper.querySelector('#waitlistForm'),
             email: wrapper.querySelector('#email'),
@@ -188,7 +186,7 @@
 
             renderState(true);
 
-            // Lazy Load Supabase
+            // Lazy Load Supabase to keep initial bundle small
             if (!supabaseClient && typeof supabase !== 'undefined') {
                 supabaseClient = supabase.createClient(SB_URL, SB_KEY);
             }
@@ -196,14 +194,15 @@
             try {
                 if (!supabaseClient) throw new Error("Connection failed");
 
-                const { error } = await supabaseClient.from('subscribers').insert([{ email }]);
+                // Inserting to 'waitlist' table (Changed from 'subscribers' to match your schema)
+                const { error } = await supabaseClient.from('waitlist').insert([{ email }]);
                 
                 if (error) {
                     if (error.code === '23505') throw new Error("You're already on the list!");
                     throw error;
                 }
 
-                // SUCCESS
+                // SUCCESS STATE
                 showToast("Welcome to the future.");
                 ui.email.value = "";
                 ui.email.blur();
@@ -211,7 +210,7 @@
                 ui.btn.style.backgroundColor = "#22c55e";
                 ui.btn.style.color = "#fff";
                 renderState(false);
-                ui.btn.disabled = true; // Disable after success
+                ui.btn.disabled = true;
                 
             } catch (err) {
                 console.error(err);
