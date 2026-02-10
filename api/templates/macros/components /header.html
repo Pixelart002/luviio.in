@@ -1,0 +1,114 @@
+{# api/templates/macros/components/header.html #}
+
+{% macro render_header(user=None, active_page='home', flags={'sticky': True, 'transparent': False}) %}
+<header 
+    id="main-header"
+    class="navbar bg-base-100/80 backdrop-blur-md z-[100] transition-all duration-300 {{ 'sticky top-0' if flags.sticky }}"
+    data-state="idle" 
+    data-transparent="{{ 'true' if flags.transparent else 'false' }}"
+>
+  <div class="navbar-start">
+    <div class="dropdown">
+      <label tabindex="0" class="btn btn-ghost lg:hidden" id="mobile-menu-trigger" data-action="toggle-menu">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="4 6h16M4 12h8m-8 6h16" /></svg>
+      </label>
+      <ul tabindex="0" id="mobile-menu" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52 opacity-0 -translate-y-4 pointer-events-none">
+        <li><a href="/" class="{{ 'active' if active_page == 'home' }}">Home</a></li>
+        <li><a href="/store">Store</a></li>
+        <li><a>Categories</a></li>
+      </ul>
+    </div>
+    <a class="btn btn-ghost text-xl font-bold tracking-tighter">LUVIIO<span class="text-primary">.</span></a>
+  </div>
+
+  <div class="navbar-center hidden lg:flex">
+    <ul class="menu menu-horizontal px-1 gap-2">
+      <li><a href="/" class="hover:text-primary transition-colors {{ 'text-primary font-bold' if active_page == 'home' }}">Home</a></li>
+      <li><a href="/dashboard" class="hover:text-primary transition-colors {{ 'text-primary font-bold' if active_page == 'dashboard' }}">Dashboard</a></li>
+      <li tabindex="0">
+        <details>
+          <summary>Explore</summary>
+          <ul class="p-2 bg-base-100 rounded-t-none z-50">
+            <li><a>New Arrivals</a></li>
+            <li><a>Best Sellers</a></li>
+          </ul>
+        </details>
+      </li>
+    </ul>
+  </div>
+
+  <div class="navbar-end gap-3">
+    {% if not user %}
+        <a href="/login" class="btn btn-ghost btn-sm">Sign In</a>
+        <a href="/signup" class="btn btn-primary btn-sm px-6">Join</a>
+    {% else %}
+        <div class="dropdown dropdown-end">
+            <label tabindex="0" class="btn btn-ghost btn-circle avatar online">
+                <div class="w-10 rounded-full border-2 border-primary">
+                    <img src="https://ui-avatars.com/api/?name={{ user.name }}&background=random" />
+                </div>
+            </label>
+            <ul tabindex="0" class="mt-3 z-[1] p-2 shadow menu menu-sm dropdown-content bg-base-100 rounded-box w-52">
+                <li><a class="justify-between">Profile <span class="badge badge-primary badge-outline">New</span></a></li>
+                <li><a>Settings</a></li>
+                <li><a class="text-error" href="/logout">Logout</a></li>
+            </ul>
+        </div>
+    {% endif %}
+  </div>
+</header>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const header = document.getElementById('main-header');
+    const mobileTrigger = document.querySelector('[data-action="toggle-menu"]');
+    const mobileMenu = document.getElementById('mobile-menu');
+
+    // --- State Machine States ---
+    const States = {
+        IDLE: 'idle',
+        SCROLLED: 'scrolled',
+        MENU_OPEN: 'menu-open'
+    };
+
+    // 1. Scroll State Machine
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 50) {
+            header.setAttribute('data-state', States.SCROLLED);
+            gsap.to(header, { backgroundColor: 'rgba(15, 15, 15, 0.95)', padding: '5px 20px', duration: 0.3 });
+        } else {
+            header.setAttribute('data-state', States.IDLE);
+            gsap.to(header, { backgroundColor: 'rgba(5, 5, 5, 0.8)', padding: '15px 20px', duration: 0.3 });
+        }
+    });
+
+    // 2. Mobile Menu State Machine (GSAP)
+    let isMenuOpen = false;
+    mobileTrigger.addEventListener('click', () => {
+        isMenuOpen = !isMenuOpen;
+        
+        if (isMenuOpen) {
+            header.setAttribute('data-menu', 'open');
+            gsap.to(mobileMenu, { 
+                opacity: 1, 
+                y: 0, 
+                display: 'block', 
+                pointerEvents: 'auto',
+                duration: 0.4, 
+                ease: "power2.out" 
+            });
+        } else {
+            header.setAttribute('data-menu', 'closed');
+            gsap.to(mobileMenu, { 
+                opacity: 0, 
+                y: -20, 
+                pointerEvents: 'none',
+                duration: 0.3, 
+                ease: "power2.in",
+                onComplete: () => mobileMenu.style.display = 'none'
+            });
+        }
+    });
+});
+</script>
+{% endmacro %}
