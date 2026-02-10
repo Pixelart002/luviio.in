@@ -1,12 +1,69 @@
 {% macro render_header(active_page='home') %}
-<nav class="fixed top-0 left-0 w-full z-[100] h-20 flex justify-between items-center px-6 border-b border-white/5 backdrop-blur-xl bg-black/20">
-  <a href="/" class="flex items-center gap-2">
-    <span class="font-black text-xl tracking-tighter">LUVIIO<span class="text-blue-500">.</span></span>
-  </a>
+<nav class="fixed top-0 left-0 w-full z-[100] h-20 bg-[#050505]/80 backdrop-blur-xl border-b border-white/5" id="site-nav">
+  <div class="max-w-7xl mx-auto h-full px-6 flex justify-between items-center">
+    <a href="/" class="flex items-center gap-2" up-target="#main-content">
+      <span class="font-black text-xl tracking-tighter text-white uppercase">
+        LUVIIO<span class="text-blue-500">.</span>
+      </span>
+    </a>
+    
+    <div class="hidden md:flex items-center gap-8">
+      <a href="mailto:contact@luviio.in" class="text-sm font-medium text-gray-400 hover:text-white transition-colors">Contact</a>
+      <a href="/login" class="bg-white text-black text-xs font-bold px-6 py-2.5 rounded-full hover:scale-105 transition-transform" up-target="#main-content">
+        Sign In
+      </a>
+    </div>
+    
+    <button id="hamburger-btn" class="md:hidden flex flex-col gap-1.5 p-2 focus:outline-none" aria-label="Toggle Menu">
+      <span class="w-6 h-0.5 bg-white transition-all duration-300 origin-center"></span>
+      <span class="w-6 h-0.5 bg-white transition-all duration-300"></span>
+      <span class="w-6 h-0.5 bg-white transition-all duration-300 origin-center"></span>
+    </button>
+  </div>
   
-  <div class="flex items-center gap-6">
-    <a href="mailto:contact@luviio.in" class="text-sm font-medium text-gray-400 hover:text-white transition-colors">Contact</a>
-    <a href="/login" class="bg-white text-black text-xs font-bold px-5 py-2 rounded-full hover:scale-105 transition-transform">Sign In</a>
+  <div id="nav-drawer" class="fixed inset-0 top-20 bg-[#050505] z-[90] flex flex-col items-center justify-center gap-10 opacity-0 pointer-events-none transition-all duration-300 md:hidden border-t border-white/5">
+    <a href="mailto:contact@luviio.in" class="text-2xl font-bold text-gray-400 hover:text-white">Contact</a>
+    <a href="/login" class="bg-white text-black text-lg font-bold px-12 py-4 rounded-full" up-target="#main-content">
+      Sign In
+    </a>
   </div>
 </nav>
+
+<script>
+  // Unpoly Compiler ensures the menu works even after page swaps
+  up.compiler('#site-nav', function(nav) {
+    const btn = nav.querySelector('#hamburger-btn');
+    const drawer = nav.querySelector('#nav-drawer');
+    const spans = btn.querySelectorAll('span');
+    
+    btn.onclick = () => {
+      const isOpen = drawer.classList.contains('opacity-100');
+      if (isOpen) {
+        // Close Drawer
+        drawer.classList.replace('opacity-100', 'opacity-0');
+        drawer.classList.add('pointer-events-none');
+        spans[0].style.transform = 'none';
+        spans[1].style.opacity = '1';
+        spans[2].style.transform = 'none';
+      } else {
+        // Open Drawer
+        drawer.classList.replace('opacity-0', 'opacity-100');
+        drawer.classList.remove('pointer-events-none');
+        spans[0].style.transform = 'translateY(8px) rotate(45deg)';
+        spans[1].style.opacity = '0';
+        spans[2].style.transform = 'translateY(-8px) rotate(-45deg)';
+      }
+    };
+    
+    // Auto-close when clicking links
+    drawer.querySelectorAll('a').forEach(link => {
+      link.onclick = () => {
+        drawer.classList.replace('opacity-100', 'opacity-0');
+        drawer.classList.add('pointer-events-none');
+        spans.forEach(s => s.style.transform = 'none');
+        spans[1].style.opacity = '1';
+      };
+    });
+  });
+</script>
 {% endmacro %}

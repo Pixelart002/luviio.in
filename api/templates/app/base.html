@@ -4,25 +4,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title | default('LUVIIO') }}</title>
+    <title>{{ title | default('Luviio') }}</title>
+    <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" defer></script>
     <style>
         :root { --bg: #050505; --border: rgba(255,255,255,0.08); }
-        body { background: var(--bg); color: #fff; font-family: sans-serif; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: hidden; }
-        .grid-bg { position: fixed; inset: 0; z-index: -1; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 50px 50px; opacity: 0.1; mask-image: radial-gradient(circle at center, black 40%, transparent 80%); }
+        body { background: var(--bg); color: #fff; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: hidden; }
     </style>
 </head>
 <body>
-    <div class="grid-bg"></div>
+    {# PART 1: HEADER (Macro) #}
+    {{ nav.render_header(active_page | default('home')) }}
 
-    {{ nav.render_header(active_page|default('home')) }}
-
+    {# PART 2: BODY (Dynamic Content) #}
     <main id="main-content" class="flex-1 flex flex-col pt-20">
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="p-8 text-center border-t border-white/5 opacity-30 text-[10px] uppercase">
+    {# PART 3: FOOTER #}
+    <footer class="p-8 text-center border-t border-white/5 opacity-30 text-[10px] uppercase tracking-widest">
         &copy; 2026 Luviio Technologies.
     </footer>
 </body>
