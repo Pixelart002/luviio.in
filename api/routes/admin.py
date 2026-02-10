@@ -10,23 +10,22 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 @router.get("/dashboard")
 @db_safe_execute
-async def admin_dashboard(request: Request):
-    # 1. DB Connection Check: Ek simple query run karein
-    # Maan lijiye aapke pass 'profiles' ya 'settings' table hai
-    db_check = supabase.table("profiles").select("count", count="exact").limit(1).execute()
-    
-    # Agar ye line execute ho gayi, matlab DB connected hai
-    stats = {
-        "status": "Online",
-        "db_connected": True,
-        "total_users": db_check.count if db_check.count else 0
-    }
-
+async def admin_dashboard(request: Request, x_up_target: str = Header(None)):
+    # Mock Data (Asli dashboard mein Supabase queries aayengi)
     context = {
         "request": request,
-        "stats": stats,
-        "user": {"name": "Senior Admin"},
-        "active_page": "dashboard"
+        "up_fragment": x_up_target == "#main-content", # Check if it's a partial update
+        "stats": {
+            "revenue": "₹8,42,000",
+            "users": "14,201",
+            "orders": "482"
+        },
+        "recent_orders": [
+            {"id": "LUV-8821", "customer": "Aman Verma", "status": "Paid", "status_color": "success", "amount": "₹4,200"},
+            {"id": "LUV-8822", "customer": "Sneha Roy", "status": "Pending", "status_color": "warning", "amount": "₹1,150"},
+            {"id": "LUV-8823", "customer": "John Doe", "status": "Shipped", "status_color": "info", "amount": "₹8,900"}
+        ]
     }
     
-    return templates.TemplateResponse("admin/dashboard.html", context)
+    # Unpoly Fragment Logic
+    return templates.TemplateResponse("pages/dashboard_home.html", context)
