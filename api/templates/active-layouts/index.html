@@ -1,18 +1,49 @@
-<body>
-  
-  <!-- 🔒 NAV / BUTTONS (PERSISTENT) -->
-  <header class="p-6 border-b">
+{% import "macros/components/buttons/btn-1.html" as buttons %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Luviio Portal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Unpoly -->
+  <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/unpoly@3.10.1/unpoly.min.css">
+</head>
+
+<body class="min-h-screen bg-gray-50">
+
+  <!-- 🔒 PERSISTENT NAV (never replaced) -->
+  <header class="p-6 border-b bg-white">
     <h1 class="text-xl font-bold">Button Preview</h1>
-    
-    <div class="mt-4 flex gap-4">
+
+    <div class="mt-4 flex flex-wrap gap-4">
       {{ buttons.nav_link('/profile', '#page', 'Profile', 'primary') }}
       {{ buttons.nav_link('/settings', '#page', 'Settings', 'secondary') }}
+      {{ buttons.nav_link('/about', '#page', 'About', 'outline') }}
+      {{ buttons.nav_link('/', '#page', 'Home', 'ghost') }}
     </div>
   </header>
-  
-  <!-- 🔁 PAGE CONTENT ONLY -->
+
+  <!-- 🔁 ONLY THIS AREA IS REPLACED -->
   <main id="page" class="p-6">
-    <p>Select a page</p>
+    <p class="text-gray-600">Select any button to load a page.</p>
   </main>
-  
+
+  <!-- Unpoly animation (SAFE) -->
+  <script>
+    up.compiler('#page', function (el) {
+      el.animate(
+        [{ opacity: 0, transform: 'translateY(6px)' },
+         { opacity: 1, transform: 'translateY(0)' }],
+        { duration: 200, easing: 'ease-out' }
+      )
+    })
+  </script>
+
 </body>
+</html>
