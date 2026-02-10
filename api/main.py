@@ -3,7 +3,6 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.templating import Jinja2Templates
-from .routes.auth import router as auth_router 
 
 app = FastAPI()
 
