@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <title>LUVIIO | {{ title | default('Admin') }}</title>
+    <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.19/dist/full.min.css" rel="stylesheet" />
+</head>
+<body class="bg-base-300">
+    <nav> </nav>
+
+    <main id="main-content">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
