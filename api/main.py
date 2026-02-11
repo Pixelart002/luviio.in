@@ -4,6 +4,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
+# ✅ Import the new router (File name must be resend_mail.py)
+from routes.resend_mail import router as mail_router
+
 app = FastAPI()
 
 # 1. Path Setup
@@ -13,7 +16,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-# --- ROUTES ---
+# --- CONNECT ROUTERS ---
+# Yahan humne aapke naye secure mail route ko connect kiya hai
+app.include_router(mail_router)
+
+# --- PAGE ROUTES ---
 
 # 1. Home Page
 @app.get("/", response_class=HTMLResponse)
@@ -22,7 +29,7 @@ async def render_home(request: Request, x_up_target: str = Header(None)):
         "request": request,
         "title": "LUVIIO | Verified Markets",
         "active_page": "home",
-        "up_fragment": x_up_target is not None # IMPORTANT: Ye batata hai ki partial update hai ya full
+        "up_fragment": x_up_target is not None 
     })
 
 # 2. Login Page
@@ -41,5 +48,5 @@ async def render_waitlist(request: Request, x_up_target: str = Header(None)):
         "request": request,
         "title": "Join Waitlist | LUVIIO", 
         "active_page": "home",
-        "up_fragment": x_up_target is not None # IMPORTANT
+        "up_fragment": x_up_target is not None
     })
