@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
+from routes.resend_mail import router as resend_mail_router
 
 app = FastAPI()
 
@@ -12,6 +13,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 2. Mount Static & Templates
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
+#include files 
+app.include_router(resend_mail_router)
 
 # --- ROUTES ---
 
