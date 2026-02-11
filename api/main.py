@@ -1,8 +1,19 @@
 import os
+import sys
+
+# ----------------------------------------------------------------
+# 🔧 VERCEL PATH FIX (Strictly Required)
+# Ye line Python ko batati hai ki 'routes' folder yahin maujood hai
+# ----------------------------------------------------------------
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from fastapi import FastAPI, Request, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
+
+# ✅ Import Your New Router
+from routes.resend_mail import router as mail_router
 
 app = FastAPI()
 
@@ -13,6 +24,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
+# ✅ Include the Router (Connects /resend-mail)
+app.include_router(mail_router)
+
 # --- ROUTES ---
 
 # 1. Home Page
@@ -22,7 +36,7 @@ async def render_home(request: Request, x_up_target: str = Header(None)):
         "request": request,
         "title": "LUVIIO | Verified Markets",
         "active_page": "home",
-        "up_fragment": x_up_target is not None # IMPORTANT: Ye batata hai ki partial update hai ya full
+        "up_fragment": x_up_target is not None 
     })
 
 # 2. Login Page
@@ -41,5 +55,5 @@ async def render_waitlist(request: Request, x_up_target: str = Header(None)):
         "request": request,
         "title": "Join Waitlist | LUVIIO", 
         "active_page": "home",
-        "up_fragment": x_up_target is not None # IMPORTANT
+        "up_fragment": x_up_target is not None 
     })
