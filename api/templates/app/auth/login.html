@@ -1,6 +1,8 @@
 {% extends "app/base.html" %}
 {% import "macros/auth_macros.html" as forms %}
 
+{% block title %}Login - Luviio{% endblock %}
+
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -31,51 +33,106 @@
 </div>
 
 <script>
-    (function() {
-        // 1. Env Variables from Python context
-        const SB_URL = "{{ supabase_url }}";
-        const SB_KEY = "{{ supabase_key }}";
+    // --- DEBUG VERSION AUTH SCRIPT INTEGRATED ---
+    const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
+    const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd';
+    
+    let supabaseClient = null;
+    
+    // Initialize Function
+    function initSupabase() {
+        console.log("Initializing Supabase with Debug Keys...");
+        if (typeof supabase !== 'undefined') {
+            try {
+                supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+                console.log("Supabase Client Ready ✅");
+            } catch (e) {
+                console.error("Supabase Init Failed ❌", e);
+                alert("Supabase Error: Check Console");
+            }
+        } else {
+            alert("Error: Supabase SDK load nahi hua! Internet check karo.");
+        }
+    }
+    
+    // Run Init
+    initSupabase();
+    
+    // 1. Provider Auth (Google/GitHub) - Global scope for Macros
+    window.signInWithProvider = async function(providerName) {
+        console.log(`Attempting login with ${providerName}...`);
         
-        if (!SB_URL || SB_URL === "None") {
-            console.error("Supabase URL is missing in ENV");
+        if (!supabaseClient) {
+            alert("Supabase connect nahi hai! Page refresh karo.");
             return;
         }
         
-        // 2. Initialize inside the fragment
-        const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-        
-        // 3. Email/Pass Auth
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value;
-            const btn = document.getElementById('authBtn');
+        try {
+            const redirectUrl = window.location.origin + '/onboarding';
+            console.log("Redirecting to:", redirectUrl);
             
-            btn.disabled = true;
-            document.getElementById('btnText').innerText = "Authenticating...";
-            
-            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-            
-            if (error) {
-                alert(error.message);
-                btn.disabled = false;
-                document.getElementById('btnText').innerText = "Sign In";
-            } else {
-                window.location.href = "/dashboard";
-            }
-        });
-        
-        // 4. Provider Auth (Google/GitHub)
-        window.signInWithProvider = async (provider) => {
-            const { error } = await supabaseClient.auth.signInWithOAuth({
-                provider: provider,
-                options: { redirectTo: window.location.origin + '/onboarding' }
+            const { data, error } = await supabaseClient.auth.signInWithOAuth({
+                provider: providerName,
+                options: { redirectTo: redirectUrl }
             });
-            if (error) alert(error.message);
-        };
+            
+            if (error) throw error;
+            console.log("Redirecting to provider...");
+            
+        } catch (error) {
+            console.error("OAuth Failed:", error);
+            alert(`Login Error: ${error.message}`);
+        }
+    };
+    
+    // 2. Email/Pass Login Logic (Merged with Debug Style)
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        console.log("Attempting Email/Password login...");
         
-        // 5. GSAP Intro Animation
+        if (!supabaseClient) {
+            alert("Supabase Client initialize nahi hua!");
+            return;
+        }
+        
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        const btn = document.getElementById('authBtn');
+        const btnText = document.getElementById('btnText');
+        
+        // UI Feedback
+        btn.disabled = true;
+        if (btnText) btnText.innerText = "Authenticating...";
+        
+        try {
+            const { data, error } = await supabaseClient.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+            
+            if (error) throw error;
+            
+            console.log("Login Success! Redirecting...");
+            window.location.href = "/dashboard";
+            
+        } catch (error) {
+            console.error("Login Failed:", error);
+            alert(`Login Error: ${error.message}`);
+            
+            // Reset Button
+            btn.disabled = false;
+            if (btnText) btnText.innerText = "Sign In";
+            
+            // GSAP Shake on error
+            if (typeof gsap !== 'undefined') {
+                gsap.to("#authCard", { x: -6, duration: 0.08, repeat: 3, yoyo: true });
+            }
+        }
+    });
+    
+    // 3. GSAP Intro Animation
+    if (typeof gsap !== 'undefined') {
         gsap.from("#authCard", { opacity: 0, y: 20, duration: 0.6, ease: "power3.out" });
-    })();
+    }
 </script>
 {% endblock %}
