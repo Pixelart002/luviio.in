@@ -1,12 +1,12 @@
 from fastapi.middleware.cors import CORSMiddleware
 
 def setup_cors(app):
-    # 🌍 ALLOWED ORIGINS: Production + Preview URLs
+    # 🌍 Production + Preview Domains
     origins = [
         "https://luviio.in",
         "https://www.luviio.in",
         "https://auth.luviio.in",
-        "https://luviio-qgo2xbkon-pixelart002s-projects.vercel.app" # Current Vercel Preview
+        "https://luviio-qgo2xbkon-pixelart002s-projects.vercel.app" # Preview URL
     ]
 
     app.add_middleware(
@@ -14,7 +14,7 @@ def setup_cors(app):
         allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
-        # 🛡️ UNPOLY HEADERS: Inko allow karna zaroori hai
+        # 🛡️ UNPOLY HEADERS: Inko allow karna mandatory hai
         allow_headers=[
             "*", 
             "X-Up-Target", 
@@ -23,11 +23,6 @@ def setup_cors(app):
             "X-Up-Context",
             "X-Up-Mode"
         ],
-        # 📣 EXPOSE HEADERS: Inke bina Unpoly redirect nahi samajh pata
-        expose_headers=[
-            "X-Up-Location", 
-            "X-Up-Method", 
-            "X-Up-Target",
-            "X-Up-Fragment"
-        ]
+        # 📣 EXPOSE: Taaki frontend redirect ko detect kar sake
+        expose_headers=["X-Up-Location", "X-Up-Method", "X-Up-Target"]
     )
