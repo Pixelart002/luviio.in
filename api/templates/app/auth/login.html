@@ -4,7 +4,9 @@
 {% block title %}Login - Luviio{% endblock %}
 
 {% block content %}
-    
+<div class="w-full max-w-[420px] shadow-2xl border border-white/10 bg-[#141414]/60 backdrop-blur-xl rounded-3xl relative z-10" id="authCard">
+    <div class="card-body p-8 sm:p-10">
+        
         <div class="text-center mb-6 header-text">
             <h2 class="text-2xl font-bold text-white mb-1 tracking-tight">Welcome Back</h2>
             <p class="text-sm text-dim">Secure access to your dashboard</p>
@@ -12,7 +14,7 @@
 
         {{ forms.social_buttons() }}
 
-        <form onsubmit="handleAuth(event, 'login')" class="flex flex-col gap-4">
+        <form onsubmit="handleAuth(event, 'login')" class="flex flex-col">
             <input type="text" id="_hp_check" class="hidden" tabindex="-1" autocomplete="off">
             
             {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
@@ -20,10 +22,10 @@
 
             {{ forms.submit_button('Sign In') }}
 
-            <div class="text-center mt-4 text-sm text-dim">
+            <div class="text-center mt-6 text-sm text-dim">
                 <span>New here?</span>
                 <a href="/signup" 
-                   up-target="body" 
+                   up-target="#main-content" 
                    up-transition="move-left" 
                    class="link link-hover text-white font-semibold ml-1 hover:text-blue-400 transition-colors">
                    Create account
@@ -32,15 +34,4 @@
         </form>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-    // Specific script for Login Page
-    document.addEventListener("DOMContentLoaded", () => {
-        if(typeof gsap !== 'undefined') {
-            gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" });
-        }
-    });
-</script>
 {% endblock %}
