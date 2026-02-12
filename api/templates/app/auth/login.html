@@ -1,115 +1,81 @@
 {% extends "app/base.html" %}
 {% import "macros/auth_macros.html" as forms %}
 
-{% block title %}Login - Luviio{% endblock %}
-
 {% block content %}
-<div class="w-full max-w-[420px] shadow-2xl border border-white/10 bg-[#141414]/60 backdrop-blur-xl rounded-3xl relative z-10" id="authCard">
-    <div class="card-body p-8 sm:p-10">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<div class="w-full max-w-[420px] mx-auto mt-10 shadow-2xl border border-white/10 bg-[#141414]/60 backdrop-blur-xl rounded-3xl relative z-10" id="authCard">
+    <div class="card-body p-8 sm:p-10 text-center">
         
-        <div class="text-center mb-6 header-text">
+        <div class="mb-6">
             <h2 class="text-2xl font-bold text-white mb-1 tracking-tight">Welcome Back</h2>
             <p class="text-sm text-dim">Secure access to your dashboard</p>
         </div>
-
+        
         {{ forms.social_buttons() }}
-
-        <form id="loginForm" class="flex flex-col">
+        
+        <form id="loginForm" class="flex flex-col gap-1 text-left">
             <input type="text" id="_hp_check" class="hidden" tabindex="-1" autocomplete="off">
             
             {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
             {{ forms.input_field('password', 'password', 'Password', 'ri-lock-2-line') }}
-
+            
             {{ forms.submit_button('Sign In') }}
-
-            <div class="text-center mt-6 text-sm text-dim">
+            
+            <div class="text-center mt-6 text-sm text-gray-400">
                 <span>New here?</span>
-                <a href="/signup" 
-                   up-target="body" 
-                   up-transition="move-left" 
-                   class="link link-hover text-white font-semibold ml-1 hover:text-blue-400 transition-colors">
-                   Create account
-                </a>
+                <a href="/signup" up-target="#main-content" up-transition="move-left" class="text-white font-semibold ml-1 hover:underline">Create account</a>
             </div>
         </form>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
 <script>
-    // 1. Get Variables from FastAPI context
-    const SB_URL = "{{ supabase_url }}";
-    const SB_KEY = "{{ supabase_anon_key }}";
-
-    // 2. Local Initialization (Self-contained)
-    let supabaseInstance = null;
-    if (typeof supabase !== 'undefined') {
-        supabaseInstance = supabase.createClient(SB_URL, SB_KEY);
-    }
-
-    // 3. Handle Login
-    async function handleLogin(e) {
-        e.preventDefault();
+    (function() {
+        // 1. Env Variables from Python context
+        const SB_URL = "{{ supabase_url }}";
+        const SB_KEY = "{{ supabase_key }}";
         
-        const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
-        const btn = document.getElementById('authBtn');
-        const btnText = document.getElementById('btnText');
-        const btnLoader = document.getElementById('btnLoader');
-
-        if (!supabaseInstance) {
-            console.error("Supabase not loaded");
+        if (!SB_URL || SB_URL === "None") {
+            console.error("Supabase URL is missing in ENV");
             return;
         }
-
-        // UI Loading State
-        btn.disabled = true;
-        btnText.classList.add('hidden');
-        btnLoader.classList.remove('hidden');
-
-        try {
-            const { data, error } = await supabaseInstance.auth.signInWithPassword({
-                email: email,
-                password: password
-            });
-
-            if (error) throw error;
-
-            // Success Redirect
-            window.location.href = "/dashboard";
-
-        } catch (err) {
-            // Error handling (using alert as fallback if toast is missing)
-            alert(err.message || "Login failed");
-            
-            // Shake Effect
-            const card = document.getElementById('authCard');
-            if(typeof gsap !== 'undefined') {
-                gsap.to(card, { x: -6, duration: 0.08, repeat: 3, yoyo: true });
-            }
-        } finally {
-            btn.disabled = false;
-            btnText.classList.remove('hidden');
-            btnLoader.classList.add('hidden');
-        }
-    }
-
-    // 4. Handle OAuth (Google/GitHub)
-    async function signInWithProvider(provider) {
-        if (!supabaseInstance) return;
         
-        const { error } = await supabaseInstance.auth.signInWithOAuth({
-            provider: provider,
-            options: {
-                redirectTo: window.location.origin + '/onboarding'
+        // 2. Initialize inside the fragment
+        const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+        
+        // 3. Email/Pass Auth
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const btn = document.getElementById('authBtn');
+            
+            btn.disabled = true;
+            document.getElementById('btnText').innerText = "Authenticating...";
+            
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            
+            if (error) {
+                alert(error.message);
+                btn.disabled = false;
+                document.getElementById('btnText').innerText = "Sign In";
+            } else {
+                window.location.href = "/dashboard";
             }
         });
         
-        if (error) alert(error.message);
-    }
-
-    // Event Listener attach karna
-    document.getElementById('loginForm').addEventListener('submit', handleLogin);
+        // 4. Provider Auth (Google/GitHub)
+        window.signInWithProvider = async (provider) => {
+            const { error } = await supabaseClient.auth.signInWithOAuth({
+                provider: provider,
+                options: { redirectTo: window.location.origin + '/onboarding' }
+            });
+            if (error) alert(error.message);
+        };
+        
+        // 5. GSAP Intro Animation
+        gsap.from("#authCard", { opacity: 0, y: 20, duration: 0.6, ease: "power3.out" });
+    })();
 </script>
 {% endblock %}
