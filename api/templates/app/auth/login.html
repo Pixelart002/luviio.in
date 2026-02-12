@@ -1,106 +1,48 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=no">
-  <title>Luviio - Login</title>
-  
-  <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-  
-  <script src="https://unpkg.com/unpoly@3.9.0/unpoly.min.js"></script>
+{% extends "app/base.html" %}
+{% import "macros/auth_macros.html" as forms %}
 
-  <style>
-    /* ... Tera purana CSS same rahega ... */
-    :root { --bg: #050505; --card-bg: rgba(20, 20, 20, 0.6); --border: rgba(255,255,255,0.08); --text: #fff; --accent: #3b82f6; --error: #ef4444; }
-    body { background: var(--bg); color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
-    .grid-bg { position: absolute; inset: 0; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 80px 80px; opacity: 0.12; mask-image: radial-gradient(circle at center, black 40%, transparent 80%); pointer-events: none; z-index: -1; }
-    .auth-card { width: 100%; max-width: 420px; padding: 40px; background: var(--card-bg); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 24px; margin: auto; position: relative; z-index: 10; }
-    input { width: 100%; padding: 16px 16px 16px 48px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 14px; color: white; margin-bottom: 16px; }
-    .btn-primary { width: 100%; padding: 16px; background: white; color: black; border-radius: 100px; font-weight: 700; cursor: pointer; }
-    .link { color: var(--accent); cursor: pointer; text-decoration: none; }
-  </style>
-</head>
-<body>
+{% block title %}Login - Luviio{% endblock %}
 
-  <div class="grid-bg"></div>
-
-  <main>
-    <div class="auth-card" id="authCard">
-      <div style="text-align: center; margin-bottom: 30px;">
-        <h2 style="font-size: 1.5rem; font-weight: 700;">Welcome Back</h2>
-        <p style="color: #a1a1aa;">Secure access to your dashboard</p>
-      </div>
-
-      <form id="loginForm" onsubmit="handleLogin(event)">
-        <input type="text" id="_hp_check" style="display:none;" tabindex="-1" autocomplete="off">
+{% block content %}
+<div class="w-full max-w-[420px] shadow-2xl border border-white/10 bg-[#141414]/60 backdrop-blur-xl rounded-3xl opacity-0 translate-y-5" id="authCard">
+    <div class="card-body p-8 sm:p-10">
         
-        <div style="position: relative;">
-          <input type="email" id="email" placeholder="name@company.com" required>
-          <i class="ri-mail-line" style="position: absolute; left: 16px; top: 18px; color: #a1a1aa;"></i>
-        </div>
-        
-        <div style="position: relative;">
-          <input type="password" id="password" placeholder="Password" required>
-          <i class="ri-lock-2-line" style="position: absolute; left: 16px; top: 18px; color: #a1a1aa;"></i>
+        <div class="text-center mb-6 header-text">
+            <h2 class="text-2xl font-bold text-white mb-1 tracking-tight">Welcome Back</h2>
+            <p class="text-sm text-dim">Secure access to your dashboard</p>
         </div>
 
-        <button type="submit" class="btn-primary" id="authBtn">Sign In</button>
+        {{ forms.social_buttons() }}
 
-        <div style="text-align: center; margin-top: 24px; color: #a1a1aa; font-size: 0.9rem;">
-          New here? 
-          <a href="/signup" class="link">Create account</a>
-        </div>
-      </form>
+        <form onsubmit="handleAuth(event, 'login')" class="flex flex-col gap-4">
+            <input type="text" id="_hp_check" class="hidden" tabindex="-1" autocomplete="off">
+            
+            {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
+            {{ forms.input_field('password', 'password', 'Password', 'ri-lock-2-line') }}
+
+            {{ forms.submit_button('Sign In') }}
+
+            <div class="text-center mt-4 text-sm text-dim">
+                <span>New here?</span>
+                <a href="/signup" 
+                   up-target="body" 
+                   up-transition="move-left" 
+                   class="link link-hover text-white font-semibold ml-1 hover:text-blue-400 transition-colors">
+                   Create account
+                </a>
+            </div>
+        </form>
     </div>
-  </main>
+</div>
+{% endblock %}
 
-  <script>
-    // --- 1. SECURE INJECTION FROM BACKEND ---
-    const SB_URL = "{{ sb_url }}"; 
-    const SB_KEY = "{{ sb_key }}";
-    
-    const supabase = supabase.createClient(SB_URL, SB_KEY);
-
-    // GSAP Entrance
-    gsap.from("#authCard", { y: 20, opacity: 0, duration: 0.8, ease: "power3.out" });
-
-    async function handleLogin(e) {
-      e.preventDefault();
-      const btn = document.getElementById('authBtn');
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-
-      if(document.getElementById('_hp_check').value) return; // Spam check
-
-      btn.innerText = "Verifying...";
-      btn.disabled = true;
-
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email,
-          password: password,
-        });
-
-        if (error) throw error;
-
-        // Success - Unpoly redirection handled securely
-        btn.innerText = "Success!";
-        
-        // Check user role before redirecting (Optional Security Step)
-        // window.location.href = "/dashboard"; 
-        
-        // Better: Use Unpoly to visit dashboard seamlessly
-        up.visit('/dashboard', { target: '#main-content' });
-
-      } catch (error) {
-        alert(error.message); // Replace with Toast later
-        btn.innerText = "Sign In";
-        btn.disabled = false;
-        gsap.to(".auth-card", { x: -6, duration: 0.08, repeat: 3, yoyo: true }); // Shake effect
-      }
-    }
-  </script>
-</body>
-</html>
+{% block scripts %}
+<script>
+    // Specific script for Login Page
+    document.addEventListener("DOMContentLoaded", () => {
+        if(typeof gsap !== 'undefined') {
+            gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" });
+        }
+    });
+</script>
+{% endblock %}

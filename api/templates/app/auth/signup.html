@@ -1,121 +1,47 @@
 {% extends "app/base.html" %}
-{% import "macros/auth_macros.html" as auth %}
-{% import "macros/nav.html" as nav %}
+{% import "macros/auth_macros.html" as forms %}
 
-{% block title %}Sign Up | LUVIIO{% endblock %}
-
-{% block nav %}{{ nav.render_nav() }}{% endblock %}
+{% block title %}Create Account - Luviio{% endblock %}
 
 {% block content %}
-<div id="authCard" class="card w-full max-w-[400px] bg-black/40 backdrop-blur-2xl border border-white/10 shadow-2xl p-6 sm:p-8 rounded-3xl">
-    
-    <div class="text-center mb-8">
-        <h2 class="text-3xl font-bold text-white tracking-tight mb-2">Create Account</h2>
-        <p class="text-zinc-400 text-sm">Start your verified journey</p>
-    </div>
-
-    <div class="flex gap-3 mb-6">
-        {{ auth.social_button('google', 'ri-google-fill', 'Google') }}
-        {{ auth.social_button('github', 'ri-github-fill', 'GitHub') }}
-    </div>
-
-    <div class="divider text-[10px] font-bold text-zinc-600 uppercase tracking-widest my-6">OR EMAIL</div>
-
-    <form onsubmit="handleSignup(event)" class="w-full">
-        <input type="text" id="_hp_check_signup" class="hidden" tabindex="-1" autocomplete="off">
+<div class="w-full max-w-[420px] shadow-2xl border border-white/10 bg-[#141414]/60 backdrop-blur-xl rounded-3xl opacity-0 translate-y-5" id="authCard">
+    <div class="card-body p-8 sm:p-10">
         
-        {{ auth.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
-        {{ auth.input_field('password', 'password', 'Create Password', 'ri-lock-2-line') }}
-        
-        {{ auth.primary_button('Sign Up') }}
-
-        <div class="text-center mt-6 text-sm text-zinc-500 font-medium">
-            <span>Already a member?</span>
-            <a href="/login" class="text-white hover:text-blue-400 ml-1 transition-colors">Log in</a>
+        <div class="text-center mb-6 header-text">
+            <h2 class="text-2xl font-bold text-white mb-1 tracking-tight">Create Account</h2>
+            <p class="text-sm text-dim">Start your verified journey</p>
         </div>
-    </form>
+
+        {{ forms.social_buttons() }}
+
+        <form onsubmit="handleAuth(event, 'signup')" class="flex flex-col gap-4">
+            <input type="text" id="_hp_check" class="hidden" tabindex="-1" autocomplete="off">
+            
+            {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
+            {{ forms.input_field('password', 'password', 'Create Password', 'ri-lock-2-line') }}
+
+            {{ forms.submit_button('Sign Up') }}
+
+            <div class="text-center mt-4 text-sm text-dim">
+                <span>Already a member?</span>
+                <a href="/login" 
+                   up-target="body" 
+                   up-transition="move-right" 
+                   class="link link-hover text-white font-semibold ml-1 hover:text-blue-400 transition-colors">
+                   Log in
+                </a>
+            </div>
+        </form>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    const SB_URL = '{{ supabase_url }}';
-    const SB_KEY = '{{ supabase_anon_key }}';
-    let supabaseClient = null;
-    let isProcessing = false;
-
     document.addEventListener("DOMContentLoaded", () => {
-        if(typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
         if(typeof gsap !== 'undefined') {
-            gsap.from("#authCard", { opacity: 0, y: 30, duration: 0.8, ease: "power3.out" });
+            gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" });
         }
     });
-
-    async function signInWithProvider(providerName) {
-        if(!supabaseClient) return;
-        try {
-            const { error } = await supabaseClient.auth.signInWithOAuth({
-                provider: providerName,
-                options: { redirectTo: window.location.origin + '/onboarding' }
-            });
-            if (error) throw error;
-        } catch (error) { showToast("Connection Error: " + error.message, "error"); }
-    }
-
-    async function handleSignup(e) {
-        e.preventDefault();
-        if (isProcessing) return;
-        if (document.getElementById('_hp_check_signup').value) return;
-
-        const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
-
-        if (password.length < 6) {
-            showToast("Password too short (min 6 chars)", "error");
-            return;
-        }
-        
-        setLoading(true);
-        try {
-            const { data, error } = await supabaseClient.auth.signUp({ 
-                email, password,
-                options: { emailRedirectTo: window.location.origin + '/onboarding' }
-            });
-            if (error) throw error;
-            
-            if (data.user && !data.session) {
-                showToast("Check your email for confirmation.", "success");
-                document.querySelector('form').reset();
-            } else {
-                showToast("Account Created!", "success");
-                setTimeout(() => window.location.href = "/onboarding", 1000);
-            }
-        } catch (error) {
-            showToast(error.message, "error");
-            if(typeof gsap !== 'undefined') gsap.fromTo("#authCard", {x: -5}, {x: 5, duration: 0.1, repeat: 3, yoyo: true});
-        } finally { setLoading(false); }
-    }
-
-    function setLoading(state) {
-        isProcessing = state;
-        const btnText = document.getElementById('btnText');
-        const btnLoader = document.getElementById('btnLoader');
-        if(state) {
-            if(btnText) btnText.classList.add('hidden');
-            if(btnLoader) btnLoader.classList.remove('hidden');
-        } else {
-            if(btnText) btnText.classList.remove('hidden');
-            if(btnLoader) btnLoader.classList.add('hidden');
-        }
-    }
-
-    function showToast(msg, type) {
-        const toast = document.getElementById('toast');
-        const alert = toast.querySelector('.alert');
-        if(document.getElementById('toastMsg')) document.getElementById('toastMsg').innerText = msg;
-        if(alert) alert.className = `alert shadow-lg font-semibold border-none ${type === 'success' ? 'alert-success text-black' : 'alert-error text-white'}`;
-        toast.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
-        setTimeout(() => toast.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none'), 3000);
-    }
 </script>
 {% endblock %}
