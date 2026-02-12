@@ -1,29 +1,33 @@
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import RedirectResponse
 
-class AuthDomainGuard(BaseHTTPMiddleware):
+class AuthIsolationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         host = request.headers.get("host", "").lower()
         path = request.url.path
         
-        # 🛡️ CONFIGURATION
-        AUTH_DOMAIN = "auth.luviio.in"
-        # Static files zaroori hain taaki CSS/JS load ho sake
-        ALLOWED_AUTH_PATHS = ["/login", "/signup", "/static"]
+        # 🛡️ CONFIG
+        AUTH_SUBDOMAIN = "auth.luviio.in"
+        MAIN_DOMAIN = "luviio.in"
+        # In paths ke liye auth subdomain mandatory hai
+        AUTH_PATHS = ["/login", "/signup"]
+        # Static files har jagah allowed hain (CSS/JS breaks prevent karne ke liye)
+        STATIC_PATHS = ["/static"]
 
-        # 1. Agar request auth subdomain se aa rahi hai
-        if host == AUTH_DOMAIN:
-            # Check if current path is allowed
-            is_allowed = any(path.startswith(p) for p in ALLOWED_AUTH_PATHS)
-            
+        # Case 1: User is on AUTH SUBDOMAIN
+        if host == AUTH_SUBDOMAIN:
+            # Allow only auth paths and static files
+            is_allowed = any(path.startswith(p) for p in AUTH_PATHS + STATIC_PATHS)
             if not is_allowed:
-                # 🛑 Block attacker trying to access dashboard/api via auth domain
-                raise HTTPException(
-                    status_code=403, 
-                    detail="Security Violation: This domain is restricted to authentication only."
-                )
-        
-        # 2. (Optional Logic) Agar koi main domain se login/signup par aaye, 
-        # toh use yahan block ya redirect kar sakte ho.
+                # 🛑 Attacker trying to browse dashboard/settings via auth domain
+                raise HTTPException(status_code=403, detail="Forbidden: Dedicated Auth Domain.")
+
+        # Case 2: User hits Auth Paths on MAIN DOMAIN (Optional Redirect)
+        # Agar koi luviio.in/login par aaye, toh use auth.luviio.in par bhejo
+        elif any(path.startswith(p) for p in AUTH_PATHS):
+            # Redirecting to secure auth subdomain
+            target_url = f"https://{AUTH_SUBDOMAIN}{path}"
+            return RedirectResponse(url=target_url)
 
         return await call_next(request)
