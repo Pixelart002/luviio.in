@@ -1,31 +1,38 @@
-{# --- Social Button --- #}
+{# api/templates/macros/auth_macros.html #}
+
+{# --- MACRO: Social Button --- #}
+{# Use flex-1 to fill space evenly, min-w-0 prevents overflow on small screens #}
 {% macro social_button(provider, icon_class, label) %}
 <button type="button" 
         onclick="signInWithProvider('{{ provider }}')"
-        class="btn btn-outline border-zinc-700 hover:bg-white hover:text-black text-zinc-300 flex-1 gap-2 normal-case font-medium h-12">
-    <i class="{{ icon_class }} text-lg"></i> {{ label }}
+        class="btn btn-outline border-zinc-700 bg-zinc-900/50 hover:bg-white hover:text-black hover:border-white text-zinc-300 flex-1 min-w-0 gap-2 normal-case font-medium h-10 sm:h-12 text-sm sm:text-base transition-all">
+    <i class="{{ icon_class }} text-lg"></i> 
+    <span class="truncate">{{ label }}</span>
 </button>
 {% endmacro %}
 
-{# --- Input Field (Guaranteed Visible) --- #}
+{# --- MACRO: Input Field --- #}
+{# w-full ensures it takes full width of the card. removed fixed rigid classes #}
 {% macro input_field(id, type, placeholder, icon_class) %}
-<div class="form-control w-full mb-4">
-    <div class="relative w-full">
-        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-zinc-500">
-            <i class="{{ icon_class }} text-xl"></i>
+<div class="form-control w-full mb-3 sm:mb-4">
+    <div class="relative w-full group">
+        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-white transition-colors">
+            <i class="{{ icon_class }} text-lg sm:text-xl"></i>
         </div>
+        
         <input type="{{ type }}" id="{{ id }}" placeholder="{{ placeholder }}" required 
-               class="input w-full pl-11 rounded-xl h-12 force-input placeholder-zinc-500"
+               class="input input-bordered w-full pl-11 sm:pl-12 bg-zinc-900/80 border-zinc-700 focus:border-white focus:bg-black text-white placeholder-zinc-500 rounded-xl h-10 sm:h-12 text-sm sm:text-base transition-all shadow-sm"
                {% if type == 'email' %}autocomplete="email"{% endif %}
                {% if type == 'password' %}autocomplete="current-password"{% endif %}>
     </div>
 </div>
 {% endmacro %}
 
-{# --- Primary Button --- #}
+{# --- MACRO: Primary Button --- #}
+{# btn-block makes it full width. Responsive margins and height #}
 {% macro primary_button(text, loader_id='btnLoader') %}
 <button type="submit" id="authBtn" 
-        class="btn btn-block bg-white hover:bg-zinc-200 text-black border-none rounded-full font-bold text-base h-12 mt-2 shadow-lg shadow-white/10">
+        class="btn btn-block bg-white hover:bg-zinc-200 text-black border-none rounded-full font-bold text-sm sm:text-base h-10 sm:h-12 mt-4 shadow-xl shadow-white/5 active:scale-95 transition-transform">
     <span id="btnText">{{ text }}</span>
     <span id="{{ loader_id }}" class="loading loading-spinner loading-sm hidden text-black"></span>
 </button>
