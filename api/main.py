@@ -1,52 +1,55 @@
 import os
 import sys
+from pathlib import Path
 from fastapi import FastAPI, Request, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
 # ----------------------------------------------------------------
-# 🔧 ROBUST VERCEL PATH FIX
+# 🛡️ THE "FINAL BOSS" PATH FIX
 # ----------------------------------------------------------------
-# Ensure the 'api' directory is the first place Python looks for modules
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
+# Hum absolute path calculate kar rahe hain taaki Vercel confuse na ho
+current_file_path = Path(__file__).resolve()
+api_dir = current_file_path.parent # /api directory
+root_dir = api_dir.parent         # Root directory
+
+# Python ko force karo 'api' folder ke andar dekhne ke liye
+if str(api_dir) not in sys.path:
+    sys.path.insert(0, str(api_dir))
 
 # --- IMPORT ROUTERS ---
-# Note: Ensure api/routes/auth.py exists as per your file structure
+# Try-Except block taaki deployment fail na ho aur logs mein clear error dikhe
 try:
     from routes.resend_mail import router as resend_mail_router
     from routes.auth import router as auth_router
 except ImportError as e:
-    print(f"❌ Critical Import Error: {e}")
-    # This will show up in Vercel logs to tell exactly which file is missing
-    raise e
+    print(f"❌ MODULE ERROR: {e}")
+    # Local debugging ke liye fallback agar 'api.' prefix chahiye ho
+    try:
+        from api.routes.resend_mail import router as resend_mail_router
+        from api.routes.auth import router as auth_router
+    except ImportError:
+        raise e
 
 app = FastAPI()
 
-# --- SERVER-SIDE CONFIG FLAGS (For Checking Only) ---
-# Ye flags verify karenge ki aapke credentials loaded hain
+# --- CONFIG FLAGS ---
 CONFIG_FLAGS = {
     "SUPABASE_READY": os.environ.get("SUPABASE_URL") is not None,
-    "RESEND_READY": os.environ.get("RESEND_API_KEY") is not None,
-    "SECRET_READY": os.environ.get("ADMIN_SECRET") is not None
+    "RESEND_READY": os.environ.get("RESEND_API_KEY") is not None
 }
-print(f"🚀 Server Config Flags: {CONFIG_FLAGS}")
 
-# 1. Path Setup
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# 2. Mount Static & Templates
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+# 1. Path Setup (Absolute paths are safer on Vercel)
+BASE_DIR = api_dir
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # --- CONNECT ROUTERS ---
-# Fix: Using the correct imported names
 app.include_router(resend_mail_router)
 app.include_router(auth_router)
 
-# --- ROUTES ---
+# --- PAGE ROUTES ---
 
 # 1. Home Page
 @app.get("/", response_class=HTMLResponse)
@@ -58,7 +61,7 @@ async def render_home(request: Request, x_up_target: str = Header(None)):
         "up_fragment": x_up_target is not None
     })
 
-# 2. Login Page (Modular Macros Version)
+# 2. Login Page (Using your new modular macros)
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, x_up_target: str = Header(None)):
     return templates.TemplateResponse("app/auth/login.html", {
