@@ -13,20 +13,7 @@ def setup_cors(app):
         allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
-        # 🛡️ Mandatory Unpoly Headers
-        allow_headers=[
-            "*", 
-            "X-Up-Target", 
-            "X-Up-Fragment", 
-            "X-Up-Validate", 
-            "X-Up-Context",
-            "X-Up-Mode"
-        ],
-        # 📣 Expose headers taaki frontend redirect ko read kar sake
-        expose_headers=[
-            "X-Up-Location", 
-            "X-Up-Method", 
-            "X-Up-Target",
-            "X-Up-Fragment"
-        ]
+        allow_headers=["*", "X-Up-Target", "X-Up-Fragment", "X-Up-Location"],
+        # 📣 EXPOSE: Frontend (Unpoly) ko in headers ko padhne do
+        expose_headers=["X-Up-Location", "X-Up-Method", "X-Up-Target", "X-Up-Fragment"]
     )
