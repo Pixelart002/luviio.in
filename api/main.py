@@ -7,7 +7,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 # 🛡️ THE PATH FIX (Vercel Compatibility)
-# Parent of 'api' ko path mein daal rahe hain taaki package imports fail na hon
+# Parent of 'api' ko path mein daal rahe hain taaki package imports makkhan chalein
 BASE_DIR = Path(__file__).resolve().parent 
 ROOT_DIR = BASE_DIR.parent                  
 if str(ROOT_DIR) not in sys.path:
@@ -23,7 +23,7 @@ except ImportError:
 app = FastAPI()
 
 # --- REGISTER MIDDLEWARE ---
-# Ye domain isolation handle karega aur unauthorized access ko /error par bhejega
+# Ye domain redirection aur access control handle karega
 app.add_middleware(AuthDomainGuard)
 
 # Mount Static & Templates
@@ -34,6 +34,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 @app.get("/error", response_class=HTMLResponse)
 async def error_page(request: Request):
+    """Serve the professional 404/Access Denied page."""
     # Context pass karna MANDATORY hai taaki 500 error na aaye
     return templates.TemplateResponse("app/err/404.html", {
         "request": request,
@@ -42,18 +43,10 @@ async def error_page(request: Request):
 
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, __):
-    # Asli 404 hone par bhi user hamare custom error page par jayega
+    """Redirect all actual 404s to our custom security error page."""
     return RedirectResponse(url="/error")
 
-# --- PAGE ROUTES ---
-
-@app.get("/", response_class=HTMLResponse)
-async def render_home(request: Request, x_up_target: str = Header(None)):
-    return templates.TemplateResponse("app/pages/home.html", {
-        "request": request,
-        "title": "LUVIIO | Verified Markets",
-        "up_fragment": x_up_target is not None
-    })
+# --- AUTH ROUTES (Accessible via auth.luviio.in) ---
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, x_up_target: str = Header(None)):
@@ -62,7 +55,7 @@ async def login_page(request: Request, x_up_target: str = Header(None)):
         "title": "Login | LUVIIO",
         "up_fragment": x_up_target is not None,
         "supabase_url": os.environ.get("SUPABASE_URL"),
-        "supabase_key": os.environ.get("SUPABASE_KEY") # Env var updated
+        "supabase_key": os.environ.get("SUPABASE_KEY") # Consistent Env Var
     })
 
 @app.get("/signup", response_class=HTMLResponse)
@@ -73,6 +66,17 @@ async def signup_page(request: Request, x_up_target: str = Header(None)):
         "up_fragment": x_up_target is not None,
         "supabase_url": os.environ.get("SUPABASE_URL"),
         "supabase_key": os.environ.get("SUPABASE_KEY")
+    })
+
+# --- MAIN PAGE ROUTES (Accessible via luviio.in) ---
+
+@app.get("/", response_class=HTMLResponse)
+async def render_home(request: Request, x_up_target: str = Header(None)):
+    return templates.TemplateResponse("app/pages/home.html", {
+        "request": request,
+        "title": "LUVIIO | Verified Markets",
+        "active_page": "home",
+        "up_fragment": x_up_target is not None
     })
 
 @app.get("/waitlist", response_class=HTMLResponse)
