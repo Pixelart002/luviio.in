@@ -1,36 +1,56 @@
-{# api/templates/macros/auth_macros.html #}
-
-{# --- MACRO: Social Button --- #}
-{% macro social_button(provider, icon_class, label) %}
-<button type="button" 
-        onclick="signInWithProvider('{{ provider }}')"
-        class="btn btn-outline border-zinc-800 bg-zinc-900/40 hover:bg-white hover:text-black hover:border-white text-zinc-300 flex-1 w-full gap-2 normal-case font-medium h-12 text-sm sm:text-base transition-all rounded-xl">
-    <i class="{{ icon_class }} text-lg"></i> 
-    <span class="truncate">{{ label }}</span>
-</button>
-{% endmacro %}
-
-{# --- MACRO: Input Field --- #}
-{% macro input_field(id, type, placeholder, icon_class) %}
-<div class="form-control w-full mb-4">
-    <div class="relative w-full group">
-        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-white transition-colors">
-            <i class="{{ icon_class }} text-xl"></i>
-        </div>
-        <input type="{{ type }}" id="{{ id }}" placeholder="{{ placeholder }}" required 
-               class="input input-bordered w-full pl-12 bg-zinc-900/60 border-white/10 focus:border-white focus:bg-black text-white placeholder-zinc-500 rounded-xl h-12 text-base shadow-lg transition-all"
-               {% if type == 'email' %}autocomplete="email"{% endif %}
-               {% if type == 'password' %}autocomplete="current-password"{% endif %}>
+{% macro render_auth_form(sb_url, sb_key) %}
+<div class="auth-card card bg-base-200 shadow-2xl border border-white/10 backdrop-blur-xl w-full max-w-md p-8 opacity-0 translate-y-5" id="authCard">
+    <div class="text-center mb-8">
+        <h2 class="text-3xl font-bold tracking-tight" id="formTitle">Welcome Back</h2>
+        <p class="text-base-content/60 text-sm mt-2" id="formSubtitle">Secure access to your dashboard</p>
     </div>
-</div>
-{% endmacro %}
 
-{# --- MACRO: Primary Button --- #}
-{# w-full ensures it stretches. rounded-xl fixes the circle issue. #}
-{% macro primary_button(text, loader_id='btnLoader') %}
-<button type="submit" id="authBtn" 
-        class="btn w-full bg-white hover:bg-zinc-200 text-black border-none rounded-xl font-bold text-base h-12 mt-2 shadow-xl shadow-white/5 active:scale-95 transition-transform disabled:opacity-70 disabled:scale-100">
-    <span id="btnText">{{ text }}</span>
-    <span id="{{ loader_id }}" class="loading loading-spinner loading-sm hidden text-black"></span>
-</button>
+    <div class="grid grid-cols-2 gap-4 mb-6">
+        <button class="btn btn-outline gap-2 hover:bg-base-300" onclick="sendEvent('SOCIAL_AUTH', 'google')">
+            <i class="ri-google-fill text-lg"></i> Google
+        </button>
+        <button class="btn btn-outline gap-2 hover:bg-base-300" onclick="sendEvent('SOCIAL_AUTH', 'github')">
+            <i class="ri-github-fill text-lg"></i> GitHub
+        </button>
+    </div>
+
+    <div class="divider text-xs text-base-content/40 uppercase tracking-widest">Or Email</div>
+
+    <form id="authForm" class="space-y-4" onsubmit="handleFormSubmit(event)">
+        <input type="text" id="_hp_check" class="hidden" tabindex="-1">
+        
+        <div class="form-control">
+            <div class="relative">
+                <input type="email" id="email" placeholder="name@company.com" 
+                       class="input input-bordered w-full pl-12 focus:input-primary transition-all" required>
+                <i class="ri-mail-line absolute left-4 top-1/2 -translate-y-1/2 text-xl opacity-50"></i>
+            </div>
+        </div>
+
+        <div class="form-control">
+            <div class="relative">
+                <input type="password" id="password" placeholder="Password" 
+                       class="input input-bordered w-full pl-12 focus:input-primary transition-all" required>
+                <i class="ri-lock-2-line absolute left-4 top-1/2 -translate-y-1/2 text-xl opacity-50"></i>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-full rounded-full no-animation" id="authBtn">
+            <span id="btnText">Sign In</span>
+            <span id="btnLoader" class="loading loading-spinner hidden"></span>
+        </button>
+
+        <div class="text-center mt-6 text-sm">
+            <span id="footerPrompt" class="opacity-60">New here?</span>
+            <button type="button" class="link link-primary font-bold ml-1 no-underline hover:underline" 
+                    onclick="sendEvent('TOGGLE_MODE')">Create account</button>
+        </div>
+    </form>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+    const SB_CONFIG = { url: "{{ sb_url }}", key: "{{ sb_key }}" };
+</script>
+<script src="/static/js/auth-machine.js"></script>
 {% endmacro %}

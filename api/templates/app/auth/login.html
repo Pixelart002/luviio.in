@@ -1,115 +1,106 @@
-{% extends "app/base.html" %}
-{% import "macros/auth_macros.html" as auth %}
-{% import "macros/nav.html" as nav %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=no">
+  <title>Luviio - Login</title>
+  
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  
+  <script src="https://unpkg.com/unpoly@3.9.0/unpoly.min.js"></script>
 
-{% block title %}Login | LUVIIO{% endblock %}
+  <style>
+    /* ... Tera purana CSS same rahega ... */
+    :root { --bg: #050505; --card-bg: rgba(20, 20, 20, 0.6); --border: rgba(255,255,255,0.08); --text: #fff; --accent: #3b82f6; --error: #ef4444; }
+    body { background: var(--bg); color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+    .grid-bg { position: absolute; inset: 0; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 80px 80px; opacity: 0.12; mask-image: radial-gradient(circle at center, black 40%, transparent 80%); pointer-events: none; z-index: -1; }
+    .auth-card { width: 100%; max-width: 420px; padding: 40px; background: var(--card-bg); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 24px; margin: auto; position: relative; z-index: 10; }
+    input { width: 100%; padding: 16px 16px 16px 48px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 14px; color: white; margin-bottom: 16px; }
+    .btn-primary { width: 100%; padding: 16px; background: white; color: black; border-radius: 100px; font-weight: 700; cursor: pointer; }
+    .link { color: var(--accent); cursor: pointer; text-decoration: none; }
+  </style>
+</head>
+<body>
 
-{% block nav %}{{ nav.render_nav() }}{% endblock %}
+  <div class="grid-bg"></div>
 
-{% block content %}
-<div id="authCard" class="card w-full max-w-[400px] bg-black/40 backdrop-blur-2xl border border-white/10 shadow-2xl p-6 sm:p-8 rounded-3xl">
-    
-    <div class="text-center mb-8">
-        <h2 class="text-3xl font-bold text-white tracking-tight mb-2">Welcome Back</h2>
-        <p class="text-zinc-400 text-sm">Secure access to your dashboard</p>
-    </div>
-    
-    <div class="flex gap-3 mb-6">
-        {{ auth.social_button('google', 'ri-google-fill', 'Google') }}
-        {{ auth.social_button('github', 'ri-github-fill', 'GitHub') }}
-    </div>
-    
-    <div class="divider text-[10px] font-bold text-zinc-600 uppercase tracking-widest my-6">OR EMAIL</div>
-    
-    <form onsubmit="handleAuth(event)" class="w-full">
-        <input type="text" id="_hp_check" class="hidden" tabindex="-1" autocomplete="off">
+  <main>
+    <div class="auth-card" id="authCard">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h2 style="font-size: 1.5rem; font-weight: 700;">Welcome Back</h2>
+        <p style="color: #a1a1aa;">Secure access to your dashboard</p>
+      </div>
+
+      <form id="loginForm" onsubmit="handleLogin(event)">
+        <input type="text" id="_hp_check" style="display:none;" tabindex="-1" autocomplete="off">
         
-        {{ auth.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
-        {{ auth.input_field('password', 'password', 'Password', 'ri-lock-2-line') }}
-        
-        {{ auth.primary_button('Sign In') }}
-        
-        <div class="text-center mt-6 text-sm text-zinc-500 font-medium">
-            <span>New here?</span>
-            <a href="/signup" class="text-white hover:text-blue-400 ml-1 transition-colors">Create account</a>
+        <div style="position: relative;">
+          <input type="email" id="email" placeholder="name@company.com" required>
+          <i class="ri-mail-line" style="position: absolute; left: 16px; top: 18px; color: #a1a1aa;"></i>
         </div>
-    </form>
-</div>
-{% endblock %}
+        
+        <div style="position: relative;">
+          <input type="password" id="password" placeholder="Password" required>
+          <i class="ri-lock-2-line" style="position: absolute; left: 16px; top: 18px; color: #a1a1aa;"></i>
+        </div>
 
-{% block scripts %}
-<script>
-    const SB_URL = '{{ supabase_url }}';
-    const SB_KEY = '{{ supabase_anon_key }}';
-    let supabaseClient = null;
-    let isProcessing = false;
+        <button type="submit" class="btn-primary" id="authBtn">Sign In</button>
+
+        <div style="text-align: center; margin-top: 24px; color: #a1a1aa; font-size: 0.9rem;">
+          New here? 
+          <a href="/signup" class="link">Create account</a>
+        </div>
+      </form>
+    </div>
+  </main>
+
+  <script>
+    // --- 1. SECURE INJECTION FROM BACKEND ---
+    const SB_URL = "{{ sb_url }}"; 
+    const SB_KEY = "{{ sb_key }}";
     
-    document.addEventListener("DOMContentLoaded", () => {
-        if (typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-        // Subtle Entrance Animation
-        if (typeof gsap !== 'undefined') {
-            gsap.from("#authCard", { opacity: 0, y: 30, duration: 0.8, ease: "power3.out" });
-        }
-    });
-    
-    // Google Auth Logic
-    async function signInWithProvider(providerName) {
-        if (!supabaseClient) return;
-        try {
-            const { error } = await supabaseClient.auth.signInWithOAuth({
-                provider: providerName,
-                options: { redirectTo: window.location.origin + '/onboarding' }
-            });
-            if (error) throw error;
-        } catch (error) {
-            showToast("Connection Error: " + error.message, "error");
-        }
-    }
-    
-    async function handleAuth(e) {
-        e.preventDefault();
-        if (isProcessing) return;
-        if (document.getElementById('_hp_check').value) return;
+    const supabase = supabase.createClient(SB_URL, SB_KEY);
+
+    // GSAP Entrance
+    gsap.from("#authCard", { y: 20, opacity: 0, duration: 0.8, ease: "power3.out" });
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const btn = document.getElementById('authBtn');
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      if(document.getElementById('_hp_check').value) return; // Spam check
+
+      btn.innerText = "Verifying...";
+      btn.disabled = true;
+
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email,
+          password: password,
+        });
+
+        if (error) throw error;
+
+        // Success - Unpoly redirection handled securely
+        btn.innerText = "Success!";
         
-        const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
+        // Check user role before redirecting (Optional Security Step)
+        // window.location.href = "/dashboard"; 
         
-        setLoading(true);
-        try {
-            const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-            if (error) throw error;
-            showToast("Access Granted", "success");
-            setTimeout(() => window.location.href = "/dashboard", 800);
-        } catch (error) {
-            showToast(error.message, "error");
-            if (typeof gsap !== 'undefined') gsap.fromTo("#authCard", { x: -5 }, { x: 5, duration: 0.1, repeat: 3, yoyo: true });
-        } finally { setLoading(false); }
+        // Better: Use Unpoly to visit dashboard seamlessly
+        up.visit('/dashboard', { target: '#main-content' });
+
+      } catch (error) {
+        alert(error.message); // Replace with Toast later
+        btn.innerText = "Sign In";
+        btn.disabled = false;
+        gsap.to(".auth-card", { x: -6, duration: 0.08, repeat: 3, yoyo: true }); // Shake effect
+      }
     }
-    
-    function setLoading(state) {
-        isProcessing = state;
-        const btnText = document.getElementById('btnText');
-        const btnLoader = document.getElementById('btnLoader');
-        if (state) {
-            btnText?.classList.add('hidden');
-            btnLoader?.classList.remove('hidden');
-        } else {
-            btnText?.classList.remove('hidden');
-            btnLoader?.classList.add('hidden');
-        }
-    }
-    
-    function showToast(msg, type) {
-        const toast = document.getElementById('toast');
-        const alert = toast.querySelector('.alert');
-        if (document.getElementById('toastMsg')) document.getElementById('toastMsg').innerText = msg;
-        
-        if (alert) {
-            alert.className = `alert shadow-lg font-semibold border-none ${type === 'success' ? 'alert-success text-black' : 'alert-error text-white'}`;
-        }
-        
-        toast.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
-        setTimeout(() => toast.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none'), 3000);
-    }
-</script>
-{% endblock %}
+  </script>
+</body>
+</html>
