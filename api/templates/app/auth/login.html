@@ -7,7 +7,7 @@
 {% block nav %}{{ nav.render_nav() }}{% endblock %}
 
 {% block content %}
-<div id="authCard" class="card w-full max-w-md bg-zinc-900/60 backdrop-blur-xl border border-white/10 shadow-2xl p-6 sm:p-10 rounded-3xl opacity-0 translate-y-5">
+<div id="authCard" class="card w-full max-w-md bg-zinc-900/60 backdrop-blur-xl border border-white/10 shadow-2xl p-6 sm:p-10 rounded-3xl">
     
     <div class="text-center mb-8">
         <h2 class="text-3xl font-bold text-white tracking-tight mb-2">Welcome Back</h2>
@@ -46,8 +46,11 @@
     
     document.addEventListener("DOMContentLoaded", () => {
         if (typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-        // GSAP Animation
-        gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" });
+        
+        // Safe Animation: Element pehle se visible hai, hum bas usse animate kar rahe hain
+        if (typeof gsap !== 'undefined') {
+            gsap.from("#authCard", { opacity: 0, y: 20, duration: 0.6, ease: "power2.out" });
+        }
     });
     
     async function handleAuth(e) {
@@ -66,7 +69,10 @@
             setTimeout(() => window.location.href = "/dashboard", 800);
         } catch (error) {
             showToast(error.message, "error");
-            gsap.fromTo("#authCard", { x: -5 }, { x: 5, duration: 0.1, repeat: 3, yoyo: true });
+            // Error Shake
+            if (typeof gsap !== 'undefined') {
+                gsap.fromTo("#authCard", { x: -5 }, { x: 5, duration: 0.1, repeat: 3, yoyo: true });
+            }
         } finally { setLoading(false); }
     }
     
@@ -83,14 +89,18 @@
         }
     }
     
-    // Updated Toast for Tailwind/DaisyUI
     function showToast(msg, type) {
         const toast = document.getElementById('toast');
-        const alert = toast.querySelector('.alert');
-        document.getElementById('toastMsg').innerText = msg;
+        const alert = toast.querySelector('.alert'); // Ensure your base.html has correct toast structure
         
-        // DaisyUI Alert Colors
-        alert.className = `alert shadow-lg font-semibold border-none ${type === 'success' ? 'alert-success text-black' : 'alert-error text-white'}`;
+        if (document.getElementById('toastMsg')) {
+            document.getElementById('toastMsg').innerText = msg;
+        }
+        
+        // DaisyUI Style classes
+        if (alert) {
+            alert.className = `alert shadow-lg font-semibold border-none ${type === 'success' ? 'alert-success text-black' : 'alert-error text-white'}`;
+        }
         
         toast.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
         setTimeout(() => toast.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none'), 3000);
