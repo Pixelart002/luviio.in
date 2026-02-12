@@ -32,207 +32,54 @@
     </footer>
 
     <script>
-// --- CONFIGURATION ---
+// --- DEBUG VERSION AUTH SCRIPT ---
 const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
-const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd';
+const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd'; // Ye key sahi hai na check kar lena
 
 let supabaseClient = null;
-let isProcessing = false;
 
-// --- INITIALIZATION ---
 document.addEventListener("DOMContentLoaded", () => {
-    // 1. Init Supabase
-    if(typeof supabase !== 'undefined') {
-        supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-    } else {
-        console.error("Supabase SDK not loaded!");
-    }
+    console.log("Initializing Supabase...");
     
-    // 2. Input Focus Effects (Polish)
-    const inputs = document.querySelectorAll('input');
-    inputs.forEach(input => {
-        input.addEventListener('focus', () => {
-            if(input.previousElementSibling) {
-                input.previousElementSibling.classList.remove('text-dim');
-                input.previousElementSibling.classList.add('text-white');
-            }
-        });
-        input.addEventListener('blur', () => {
-            if(input.previousElementSibling) {
-                input.previousElementSibling.classList.remove('text-white');
-                input.previousElementSibling.classList.add('text-dim');
-            }
-        });
-    });
+    if(typeof supabase !== 'undefined') {
+        try {
+            supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+            console.log("Supabase Client Ready ✅");
+        } catch (e) {
+            console.error("Supabase Init Failed ❌", e);
+            alert("Supabase Error: Check Console");
+        }
+    } else {
+        alert("Error: Supabase SDK load nahi hua! Internet check karo.");
+    }
 });
 
-// --- MAIN AUTH FUNCTION (NO SHORTCUTS) ---
-async function handleAuth(e, mode) {
-    e.preventDefault();
+async function signInWithProvider(providerName) {
+    console.log(`Attempting login with ${providerName}...`);
     
-    // 1. Prevent double submission
-    if (isProcessing) return;
-    
-    // 2. Security: Honeypot Check
-    const honeypot = document.getElementById('_hp_check');
-    if (honeypot && honeypot.value) {
-        console.warn("Bot detected");
-        return; 
-    }
-
-    // 3. Get Values
-    const emailInput = document.getElementById('email');
-    const passInput = document.getElementById('password');
-    
-    const email = emailInput.value.trim();
-    const password = passInput.value;
-
-    // 4. Client-Side Validation
-    if (!email || !email.includes('@')) {
-        showToast("Please enter a valid email.", "error");
-        shakeCard();
+    if(!supabaseClient) {
+        alert("Supabase connect nahi hai! Page refresh karo.");
         return;
     }
 
-    if (password.length < 6) { 
-        showToast("Password must be at least 6 characters.", "error"); 
-        shakeCard(); 
-        return; 
-    }
-    
-    // 5. Start Loading State
-    setLoading(true);
-
     try {
-        if(!supabaseClient) throw new Error("Connection to server failed.");
+        // Current URL check karo
+        const redirectUrl = window.location.origin + '/onboarding';
+        console.log("Redirecting to:", redirectUrl);
 
-        let result;
+        const { data, error } = await supabaseClient.auth.signInWithOAuth({
+            provider: providerName,
+            options: { redirectTo: redirectUrl }
+        });
+
+        if (error) throw error;
         
-        // 6. Execute Logic based on Mode (Login vs Signup)
-        if (mode === 'signup') {
-            // SIGN UP LOGIC
-            result = await supabaseClient.auth.signUp({ 
-                email: email, 
-                password: password, 
-                options: { 
-                    emailRedirectTo: window.location.origin + '/onboarding' 
-                }
-            });
-        } else {
-            // LOGIN LOGIC
-            result = await supabaseClient.auth.signInWithPassword({ 
-                email: email, 
-                password: password 
-            });
-        }
-
-        // 7. Check for Supabase Errors
-        if (result.error) throw result.error;
-
-        // 8. Success Handling
-        if (mode === 'signup' && result.data.user && !result.data.session) {
-           // Case: Signup successful but email verification needed
-           showToast("Account created! Check your email to confirm.", "success");
-           e.target.reset(); // Clear form
-        } else {
-           // Case: Login successful or Auto-login after signup
-           showToast("Access Granted. Redirecting...", "success");
-           
-           // Check profile role and redirect using Unpoly
-           await checkProfileAndRedirect(result.data.user.id);
-        }
-
+        console.log("Redirecting to provider...");
+        
     } catch (error) {
-        console.error("Auth Error:", error);
-        
-        // User-friendly error messages
-        let msg = error.message;
-        if(msg.includes("Invalid login")) msg = "Incorrect email or password.";
-        if(msg.includes("User already registered")) msg = "This email is already registered.";
-        
-        showToast(msg, "error");
-        shakeCard();
-    } finally { 
-        // 9. Stop Loading State
-        setLoading(false); 
+        console.error("Login Failed:", error);
+        alert(`Login Error: ${error.message}`);
     }
-}
-
-// --- SOCIAL LOGIN ---
-async function signInWithProvider(providerName) {
-  if(!supabaseClient) return;
-  try {
-    const { data, error } = await supabaseClient.auth.signInWithOAuth({
-      provider: providerName,
-      options: { redirectTo: window.location.origin + '/onboarding' }
-    });
-    if (error) throw error;
-  } catch (error) { 
-      showToast("Could not connect to " + providerName, "error"); 
-  }
-}
-
-// --- REDIRECT LOGIC (WITH UNPOLY) ---
-async function checkProfileAndRedirect(userId) {
-    try {
-        // Fetch user role to decide destination
-        const { data: profile } = await supabaseClient
-            .from('profiles')
-            .select('role')
-            .eq('id', userId)
-            .single();
-
-        let targetUrl = '/onboarding'; // Default
-        
-        if (profile && profile.role) {
-            targetUrl = '/dashboard';
-        }
-
-        // Use Unpoly for SPA-like navigation
-        if (typeof up !== 'undefined') {
-            up.visit(targetUrl, { 
-                target: 'body',
-                transition: 'move-left',
-                failTarget: 'body'
-            });
-        } else {
-            // Fallback if Unpoly isn't loaded
-            window.location.href = targetUrl;
-        }
-
-    } catch (err) {
-        // If error fetching profile, send to onboarding safely
-        if (typeof up !== 'undefined') {
-            up.visit('/onboarding', { target: 'body' });
-        } else {
-            window.location.href = "/onboarding";
-        }
-    }
-}
-
-// --- UI HELPERS ---
-
-function setLoading(state) {
-  isProcessing = state;
-  const btn = document.getElementById('authBtn');
-  const text = document.getElementById('btnText');
-  const loader = document.getElementById('btnLoader');
-
-  if (!btn) return; // Safety check
-
-  if(state) {
-      if(text) text.classList.add('hidden');
-      if(loader) loader.classList.remove('hidden');
-      btn.disabled = true;
-      btn.classList.add('cursor-wait', 'opacity-70');
-  } else {
-      if(text) text.classList.remove('hidden');
-      if(loader) loader.classList.add('hidden');
-      btn.disabled = false;
-      btn.classList.remove('cursor-wait', 'opacity-70');
-  }
-}
-
-function showToast(msg, type  </script>
+}  </script>
 </body>
 </html>
