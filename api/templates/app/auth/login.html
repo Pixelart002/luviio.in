@@ -6,133 +6,97 @@
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-<div class="w-full max-w-[420px] mx-auto mt-10 shadow-2xl border border-white/10 bg-[#141414]/60 backdrop-blur-xl rounded-3xl relative z-10" id="authCard">
-    <div class="card-body p-8 sm:p-10 text-center">
-        
-        <div class="mb-6">
-            <h2 class="text-2xl font-bold text-white mb-1 tracking-tight">Welcome Back</h2>
-            <p class="text-sm text-dim">Secure access to your dashboard</p>
-        </div>
-        
-        {{ forms.social_buttons() }}
-        
-        <form id="loginForm" class="flex flex-col gap-1 text-left">
-            <input type="text" id="_hp_check" class="hidden" tabindex="-1" autocomplete="off">
+<div class="w-full max-w-[440px] px-4 sm:px-0 mx-auto transition-all duration-500">
+    <div class="card bg-[#0A0A0A]/90 backdrop-blur-3xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-[2rem] overflow-hidden opacity-0" id="authCard">
+        <div class="card-body p-7 sm:p-10 text-center">
             
-            {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
-            {{ forms.input_field('password', 'password', 'Password', 'ri-lock-2-line') }}
-            
-            {{ forms.submit_button('Sign In') }}
-            
-            <div class="text-center mt-6 text-sm text-gray-400">
-                <span>New here?</span>
-                <a href="/signup" up-target="#main-content" up-transition="move-left" class="text-white font-semibold ml-1 hover:underline">Create account</a>
+            <div class="mb-8">
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-2">Welcome Back</h2>
+                <p class="text-sm text-neutral-500 font-medium">Secure access to your verified dashboard</p>
             </div>
-        </form>
+            
+            {{ forms.social_buttons() }}
+            
+            <form id="loginForm" class="flex flex-col gap-2 text-left">
+                <input type="text" id="_hp_check" class="hidden" tabindex="-1">
+                
+                {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
+                {{ forms.input_field('password', 'password', 'Password', 'ri-lock-2-line') }}
+                
+                {{ forms.submit_button('Sign In') }}
+                
+                <div class="text-center mt-8 text-sm text-neutral-500 font-medium">
+                    <span>New here?</span>
+                    <a href="/signup" up-target="#main-content" up-transition="cross-fade" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Create account</a>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
 <script>
-    // --- DEBUG VERSION AUTH SCRIPT INTEGRATED ---
-    const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
-    const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd';
-    
-    let supabaseClient = null;
-    
-    // Initialize Function
-    function initSupabase() {
-        console.log("Initializing Supabase with Debug Keys...");
+    (function() {
+        const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
+        const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd';
+        let client = null;
+        
+        // 1. Safe Init
         if (typeof supabase !== 'undefined') {
-            try {
-                supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-                console.log("Supabase Client Ready ✅");
-            } catch (e) {
-                console.error("Supabase Init Failed ❌", e);
-                alert("Supabase Error: Check Console");
-            }
+            client = supabase.createClient(SB_URL, SB_KEY);
+        }
+        
+        // 2. Pure Fade Animation (No Slide, No Glitch)
+        // Duration thoda badhaya hai (0.8s) for premium feel
+        if (typeof gsap !== 'undefined') {
+            gsap.to("#authCard", {
+                opacity: 1,
+                duration: 0.8,
+                ease: "power2.inOut",
+                clearProps: "all"
+            });
         } else {
-            alert("Error: Supabase SDK load nahi hua! Internet check karo.");
-        }
-    }
-    
-    // Run Init
-    initSupabase();
-    
-    // 1. Provider Auth (Google/GitHub) - Global scope for Macros
-    window.signInWithProvider = async function(providerName) {
-        console.log(`Attempting login with ${providerName}...`);
-        
-        if (!supabaseClient) {
-            alert("Supabase connect nahi hai! Page refresh karo.");
-            return;
+            document.getElementById('authCard').style.opacity = "1";
         }
         
-        try {
-            const redirectUrl = window.location.origin + '/onboarding';
-            console.log("Redirecting to:", redirectUrl);
+        // 3. Login Logic (Clean & Fast)
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!client) return;
             
-            const { data, error } = await supabaseClient.auth.signInWithOAuth({
-                provider: providerName,
-                options: { redirectTo: redirectUrl }
+            const btn = document.getElementById('authBtn');
+            const btnText = document.getElementById('btnText');
+            const btnLoader = document.getElementById('btnLoader');
+            
+            // UI State Change
+            btn.disabled = true;
+            btnText.style.opacity = "0";
+            btnLoader.classList.remove('hidden');
+            
+            const { error } = await client.auth.signInWithPassword({
+                email: document.getElementById('email').value.trim(),
+                password: document.getElementById('password').value
             });
             
-            if (error) throw error;
-            console.log("Redirecting to provider...");
-            
-        } catch (error) {
-            console.error("OAuth Failed:", error);
-            alert(`Login Error: ${error.message}`);
-        }
-    };
-    
-    // 2. Email/Pass Login Logic (Merged with Debug Style)
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        console.log("Attempting Email/Password login...");
-        
-        if (!supabaseClient) {
-            alert("Supabase Client initialize nahi hua!");
-            return;
-        }
-        
-        const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
-        const btn = document.getElementById('authBtn');
-        const btnText = document.getElementById('btnText');
-        
-        // UI Feedback
-        btn.disabled = true;
-        if (btnText) btnText.innerText = "Authenticating...";
-        
-        try {
-            const { data, error } = await supabaseClient.auth.signInWithPassword({
-                email: email,
-                password: password
-            });
-            
-            if (error) throw error;
-            
-            console.log("Login Success! Redirecting...");
-            window.location.href = "/dashboard";
-            
-        } catch (error) {
-            console.error("Login Failed:", error);
-            alert(`Login Error: ${error.message}`);
-            
-            // Reset Button
-            btn.disabled = false;
-            if (btnText) btnText.innerText = "Sign In";
-            
-            // GSAP Shake on error
-            if (typeof gsap !== 'undefined') {
-                gsap.to("#authCard", { x: -6, duration: 0.08, repeat: 3, yoyo: true });
+            if (error) {
+                alert(error.message);
+                btn.disabled = false;
+                btnText.style.opacity = "1";
+                btnLoader.classList.add('hidden');
+                // Subtle shake only on Error
+                gsap.to("#authCard", { x: 8, duration: 0.05, repeat: 3, yoyo: true });
+            } else {
+                window.location.href = "/dashboard";
             }
-        }
-    });
-    
-    // 3. GSAP Intro Animation
-    if (typeof gsap !== 'undefined') {
-        gsap.from("#authCard", { opacity: 0, y: 20, duration: 0.6, ease: "power3.out" });
-    }
+        });
+        
+        // 4. Provider Auth
+        window.signInWithProvider = async (provider) => {
+            if (!client) return;
+            await client.auth.signInWithOAuth({
+                provider: provider,
+                options: { redirectTo: window.location.origin + '/onboarding' }
+            });
+        };
+    })();
 </script>
 {% endblock %}

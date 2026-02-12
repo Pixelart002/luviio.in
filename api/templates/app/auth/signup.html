@@ -6,137 +6,80 @@
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-<div class="w-full max-w-[420px] mx-auto mt-10 shadow-2xl border border-white/10 bg-[#141414]/60 backdrop-blur-xl rounded-3xl relative z-10" id="authCard">
-    <div class="card-body p-8 sm:p-10 text-center">
-        
-        <div class="mb-6">
-            <h2 class="text-2xl font-bold text-white mb-1 tracking-tight">Create Account</h2>
-            <p class="text-sm text-dim">Start your verified journey</p>
-        </div>
-        
-        {{ forms.social_buttons() }}
-        
-        <form id="signupForm" class="flex flex-col gap-1 text-left">
-            <input type="text" id="_hp_check" class="hidden" tabindex="-1" autocomplete="off">
-            
-            {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
-            {{ forms.input_field('password', 'password', 'Create Password', 'ri-lock-2-line') }}
-            
-            {{ forms.submit_button('Sign Up') }}
-            
-            <div class="text-center mt-6 text-sm text-gray-400">
-                <span>Already a member?</span>
-                <a href="/login" up-target="#main-content" up-transition="move-right" class="text-white font-semibold ml-1 hover:underline">Log in</a>
+<div class="w-full max-w-[440px] px-4 sm:px-0 mx-auto transition-all">
+    <div class="card bg-[#0A0A0A]/90 backdrop-blur-3xl border border-white/10 shadow-2xl rounded-[2rem] opacity-0" id="authCard">
+        <div class="card-body p-7 sm:p-10 text-center">
+            <div class="mb-8">
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-2">Create Account</h2>
+                <p class="text-sm text-neutral-500 font-medium">Start your verified journey today</p>
             </div>
-        </form>
+            {{ forms.social_buttons() }}
+            <form id="signupForm" class="flex flex-col gap-1 text-left">
+                <input type="text" id="_hp_check" class="hidden" tabindex="-1">
+                {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
+                {{ forms.input_field('password', 'password', 'Create Password', 'ri-lock-2-line') }}
+                {{ forms.submit_button('Sign Up') }}
+                <div class="text-center mt-8 text-sm text-neutral-500 font-medium">
+                    <span>Already a member?</span>
+                    <a href="/login" up-target="#main-content" up-transition="cross-fade" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Log in</a>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
 <script>
-    // --- DEBUG VERSION SIGNUP SCRIPT ---
-    const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
-    const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd';
-    
-    let supabaseClient = null;
-    
-    // Initialize Supabase
-    function initSupabase() {
-        console.log("Signup Page: Initializing Supabase...");
-        if (typeof supabase !== 'undefined') {
-            try {
-                supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-                console.log("Supabase Client Ready for Signup ✅");
-            } catch (e) {
-                console.error("Supabase Init Failed ❌", e);
-                alert("Supabase Error: Check Console");
-            }
+    (function() {
+        const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
+        const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd'; 
+        const client = supabase.createClient(SB_URL, SB_KEY);
+
+        if(typeof gsap !== 'undefined') {
+            gsap.to("#authCard", { opacity: 1, duration: 0.8, ease: "power2.inOut" });
         } else {
-            alert("Error: Supabase SDK load nahi hua!");
+            document.getElementById('authCard').style.opacity = "1";
         }
-    }
-    
-    initSupabase();
-    
-    // 1. Provider Auth (Global for Macros)
-    window.signInWithProvider = async function(providerName) {
-        console.log(`OAuth Attempt: ${providerName}`);
-        if (!supabaseClient) return alert("Client not ready");
-        
-        try {
-            const { error } = await supabaseClient.auth.signInWithOAuth({
-                provider: providerName,
-                options: { redirectTo: window.location.origin + '/onboarding' }
+
+        document.getElementById('signupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('authBtn');
+            const btnText = document.getElementById('btnText');
+            const btnLoader = document.getElementById('btnLoader');
+
+            btn.disabled = true;
+            btnText.style.opacity = "0";
+            btnLoader.classList.remove('hidden');
+
+            const { data, error } = await client.auth.signUp({
+                email: document.getElementById('email').value.trim(),
+                password: document.getElementById('password').value,
+                options: { emailRedirectTo: window.location.origin + '/onboarding' }
             });
-            if (error) throw error;
-        } catch (error) {
-            console.error("OAuth Error:", error);
-            alert(`Error: ${error.message}`);
-        }
-    };
-    
-    // 2. Email/Pass Signup Logic
-    document.getElementById('signupForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        console.log("Attempting Signup...");
-        
-        if (!supabaseClient) return alert("Supabase not initialized");
-        
-        const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
-        const btn = document.getElementById('authBtn');
-        const btnText = document.getElementById('btnText');
-        
-        // Validation
-        if (password.length < 6) {
-            alert("Password kam se kam 6 characters ka hona chahiye.");
-            return;
-        }
-        
-        // Loading State
-        btn.disabled = true;
-        if (btnText) btnText.innerText = "Creating Account...";
-        
-        try {
-            const { data, error } = await supabaseClient.auth.signUp({
-                email: email,
-                password: password,
-                options: {
-                    emailRedirectTo: window.location.origin + '/onboarding'
-                }
-            });
-            
-            if (error) throw error;
-            
-            console.log("Signup Request Sent:", data);
-            
-            if (data.user && data.session) {
-                // Agar email confirmation off hai toh direct login
-                console.log("Auto-login success!");
-                window.location.href = "/onboarding";
+
+            if (error) {
+                alert(error.message);
+                btn.disabled = false;
+                btnText.style.opacity = "1";
+                btnLoader.classList.add('hidden');
+                gsap.to("#authCard", { x: 8, duration: 0.05, repeat: 3, yoyo: true });
             } else {
-                // Agar email confirmation on hai
-                alert("Account created! Ab apna email check karo confirmation link ke liye.");
-                document.getElementById('signupForm').reset();
+                if (data.user && !data.session) {
+                    alert("Account created! Check your email to confirm.");
+                    document.getElementById('signupForm').reset();
+                } else {
+                    window.location.href = "/onboarding";
+                }
             }
-            
-        } catch (error) {
-            console.error("Signup Failed:", error);
-            alert(`Signup Error: ${error.message}`);
-            
-            // Reset Button
             btn.disabled = false;
-            if (btnText) btnText.innerText = "Sign Up";
-            
-            // Shake UI
-            if (typeof gsap !== 'undefined') {
-                gsap.to("#authCard", { x: -6, duration: 0.08, repeat: 3, yoyo: true });
-            }
-        }
-    });
-    
-    // 3. Intro Animation
-    if (typeof gsap !== 'undefined') {
-        gsap.from("#authCard", { opacity: 0, y: 20, duration: 0.6, ease: "power3.out" });
-    }
+            btnText.style.opacity = "1";
+            btnLoader.classList.add('hidden');
+        });
+
+        window.signInWithProvider = async (provider) => {
+            await client.auth.signInWithOAuth({
+                provider, options: { redirectTo: window.location.origin + '/onboarding' }
+            });
+        };
+    })();
 </script>
 {% endblock %}
