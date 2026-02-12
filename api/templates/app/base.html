@@ -32,23 +32,207 @@
     </footer>
 
     <script>
-        // Server se Variables Fetch karo
-        const ENV_URL = '{{ SUPABASE_URL }}';
-        const SB_KEY = '{{ SUPABASE_ANON_KEY }}';
-        
-        // URL Cleaning Logic (Path hatao sirf domain rakho)
-        let SB_URL = ENV_URL;
-        try {
-            if (ENV_URL && ENV_URL.startsWith('http')) {
-                SB_URL = new URL(ENV_URL).origin;
+// --- CONFIGURATION ---
+const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
+const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd';
+
+let supabaseClient = null;
+let isProcessing = false;
+
+// --- INITIALIZATION ---
+document.addEventListener("DOMContentLoaded", () => {
+    // 1. Init Supabase
+    if(typeof supabase !== 'undefined') {
+        supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+    } else {
+        console.error("Supabase SDK not loaded!");
+    }
+    
+    // 2. Input Focus Effects (Polish)
+    const inputs = document.querySelectorAll('input');
+    inputs.forEach(input => {
+        input.addEventListener('focus', () => {
+            if(input.previousElementSibling) {
+                input.previousElementSibling.classList.remove('text-dim');
+                input.previousElementSibling.classList.add('text-white');
             }
-        } catch (e) { console.error("Supabase URL Error:", e); }
+        });
+        input.addEventListener('blur', () => {
+            if(input.previousElementSibling) {
+                input.previousElementSibling.classList.remove('text-white');
+                input.previousElementSibling.classList.add('text-dim');
+            }
+        });
+    });
+});
 
-        // Global Variables set kar diye taaki Login/Signup page use kar sakein
-        window.SB_URL = SB_URL;
-        window.SB_KEY = SB_KEY;
+// --- MAIN AUTH FUNCTION (NO SHORTCUTS) ---
+async function handleAuth(e, mode) {
+    e.preventDefault();
+    
+    // 1. Prevent double submission
+    if (isProcessing) return;
+    
+    // 2. Security: Honeypot Check
+    const honeypot = document.getElementById('_hp_check');
+    if (honeypot && honeypot.value) {
+        console.warn("Bot detected");
+        return; 
+    }
 
-        console.log("Supabase Configured:", SB_URL); // Debugging ke liye
-    </script>
+    // 3. Get Values
+    const emailInput = document.getElementById('email');
+    const passInput = document.getElementById('password');
+    
+    const email = emailInput.value.trim();
+    const password = passInput.value;
+
+    // 4. Client-Side Validation
+    if (!email || !email.includes('@')) {
+        showToast("Please enter a valid email.", "error");
+        shakeCard();
+        return;
+    }
+
+    if (password.length < 6) { 
+        showToast("Password must be at least 6 characters.", "error"); 
+        shakeCard(); 
+        return; 
+    }
+    
+    // 5. Start Loading State
+    setLoading(true);
+
+    try {
+        if(!supabaseClient) throw new Error("Connection to server failed.");
+
+        let result;
+        
+        // 6. Execute Logic based on Mode (Login vs Signup)
+        if (mode === 'signup') {
+            // SIGN UP LOGIC
+            result = await supabaseClient.auth.signUp({ 
+                email: email, 
+                password: password, 
+                options: { 
+                    emailRedirectTo: window.location.origin + '/onboarding' 
+                }
+            });
+        } else {
+            // LOGIN LOGIC
+            result = await supabaseClient.auth.signInWithPassword({ 
+                email: email, 
+                password: password 
+            });
+        }
+
+        // 7. Check for Supabase Errors
+        if (result.error) throw result.error;
+
+        // 8. Success Handling
+        if (mode === 'signup' && result.data.user && !result.data.session) {
+           // Case: Signup successful but email verification needed
+           showToast("Account created! Check your email to confirm.", "success");
+           e.target.reset(); // Clear form
+        } else {
+           // Case: Login successful or Auto-login after signup
+           showToast("Access Granted. Redirecting...", "success");
+           
+           // Check profile role and redirect using Unpoly
+           await checkProfileAndRedirect(result.data.user.id);
+        }
+
+    } catch (error) {
+        console.error("Auth Error:", error);
+        
+        // User-friendly error messages
+        let msg = error.message;
+        if(msg.includes("Invalid login")) msg = "Incorrect email or password.";
+        if(msg.includes("User already registered")) msg = "This email is already registered.";
+        
+        showToast(msg, "error");
+        shakeCard();
+    } finally { 
+        // 9. Stop Loading State
+        setLoading(false); 
+    }
+}
+
+// --- SOCIAL LOGIN ---
+async function signInWithProvider(providerName) {
+  if(!supabaseClient) return;
+  try {
+    const { data, error } = await supabaseClient.auth.signInWithOAuth({
+      provider: providerName,
+      options: { redirectTo: window.location.origin + '/onboarding' }
+    });
+    if (error) throw error;
+  } catch (error) { 
+      showToast("Could not connect to " + providerName, "error"); 
+  }
+}
+
+// --- REDIRECT LOGIC (WITH UNPOLY) ---
+async function checkProfileAndRedirect(userId) {
+    try {
+        // Fetch user role to decide destination
+        const { data: profile } = await supabaseClient
+            .from('profiles')
+            .select('role')
+            .eq('id', userId)
+            .single();
+
+        let targetUrl = '/onboarding'; // Default
+        
+        if (profile && profile.role) {
+            targetUrl = '/dashboard';
+        }
+
+        // Use Unpoly for SPA-like navigation
+        if (typeof up !== 'undefined') {
+            up.visit(targetUrl, { 
+                target: 'body',
+                transition: 'move-left',
+                failTarget: 'body'
+            });
+        } else {
+            // Fallback if Unpoly isn't loaded
+            window.location.href = targetUrl;
+        }
+
+    } catch (err) {
+        // If error fetching profile, send to onboarding safely
+        if (typeof up !== 'undefined') {
+            up.visit('/onboarding', { target: 'body' });
+        } else {
+            window.location.href = "/onboarding";
+        }
+    }
+}
+
+// --- UI HELPERS ---
+
+function setLoading(state) {
+  isProcessing = state;
+  const btn = document.getElementById('authBtn');
+  const text = document.getElementById('btnText');
+  const loader = document.getElementById('btnLoader');
+
+  if (!btn) return; // Safety check
+
+  if(state) {
+      if(text) text.classList.add('hidden');
+      if(loader) loader.classList.remove('hidden');
+      btn.disabled = true;
+      btn.classList.add('cursor-wait', 'opacity-70');
+  } else {
+      if(text) text.classList.remove('hidden');
+      if(loader) loader.classList.add('hidden');
+      btn.disabled = false;
+      btn.classList.remove('cursor-wait', 'opacity-70');
+  }
+}
+
+function showToast(msg, type  </script>
 </body>
 </html>
