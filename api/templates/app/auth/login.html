@@ -7,7 +7,7 @@
 {% block nav %}{{ nav.render_nav() }}{% endblock %}
 
 {% block content %}
-<div id="authCard" class="card w-full max-w-md force-card shadow-2xl p-6 sm:p-8 rounded-3xl">
+<div id="authCard" class="card w-full max-w-md bg-zinc-900/60 backdrop-blur-xl border border-white/10 shadow-2xl p-6 sm:p-10 rounded-3xl opacity-0 translate-y-5">
     
     <div class="text-center mb-8">
         <h2 class="text-3xl font-bold text-white tracking-tight mb-2">Welcome Back</h2>
@@ -19,19 +19,19 @@
         {{ auth.social_button('github', 'ri-github-fill', 'GitHub') }}
     </div>
     
-    <div class="divider text-xs font-bold text-zinc-600 uppercase tracking-widest my-6">OR EMAIL</div>
+    <div class="divider text-xs font-bold text-zinc-500 uppercase tracking-widest my-6">OR EMAIL</div>
     
     <form onsubmit="handleAuth(event)" class="w-full">
         <input type="text" id="_hp_check" class="hidden" tabindex="-1" autocomplete="off">
         
-        {{ auth.input_field('email', 'email', 'name@example.com', 'ri-mail-line') }}
-        {{ auth.input_field('password', 'password', 'Enter Password', 'ri-lock-2-line') }}
+        {{ auth.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
+        {{ auth.input_field('password', 'password', 'Password', 'ri-lock-2-line') }}
         
         {{ auth.primary_button('Sign In') }}
         
         <div class="text-center mt-6 text-sm text-zinc-500">
             <span>New here?</span>
-            <a href="/signup" class="text-white hover:underline font-semibold ml-1">Create account</a>
+            <a href="/signup" class="text-white hover:text-blue-400 font-semibold ml-1 transition-colors">Create account</a>
         </div>
     </form>
 </div>
@@ -44,16 +44,17 @@
     let supabaseClient = null;
     let isProcessing = false;
     
-    // Optional Animation (Progressive Enhancement)
     document.addEventListener("DOMContentLoaded", () => {
         if (typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-        // Sirf tab animate karega agar element visible hai
-        gsap.from("#authCard", { y: 20, opacity: 0, duration: 0.5, clearProps: "all" });
+        // GSAP Animation
+        gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" });
     });
     
     async function handleAuth(e) {
         e.preventDefault();
         if (isProcessing) return;
+        if (document.getElementById('_hp_check').value) return;
+        
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value;
         
@@ -61,7 +62,7 @@
         try {
             const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
             if (error) throw error;
-            showToast("Success! Redirecting...", "success");
+            showToast("Access Granted", "success");
             setTimeout(() => window.location.href = "/dashboard", 800);
         } catch (error) {
             showToast(error.message, "error");
@@ -82,12 +83,14 @@
         }
     }
     
+    // Updated Toast for Tailwind/DaisyUI
     function showToast(msg, type) {
         const toast = document.getElementById('toast');
         const alert = toast.querySelector('.alert');
         document.getElementById('toastMsg').innerText = msg;
         
-        alert.className = `alert shadow-lg font-semibold border-none ${type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`;
+        // DaisyUI Alert Colors
+        alert.className = `alert shadow-lg font-semibold border-none ${type === 'success' ? 'alert-success text-black' : 'alert-error text-white'}`;
         
         toast.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
         setTimeout(() => toast.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none'), 3000);

@@ -7,11 +7,11 @@
 {% block nav %}{{ nav.render_nav() }}{% endblock %}
 
 {% block content %}
-<div id="authCard" class="card w-full max-w-md force-card shadow-2xl p-6 sm:p-8 rounded-3xl">
+<div id="authCard" class="card w-full max-w-md bg-zinc-900/60 backdrop-blur-xl border border-white/10 shadow-2xl p-6 sm:p-10 rounded-3xl opacity-0 translate-y-5">
     
     <div class="text-center mb-8">
         <h2 class="text-3xl font-bold text-white tracking-tight mb-2">Create Account</h2>
-        <p class="text-zinc-400 text-sm">Start your journey with us</p>
+        <p class="text-zinc-400 text-sm">Start your verified journey</p>
     </div>
 
     <div class="flex gap-3 mb-6">
@@ -19,19 +19,19 @@
         {{ auth.social_button('github', 'ri-github-fill', 'GitHub') }}
     </div>
 
-    <div class="divider text-xs font-bold text-zinc-600 uppercase tracking-widest my-6">OR EMAIL</div>
+    <div class="divider text-xs font-bold text-zinc-500 uppercase tracking-widest my-6">OR EMAIL</div>
 
     <form onsubmit="handleSignup(event)" class="w-full">
         <input type="text" id="_hp_check_signup" class="hidden" tabindex="-1" autocomplete="off">
         
-        {{ auth.input_field('email', 'email', 'name@example.com', 'ri-mail-line') }}
+        {{ auth.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
         {{ auth.input_field('password', 'password', 'Create Password', 'ri-lock-2-line') }}
         
         {{ auth.primary_button('Sign Up') }}
 
         <div class="text-center mt-6 text-sm text-zinc-500">
             <span>Already a member?</span>
-            <a href="/login" class="text-white hover:underline font-semibold ml-1">Log in</a>
+            <a href="/login" class="text-white hover:text-blue-400 font-semibold ml-1 transition-colors">Log in</a>
         </div>
     </form>
 </div>
@@ -46,14 +46,12 @@
 
     document.addEventListener("DOMContentLoaded", () => {
         if(typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-        gsap.from("#authCard", { y: 20, opacity: 0, duration: 0.5, clearProps: "all" });
+        gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" });
     });
 
     async function handleSignup(e) {
         e.preventDefault();
         if (isProcessing) return;
-        
-        // Honeypot
         if (document.getElementById('_hp_check_signup').value) return;
 
         const email = document.getElementById('email').value.trim();
@@ -71,11 +69,12 @@
                 options: { emailRedirectTo: window.location.origin + '/onboarding' }
             });
             if (error) throw error;
+            
             if (data.user && !data.session) {
-                showToast("Email sent! Please verify.", "success");
-                setTimeout(() => window.location.reload(), 2000);
+                showToast("Check your email for confirmation.", "success");
+                document.getElementById('authCard').querySelector('form').reset();
             } else {
-                showToast("Account created!", "success");
+                showToast("Account Created!", "success");
                 setTimeout(() => window.location.href = "/onboarding", 1000);
             }
         } catch (error) {
@@ -101,7 +100,7 @@
         const toast = document.getElementById('toast');
         const alert = toast.querySelector('.alert');
         document.getElementById('toastMsg').innerText = msg;
-        alert.className = `alert shadow-lg font-semibold border-none ${type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`;
+        alert.className = `alert shadow-lg font-semibold border-none ${type === 'success' ? 'alert-success text-black' : 'alert-error text-white'}`;
         toast.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
         setTimeout(() => toast.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none'), 3000);
     }
