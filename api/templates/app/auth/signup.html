@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% import "macros/auth_macros.html" as auth %}
+
+{% block title %}Luviio - Create Your Account{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* Auth Card Specific CSS (Same as Login for consistency) */
+    .auth-card { 
+        width: 100%; max-width: 420px; padding: 40px; 
+        background: var(--card-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--border); border-radius: 24px; 
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5); 
+        position: relative; opacity: 0; transform: translateY(20px);
+    }
+    .header-text { text-align: center; margin-bottom: 30px; } 
+    .title { font-size: 1.5rem; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.02em; } 
+    .subtitle { color: var(--text-dim); font-size: 0.9rem; }
+    
+    .social-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 25px; }
+    .btn-social { 
+        display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px; 
+        background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; 
+        color: white; cursor: pointer; transition: all 0.2s; font-size: 0.9rem; font-weight: 600;
+    }
+    .btn-social:hover { background: rgba(255,255,255,0.08); border-color: #555; transform: translateY(-2px); }
+
+    .divider { display: flex; align-items: center; margin-bottom: 25px; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; letter-spacing: 1px; } 
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); opacity: 0.5; } 
+    .divider span { padding: 0 15px; }
+
+    .btn-primary { 
+        width: 100%; padding: 16px; background: white; color: black; 
+        border: none; border-radius: 100px; font-weight: 700; font-size: 1rem; cursor: pointer; margin-top: 10px; 
+        transition: transform 0.2s, box-shadow 0.2s; position: relative; overflow: hidden;
+        display: flex; justify-content: center; align-items: center;
+    }
+    .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(255,255,255,0.15); }
+    .loader { display: none; width: 20px; height: 20px; border: 2px solid rgba(0,0,0,0.1); border-top-color: #000; border-radius: 50%; animation: spin 0.8s linear infinite; } 
+    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    .toggle-text { margin-top: 24px; text-align: center; font-size: 0.9rem; color: var(--text-dim); } 
+    .link { color: white; text-decoration: none; font-weight: 600; cursor: pointer; margin-left: 5px; transition: color 0.2s; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-card" id="authCard">
+    <div class="header-text">
+        <div class="title">Create Account</div>
+        <div class="subtitle">Start your verified journey with Luviio</div>
+    </div>
+
+    {{ auth.render_social_grid() }}
+
+    <form id="signupForm" onsubmit="handleSignup(event)">
+        <input type="text" id="_hp_check_signup" style="display:none;" tabindex="-1" autocomplete="off">
+        
+        {{ auth.render_input('email', 'email', 'name@company.com', 'ri-mail-line', 'email') }}
+        {{ auth.render_input('password', 'password', 'Create Password', 'ri-lock-2-line', 'new-password') }}
+
+        {{ auth.render_auth_button('Sign Up') }}
+
+        <div class="toggle-text">
+            <span>Already a member?</span>
+            <a href="/login" class="link">Log in</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 🔒 Strictly injected from Server-side Env
+    const SB_URL = '{{ supabase_url }}';
+    const SB_KEY = '{{ supabase_anon_key }}';
+    
+    let supabaseClient = null;
+    let isProcessing = false;
+
+    document.addEventListener("DOMContentLoaded", () => {
+        if(typeof supabase !== 'undefined') {
+            supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+        }
+        if(typeof gsap !== 'undefined') {
+            gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" });
+        }
+    });
+
+    async function handleSignup(e) {
+        e.preventDefault();
+        if (isProcessing || document.getElementById('_hp_check_signup').value) return;
+        
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+
+        if (password.length < 6) { 
+            showToast("Password must be at least 6 characters.", "error"); 
+            return; 
+        }
+        
+        setLoading(true);
+        try {
+            const { data, error } = await supabaseClient.auth.signUp({ 
+                email, 
+                password,
+                options: { emailRedirectTo: window.location.origin + '/onboarding' }
+            });
+            if (error) throw error;
+            
+            if (data.user && !data.session) {
+                showToast("Check your email for the confirmation link.", "success");
+                document.getElementById('signupForm').reset();
+            } else {
+                showToast("Account Created", "success");
+                window.location.href = "/onboarding";
+            }
+        } catch (error) {
+            showToast(error.message, "error");
+            if(typeof gsap !== 'undefined') gsap.to(".auth-card", { x: -6, duration: 0.08, repeat: 3, yoyo: true });
+        } finally { setLoading(false); }
+    }
+
+    function setLoading(state) {
+        isProcessing = state;
+        document.getElementById('btnText').style.display = state ? 'none' : 'block';
+        document.getElementById('btnLoader').style.display = state ? 'block' : 'none';
+        document.getElementById('authBtn').disabled = state;
+    }
+
+    function showToast(msg, type) {
+        const toast = document.getElementById('toast');
+        document.getElementById('toastMsg').innerText = msg;
+        toast.className = `toast visible ${type}`;
+        setTimeout(() => toast.className = "toast", 3000);
+    }
+</script>
+{% endblock %}

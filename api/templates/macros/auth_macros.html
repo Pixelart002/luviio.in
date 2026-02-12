@@ -1,0 +1,26 @@
+{# --- MACRO: Social Login Button --- #}
+{% macro social_button(provider, icon_class, label) %}
+<button type="button" class="btn-social" onclick="signInWithProvider('{{ provider }}')">
+    <i class="{{ icon_class }}"></i> {{ label }}
+</button>
+{% endmacro %}
+
+{# --- MACRO: Input Field with Icon --- #}
+{% macro input_field(id, type, placeholder, icon_class) %}
+<div class="input-group">
+    <div class="input-wrapper">
+        <input type="{{ type }}" id="{{ id }}" placeholder="{{ placeholder }}" required 
+               {% if type == 'email' %}autocomplete="email"{% endif %}
+               {% if type == 'password' %}autocomplete="current-password"{% endif %}>
+        <i class="{{ icon_class }} input-icon"></i>
+    </div>
+</div>
+{% endmacro %}
+
+{# --- MACRO: Primary Action Button --- #}
+{% macro primary_button(text, loader_id='btnLoader') %}
+<button type="submit" class="btn-primary" id="authBtn">
+    <span id="btnText">{{ text }}</span>
+    <div class="loader" id="{{ loader_id }}"></div>
+</button>
+{% endmacro %}
