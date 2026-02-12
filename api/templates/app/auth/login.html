@@ -4,36 +4,34 @@
 
 {% block title %}Login | LUVIIO{% endblock %}
 
-{% block head_extra %}
-<style>
-    #authCard { opacity: 0; transform: translateY(20px); }
-</style>
-{% endblock %}
-
 {% block nav %}{{ nav.render_nav() }}{% endblock %}
 
 {% block content %}
-<div id="authCard" class="card w-full max-w-[420px] bg-neutral/40 backdrop-blur-2xl border border-white/10 shadow-2xl p-6 sm:p-10 rounded-3xl">
+<div id="authCard" class="card w-full max-w-md bg-black/60 backdrop-blur-xl border border-zinc-800 shadow-2xl p-6 sm:p-8 rounded-3xl opacity-0 translate-y-5">
+    
     <div class="text-center mb-8">
-        <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2">Welcome Back</h2>
-        <p class="text-zinc-400 text-sm sm:text-base">Secure access to your dashboard</p>
+        <h2 class="text-3xl font-bold text-white tracking-tight mb-2">Welcome Back</h2>
+        <p class="text-zinc-400 text-sm">Enter your credentials to access</p>
     </div>
-
+    
     <div class="flex gap-3 mb-6">
         {{ auth.social_button('google', 'ri-google-fill', 'Google') }}
         {{ auth.social_button('github', 'ri-github-fill', 'GitHub') }}
     </div>
-
-    <div class="divider text-[10px] font-bold text-zinc-500 uppercase tracking-widest opacity-50 mb-6">OR EMAIL</div>
-
-    <form id="authForm" onsubmit="handleAuth(event)" class="space-y-1">
-        {{ auth.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
-        {{ auth.input_field('password', 'password', 'Password', 'ri-lock-2-line') }}
+    
+    <div class="divider text-xs font-bold text-zinc-600 uppercase tracking-widest my-6">OR EMAIL</div>
+    
+    <form onsubmit="handleAuth(event)" class="w-full">
+        <input type="text" id="_hp_check" class="hidden" tabindex="-1" autocomplete="off">
+        
+        {{ auth.input_field('email', 'email', 'name@example.com', 'ri-mail-line') }}
+        {{ auth.input_field('password', 'password', 'Enter Password', 'ri-lock-2-line') }}
+        
         {{ auth.primary_button('Sign In') }}
-
-        <div class="text-center mt-6 text-sm text-zinc-500 font-medium">
+        
+        <div class="text-center mt-6 text-sm text-zinc-500">
             <span>New here?</span>
-            <a href="/signup" class="text-white hover:text-accent font-bold transition-colors ml-1">Create account</a>
+            <a href="/signup" class="text-white hover:underline font-semibold ml-1">Create account</a>
         </div>
     </form>
 </div>
@@ -45,12 +43,12 @@
     const SB_KEY = '{{ supabase_anon_key }}';
     let supabaseClient = null;
     let isProcessing = false;
-
+    
     document.addEventListener("DOMContentLoaded", () => {
-        if(typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-        gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" });
+        if (typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+        gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.6, ease: "power2.out", delay: 0.1 });
     });
-
+    
     async function handleAuth(e) {
         e.preventDefault();
         if (isProcessing) return;
@@ -61,32 +59,36 @@
         try {
             const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
             if (error) throw error;
-            showToast("Access Granted ✅", "success");
+            showToast("Success! Redirecting...", "success");
             setTimeout(() => window.location.href = "/dashboard", 800);
         } catch (error) {
             showToast(error.message, "error");
-            gsap.to("#authCard", { x: -6, duration: 0.08, repeat: 3, yoyo: true });
+            gsap.fromTo("#authCard", { x: -5 }, { x: 5, duration: 0.1, repeat: 3, yoyo: true });
         } finally { setLoading(false); }
     }
-
+    
     function setLoading(state) {
         isProcessing = state;
-        document.getElementById('btnText').classList.toggle('hidden', state);
-        document.getElementById('btnLoader').classList.toggle('hidden', !state);
-        document.getElementById('authBtn').disabled = state;
+        const btnText = document.getElementById('btnText');
+        const btnLoader = document.getElementById('btnLoader');
+        if (state) {
+            btnText.classList.add('hidden');
+            btnLoader.classList.remove('hidden');
+        } else {
+            btnText.classList.remove('hidden');
+            btnLoader.classList.add('hidden');
+        }
     }
-
+    
     function showToast(msg, type) {
         const toast = document.getElementById('toast');
         const alert = toast.querySelector('.alert');
         document.getElementById('toastMsg').innerText = msg;
         
-        // DaisyUI colors
-        alert.classList.remove('alert-success', 'alert-error');
-        alert.classList.add(type === 'success' ? 'alert-success' : 'alert-error');
+        alert.className = `alert shadow-lg font-semibold border-none ${type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`;
         
-        toast.classList.add('visible', 'opacity-100', '-translate-y-5');
-        setTimeout(() => toast.classList.remove('visible', 'opacity-100', '-translate-y-5'), 3000);
+        toast.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
+        setTimeout(() => toast.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none'), 3000);
     }
 </script>
 {% endblock %}

@@ -1,30 +1,59 @@
-{% import "macros/nav.html" as nav %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="black">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title | default('LUVIIO') }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <title>{% block title %}LUVIIO{% endblock %}</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] },
+                    colors: { 
+                        brand: '#fff',
+                        dark: '#050505'
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        body { background: #050505; color: white; font-family: sans-serif; }
-        /* Grid Background Effect */
-        .bg-grid { position: fixed; inset: 0; background-image: radial-gradient(#ffffff 1px, transparent 0); background-size: 40px 40px; opacity: 0.05; pointer-events: none; z-index: -1; }
+        body { background-color: #000; color: #fff; }
+        .grid-bg { 
+            position: fixed; inset: 0; z-index: -1; opacity: 0.15; pointer-events: none;
+            background-image: linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px);
+            background-size: 40px 40px; mask-image: radial-gradient(circle at center, black 40%, transparent 80%);
+        }
     </style>
+    {% block head_extra %}{% endblock %}
 </head>
-<body class="min-h-screen flex flex-col">
-    <div class="bg-grid"></div>
+<body class="min-h-screen w-full flex flex-col relative overflow-x-hidden font-sans antialiased">
+    <div class="grid-bg"></div>
+    
+    <div class="absolute top-0 w-full z-50">
+        {% block nav %}{% endblock %}
+    </div>
 
-    {{ nav.render_header(active_page | default('home')) }}
-
-    <main id="main-content" class="flex-1 flex flex-col pt-20"> 
+    <main class="flex-1 flex items-center justify-center p-4 w-full h-full min-h-screen">
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="py-8 text-center text-xs text-gray-600 border-t border-white/5">
-        &copy; 2026 Luviio Technologies.
-    </footer>
+    <div id="toast" class="toast toast-center toast-bottom z-50 transition-all duration-300 opacity-0 translate-y-10 pointer-events-none">
+        <div class="alert shadow-lg font-semibold border-none">
+            <span id="toastMsg"></span>
+        </div>
+    </div>
+
+    {% block scripts %}{% endblock %}
 </body>
 </html>
