@@ -1,8 +1,9 @@
 {% macro input_field(id, type, placeholder, icon_class, name=None) %}
-{# Ultra Optimized Input: High Accessibility + Zero Layout Shift #}
-<div class="relative group w-full mb-4" role="group">
-    <i class="{{ icon_class }} absolute left-4 top-1/2 -translate-y-1/2 text-dim/60 pointer-events-none 
-              transition-colors duration-300 z-20 group-focus-within:text-blue-500" aria-hidden="true"></i>
+{# Fix: Standard h-12 used for zero-error rendering. Added micro-interaction on icon. #}
+<div class="relative group w-full mb-5" role="group">
+    <div class="absolute left-4 top-1/2 -translate-y-1/2 z-20 pointer-events-none">
+        <i class="{{ icon_class }} text-neutral-500 transition-all duration-300 group-focus-within:text-blue-500 group-focus-within:scale-110" aria-hidden="true"></i>
+    </div>
     
     <input 
         id="{{ id }}" 
@@ -12,62 +13,60 @@
         required 
         spellcheck="false"
         autocomplete="{{ 'current-password' if type == 'password' else 'email' }}"
-        class="input input-bordered w-full pl-12 bg-black/40 border-white/10 text-white placeholder-gray-500 
-               rounded-2xl h-13 transition-all duration-300 focus:border-blue-500/50 focus:bg-black/60 
-               focus:ring-4 focus:ring-blue-500/10 outline-none hover:border-white/20"
+        class="input input-bordered w-full pl-11 bg-black/40 border-white/10 text-white placeholder-neutral-600 
+               rounded-2xl h-12 transition-all duration-300 focus:border-blue-500/50 focus:bg-black/60 
+               focus:ring-4 focus:ring-blue-500/10 outline-none hover:border-white/20 active:scale-[0.99]"
     >
 </div>
 {% endmacro %}
 
 {% macro social_buttons() %}
-{# Ultra Optimized Social Grid: Hardware Accelerated Transitions #}
-<div class="grid grid-cols-2 gap-4 mb-8">
+{# Fix: Adjusted gap for ultra-small screens (iPhone SE/Fold). #}
+<div class="grid grid-cols-2 gap-3 sm:gap-4 mb-8">
     <button 
         type="button" 
         aria-label="Sign in with Google"
-        title="Sign in with Google"
-        class="btn btn-outline border-white/10 bg-white/[0.03] text-white normal-case font-bold rounded-2xl 
+        class="btn btn-outline border-white/10 bg-white/[0.02] text-white normal-case font-bold rounded-2xl 
                transition-all duration-200 hover:bg-white/[0.08] hover:border-white/20 active:scale-95 
-               will-change-transform flex items-center justify-center gap-2" 
+               flex items-center justify-center gap-2 h-12 min-h-0" 
         onclick="signInWithProvider('google')"
     >
-        <i class="ri-google-fill text-xl"></i> 
-        <span class="hidden sm:inline">Google</span>
+        <i class="ri-google-fill text-lg sm:text-xl"></i> 
+        <span class="text-xs sm:text-sm">Google</span>
     </button>
     
     <button 
         type="button" 
         aria-label="Sign in with GitHub"
-        title="Sign in with GitHub"
-        class="btn btn-outline border-white/10 bg-white/[0.03] text-white normal-case font-bold rounded-2xl 
+        class="btn btn-outline border-white/10 bg-white/[0.02] text-white normal-case font-bold rounded-2xl 
                transition-all duration-200 hover:bg-white/[0.08] hover:border-white/20 active:scale-95 
-               will-change-transform flex items-center justify-center gap-2" 
+               flex items-center justify-center gap-2 h-12 min-h-0" 
         onclick="signInWithProvider('github')"
     >
-        <i class="ri-github-fill text-xl"></i> 
-        <span class="hidden sm:inline">GitHub</span>
+        <i class="ri-github-fill text-lg sm:text-xl"></i> 
+        <span class="text-xs sm:text-sm">GitHub</span>
     </button>
 </div>
 
-<div class="divider text-[10px] font-black text-dim/50 tracking-[0.3em] mb-8 before:bg-white/5 after:bg-white/5 uppercase select-none">
+<div class="divider text-[10px] font-black text-neutral-500/50 tracking-[0.25em] mb-8 before:bg-white/5 after:bg-white/5 uppercase select-none">
     OR EMAIL
 </div>
 {% endmacro %}
 
 {% macro submit_button(text, id='authBtn') %}
-{# Ultra Optimized Submit: State-Aware UX with Glow Effect #}
-<div class="relative w-full group">
+{# Fix: Added relative positioning to prevent glow overflow and standard h-12 for better alignment. #}
+<div class="relative w-full group overflow-visible">
     <button 
         type="submit" 
         id="{{ id }}" 
-        class="btn btn-primary w-full rounded-full mt-2 h-14 text-base font-black text-black bg-white 
+        class="btn btn-primary w-full rounded-full mt-2 h-12 min-h-0 text-base font-black text-black bg-white 
                hover:bg-neutral-100 hover:-translate-y-1 active:scale-[0.98] border-none transition-all 
-               duration-300 shadow-[0_0_0_rgba(255,255,255,0)] hover:shadow-[0_10px_30px_rgba(255,255,255,0.15)]
-               disabled:bg-neutral-800 disabled:text-neutral-500 disabled:cursor-not-allowed group-active:shadow-none"
+               duration-300 hover:shadow-[0_10px_30px_rgba(255,255,255,0.12)]
+               disabled:bg-neutral-800 disabled:text-neutral-500 disabled:cursor-not-allowed"
     >
-        <span id="btnText" class="flex items-center gap-2">
+        <span id="btnText" class="flex items-center justify-center gap-2">
             {{ text }} 
-            <i class="ri-arrow-right-line transition-transform group-hover:translate-x-1"></i>
+            <i class="ri-arrow-right-line transition-transform duration-300 group-hover:translate-x-1"></i>
         </span>
         <span id="btnLoader" class="loading loading-spinner loading-md hidden" aria-busy="true"></span>
     </button>
