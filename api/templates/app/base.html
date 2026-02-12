@@ -1,37 +1,45 @@
-{% import "macros/nav.html" as nav %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="black">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title | default('LUVIIO') }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <title>{{ title }}</title>
     
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@3.9.4/dist/full.css" rel="stylesheet" type="text/css" />
+
+    <script src="https://unpkg.com/unpoly@3.9.0/unpoly.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
-        body { background: #050505; color: white; font-family: sans-serif; }
-        /* Grid Background Effect */
-        .bg-grid { position: fixed; inset: 0; background-image: radial-gradient(#ffffff 1px, transparent 0); background-size: 40px 40px; opacity: 0.05; pointer-events: none; z-index: -1; }
+        :root { --font-main: 'Plus Jakarta Sans', sans-serif; }
+        body { font-family: var(--font-main); background-color: #050505; color: #fff; overflow-x: hidden; }
+        
+        /* Premium Dot Grid */
+        .dot-grid {
+            position: fixed; inset: 0; z-index: -1;
+            background-image: radial-gradient(rgba(255,255,255,0.1) 1px, transparent 1px);
+            background-size: 30px 30px;
+            mask-image: radial-gradient(circle at center, black 30%, transparent 90%);
+        }
+
+        /* Unpoly Progress Bar Fix */
+        up-progress-bar { background-color: #3b82f6; height: 2px; }
+        
+        /* Smooth Selection */
+        ::selection { background: rgba(59, 130, 246, 0.3); color: #fff; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col">
-    <div class="bg-grid"></div>
+    <div class="dot-grid"></div>
 
-    {{ nav.render_header(active_page | default('home')) }}
-
-    <main id="main-content" class="flex-1 flex flex-col pt-20"> 
+    <main id="main-content" class="flex-1 flex items-center justify-center p-6" up-main>
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="py-8 text-center text-xs text-gray-600 border-t border-white/5">
-        &copy; 2026 Luviio Technologies.
-    </footer>
-
-    <script>
-  </script>
+    {% block scripts %}{% endblock %}
 </body>
 </html>
