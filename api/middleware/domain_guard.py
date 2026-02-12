@@ -1,22 +1,22 @@
-from fastapi import Request, HTTPException
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi.responses import RedirectResponse
 
 class AuthDomainGuard(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         host = request.headers.get("host", "").lower()
         path = request.url.path
         
-        # 🛡️ Settings
         AUTH_DOMAIN = "auth.luviio.in"
-        ALLOWED_AUTH_PATHS = ["/login", "/signup", "/static"]
+        # 💡 ERROR route ko hamesha allow karna hai
+        ALLOWED_AUTH_PATHS = ["/login", "/signup", "/static", "/error"]
 
         if AUTH_DOMAIN in host:
-            # Check if path is allowed (static files are a must for UI)
+            # Check if path is allowed
             is_allowed = any(path.startswith(p) for p in ALLOWED_AUTH_PATHS)
+            
             if not is_allowed:
-                raise HTTPException(
-                    status_code=403, 
-                    detail="Restricted: Domain is limited to authentication."
-                )
+                # Security redirect to our custom error page
+                return RedirectResponse(url="/error")
         
         return await call_next(request)
