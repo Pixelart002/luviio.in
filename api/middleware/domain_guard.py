@@ -6,30 +6,36 @@ class AuthDomainGuard(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # 🛡️ CONFIGURATION
         AUTH_DOMAIN = "auth.luviio.in"
-        MAIN_DOMAIN = "luviio.in" # Aapka primary domain
+        
+        # Multiple Main Domains (Production + Vercel Previews)
+        MAIN_DOMAINS = [
+            "luviio.in", 
+            "www.luviio.in",
+            "luviio-qgo2xbkon-pixelart002s-projects.vercel.app" # Added your preview URL
+        ]
         
         host = request.headers.get("host", "").lower()
         path = request.url.path
         
-        # Paths jo sirf auth domain par hone chahiye
+        # Paths strictly for auth subdomain
         AUTH_ONLY_PATHS = ["/login", "/signup"]
-        # Paths jo auth domain par allowed hain (static files zaroori hain)
+        # Allowed paths on auth subdomain (including static assets for UI)
         ALLOWED_AUTH_PATHS = AUTH_ONLY_PATHS + ["/static", "/error"]
 
-        # 1. CASE: User is on AUTH SUBDOMAIN (auth.luviio.in)
-        if AUTH_DOMAIN in host:
+        # 1. CASE: Request coming from AUTH SUBDOMAIN
+        if host == AUTH_DOMAIN:
             is_allowed = any(path.startswith(p) for p in ALLOWED_AUTH_PATHS)
             if not is_allowed:
-                # Agar dashboard ya kuch aur try kare, toh troll 404 page
+                # Security redirect for unauthorized paths on auth domain
                 return RedirectResponse(url="/error")
         
-        # 2. CASE: User is on MAIN DOMAIN (luviio.in)
-        else:
-            # Agar koi main domain se login/signup par jaane ki koshish kare
+        # 2. CASE: Request coming from MAIN or PREVIEW Domains
+        elif any(domain in host for domain in MAIN_DOMAINS):
             if path in AUTH_ONLY_PATHS:
-                # Redirect to the dedicated Auth Subdomain
-                # window.location.origin bypass karke absolute URL use kar rahe hain
+                # Strictly redirect /login or /signup to the Auth Subdomain
                 target_url = f"https://{AUTH_DOMAIN}{path}"
                 return RedirectResponse(url=target_url)
 
+        # 3. CASE: Fallback (If someone hits the raw Vercel URL directly)
+        # We allow them to browse, but login/signup will still trigger Case 2
         return await call_next(request)
