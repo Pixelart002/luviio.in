@@ -1,18 +1,14 @@
 {% extends "app/base.html" %}
 {% import "macros/auth_macros.html" as forms %}
 
-{% block title %}Signup - Luviio{% endblock %}
-
 {% block content %}
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<div class="w-full max-w-[440px] px-6 mx-auto">
-    <div class="card bg-[#0A0A0A]/90 backdrop-blur-3xl border border-white/10 shadow-2xl rounded-[1.5rem] animate-fade">
+<div class="w-full max-w-[420px] animate-fade">
+    <div class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] overflow-hidden">
         <div class="card-body p-8 sm:p-10 text-center">
             
             <div class="mb-8">
-                <h2 class="text-2xl font-bold text-white tracking-tight mb-2">Create Account</h2>
-                <p class="text-sm text-neutral-500">Join our verified market platform</p>
+                <h2 class="text-2xl font-bold text-white tracking-tight mb-1">Create Account</h2>
+                <p class="text-xs text-neutral-500 font-medium">Start your journey today</p>
             </div>
             
             {{ forms.social_buttons() }}
@@ -23,62 +19,41 @@
                 
                 {{ forms.submit_button('Sign Up') }}
                 
-                <div class="text-center mt-6 text-sm text-neutral-500">
+                <div class="text-center mt-6 text-xs text-neutral-500 font-medium">
                     <span>Already a member?</span>
-                    <a href="/login" up-target="#main-content" up-transition="cross-fade" class="text-white hover:underline font-semibold ml-1">Log in</a>
+                    <a href="/login" up-target="#main-content" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Log in</a>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<style>
-    .animate-fade {
-        animation: fadeIn 0.5s ease-out forwards;
-    }
-    @keyframes fadeIn {
-        from { opacity: 0; transform: scale(0.98); }
-        to { opacity: 1; transform: scale(1); }
-    }
-</style>
-
 <script>
     (function() {
-        const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
-        const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd'; 
-        const client = supabase.createClient(SB_URL, SB_KEY);
-
+        const client = supabase.createClient('https://enqcujmzxtrbfkaungpm.supabase.co', 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd');
+        
         document.getElementById('signupForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('authBtn');
-            const btnText = document.getElementById('btnText');
-            const btnLoader = document.getElementById('btnLoader');
-
             btn.disabled = true;
-            btnText.classList.add('invisible');
-            btnLoader.classList.remove('hidden');
-
+            
             const { data, error } = await client.auth.signUp({
                 email: document.getElementById('email').value.trim(),
                 password: document.getElementById('password').value,
                 options: { emailRedirectTo: window.location.origin + '/onboarding' }
             });
-
+            
             if (error) {
                 alert(error.message);
                 btn.disabled = false;
-                btnText.classList.remove('invisible');
-                btnLoader.classList.add('hidden');
             } else {
-                alert("Check your email for confirmation!");
+                alert("Confirmation email sent!");
                 window.location.href = "/login";
             }
         });
-
-        window.signInWithProvider = async (provider) => {
-            await client.auth.signInWithOAuth({
-                provider, options: { redirectTo: window.location.origin + '/onboarding' }
-            });
+        
+        window.signInWithProvider = async (p) => {
+            await client.auth.signInWithOAuth({ provider: p, options: { redirectTo: window.location.origin + '/onboarding' } });
         };
     })();
 </script>

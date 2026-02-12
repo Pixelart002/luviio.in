@@ -1,18 +1,14 @@
 {% extends "app/base.html" %}
 {% import "macros/auth_macros.html" as forms %}
 
-{% block title %}Login - Luviio{% endblock %}
-
 {% block content %}
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<div class="w-full max-w-[440px] px-6 mx-auto">
-    <div class="card bg-[#0A0A0A]/95 backdrop-blur-3xl border border-white/10 shadow-2xl rounded-[1.5rem] animate-fade" id="authCard">
+<div class="w-full max-w-[420px] animate-fade">
+    <div class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] overflow-hidden">
         <div class="card-body p-8 sm:p-10 text-center">
             
             <div class="mb-8">
-                <h2 class="text-2xl font-bold text-white tracking-tight mb-2">Welcome Back</h2>
-                <p class="text-sm text-neutral-500">Secure access to your dashboard</p>
+                <h2 class="text-2xl font-bold text-white tracking-tight mb-1">Welcome Back</h2>
+                <p class="text-xs text-neutral-500 font-medium">Secure access to your dashboard</p>
             </div>
             
             {{ forms.social_buttons() }}
@@ -23,47 +19,34 @@
                 
                 {{ forms.submit_button('Sign In') }}
                 
-                <div class="text-center mt-6 text-sm text-neutral-500">
+                <div class="text-center mt-6 text-xs text-neutral-500 font-medium">
                     <span>New here?</span>
-                    <a href="/signup" up-target="#main-content" up-transition="cross-fade" class="text-white hover:underline font-semibold ml-1">Create account</a>
+                    <a href="/signup" up-target="#main-content" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Create account</a>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<style>
-    /* Simple CSS Fade-in (Ultra Lightweight) */
-    .animate-fade {
-        animation: fadeIn 0.5s ease-out forwards;
-    }
-    @keyframes fadeIn {
-        from { opacity: 0; transform: scale(0.98); }
-        to { opacity: 1; transform: scale(1); }
-    }
-</style>
-
 <script>
     (function() {
-        const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
-        const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd'; 
-        const client = supabase.createClient(SB_URL, SB_KEY);
-
+        const client = supabase.createClient('https://enqcujmzxtrbfkaungpm.supabase.co', 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd');
+        
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('authBtn');
             const btnText = document.getElementById('btnText');
             const btnLoader = document.getElementById('btnLoader');
-
+            
             btn.disabled = true;
             btnText.classList.add('invisible');
             btnLoader.classList.remove('hidden');
-
+            
             const { error } = await client.auth.signInWithPassword({
                 email: document.getElementById('email').value.trim(),
                 password: document.getElementById('password').value
             });
-
+            
             if (error) {
                 alert(error.message);
                 btn.disabled = false;
@@ -73,12 +56,9 @@
                 window.location.href = "/dashboard";
             }
         });
-
-        window.signInWithProvider = async (provider) => {
-            await client.auth.signInWithOAuth({
-                provider: provider,
-                options: { redirectTo: window.location.origin + '/onboarding' }
-            });
+        
+        window.signInWithProvider = async (p) => {
+            await client.auth.signInWithOAuth({ provider: p, options: { redirectTo: window.location.origin + '/onboarding' } });
         };
     })();
 </script>
