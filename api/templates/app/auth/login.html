@@ -6,25 +6,19 @@
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-<div class="w-full max-w-[440px] px-4 sm:px-0 mx-auto transition-all duration-500">
-    <div class="card bg-[#0A0A0A]/90 backdrop-blur-3xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-[2rem] overflow-hidden opacity-0" id="authCard">
+<div class="w-full max-w-[440px] px-4 sm:px-0 mx-auto transition-all">
+    <div class="card bg-[#0A0A0A]/90 backdrop-blur-3xl border border-white/10 shadow-2xl rounded-[2rem] opacity-0" id="authCard">
         <div class="card-body p-7 sm:p-10 text-center">
-            
             <div class="mb-8">
                 <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-2">Welcome Back</h2>
                 <p class="text-sm text-neutral-500 font-medium">Secure access to your verified dashboard</p>
             </div>
-            
             {{ forms.social_buttons() }}
-            
-            <form id="loginForm" class="flex flex-col gap-2 text-left">
+            <form id="loginForm" class="flex flex-col gap-1 text-left">
                 <input type="text" id="_hp_check" class="hidden" tabindex="-1">
-                
                 {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
                 {{ forms.input_field('password', 'password', 'Password', 'ri-lock-2-line') }}
-                
                 {{ forms.submit_button('Sign In') }}
-                
                 <div class="text-center mt-8 text-sm text-neutral-500 font-medium">
                     <span>New here?</span>
                     <a href="/signup" up-target="#main-content" up-transition="cross-fade" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Create account</a>
@@ -37,64 +31,45 @@
 <script>
     (function() {
         const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
-        const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd';
-        let client = null;
-        
-        // 1. Safe Init
-        if (typeof supabase !== 'undefined') {
-            client = supabase.createClient(SB_URL, SB_KEY);
-        }
-        
-        // 2. Pure Fade Animation (No Slide, No Glitch)
-        // Duration thoda badhaya hai (0.8s) for premium feel
-        if (typeof gsap !== 'undefined') {
-            gsap.to("#authCard", {
-                opacity: 1,
-                duration: 0.8,
-                ease: "power2.inOut",
-                clearProps: "all"
-            });
+        const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd'; 
+        const client = supabase.createClient(SB_URL, SB_KEY);
+
+        // Gaussian Fade (No jump/slide)
+        if(typeof gsap !== 'undefined') {
+            gsap.to("#authCard", { opacity: 1, duration: 0.8, ease: "power2.inOut" });
         } else {
             document.getElementById('authCard').style.opacity = "1";
         }
-        
-        // 3. Login Logic (Clean & Fast)
+
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            if (!client) return;
-            
             const btn = document.getElementById('authBtn');
             const btnText = document.getElementById('btnText');
             const btnLoader = document.getElementById('btnLoader');
-            
-            // UI State Change
+
             btn.disabled = true;
             btnText.style.opacity = "0";
             btnLoader.classList.remove('hidden');
-            
+
             const { error } = await client.auth.signInWithPassword({
                 email: document.getElementById('email').value.trim(),
                 password: document.getElementById('password').value
             });
-            
+
             if (error) {
                 alert(error.message);
                 btn.disabled = false;
                 btnText.style.opacity = "1";
                 btnLoader.classList.add('hidden');
-                // Subtle shake only on Error
                 gsap.to("#authCard", { x: 8, duration: 0.05, repeat: 3, yoyo: true });
             } else {
                 window.location.href = "/dashboard";
             }
         });
-        
-        // 4. Provider Auth
+
         window.signInWithProvider = async (provider) => {
-            if (!client) return;
             await client.auth.signInWithOAuth({
-                provider: provider,
-                options: { redirectTo: window.location.origin + '/onboarding' }
+                provider, options: { redirectTo: window.location.origin + '/onboarding' }
             });
         };
     })();

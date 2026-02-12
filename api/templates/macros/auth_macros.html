@@ -1,10 +1,8 @@
 {% macro input_field(id, type, placeholder, icon_class, name=None) %}
-{# Fix: Standard h-12 used for zero-error rendering. Added micro-interaction on icon. #}
 <div class="relative group w-full mb-5" role="group">
     <div class="absolute left-4 top-1/2 -translate-y-1/2 z-20 pointer-events-none">
         <i class="{{ icon_class }} text-neutral-500 transition-all duration-300 group-focus-within:text-blue-500 group-focus-within:scale-110" aria-hidden="true"></i>
     </div>
-    
     <input 
         id="{{ id }}" 
         name="{{ name or id }}" 
@@ -21,54 +19,26 @@
 {% endmacro %}
 
 {% macro social_buttons() %}
-{# Fix: Adjusted gap for ultra-small screens (iPhone SE/Fold). #}
 <div class="grid grid-cols-2 gap-3 sm:gap-4 mb-8">
-    <button 
-        type="button" 
-        aria-label="Sign in with Google"
-        class="btn btn-outline border-white/10 bg-white/[0.02] text-white normal-case font-bold rounded-2xl 
-               transition-all duration-200 hover:bg-white/[0.08] hover:border-white/20 active:scale-95 
-               flex items-center justify-center gap-2 h-12 min-h-0" 
-        onclick="signInWithProvider('google')"
-    >
+    <button type="button" class="btn btn-outline border-white/10 bg-white/[0.02] text-white normal-case font-bold rounded-2xl transition-all duration-200 hover:bg-white/[0.08] hover:border-white/20 active:scale-95 flex items-center justify-center gap-2 h-12 min-h-0" onclick="signInWithProvider('google')">
         <i class="ri-google-fill text-lg sm:text-xl"></i> 
         <span class="text-xs sm:text-sm">Google</span>
     </button>
-    
-    <button 
-        type="button" 
-        aria-label="Sign in with GitHub"
-        class="btn btn-outline border-white/10 bg-white/[0.02] text-white normal-case font-bold rounded-2xl 
-               transition-all duration-200 hover:bg-white/[0.08] hover:border-white/20 active:scale-95 
-               flex items-center justify-center gap-2 h-12 min-h-0" 
-        onclick="signInWithProvider('github')"
-    >
+    <button type="button" class="btn btn-outline border-white/10 bg-white/[0.02] text-white normal-case font-bold rounded-2xl transition-all duration-200 hover:bg-white/[0.08] hover:border-white/20 active:scale-95 flex items-center justify-center gap-2 h-12 min-h-0" onclick="signInWithProvider('github')">
         <i class="ri-github-fill text-lg sm:text-xl"></i> 
         <span class="text-xs sm:text-sm">GitHub</span>
     </button>
 </div>
-
-<div class="divider text-[10px] font-black text-neutral-500/50 tracking-[0.25em] mb-8 before:bg-white/5 after:bg-white/5 uppercase select-none">
-    OR EMAIL
-</div>
+<div class="divider text-[10px] font-black text-neutral-500/50 tracking-[0.25em] mb-8 before:bg-white/5 after:bg-white/5 uppercase select-none">OR EMAIL</div>
 {% endmacro %}
 
 {% macro submit_button(text, id='authBtn') %}
-{# Fix: Added relative positioning to prevent glow overflow and standard h-12 for better alignment. #}
-<div class="relative w-full group overflow-visible">
-    <button 
-        type="submit" 
-        id="{{ id }}" 
-        class="btn btn-primary w-full rounded-full mt-2 h-12 min-h-0 text-base font-black text-black bg-white 
-               hover:bg-neutral-100 hover:-translate-y-1 active:scale-[0.98] border-none transition-all 
-               duration-300 hover:shadow-[0_10px_30px_rgba(255,255,255,0.12)]
-               disabled:bg-neutral-800 disabled:text-neutral-500 disabled:cursor-not-allowed"
-    >
+<div class="relative w-full group">
+    <button type="submit" id="{{ id }}" class="btn btn-primary w-full rounded-full mt-2 h-12 min-h-0 text-base font-black text-black bg-white hover:bg-neutral-100 hover:-translate-y-1 active:scale-[0.98] border-none transition-all duration-300 hover:shadow-[0_10px_30px_rgba(255,255,255,0.12)] disabled:bg-neutral-800 disabled:text-neutral-500">
         <span id="btnText" class="flex items-center justify-center gap-2">
-            {{ text }} 
-            <i class="ri-arrow-right-line transition-transform duration-300 group-hover:translate-x-1"></i>
+            {{ text }} <i class="ri-arrow-right-line transition-transform duration-300 group-hover:translate-x-1"></i>
         </span>
-        <span id="btnLoader" class="loading loading-spinner loading-md hidden" aria-busy="true"></span>
+        <span id="btnLoader" class="loading loading-spinner loading-md hidden"></span>
     </button>
 </div>
 {% endmacro %}
