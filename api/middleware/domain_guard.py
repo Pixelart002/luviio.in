@@ -1,16 +1,16 @@
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import RedirectResponse
 
 class AuthDomainGuard(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # ⚡ 1. FAST PASS FOR CORS PREFLIGHT (OPTIONS)
-        # Browser ki purani dushmani khatam karne ke liye
+        # ⚡ CORS Preflight Fast Pass
         if request.method == "OPTIONS":
             return await call_next(request)
 
-        host = request.headers.get("host", "").lower()
-        path = request.url.path
+        # 🎯 Clean Host aur Path nikalna
+        host = request.url.hostname.lower() if request.url.hostname else ""
+        path = request.url.path.rstrip('/') # /login/ ko /login bana dega
         origin = request.headers.get("origin")
         
         AUTH_DOMAIN = "auth.luviio.in"
@@ -20,30 +20,27 @@ class AuthDomainGuard(BaseHTTPMiddleware):
             "luviio-qgo2xbkon-pixelart002s-projects.vercel.app"
         ]
         
+        # In paths ko strictly redirect karna hai
         AUTH_ONLY_PATHS = ["/login", "/signup"]
         ALLOWED_AUTH_PATHS = AUTH_ONLY_PATHS + ["/static", "/error"]
 
-        # 🚀 2. AUTH SUBDOMAIN LOCKDOWN
+        # 1. CASE: Request on AUTH SUBDOMAIN
         if host == AUTH_DOMAIN:
             if not any(path.startswith(p) for p in ALLOWED_AUTH_PATHS):
                 return RedirectResponse(url="/error")
         
-        # 🚀 3. MAIN DOMAIN REDIRECT (Unpoly + CORS Friendly)
-        elif any(domain in host for domain in MAIN_DOMAINS):
+        # 2. CASE: Request on MAIN DOMAIN (Redirect logic)
+        elif any(domain == host for domain in MAIN_DOMAINS) or not host:
             if path in AUTH_ONLY_PATHS:
                 target_url = f"https://{AUTH_DOMAIN}{path}"
                 
-                # Unpoly needs 303 for cross-domain fragment loading
+                # 🔥 STRICT FIX: Status 303 + Headers
                 response = RedirectResponse(url=target_url, status_code=303)
+                response.headers["X-Up-Location"] = target_url # Unpoly fix
                 
-                # Mandatory Unpoly Header
-                response.headers["X-Up-Location"] = target_url
-                
-                # Manual CORS Bridge (Redirect chain bypasses standard CORS middleware)
                 if origin:
                     response.headers["Access-Control-Allow-Origin"] = origin
                     response.headers["Access-Control-Allow-Credentials"] = "true"
-                    response.headers["Vary"] = "Origin"
                 
                 return response
 
