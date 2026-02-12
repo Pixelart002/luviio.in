@@ -53,8 +53,8 @@ async def signup_page(request: Request, x_up_target: str = Header(None)):
         "request": request,
         "title": "Create Account | LUVIIO",
         "up_fragment": x_up_target is not None,
-        "supabase_url": os.environ.get("SUPABASE_URL"),
-        "supabase_anon_key": os.environ.get("SUPABASE_ANON_KEY")
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL"),
+        "SUPABASE_ANON_KEY": os.environ.get("SUPABASE_ANON_KEY")
     })
 
 @app.get("/waitlist", response_class=HTMLResponse)
