@@ -5,9 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title | default('LUVIIO') }}</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
     <style>
         body { background: #050505; color: white; font-family: sans-serif; }
         /* Grid Background Effect */
@@ -26,5 +30,25 @@
     <footer class="py-8 text-center text-xs text-gray-600 border-t border-white/5">
         &copy; 2026 Luviio Technologies.
     </footer>
+
+    <script>
+        // Server se Variables Fetch karo
+        const ENV_URL = '{{ SUPABASE_URL }}';
+        const SB_KEY = '{{ SUPABASE_ANON_KEY }}';
+        
+        // URL Cleaning Logic (Path hatao sirf domain rakho)
+        let SB_URL = ENV_URL;
+        try {
+            if (ENV_URL && ENV_URL.startsWith('http')) {
+                SB_URL = new URL(ENV_URL).origin;
+            }
+        } catch (e) { console.error("Supabase URL Error:", e); }
+
+        // Global Variables set kar diye taaki Login/Signup page use kar sakein
+        window.SB_URL = SB_URL;
+        window.SB_KEY = SB_KEY;
+
+        console.log("Supabase Configured:", SB_URL); // Debugging ke liye
+    </script>
 </body>
 </html>
