@@ -6,31 +6,38 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-# 🛡️ THE PATH FIX (Vercel Compatibility)
-# Parent of 'api' ko path mein daal rahe hain taaki package imports makkhan chalein
+# 🛡️ THE ULTIMATE PATH FIX (Vercel Compatibility)
+# Parent of 'api' ko path mein daal rahe hain taaki absolute imports fail na hon
 BASE_DIR = Path(__file__).resolve().parent 
 ROOT_DIR = BASE_DIR.parent                  
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-# Absolute package import for Middleware
+# --- MODULAR IMPORTS ---
+# Ensure karo ki api/middleware/__init__.py exist karta hai
 try:
+    from api.middleware.cors_setup import setup_cors
     from api.middleware.domain_guard import AuthDomainGuard
 except ImportError:
     # Fallback for local dev environments
+    from middleware.cors_setup import setup_cors
     from middleware.domain_guard import AuthDomainGuard
 
 app = FastAPI()
 
-# --- REGISTER MIDDLEWARE ---
-# Ye domain redirection aur access control handle karega
+# --- 1. SETUP CORS (MANDATORY FIRST) ---
+# Unpoly AJAX requests aur Preflight checks ke liye rasta saaf karta hai
+setup_cors(app)
+
+# --- 2. REGISTER DOMAIN GUARD ---
+# Ye domain isolation aur unauthorized path protection handle karta hai
 app.add_middleware(AuthDomainGuard)
 
 # Mount Static & Templates
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# --- ERROR HANDLERS ---
+# --- 3. ERROR HANDLERS ---
 
 @app.get("/error", response_class=HTMLResponse)
 async def error_page(request: Request):
@@ -46,7 +53,7 @@ async def custom_404_handler(request: Request, __):
     """Redirect all actual 404s to our custom security error page."""
     return RedirectResponse(url="/error")
 
-# --- AUTH ROUTES (Accessible via auth.luviio.in) ---
+# --- 4. AUTH ROUTES (Accessible via auth.luviio.in) ---
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, x_up_target: str = Header(None)):
@@ -55,7 +62,7 @@ async def login_page(request: Request, x_up_target: str = Header(None)):
         "title": "Login | LUVIIO",
         "up_fragment": x_up_target is not None,
         "supabase_url": os.environ.get("SUPABASE_URL"),
-        "supabase_key": os.environ.get("SUPABASE_KEY") # Consistent Env Var
+        "supabase_key": os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
     })
 
 @app.get("/signup", response_class=HTMLResponse)
@@ -65,10 +72,10 @@ async def signup_page(request: Request, x_up_target: str = Header(None)):
         "title": "Create Account | LUVIIO",
         "up_fragment": x_up_target is not None,
         "supabase_url": os.environ.get("SUPABASE_URL"),
-        "supabase_key": os.environ.get("SUPABASE_KEY")
+        "supabase_key": os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
     })
 
-# --- MAIN PAGE ROUTES (Accessible via luviio.in) ---
+# --- 5. MAIN PAGE ROUTES (Accessible via luviio.in) ---
 
 @app.get("/", response_class=HTMLResponse)
 async def render_home(request: Request, x_up_target: str = Header(None)):
