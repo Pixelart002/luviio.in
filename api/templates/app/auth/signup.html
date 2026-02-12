@@ -2,54 +2,43 @@
 {% import "macros/auth_macros.html" as auth %}
 {% import "macros/nav.html" as nav %}
 
+{% block title %}Sign Up | LUVIIO{% endblock %}
+
 {% block head_extra %}
 <style>
-    /* Same styles as login for consistency */
-    .auth-card { 
-        width: 100%; max-width: 420px; padding: 40px; background: var(--card-bg); 
-        backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 24px; opacity: 0; transform: translateY(20px);
-    }
-    .social-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 25px 0; }
-    .btn-social { 
-        display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px; 
-        background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; 
-        color: white; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: 0.2s;
-    }
-    .divider { display: flex; align-items: center; margin-bottom: 25px; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; }
-    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); opacity: 0.5; }
-    .divider span { padding: 0 15px; }
-    .input-group { margin-bottom: 16px; position: relative; }
-    input { width: 100%; padding: 16px 16px 16px 48px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 14px; color: white; font-size: 1rem; }
-    .btn-primary { width: 100%; padding: 16px; background: white; color: black; border: none; border-radius: 100px; font-weight: 700; cursor: pointer; }
-    .toggle-text { margin-top: 24px; text-align: center; font-size: 0.9rem; color: var(--text-dim); }
-    .link { color: white; text-decoration: none; font-weight: 600; cursor: pointer; margin-left: 5px; }
+    /* Initial state for GSAP animation */
+    #authCard { opacity: 0; transform: translateY(20px); }
 </style>
 {% endblock %}
 
 {% block nav %}{{ nav.render_nav() }}{% endblock %}
 
 {% block content %}
-<div class="auth-card" id="authCard">
-    <div class="header-text" style="text-align: center;">
-        <h2 style="font-size: 1.5rem; font-weight: 700;">Create Account</h2>
-        <p style="color: var(--text-dim); font-size: 0.9rem;">Start your verified journey</p>
+<div id="authCard" class="card w-full max-w-[420px] bg-neutral/40 backdrop-blur-2xl border border-white/10 shadow-2xl p-6 sm:p-10 rounded-3xl">
+    
+    <div class="text-center mb-8">
+        <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2">Create Account</h2>
+        <p class="text-zinc-400 text-sm sm:text-base">Start your verified journey</p>
     </div>
 
-    <div class="social-grid">
+    <div class="flex gap-3 mb-6">
         {{ auth.social_button('google', 'ri-google-fill', 'Google') }}
         {{ auth.social_button('github', 'ri-github-fill', 'GitHub') }}
     </div>
 
-    <div class="divider"><span>OR EMAIL</span></div>
+    <div class="divider text-[10px] font-bold text-zinc-500 uppercase tracking-widest opacity-50 mb-6">OR EMAIL</div>
 
-    <form id="signupForm" onsubmit="handleSignup(event)">
+    <form id="signupForm" onsubmit="handleSignup(event)" class="space-y-1">
+        <input type="text" id="_hp_check_signup" class="hidden" tabindex="-1" autocomplete="off">
+        
         {{ auth.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
         {{ auth.input_field('password', 'password', 'Create Password', 'ri-lock-2-line') }}
+        
         {{ auth.primary_button('Sign Up') }}
 
-        <div class="toggle-text">
+        <div class="text-center mt-6 text-sm text-zinc-500 font-medium">
             <span>Already a member?</span>
-            <a href="/login" class="link">Log in</a>
+            <a href="/login" class="text-white hover:text-accent font-bold transition-colors ml-1">Log in</a>
         </div>
     </form>
 </div>
@@ -64,40 +53,100 @@
 
     document.addEventListener("DOMContentLoaded", () => {
         if(typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+        // GSAP Animation Entrance
         gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" });
     });
 
     async function handleSignup(e) {
         e.preventDefault();
         if (isProcessing) return;
+        
+        // Honeypot check
+        if (document.getElementById('_hp_check_signup').value) return;
+
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value;
+
+        // Basic Validation
+        if (password.length < 6) {
+            showToast("Password must be at least 6 characters.", "error");
+            return;
+        }
         
         setLoading(true);
         try {
             const { data, error } = await supabaseClient.auth.signUp({ 
-                email, password, 
-                options: { emailRedirectTo: window.location.origin + '/onboarding' } 
+                email, 
+                password,
+                options: { emailRedirectTo: window.location.origin + '/onboarding' }
             });
+            
             if (error) throw error;
-            showToast("Check your email for confirmation.", "success");
+            
+            // Check if user needs to verify email
+            if (data.user && !data.session) {
+                showToast("Check your email for confirmation link! 📧", "success");
+                document.getElementById('signupForm').reset();
+            } else {
+                showToast("Account Created! Redirecting...", "success");
+                setTimeout(() => window.location.href = "/onboarding", 1000);
+            }
+
         } catch (error) {
             showToast(error.message, "error");
-        } finally { setLoading(false); }
+            // Error Shake Animation
+            gsap.to("#authCard", { x: -6, duration: 0.08, repeat: 3, yoyo: true });
+        } finally { 
+            setLoading(false); 
+        }
     }
 
+    // UI Helper: Loading State
     function setLoading(state) {
         isProcessing = state;
-        document.getElementById('btnText').style.display = state ? 'none' : 'block';
-        document.getElementById('btnLoader').style.display = state ? 'block' : 'none';
-        document.getElementById('authBtn').disabled = state;
+        const btnText = document.getElementById('btnText');
+        const btnLoader = document.getElementById('btnLoader');
+        const btn = document.getElementById('authBtn');
+
+        if(state) {
+            btnText.classList.add('hidden');
+            btnLoader.classList.remove('hidden');
+            btn.disabled = true;
+        } else {
+            btnText.classList.remove('hidden');
+            btnLoader.classList.add('hidden');
+            btn.disabled = false;
+        }
     }
 
+    // UI Helper: Toast Notification (DaisyUI Style)
     function showToast(msg, type) {
         const toast = document.getElementById('toast');
-        document.getElementById('toastMsg').innerText = msg;
-        toast.className = `toast visible ${type}`;
-        setTimeout(() => toast.className = "toast", 3000);
+        const alertDiv = toast.querySelector('.alert') || document.createElement('div');
+        
+        // Ensure structure matches base.html toast
+        if (!toast.querySelector('.alert')) {
+            alertDiv.className = 'alert border border-white/10 shadow-xl';
+            toast.appendChild(alertDiv);
+        }
+
+        // Reset classes
+        alertDiv.className = 'alert border border-white/10 shadow-xl';
+        
+        if (type === 'success') {
+            alertDiv.classList.add('alert-success', 'text-black'); // DaisyUI Success
+        } else {
+            alertDiv.classList.add('alert-error', 'text-white');   // DaisyUI Error
+        }
+
+        alertDiv.innerHTML = `<span class="font-semibold">${msg}</span>`;
+        
+        // Animation
+        toast.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
+        
+        setTimeout(() => {
+            toast.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none');
+        }, 3500);
     }
 </script>
 {% endblock %}
