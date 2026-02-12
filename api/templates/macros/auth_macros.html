@@ -4,7 +4,7 @@
 {% macro social_button(provider, icon_class, label) %}
 <button type="button" 
         onclick="signInWithProvider('{{ provider }}')"
-        class="btn btn-outline border-zinc-700 bg-zinc-900/50 hover:bg-white hover:text-black hover:border-white text-zinc-300 flex-1 w-full gap-2 normal-case font-medium h-12 text-sm sm:text-base transition-all rounded-xl">
+        class="btn btn-outline border-zinc-800 bg-zinc-900/40 hover:bg-white hover:text-black hover:border-white text-zinc-300 flex-1 w-full gap-2 normal-case font-medium h-12 text-sm sm:text-base transition-all rounded-xl">
     <i class="{{ icon_class }} text-lg"></i> 
     <span class="truncate">{{ label }}</span>
 </button>
@@ -17,9 +17,8 @@
         <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-white transition-colors">
             <i class="{{ icon_class }} text-xl"></i>
         </div>
-        
         <input type="{{ type }}" id="{{ id }}" placeholder="{{ placeholder }}" required 
-               class="input input-bordered w-full pl-12 bg-zinc-900/50 border-white/10 focus:border-blue-500 focus:bg-black text-white placeholder-zinc-500 rounded-xl h-12 text-base shadow-sm transition-all"
+               class="input input-bordered w-full pl-12 bg-zinc-900/60 border-white/10 focus:border-white focus:bg-black text-white placeholder-zinc-500 rounded-xl h-12 text-base shadow-lg transition-all"
                {% if type == 'email' %}autocomplete="email"{% endif %}
                {% if type == 'password' %}autocomplete="current-password"{% endif %}>
     </div>
@@ -27,6 +26,7 @@
 {% endmacro %}
 
 {# --- MACRO: Primary Button --- #}
+{# w-full ensures it stretches. rounded-xl fixes the circle issue. #}
 {% macro primary_button(text, loader_id='btnLoader') %}
 <button type="submit" id="authBtn" 
         class="btn w-full bg-white hover:bg-zinc-200 text-black border-none rounded-xl font-bold text-base h-12 mt-2 shadow-xl shadow-white/5 active:scale-95 transition-transform disabled:opacity-70 disabled:scale-100">

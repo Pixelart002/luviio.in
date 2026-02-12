@@ -7,7 +7,7 @@
 {% block nav %}{{ nav.render_nav() }}{% endblock %}
 
 {% block content %}
-<div id="authCard" class="card w-full max-w-md bg-zinc-900/60 backdrop-blur-xl border border-white/10 shadow-2xl p-6 sm:p-10 rounded-3xl">
+<div id="authCard" class="card w-full max-w-[400px] bg-black/40 backdrop-blur-2xl border border-white/10 shadow-2xl p-6 sm:p-8 rounded-3xl">
     
     <div class="text-center mb-8">
         <h2 class="text-3xl font-bold text-white tracking-tight mb-2">Create Account</h2>
@@ -19,7 +19,7 @@
         {{ auth.social_button('github', 'ri-github-fill', 'GitHub') }}
     </div>
 
-    <div class="divider text-xs font-bold text-zinc-500 uppercase tracking-widest my-6">OR EMAIL</div>
+    <div class="divider text-[10px] font-bold text-zinc-600 uppercase tracking-widest my-6">OR EMAIL</div>
 
     <form onsubmit="handleSignup(event)" class="w-full">
         <input type="text" id="_hp_check_signup" class="hidden" tabindex="-1" autocomplete="off">
@@ -29,9 +29,9 @@
         
         {{ auth.primary_button('Sign Up') }}
 
-        <div class="text-center mt-6 text-sm text-zinc-500">
+        <div class="text-center mt-6 text-sm text-zinc-500 font-medium">
             <span>Already a member?</span>
-            <a href="/login" class="text-white hover:text-blue-400 font-semibold ml-1 transition-colors">Log in</a>
+            <a href="/login" class="text-white hover:text-blue-400 ml-1 transition-colors">Log in</a>
         </div>
     </form>
 </div>
@@ -46,12 +46,21 @@
 
     document.addEventListener("DOMContentLoaded", () => {
         if(typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-        
-        // Safe Animation
         if(typeof gsap !== 'undefined') {
-            gsap.from("#authCard", { opacity: 0, y: 20, duration: 0.6, ease: "power2.out" });
+            gsap.from("#authCard", { opacity: 0, y: 30, duration: 0.8, ease: "power3.out" });
         }
     });
+
+    async function signInWithProvider(providerName) {
+        if(!supabaseClient) return;
+        try {
+            const { error } = await supabaseClient.auth.signInWithOAuth({
+                provider: providerName,
+                options: { redirectTo: window.location.origin + '/onboarding' }
+            });
+            if (error) throw error;
+        } catch (error) { showToast("Connection Error: " + error.message, "error"); }
+    }
 
     async function handleSignup(e) {
         e.preventDefault();
@@ -76,16 +85,14 @@
             
             if (data.user && !data.session) {
                 showToast("Check your email for confirmation.", "success");
-                document.getElementById('authCard').querySelector('form').reset();
+                document.querySelector('form').reset();
             } else {
                 showToast("Account Created!", "success");
                 setTimeout(() => window.location.href = "/onboarding", 1000);
             }
         } catch (error) {
             showToast(error.message, "error");
-            if(typeof gsap !== 'undefined') {
-                gsap.fromTo("#authCard", {x: -5}, {x: 5, duration: 0.1, repeat: 3, yoyo: true});
-            }
+            if(typeof gsap !== 'undefined') gsap.fromTo("#authCard", {x: -5}, {x: 5, duration: 0.1, repeat: 3, yoyo: true});
         } finally { setLoading(false); }
     }
 
@@ -94,25 +101,19 @@
         const btnText = document.getElementById('btnText');
         const btnLoader = document.getElementById('btnLoader');
         if(state) {
-            btnText.classList.add('hidden');
-            btnLoader.classList.remove('hidden');
+            if(btnText) btnText.classList.add('hidden');
+            if(btnLoader) btnLoader.classList.remove('hidden');
         } else {
-            btnText.classList.remove('hidden');
-            btnLoader.classList.add('hidden');
+            if(btnText) btnText.classList.remove('hidden');
+            if(btnLoader) btnLoader.classList.add('hidden');
         }
     }
 
     function showToast(msg, type) {
         const toast = document.getElementById('toast');
         const alert = toast.querySelector('.alert');
-        if (document.getElementById('toastMsg')) {
-            document.getElementById('toastMsg').innerText = msg;
-        }
-        
-        if (alert) {
-             alert.className = `alert shadow-lg font-semibold border-none ${type === 'success' ? 'alert-success text-black' : 'alert-error text-white'}`;
-        }
-        
+        if(document.getElementById('toastMsg')) document.getElementById('toastMsg').innerText = msg;
+        if(alert) alert.className = `alert shadow-lg font-semibold border-none ${type === 'success' ? 'alert-success text-black' : 'alert-error text-white'}`;
         toast.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
         setTimeout(() => toast.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none'), 3000);
     }
