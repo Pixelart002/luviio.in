@@ -32,54 +32,6 @@
     </footer>
 
     <script>
-// --- DEBUG VERSION AUTH SCRIPT ---
-const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
-const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd'; // Ye key sahi hai na check kar lena
-
-let supabaseClient = null;
-
-document.addEventListener("DOMContentLoaded", () => {
-    console.log("Initializing Supabase...");
-    
-    if(typeof supabase !== 'undefined') {
-        try {
-            supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-            console.log("Supabase Client Ready ✅");
-        } catch (e) {
-            console.error("Supabase Init Failed ❌", e);
-            alert("Supabase Error: Check Console");
-        }
-    } else {
-        alert("Error: Supabase SDK load nahi hua! Internet check karo.");
-    }
-});
-
-async function signInWithProvider(providerName) {
-    console.log(`Attempting login with ${providerName}...`);
-    
-    if(!supabaseClient) {
-        alert("Supabase connect nahi hai! Page refresh karo.");
-        return;
-    }
-
-    try {
-        // Current URL check karo
-        const redirectUrl = window.location.origin + '/onboarding';
-        console.log("Redirecting to:", redirectUrl);
-
-        const { data, error } = await supabaseClient.auth.signInWithOAuth({
-            provider: providerName,
-            options: { redirectTo: redirectUrl }
-        });
-
-        if (error) throw error;
-        
-        console.log("Redirecting to provider...");
-        
-    } catch (error) {
-        console.error("Login Failed:", error);
-        alert(`Login Error: ${error.message}`);
-    }
-}  </script>
+  </script>
 </body>
 </html>
