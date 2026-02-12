@@ -7,7 +7,7 @@
 {% block nav %}{{ nav.render_nav() }}{% endblock %}
 
 {% block content %}
-<div id="authCard" class="card w-full max-w-md bg-black/60 backdrop-blur-xl border border-zinc-800 shadow-2xl p-6 sm:p-8 rounded-3xl opacity-0 translate-y-5">
+<div id="authCard" class="card w-full max-w-md force-card shadow-2xl p-6 sm:p-8 rounded-3xl">
     
     <div class="text-center mb-8">
         <h2 class="text-3xl font-bold text-white tracking-tight mb-2">Create Account</h2>
@@ -46,12 +46,16 @@
 
     document.addEventListener("DOMContentLoaded", () => {
         if(typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-        gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.6, ease: "power2.out", delay: 0.1 });
+        gsap.from("#authCard", { y: 20, opacity: 0, duration: 0.5, clearProps: "all" });
     });
 
     async function handleSignup(e) {
         e.preventDefault();
         if (isProcessing) return;
+        
+        // Honeypot
+        if (document.getElementById('_hp_check_signup').value) return;
+
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value;
 
