@@ -13,7 +13,7 @@ if current_dir not in sys.path:
     sys.path.append(current_dir)
 
 # --- IMPORT NEW ROUTERS ---
-from routes.resend_mail import router as resend_router
+from routes.resend_mail import router as resend_mail_router
 from routes.auth import router as auth_router
 
 app = FastAPI()
