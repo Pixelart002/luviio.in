@@ -39,14 +39,29 @@
 
 {% block scripts %}
 <script>
-    const SB_URL = '{{ supabase_url }}';
+    // 🛡️ URL CLEANING LOGIC (Ye zaruri hai)
+    const ENV_URL = '{{ supabase_url }}'; // Ye wo lamba wala URL hai
     const SB_KEY = '{{ supabase_anon_key }}';
+    
+    let CLEAN_SB_URL = ENV_URL;
+    try {
+        // Agar URL http se start hota hai, toh sirf domain nikalo (path hata do)
+        if (ENV_URL && ENV_URL.startsWith('http')) {
+            CLEAN_SB_URL = new URL(ENV_URL).origin;
+        }
+    } catch (e) {
+        console.error("URL Parse Error:", e);
+    }
+    // 🛡️ Logic End
+    
     let supabaseClient = null;
     let isProcessing = false;
     
     document.addEventListener("DOMContentLoaded", () => {
-        if (typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-        // Subtle Entrance Animation
+        // Ab hum CLEAN_SB_URL use kar rahe hain
+        if (typeof supabase !== 'undefined') supabaseClient = supabase.createClient(CLEAN_SB_URL, SB_KEY);
+        
+        // Entrance Animation
         if (typeof gsap !== 'undefined') {
             gsap.from("#authCard", { opacity: 0, y: 30, duration: 0.8, ease: "power3.out" });
         }
@@ -58,6 +73,7 @@
         try {
             const { error } = await supabaseClient.auth.signInWithOAuth({
                 provider: providerName,
+                // Onboarding page par wapas aayega
                 options: { redirectTo: window.location.origin + '/onboarding' }
             });
             if (error) throw error;
