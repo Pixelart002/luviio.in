@@ -1,30 +1,51 @@
-{% import "macros/nav.html" as nav %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title | default('LUVIIO') }}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=no">
+    <title>{% block title %}LUVIIO{% endblock %}</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
     <style>
-        body { background: #050505; color: white; font-family: sans-serif; }
-        /* Grid Background Effect */
-        .bg-grid { position: fixed; inset: 0; background-image: radial-gradient(#ffffff 1px, transparent 0); background-size: 40px 40px; opacity: 0.05; pointer-events: none; z-index: -1; }
+        :root { 
+            --bg: #050505; --card-bg: rgba(20, 20, 20, 0.6); --border: rgba(255,255,255,0.08); 
+            --text: #fff; --text-dim: #a1a1aa; --accent: #3b82f6;
+            --success: #22c55e; --error: #ef4444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body { 
+            background: var(--bg); color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; 
+            height: 100dvh; width: 100vw; overflow: hidden; display: flex; flex-direction: column;
+            user-select: none; -webkit-user-select: none;
+        }
+        input { user-select: text; -webkit-user-select: text; }
+        .grid-bg { 
+            position: absolute; inset: 0; z-index: -1; opacity: 0.12; pointer-events: none;
+            background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 80px 80px; mask-image: radial-gradient(circle at center, black 40%, transparent 80%);
+        }
+        main { flex: 1; display: flex; justify-content: center; align-items: center; padding: 20px; z-index: 5; }
+        .toast { 
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px);
+            background: rgba(20, 20, 20, 0.95); border: 1px solid var(--border);
+            padding: 12px 24px; border-radius: 50px; display: flex; align-items: center; gap: 10px;
+            opacity: 0; pointer-events: none; backdrop-filter: blur(10px); transition: 0.4s;
+        }
+        .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
     </style>
+    {% block head_extra %}{% endblock %}
 </head>
-<body class="min-h-screen flex flex-col">
-    <div class="bg-grid"></div>
-
-    {{ nav.render_header(active_page | default('home')) }}
-
-    <main id="main-content" class="flex-1 flex flex-col pt-20"> 
+<body>
+    <div class="grid-bg"></div>
+    {% block nav %}{% endblock %}
+    <main>
         {% block content %}{% endblock %}
     </main>
-
-    <footer class="py-8 text-center text-xs text-gray-600 border-t border-white/5">
-        &copy; 2026 Luviio Technologies.
-    </footer>
+    <div id="toast" class="toast"><i class="ri-information-fill"></i><span id="toastMsg"></span></div>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

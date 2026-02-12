@@ -1,42 +1,110 @@
 {% extends "app/base.html" %}
 {% import "macros/auth_macros.html" as auth %}
+{% import "macros/nav.html" as nav %}
 
-{% block title %}Login | LUVIIO{% endblock %}
+{% block head_extra %}
+<style>
+    .auth-card { 
+        width: 100%; max-width: 420px; padding: 40px; background: var(--card-bg); 
+        backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 24px; opacity: 0; transform: translateY(20px);
+    }
+    .social-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 25px 0; }
+    .btn-social { 
+        display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px; 
+        background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; 
+        color: white; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: 0.2s;
+    }
+    .btn-social:hover { background: rgba(255,255,255,0.08); transform: translateY(-2px); }
+    .divider { display: flex; align-items: center; margin-bottom: 25px; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); opacity: 0.5; }
+    .divider span { padding: 0 15px; }
+    .input-group { margin-bottom: 16px; position: relative; }
+    .input-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-dim); font-size: 1.1rem; }
+    input { width: 100%; padding: 16px 16px 16px 48px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 14px; color: white; font-size: 1rem; }
+    input:focus { border-color: var(--accent); }
+    .btn-primary { 
+        width: 100%; padding: 16px; background: white; color: black; border: none; border-radius: 100px; 
+        font-weight: 700; font-size: 1rem; cursor: pointer; margin-top: 10px; transition: 0.2s;
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(255,255,255,0.15); }
+    .loader { display: none; width: 20px; height: 20px; border: 2px solid rgba(0,0,0,0.1); border-top-color: #000; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .toggle-text { margin-top: 24px; text-align: center; font-size: 0.9rem; color: var(--text-dim); }
+    .link { color: white; text-decoration: none; font-weight: 600; cursor: pointer; margin-left: 5px; }
+</style>
+{% endblock %}
+
+{% block nav %}{{ nav.render_nav() }}{% endblock %}
 
 {% block content %}
 <div class="auth-card" id="authCard">
-  <div class="header-text">
-    <div class="title" id="formTitle">Welcome Back</div>
-    <div class="subtitle" id="formSubtitle">Secure access to your dashboard</div>
-  </div>
-  
-  <div class="social-grid">
-    {{ auth.social_button('google', 'ri-google-fill', 'Google') }}
-    {{ auth.social_button('github', 'ri-github-fill', 'GitHub') }}
-  </div>
-  
-  <div class="divider"><span>OR EMAIL</span></div>
-  
-  <form id="authForm" onsubmit="handleAuth(event)">
-    <input type="text" id="_hp_check" style="display:none;" tabindex="-1" autocomplete="off">
-    
-    {{ auth.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
-    {{ auth.input_field('password', 'password', 'Password', 'ri-lock-2-line') }}
-    
-    {{ auth.primary_button('Sign In') }}
-    
-    <div class="toggle-text">
-      <span id="footerPrompt">New here?</span>
-      <a href="/signup" class="link">Create account</a>
+    <div class="header-text" style="text-align: center;">
+        <h2 style="font-size: 1.5rem; font-weight: 700;">Welcome Back</h2>
+        <p style="color: var(--text-dim); font-size: 0.9rem;">Secure access to your dashboard</p>
     </div>
-  </form>
+
+    <div class="social-grid">
+        {{ auth.social_button('google', 'ri-google-fill', 'Google') }}
+        {{ auth.social_button('github', 'ri-github-fill', 'GitHub') }}
+    </div>
+
+    <div class="divider"><span>OR EMAIL</span></div>
+
+    <form id="authForm" onsubmit="handleAuth(event)">
+        {{ auth.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
+        {{ auth.input_field('password', 'password', 'Password', 'ri-lock-2-line') }}
+        {{ auth.primary_button('Sign In') }}
+
+        <div class="toggle-text">
+            <span>New here?</span>
+            <a href="/signup" class="link">Create account</a>
+        </div>
+    </form>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-  const SB_URL = '{{ supabase_url }}';
-  const SB_KEY = '{{ supabase_anon_key }}';
-  // ... baaki script wahi rahegi
+    const SB_URL = '{{ supabase_url }}';
+    const SB_KEY = '{{ supabase_anon_key }}';
+    let supabaseClient = null;
+    let isProcessing = false;
+
+    document.addEventListener("DOMContentLoaded", () => {
+        if(typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+        gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" });
+    });
+
+    async function handleAuth(e) {
+        e.preventDefault();
+        if (isProcessing) return;
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        
+        setLoading(true);
+        try {
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            if (error) throw error;
+            showToast("Access Granted", "success");
+            setTimeout(() => window.location.href = "/dashboard", 800);
+        } catch (error) {
+            showToast(error.message, "error");
+            gsap.to(".auth-card", { x: -6, duration: 0.08, repeat: 3, yoyo: true });
+        } finally { setLoading(false); }
+    }
+
+    function setLoading(state) {
+        isProcessing = state;
+        document.getElementById('btnText').style.display = state ? 'none' : 'block';
+        document.getElementById('btnLoader').style.display = state ? 'block' : 'none';
+        document.getElementById('authBtn').disabled = state;
+    }
+
+    function showToast(msg, type) {
+        const toast = document.getElementById('toast');
+        document.getElementById('toastMsg').innerText = msg;
+        toast.className = `toast visible ${type}`;
+        setTimeout(() => toast.className = "toast", 3000);
+    }
 </script>
 {% endblock %}

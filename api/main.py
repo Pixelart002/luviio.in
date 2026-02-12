@@ -6,37 +6,28 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
-# ----------------------------------------------------------------
 # 🛡️ THE PATH FIX (Vercel Compatibility)
-# ----------------------------------------------------------------
-current_file_path = Path(__file__).resolve()
-api_dir = current_file_path.parent 
+BASE_DIR = Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
-if str(api_dir) not in sys.path:
-    sys.path.insert(0, str(api_dir))
-
-# --- IMPORT ONLY EXISTING ROUTERS ---
+# --- IMPORT EXISTING ROUTERS ---
 try:
-    # Sirf resend_mail import kar rahe hain kyunki wahi file exist karti hai
     from routes.resend_mail import router as resend_mail_router
-except ImportError as e:
-    print(f"⚠️ Resend Router missing, check api/routes/resend_mail.py: {e}")
+except ImportError:
     resend_mail_router = None
 
 app = FastAPI()
 
-# 1. Path Setup
-BASE_DIR = api_dir
+# Mount Static & Templates
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# --- CONNECT EXISTING ROUTERS ---
 if resend_mail_router:
     app.include_router(resend_mail_router)
 
-# --- PAGE ROUTES (Directly in main.py) ---
+# --- PAGE ROUTES ---
 
-# 1. Home Page
 @app.get("/", response_class=HTMLResponse)
 async def render_home(request: Request, x_up_target: str = Header(None)):
     return templates.TemplateResponse("app/pages/home.html", {
@@ -46,19 +37,16 @@ async def render_home(request: Request, x_up_target: str = Header(None)):
         "up_fragment": x_up_target is not None
     })
 
-# 2. Login Page (Path based on Screenshot 10)
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, x_up_target: str = Header(None)):
     return templates.TemplateResponse("app/auth/login.html", {
         "request": request,
         "title": "Login | LUVIIO",
         "up_fragment": x_up_target is not None,
-        # 🔒 Macros ke liye Env Variables yahan se pass honge
         "supabase_url": os.environ.get("SUPABASE_URL"),
         "supabase_anon_key": os.environ.get("SUPABASE_ANON_KEY")
     })
 
-# 3. Signup Page (Path based on Screenshot 10)
 @app.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request, x_up_target: str = Header(None)):
     return templates.TemplateResponse("app/auth/signup.html", {
@@ -69,7 +57,6 @@ async def signup_page(request: Request, x_up_target: str = Header(None)):
         "supabase_anon_key": os.environ.get("SUPABASE_ANON_KEY")
     })
 
-# 4. Waitlist Fragment
 @app.get("/waitlist", response_class=HTMLResponse)
 async def render_waitlist(request: Request, x_up_target: str = Header(None)):
     return templates.TemplateResponse("app/pages/waitlist.html", {
