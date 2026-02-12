@@ -39,8 +39,8 @@
 
 {% block scripts %}
 <script>
-    const SB_URL = '{{ supabase_url }}';
-    const SB_KEY = '{{ supabase_anon_key }}';
+    const SB_URL = '{{ SUPABASE_URL }}';
+    const SB_KEY = '{{ SUPABASE_ANON_KEY }}';
     let supabaseClient = null;
     let isProcessing = false;
 
