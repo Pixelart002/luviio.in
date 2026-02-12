@@ -14,7 +14,7 @@
 
         {{ forms.social_buttons() }}
 
-        <form onsubmit="handleAuth(event, 'signup')" class="flex flex-col">
+        <form id="signupForm" class="flex flex-col">
             <input type="text" id="_hp_check" class="hidden" tabindex="-1" autocomplete="off">
             
             {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
@@ -24,8 +24,8 @@
 
             <div class="text-center mt-6 text-sm text-dim">
                 <span>Already a member?</span>
-                <a href="/" 
-                   up-target="#main-content" 
+                <a href="/login" 
+                   up-target="body" 
                    up-transition="move-right" 
                    class="link link-hover text-white font-semibold ml-1 hover:text-blue-400 transition-colors">
                    Log in
@@ -34,4 +34,98 @@
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 1. Get Variables from FastAPI context (os.environ)
+    const SB_URL = "{{ supabase_url }}";
+    const SB_KEY = "{{ supabase_anon_key }}";
+
+    // 2. Local Initialization
+    let supabaseInstance = null;
+    if (typeof supabase !== 'undefined') {
+        supabaseInstance = supabase.createClient(SB_URL, SB_KEY);
+    }
+
+    // 3. Handle Signup Logic
+    async function handleSignup(e) {
+        e.preventDefault();
+        
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        const btn = document.getElementById('authBtn');
+        const btnText = document.getElementById('btnText');
+        const btnLoader = document.getElementById('btnLoader');
+
+        if (!supabaseInstance) {
+            console.error("Supabase SDK not found");
+            return;
+        }
+
+        // Validate Password Length (Senior Dev Practice)
+        if (password.length < 6) {
+            alert("Password must be at least 6 characters.");
+            return;
+        }
+
+        // UI Loading State Start
+        btn.disabled = true;
+        btnText.classList.add('hidden');
+        btnLoader.classList.remove('hidden');
+
+        try {
+            const { data, error } = await supabaseInstance.auth.signUp({
+                email: email,
+                password: password,
+                options: {
+                    // Verification email redirection
+                    emailRedirectTo: window.location.origin + '/onboarding'
+                }
+            });
+
+            if (error) throw error;
+
+            if (data.user && data.session) {
+                // Case: Auto-login after signup
+                window.location.href = "/onboarding";
+            } else {
+                // Case: Email confirmation sent
+                alert("Check your email for the confirmation link!");
+                document.getElementById('signupForm').reset();
+            }
+
+        } catch (err) {
+            alert(err.message || "Signup failed");
+            
+            // Shake UI on Error
+            const card = document.getElementById('authCard');
+            if(typeof gsap !== 'undefined') {
+                gsap.to(card, { x: -6, duration: 0.08, repeat: 3, yoyo: true });
+            }
+        } finally {
+            // UI Loading State End
+            btn.disabled = false;
+            btnText.classList.remove('hidden');
+            btnLoader.classList.add('hidden');
+        }
+    }
+
+    // 4. Handle OAuth (Google/GitHub)
+    async function signInWithProvider(provider) {
+        if (!supabaseInstance) return;
+        
+        const { error } = await supabaseInstance.auth.signInWithOAuth({
+            provider: provider,
+            options: {
+                redirectTo: window.location.origin + '/onboarding'
+            }
+        });
+        
+        if (error) alert(error.message);
+    }
+
+    // Event Listener setup
+    document.getElementById('signupForm').addEventListener('submit', handleSignup);
+</script>
 {% endblock %}
