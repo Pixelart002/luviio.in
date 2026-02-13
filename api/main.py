@@ -1,7 +1,7 @@
 import os
 import sys
 from pathlib import Path
-from fastapi import FastAPI, Request, Header
+from fastapi import FastAPI, Request, Header, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -13,7 +13,6 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 # --- MODULAR IMPORTS ---
-# Ensure karo ki api/middleware/__init__.py exist karta hai
 try:
     from api.middleware.cors_setup import setup_cors
     from api.middleware.domain_guard import AuthDomainGuard
@@ -24,22 +23,34 @@ except ImportError:
 app = FastAPI()
 
 # --- 1. SETUP CORS (MANDATORY FIRST) ---
-# Subdomain redirection ke waqt AJAX/Unpoly requests ko block hone se bachata hai
+# Preflight (OPTIONS) requests ko handle karne ke liye
 setup_cors(app)
 
-# --- 2. REGISTER DOMAIN GUARD (Subdomain Logic) ---
-# Ye middleware check karega ki request luviio.in se hai ya auth.luviio.in se
+# --- 2. REGISTER DOMAIN GUARD ---
+# Subdomain isolation aur redirection logic
 app.add_middleware(AuthDomainGuard)
 
 # Mount Static & Templates
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# --- 3. ERROR HANDLERS ---
+# --- 3. LOG SILENCERS (Stop 'faltoo' entries) ---
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Browser ko 'No Content' bhejkar chup karwane ke liye."""
+    return Response(status_code=204)
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots():
+    """Bots aur crawlers ke liye clean response."""
+    return Response(content="User-agent: *\nDisallow:", media_type="text/plain")
+
+# --- 4. ERROR HANDLERS ---
 
 @app.get("/error", response_class=HTMLResponse)
 async def error_page(request: Request):
-    """Auth domain par unauthorised access hone par ye dikhega."""
+    """Professional 404/Access Denied page."""
     return templates.TemplateResponse("app/err/404.html", {
         "request": request,
         "title": "404 - Access Denied | LUVIIO"
@@ -47,10 +58,10 @@ async def error_page(request: Request):
 
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, __):
+    """Actual 404s ko custom error page par redirect karega."""
     return RedirectResponse(url="/error")
 
-# --- 4. AUTH ROUTES (Accessible via auth.luviio.in) ---
-# Middleware ensure karega ki ye routes main domain par block hon
+# --- 5. AUTH ROUTES (Accessible via auth.luviio.in) ---
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, x_up_target: str = Header(None)):
@@ -72,7 +83,7 @@ async def signup_page(request: Request, x_up_target: str = Header(None)):
         "supabase_key": os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
     })
 
-# --- 5. MAIN PAGE ROUTES (Accessible via luviio.in) ---
+# --- 6. MAIN PAGE ROUTES (Accessible via luviio.in) ---
 
 @app.get("/", response_class=HTMLResponse)
 async def render_home(request: Request, x_up_target: str = Header(None)):
