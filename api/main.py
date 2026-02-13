@@ -77,7 +77,7 @@ async def login_page(request: Request, x_up_target: str = Header(None)):
 
 @app.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request, x_up_target: str = Header(None)):
-    logger.info(f"Rendering Signup Page")
+    logger.info(f"Signup page accessed by {request.client.host}")
     return templates.TemplateResponse("app/auth/signup.html", {
         "request": request,
         "title": "Create Account | LUVIIO",
