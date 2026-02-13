@@ -21,7 +21,7 @@
                 
                 <div class="text-center mt-6 text-xs text-neutral-500 font-medium">
                     <span>New here?</span>
-                    <a href="https://auth.luviio.in/signup" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Create account</a>
+                    <a href="/signup" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Create account</a>
                 </div>
             </form>
         </div>
@@ -30,10 +30,9 @@
 
 <script>
     (function() {
-        // 🔥 FIX 1: Hardcoded credentials ki jagah FastAPI se aane wale variables use karo
+        // 🔥 FIX: Environment nomenclature sync (SB_URL / SB_KEY)
         const SB_URL = "{{ supabase_url }}";
         const SB_KEY = "{{ supabase_key }}";
-        const MAIN_DOMAIN = "https://luviio.in"; 
 
         if (!SB_URL || SB_URL === "None") {
             console.error("Supabase configuration is missing!");
@@ -48,12 +47,10 @@
         const btnText = document.getElementById('btnText');
         const btnLoader = document.getElementById('btnLoader');
 
-        // Logic to reset UI after error
         const resetUI = () => {
             btn.disabled = false;
             btnText.classList.remove('invisible');
             btnLoader.classList.add('hidden');
-            // Error Shake Effect
             authCard.classList.add('animate-shake');
             setTimeout(() => authCard.classList.remove('animate-shake'), 500);
         };
@@ -61,7 +58,6 @@
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            // UI Loading State
             btn.disabled = true;
             btnText.classList.add('invisible');
             btnLoader.classList.remove('hidden');
@@ -74,8 +70,17 @@
                 
                 if (error) throw error;
 
-                // 🔥 FIX 2: Login ke baad wapas MAIN DOMAIN par redirect karna hai
-                window.location.href = `${MAIN_DOMAIN}/dashboard`;
+                // 🔥 LOGICAL REDIRECTION
+                // Metadata mein 'onboarded' flag check kar rahe hain
+                const userMetadata = data.user.user_metadata;
+                
+                if (userMetadata && userMetadata.onboarded === true) {
+                    console.log("Existing user detected - redirecting to dashboard");
+                    window.location.href = "/dashboard";
+                } else {
+                    console.log("New user detected - redirecting to onboarding");
+                    window.location.href = "/onboarding";
+                }
 
             } catch (error) {
                 console.error("Login failed:", error.message);
@@ -84,14 +89,13 @@
             }
         });
         
-        // OAuth Fix
         window.signInWithProvider = async (p) => {
             try {
                 const { error } = await client.auth.signInWithOAuth({ 
                     provider: p, 
                     options: { 
-                        // Redirect wapas main domain ke onboarding par
-                        redirectTo: `${MAIN_DOMAIN}/onboarding` 
+                        // Relative path check handles internal routing
+                        redirectTo: window.location.origin + '/onboarding' 
                     } 
                 });
                 if (error) throw error;
@@ -103,7 +107,6 @@
 </script>
 
 <style>
-    /* Professional Shake Animation for errors */
     @keyframes shake {
         0%, 100% { transform: translateX(0); }
         25% { transform: translateX(-10px); }

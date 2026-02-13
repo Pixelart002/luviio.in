@@ -21,7 +21,7 @@
                 
                 <div class="text-center mt-6 text-xs text-neutral-500 font-medium">
                     <span>Already a member?</span>
-                    <a href="https://auth.luviio.in/login" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Log in</a>
+                    <a href="/login" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Log in</a>
                 </div>
             </form>
         </div>
@@ -30,10 +30,9 @@
 
 <script>
     (function() {
-        // 🔥 FIX 1: FastAPI se dynamic keys uthana
+        // 🔥 SB_URL / SB_KEY sync from main.py
         const SB_URL = "{{ supabase_url }}";
         const SB_KEY = "{{ supabase_key }}";
-        const MAIN_DOMAIN = "https://luviio.in";
 
         if (!SB_URL || SB_URL === "None") {
             console.error("Supabase configuration missing!");
@@ -71,16 +70,16 @@
                     email: email,
                     password: password,
                     options: { 
-                        // 🔥 FIX 2: Email confirmation link main domain par bhejega
-                        emailRedirectTo: `${MAIN_DOMAIN}/onboarding` 
+                        // 🔥 User naya hai, toh verification ke baad onboarding par bhejenge
+                        emailRedirectTo: window.location.origin + '/onboarding' 
                     }
                 });
                 
                 if (error) throw error;
 
-                // Success State
-                alert("Confirmation email sent! Please check your inbox.");
-                window.location.href = "https://auth.luviio.in/login";
+                // Success UI
+                alert("Confirmation email sent! Please check your inbox to start onboarding.");
+                window.location.href = "/login";
 
             } catch (error) {
                 console.error("Signup Error:", error.message);
@@ -91,9 +90,12 @@
         
         window.signInWithProvider = async (p) => {
             try {
-                const { error } = await client.auth.signInWithOAuth({ 
+                const { data, error } = await client.auth.signInWithOAuth({ 
                     provider: p, 
-                    options: { redirectTo: `${MAIN_DOMAIN}/onboarding` } 
+                    options: { 
+                        // Social login ke liye direct onboarding
+                        redirectTo: window.location.origin + '/onboarding' 
+                    } 
                 });
                 if (error) throw error;
             } catch (error) {
