@@ -1,38 +1,58 @@
 import os
 import sys
+import logging
 from pathlib import Path
 from fastapi import FastAPI, Request, Header, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-# 🛡️ THE ULTIMATE PATH FIX (Vercel Compatibility)
+# 🛡️ THE ULTIMATE PATH FIX
 BASE_DIR = Path(__file__).resolve().parent 
 ROOT_DIR = BASE_DIR.parent                  
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+# --- 🪵 LOGGING SETUP ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("LUVIIO-APP")
+
+# --- 📂 ROUTE IMPORTS ---
+try:
+    from api.routes.resend_mail import router as resend_router
+except ImportError:
+    from routes.resend_mail import router as resend_router
+
 app = FastAPI()
 
-# --- 1. MOUNT STATIC & TEMPLATES ---
+# --- 🛠️ CONNECT ROUTERS ---
+# Isse /resend-email wala logic app mein merge ho jayega
+app.include_router(resend_router, prefix="/api", tags=["Auth"])
+
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# --- 2. LOG SILENCERS ---
-# Inhe rehne dena taaki browser ki automatic requests se logs na bharein
+# --- 2. LOG SILENCERS (Silent but Logged) ---
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
+    logger.debug("Favicon requested - returning 204")
     return Response(status_code=204)
 
 @app.get("/robots.txt", include_in_schema=False)
 async def robots():
+    logger.info("Bot/Crawler accessed robots.txt")
     return Response(content="User-agent: *\nDisallow:", media_type="text/plain")
 
 # --- 3. ERROR HANDLERS ---
 
 @app.get("/error", response_class=HTMLResponse)
 async def error_page(request: Request):
+    logger.error(f"Error page triggered for IP: {request.client.host}")
     return templates.TemplateResponse("app/err/404.html", {
         "request": request,
         "title": "404 - Not Found | LUVIIO"
@@ -40,13 +60,14 @@ async def error_page(request: Request):
 
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, __):
+    logger.warning(f"404 Not Found: {request.url.path} - Redirecting to /error")
     return RedirectResponse(url="/error")
 
 # --- 4. AUTH ROUTES ---
-# Ab ye routes har domain par available honge bina redirection ke
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, x_up_target: str = Header(None)):
+    logger.info(f"Rendering Login Page | Unpoly: {x_up_target is not None}")
     return templates.TemplateResponse("app/auth/login.html", {
         "request": request,
         "title": "Login | LUVIIO",
@@ -57,6 +78,7 @@ async def login_page(request: Request, x_up_target: str = Header(None)):
 
 @app.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request, x_up_target: str = Header(None)):
+    logger.info(f"Rendering Signup Page | Source: {request.headers.get('referer', 'Direct')}")
     return templates.TemplateResponse("app/auth/signup.html", {
         "request": request,
         "title": "Create Account | LUVIIO",
@@ -69,6 +91,7 @@ async def signup_page(request: Request, x_up_target: str = Header(None)):
 
 @app.get("/", response_class=HTMLResponse)
 async def render_home(request: Request, x_up_target: str = Header(None)):
+    logger.info(f"Home page accessed by {request.headers.get('user-agent')[:50]}...")
     return templates.TemplateResponse("app/pages/home.html", {
         "request": request,
         "title": "LUVIIO | Verified Markets",
@@ -78,6 +101,7 @@ async def render_home(request: Request, x_up_target: str = Header(None)):
 
 @app.get("/waitlist", response_class=HTMLResponse)
 async def render_waitlist(request: Request, x_up_target: str = Header(None)):
+    logger.info("Waitlist page rendered")
     return templates.TemplateResponse("app/pages/waitlist.html", {
         "request": request,
         "title": "Join Waitlist | LUVIIO", 
