@@ -13,6 +13,12 @@ Welcome to the complete OAuth 2.0 authentication system documentation for LUVIIO
 - Common troubleshooting
 - Testing workflow
 
+→ [VERCEL_ENV_SETUP.md](../VERCEL_ENV_SETUP.md) **← START HERE!**
+- Add Supabase keys to Vercel
+- Get credentials from dashboard
+- Step-by-step visual guide
+- Immediate deployment
+
 ### For Implementation (30 min)
 **Read if you're integrating OAuth into your app**
 
