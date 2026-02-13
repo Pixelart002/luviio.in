@@ -45,81 +45,94 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-    (function() {
+    (async function() {
+        console.log("🔒 OAuth 2.1 Manager Loaded");
+        
         // --- 1. CONFIGURATION ---
         const SB_URL = "{{ supabase_url }}";
         const SB_KEY = "{{ supabase_key }}";
         
+        // Stop if keys are missing
         if (!SB_URL || SB_URL === "None") return;
         
+        // --- 2. INITIALIZE SUPABASE WITH LOCAL STORAGE ---
+        // We explicitly tell Supabase to use LocalStorage and persist the session
         const client = supabase.createClient(SB_URL, SB_KEY, {
             auth: {
-                persistSession: true, // ✅ Ye Local Storage mein save karega
-                storageKey: 'luviio-auth-token', // ✅ Custom Key taaki conflict na ho
+                persistSession: true,
+                storageKey: 'luviio-auth-token', // Custom key prevents conflicts
+                storage: window.localStorage, // Force LocalStorage
                 autoRefreshToken: true,
-                detectSessionInUrl: true
+                detectSessionInUrl: true,
+                flowType: 'pkce' // OAuth 2.1 Requirement
             }
         });
         
-        // --- 2. HASH DETECT & SAVE IMMEDIATELY ---
-        if (window.location.hash && window.location.hash.includes('access_token')) {
-            console.log("⚡ Token Detected! Saving to Local Storage...");
+        // --- 3. THE "CATCHER" LOGIC ---
+        // Check if we are coming back from Google (Hash # or Search ?)
+        const hasHash = window.location.hash && window.location.hash.includes('access_token');
+        const hasCode = window.location.search && window.location.search.includes('code=');
+        
+        if (hasHash || hasCode) {
+            console.log("⚡ OAuth Return Detected. Freezing UI...");
             
-            // UI FREEZE
+            // A. FREEZE UI (Immediate Feedback)
             document.body.innerHTML = `
                 <div style="position:fixed;inset:0;background:#000;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;">
-                    <div style="width:50px;height:50px;border:4px solid #333;border-top:4px solid #22c55e;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:20px;"></div>
-                    <h2 style="font-family:sans-serif;letter-spacing:1px;">SAVING SESSION...</h2>
+                    <div style="width:50px;height:50px;border:4px solid #333;border-top:4px solid #3b82f6;border-radius:50%;animation:spin 0.6s linear infinite;margin-bottom:20px;"></div>
+                    <h2 style="font-family:sans-serif;letter-spacing:1px;font-size:14px;">VERIFYING SECURE LOGIN...</h2>
                 </div>
                 <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
             `;
             
-            // --- STEP A: SESSION CAPTURE & STORAGE ---
-            // Supabase automatically URL parse karke session nikal lega
-            client.auth.getSession().then(async ({ data, error }) => {
-                if (error) {
-                    console.error("Session Error:", error);
-                    window.location.href = "/login";
-                    return;
-                }
+            // B. PROCESS THE SESSION
+            // This handles both PKCE Code exchange and Hash parsing automatically
+            const { data, error } = await client.auth.getSession();
+            
+            if (error) {
+                console.error("Auth Error:", error);
+                alert("Login Failed. Please try again.");
+                window.location.href = "/login";
+                return;
+            }
+            
+            if (data?.session) {
+                console.log("✅ Session Established & Saved to LocalStorage!");
                 
-                if (data.session) {
-                    console.log("✅ Session Saved to Local Storage!");
-                    
-                    // Manually bhi save kar lo for safety
-                    localStorage.setItem('luviio-access-token', data.session.access_token);
-                    
-                    // URL Clean karo taaki dobara trigger na ho
-                    window.history.replaceState(null, null, window.location.pathname);
-                    
-                    // --- STEP B: ASK BACKEND WHERE TO GO ---
-                    try {
-                        const response = await fetch('/api/auth/flow', {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                action: 'oauth_check',
-                                user_id: data.session.user.id,
-                                user_email: data.session.user.email
-                            })
-                        });
-                        
-                        const resData = await response.json();
-                        console.log("🚀 Server says go to:", resData.next);
-                        
-                        window.location.href = "/" + (resData.next || "dashboard");
-                        
-                    } catch (err) {
-                        console.error("Backend unresponsive, defaulting to Dashboard");
-                        // Agar backend fail ho, tab bhi session LocalStorage mein hai, 
-                        // toh Dashboard par user logged in hi dikhega.
-                        window.location.href = "/dashboard";
-                    }
-                }
-            });
+                // C. MANUAL BACKUP (Just in case Supabase slips)
+                localStorage.setItem('luviio-access-token', data.session.access_token);
+                localStorage.setItem('luviio-refresh-token', data.session.refresh_token);
+                
+                // D. CLEAN URL
+                window.history.replaceState(null, null, window.location.pathname);
+                
+                // E. THE "PEL DO" REDIRECT (Force Dashboard)
+                // We use window.location.replace to prevent "Back" button loops
+                setTimeout(() => {
+                    window.location.replace("/dashboard");
+                }, 500); // Small buffer to ensure storage write completes
+            } else {
+                // If getSession returned no session, wait for the onAuthStateChange event
+                console.log("⏳ Waiting for Listener event...");
+            }
         }
+        
+        // --- 4. FALLBACK LISTENER ---
+        // Sometimes the session isn't ready immediately in getSession, so we listen.
+        client.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' && session) {
+                console.log("⚡ Listener Captured Session!");
+                localStorage.setItem('luviio-access-token', session.access_token);
+                
+                if (window.location.pathname === '/' || window.location.pathname === '/login') {
+                    window.location.replace("/dashboard");
+                }
+            }
+        });
+        
     })();
 </script>
+{% endblock %}
 
 
 
