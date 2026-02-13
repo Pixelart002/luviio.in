@@ -93,7 +93,7 @@
                 const { data, error } = await client.auth.signInWithOAuth({ 
                     provider: p, 
                     options: { 
-                        // Social login ke liye direct onboarding
+                        // Social login ke liye logic sync: Onboarding first
                         redirectTo: window.location.origin + '/onboarding' 
                     } 
                 });

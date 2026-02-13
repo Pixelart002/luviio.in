@@ -30,7 +30,7 @@
 
 <script>
     (function() {
-        // 🔥 FIX: Environment nomenclature sync (SB_URL / SB_KEY)
+        // 🔥 SB_URL / SB_KEY nomenclature sync
         const SB_URL = "{{ supabase_url }}";
         const SB_KEY = "{{ supabase_key }}";
 
@@ -55,6 +55,34 @@
             setTimeout(() => authCard.classList.remove('animate-shake'), 500);
         };
 
+        // --- 🧠 LOGICAL REDIRECTION HANDLER ---
+        async function handleRedirection(user) {
+            console.log("Validating user status...");
+            
+            // Step 1: Check Metadata (Super Fast)
+            if (user.user_metadata && user.user_metadata.onboarded === true) {
+                window.location.href = "/dashboard";
+                return;
+            }
+
+            // Step 2: Fallback - Check Profiles Table (Deep Sync)
+            try {
+                const { data: profile } = await client.from('profiles')
+                    .select('role')
+                    .eq('id', user.id)
+                    .single();
+
+                if (profile && profile.role) {
+                    window.location.href = "/dashboard";
+                } else {
+                    window.location.href = "/onboarding";
+                }
+            } catch (err) {
+                // Default to onboarding for new/incomplete users
+                window.location.href = "/onboarding";
+            }
+        }
+
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -67,20 +95,10 @@
 
             try {
                 const { data, error } = await client.auth.signInWithPassword({ email, password });
-                
                 if (error) throw error;
 
-                // 🔥 LOGICAL REDIRECTION
-                // Metadata mein 'onboarded' flag check kar rahe hain
-                const userMetadata = data.user.user_metadata;
-                
-                if (userMetadata && userMetadata.onboarded === true) {
-                    console.log("Existing user detected - redirecting to dashboard");
-                    window.location.href = "/dashboard";
-                } else {
-                    console.log("New user detected - redirecting to onboarding");
-                    window.location.href = "/onboarding";
-                }
+                // Start intelligent redirect
+                await handleRedirection(data.user);
 
             } catch (error) {
                 console.error("Login failed:", error.message);
@@ -94,7 +112,6 @@
                 const { error } = await client.auth.signInWithOAuth({ 
                     provider: p, 
                     options: { 
-                        // Relative path check handles internal routing
                         redirectTo: window.location.origin + '/onboarding' 
                     } 
                 });
