@@ -52,19 +52,21 @@
         async function smartRedirect(user) {
             console.log("Validating user for redirection...");
             
-            // Check Metadata First
+            // Priority 1: Check Metadata Stamp (Fastest)
+            // Kyunki signup par humne 'false' set kiya tha, naya user yahan fail hoga
             if (user.user_metadata && user.user_metadata.onboarded === true) {
-                console.log("User verified -> Dashboard");
+                console.log("Metadata verified -> Dashboard");
                 window.location.href = "/dashboard";
                 return;
             }
             
-            // Fallback: Check Profiles Table
+            // Priority 2: Fallback to DB Profile (Ultimate Truth)
             try {
                 const { data: profile } = await client.from('profiles').select('role').eq('id', user.id).single();
                 if (profile && profile.role) {
                     window.location.href = "/dashboard";
                 } else {
+                    console.log("Incomplete -> Onboarding");
                     window.location.href = "/onboarding";
                 }
             } catch (err) {
@@ -72,12 +74,11 @@
             }
         }
         
-        // --- 3. AUTH STATE LISTENER (Fixes the /# loop) ---
-        // Ye browser ke auth events ko real-time mein catch karega
+        // --- 3. AUTH STATE LISTENER (The Brain) ---
         client.auth.onAuthStateChange(async (event, session) => {
-            console.log("Auth Event Triggered:", event);
+            console.log("Auth Event:", event);
             if (event === 'SIGNED_IN' && session) {
-                // Token milte hi URL saaf karo aur redirect ho jao
+                // Token clean-up
                 if (window.location.hash) {
                     window.history.replaceState(null, null, window.location.pathname);
                 }
@@ -106,12 +107,12 @@
             
             try {
                 if (isSignUp) {
-                    // 🛡️ SIGN UP WITH DEFAULT FALSE STAMP
+                    // 🛡️ SIGN UP Logic (Same strict defaults)
                     const { data, error } = await client.auth.signUp({
                         email,
                         password,
                         options: {
-                            data: { onboarded: false }, // Force default state
+                            data: { onboarded: false },
                             emailRedirectTo: window.location.origin + '/onboarding'
                         }
                     });
