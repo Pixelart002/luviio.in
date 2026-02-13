@@ -1,144 +1,44 @@
-{% extends "app/base.html" %}
-{% import "macros/auth_macros.html" as forms %}
-
-{% block content %}
-<div class="w-full max-w-[420px] animate-fade select-none px-4">
-    <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] overflow-hidden transition-transform">
-        <div class="card-body p-8 sm:p-10 text-center">
-            
-            <div class="mb-8">
-                <h2 class="text-2xl font-bold text-white tracking-tight mb-1" id="formTitle">Welcome Back</h2>
-                <p class="text-xs text-neutral-500 font-medium" id="formSubtitle">Secure access to your dashboard</p>
-            </div>
-            
-            {{ forms.social_buttons() }}
-            
-            <form id="authForm" class="flex flex-col gap-1 text-left">
-                {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
-                {{ forms.input_field('password', 'password', 'Password', 'ri-lock-2-line') }}
-                
-                {{ forms.submit_button('Sign In') }}
-                
-                <div class="text-center mt-6 text-xs text-neutral-500 font-medium">
-                    <span id="footerPrompt">New here?</span>
-                    <button type="button" onclick="toggleMode()" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors" id="toggleLink">Create account</button>
-                </div>
-            </form>
-        </div>
+{% macro input_field(id, type, placeholder, icon_class, name=None) %}
+<div class="relative group w-full mb-5" role="group">
+    <div class="absolute left-4 top-1/2 -translate-y-1/2 z-20 pointer-events-none">
+        <i class="{{ icon_class }} text-neutral-500 transition-all duration-300 group-focus-within:text-blue-500 group-focus-within:scale-110" aria-hidden="true"></i>
     </div>
+    <input 
+        id="{{ id }}" 
+        name="{{ name or id }}" 
+        type="{{ type }}" 
+        placeholder="{{ placeholder }}" 
+        required 
+        spellcheck="false"
+        autocomplete="{{ 'current-password' if type == 'password' else 'email' }}"
+        class="input input-bordered w-full pl-11 bg-black/40 border-white/10 text-white placeholder-neutral-600 
+               rounded-2xl h-12 transition-all duration-300 focus:border-blue-500/50 focus:bg-black/60 
+               focus:ring-4 focus:ring-blue-500/10 outline-none hover:border-white/20 active:scale-[0.99]"
+    >
 </div>
+{% endmacro %}
 
-<script>
-    (function() {
-        // --- 1. CONFIGURATION ---
-        const SB_URL = "{{ supabase_url }}";
-        const SB_KEY = "{{ supabase_key }}";
-        const client = supabase.createClient(SB_URL, SB_KEY);
-        
-        let isSignUp = false;
-        const ui = {
-            card: document.getElementById('authCard'),
-            form: document.getElementById('authForm'),
-            btn: document.getElementById('authBtn'),
-            btnText: document.getElementById('btnText'),
-            loader: document.getElementById('btnLoader'),
-            title: document.getElementById('formTitle'),
-            sub: document.getElementById('formSubtitle'),
-            prompt: document.getElementById('footerPrompt'),
-            link: document.getElementById('toggleLink')
-        };
-        
-        // --- 2. SMART REDIRECT (Strict Logic) ---
-        async function smartRedirect(user) {
-            console.log("Validating user for redirection...");
-            
-            // Priority 1: Check Metadata Stamp (Fastest)
-            // Kyunki signup par humne 'false' set kiya tha, naya user yahan fail hoga
-            if (user.user_metadata && user.user_metadata.onboarded === true) {
-                console.log("Metadata verified -> Dashboard");
-                window.location.href = "/dashboard";
-                return;
-            }
-            
-            // Priority 2: Fallback to DB Profile (Ultimate Truth)
-            try {
-                const { data: profile } = await client.from('profiles').select('role').eq('id', user.id).single();
-                if (profile && profile.role) {
-                    window.location.href = "/dashboard";
-                } else {
-                    console.log("Incomplete -> Onboarding");
-                    window.location.href = "/onboarding";
-                }
-            } catch (err) {
-                window.location.href = "/onboarding";
-            }
-        }
-        
-        // --- 3. AUTH STATE LISTENER (The Brain) ---
-        client.auth.onAuthStateChange(async (event, session) => {
-            console.log("Auth Event:", event);
-            if (event === 'SIGNED_IN' && session) {
-                // Token clean-up
-                if (window.location.hash) {
-                    window.history.replaceState(null, null, window.location.pathname);
-                }
-                await smartRedirect(session.user);
-            }
-        });
-        
-        // --- 4. UI HANDLERS ---
-        window.toggleMode = () => {
-            isSignUp = !isSignUp;
-            ui.title.innerText = isSignUp ? "Create Account" : "Welcome Back";
-            ui.sub.innerText = isSignUp ? "Start your journey today" : "Secure access to your dashboard";
-            ui.btnText.innerText = isSignUp ? "Sign Up" : "Sign In";
-            ui.prompt.innerText = isSignUp ? "Already a member?" : "New here?";
-            ui.link.innerText = isSignUp ? "Log in" : "Create account";
-        };
-        
-        ui.form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            ui.btn.disabled = true;
-            ui.btnText.classList.add('invisible');
-            ui.loader.classList.remove('hidden');
-            
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value;
-            
-            try {
-                if (isSignUp) {
-                    // 🛡️ SIGN UP Logic (Same strict defaults)
-                    const { data, error } = await client.auth.signUp({
-                        email,
-                        password,
-                        options: {
-                            data: { onboarded: false },
-                            emailRedirectTo: window.location.origin + '/onboarding'
-                        }
-                    });
-                    if (error) throw error;
-                    alert("Confirmation email sent! Please verify to start setup.");
-                    window.location.reload();
-                } else {
-                    // SIGN IN logic
-                    const { error } = await client.auth.signInWithPassword({ email, password });
-                    if (error) throw error;
-                }
-            } catch (err) {
-                alert(err.message);
-                ui.btn.disabled = false;
-                ui.btnText.classList.remove('invisible');
-                ui.loader.classList.add('hidden');
-            }
-        });
-        
-        window.signInWithProvider = async (p) => {
-            const { error } = await client.auth.signInWithOAuth({
-                provider: p,
-                options: { redirectTo: window.location.origin + '/onboarding' }
-            });
-            if (error) alert(error.message);
-        };
-    })();
-</script>
-{% endblock %}
+{% macro social_buttons() %}
+<div class="grid grid-cols-2 gap-3 sm:gap-4 mb-8">
+    <button type="button" class="btn btn-outline border-white/10 bg-white/[0.02] text-white normal-case font-bold rounded-2xl transition-all duration-200 hover:bg-white/[0.08] hover:border-white/20 active:scale-95 flex items-center justify-center gap-2 h-12 min-h-0" onclick="signInWithProvider('google')">
+        <i class="ri-google-fill text-lg sm:text-xl"></i> 
+        <span class="text-xs sm:text-sm">Google</span>
+    </button>
+    <button type="button" class="btn btn-outline border-white/10 bg-white/[0.02] text-white normal-case font-bold rounded-2xl transition-all duration-200 hover:bg-white/[0.08] hover:border-white/20 active:scale-95 flex items-center justify-center gap-2 h-12 min-h-0" onclick="signInWithProvider('github')">
+        <i class="ri-github-fill text-lg sm:text-xl"></i> 
+        <span class="text-xs sm:text-sm">GitHub</span>
+    </button>
+</div>
+<div class="divider text-[10px] font-black text-neutral-500/50 tracking-[0.25em] mb-8 before:bg-white/5 after:bg-white/5 uppercase select-none">OR EMAIL</div>
+{% endmacro %}
+
+{% macro submit_button(text, id='authBtn') %}
+<div class="relative w-full group">
+    <button type="submit" id="{{ id }}" class="btn btn-primary w-full rounded-full mt-2 h-12 min-h-0 text-base font-black text-black bg-white hover:bg-neutral-100 hover:-translate-y-1 active:scale-[0.98] border-none transition-all duration-300 hover:shadow-[0_10px_30px_rgba(255,255,255,0.12)] disabled:bg-neutral-800 disabled:text-neutral-500">
+        <span id="btnText" class="flex items-center justify-center gap-2">
+            {{ text }} <i class="ri-arrow-right-line transition-transform duration-300 group-hover:translate-x-1"></i>
+        </span>
+        <span id="btnLoader" class="loading loading-spinner loading-md hidden"></span>
+    </button>
+</div>
+{% endmacro %}
