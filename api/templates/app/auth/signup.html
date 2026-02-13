@@ -2,9 +2,21 @@
 {% import "macros/auth_macros.html" as forms %}
 
 {% block content %}
-<div class="w-full max-w-[420px] animate-fade select-none px-4">
-    <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] overflow-hidden transition-transform">
-        <div class="card-body p-8 sm:p-10 text-center">
+<div class="w-full max-w-[420px] animate-fade select-none px-4 relative">
+    
+    <style>
+        .loading-active .card-body { display: none; }
+        .loading-active .verifying-overlay { display: flex; }
+    </style>
+
+    <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] overflow-hidden transition-transform min-h-[400px] flex flex-col justify-center">
+        
+        <div id="verifyingOverlay" class="verifying-overlay hidden absolute inset-0 bg-[#0A0A0A] z-50 flex-col items-center justify-center">
+            <div class="w-12 h-12 border-4 border-white/10 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+            <p id="loadingText" class="text-xs font-bold text-neutral-400 tracking-widest animate-pulse">CREATING ACCOUNT...</p>
+        </div>
+
+        <div class="card-body p-8 sm:p-10 text-center relative">
             
             <div class="mb-8">
                 <h2 class="text-2xl font-bold text-white tracking-tight mb-1" id="formTitle">Create Account</h2>
@@ -30,97 +42,109 @@
 
 <script>
     (function() {
-        // --- 1. CONFIGURATION ---
+        // ⚠️ WARNING: Ensure this is the ANON KEY (Public), NOT Service Role!
         const SB_URL = "{{ supabase_url }}";
-        const SB_KEY = "{{ supabase_key }}";
+        const SB_KEY = "{{ supabase_key }}"; 
+        
+        // 🔥 Aapka Edge Function URL
+        const EDGE_FUNCTION_URL = "https://enqcujmzxtrbfkaungpm.supabase.co/functions/v1/signup_or_login_flow";
+
         const client = supabase.createClient(SB_URL, SB_KEY);
 
+        // --- UI HELPERS ---
         const ui = {
             card: document.getElementById('authCard'),
-            form: document.getElementById('authForm'),
             btn: document.getElementById('authBtn'),
             btnText: document.getElementById('btnText'),
-            loader: document.getElementById('btnLoader')
+            loader: document.getElementById('btnLoader'),
+            loadingText: document.getElementById('loadingText')
         };
 
-        // --- 2. AUTH STATE LISTENER (Auto-Redirect handling) ---
-        client.auth.onAuthStateChange(async (event, session) => {
-            console.log("Auth Event:", event);
-            if (event === 'SIGNED_IN' && session) {
-                // Token aate hi URL clean karo
-                if (window.location.hash) {
-                    window.history.replaceState(null, null, window.location.pathname);
-                }
-                
-                // STRICT REDIRECT LOGIC:
-                // Naya user (jisne abhi signup kiya) hamesha false hota hai, toh onboarding par jayega
-                if (session.user.user_metadata?.onboarded === true) {
-                    window.location.href = "/dashboard";
-                } else {
-                    window.location.href = "/onboarding";
-                }
+        function setGlobalLoading(state, text = "PROCESSING...") {
+            if (state) {
+                ui.card.classList.add('loading-active');
+                ui.loadingText.innerText = text;
+            } else {
+                ui.card.classList.remove('loading-active');
             }
-        });
+        }
 
-        // --- 3. SIGNUP ACTION ---
-        ui.form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            ui.btn.disabled = true;
-            ui.btnText.classList.add('invisible');
-            ui.loader.classList.remove('hidden');
-
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value;
-
+        // --- CORE: EDGE FUNCTION SIGNUP ---
+        async function handleEdgeSignup(email, password) {
             try {
-                // 🛡️ THE STAMP: Force 'onboarded: false' on creation
-                const { data, error } = await client.auth.signUp({
-                    email,
-                    password,
-                    options: {
-                        data: { 
-                            onboarded: false, // Security Lock
-                            role: 'pending' 
-                        },
-                        // Verification ke baad seedha onboarding par land karega
-                        emailRedirectTo: window.location.origin + '/onboarding'
-                    }
+                // 1. Call Edge Function with action='signup'
+                const response = await fetch(EDGE_FUNCTION_URL, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${SB_KEY}` // Using Anon Key for invocation
+                    },
+                    body: JSON.stringify({ email, password, action: 'signup' })
                 });
 
-                if (error) throw error;
+                const data = await response.json();
 
-                if (data.user && !data.session) {
-                    alert("Confirmation email sent! Please verify to start setup.");
-                    window.location.href = "/login";
+                if (!response.ok) {
+                    throw new Error(data.error || "Signup failed");
                 }
+
+                // 2. Session Handling
+                // Edge function returns a session for the new user
+                if (data.session) {
+                    const { error } = await client.auth.setSession(data.session);
+                    if (error) throw error;
+                }
+
+                // 3. Smart Redirect
+                // Signup ke baad usually 'onboard' hi aayega
+                console.log(`✅ Account Created! Destination: ${data.next}`);
                 
+                if (data.next === 'onboard') {
+                    window.location.href = "/onboarding";
+                } else {
+                    window.location.href = "/dashboard";
+                }
+
             } catch (err) {
-                alert(err.message);
+                console.error("Signup Error:", err);
+                alert(err.message); // Show actual error from Edge Function
+                setGlobalLoading(false);
                 ui.btn.disabled = false;
                 ui.btnText.classList.remove('invisible');
                 ui.loader.classList.add('hidden');
             }
+        }
+
+        // --- FORM SUBMIT ---
+        const form = document.getElementById('authForm');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            ui.btn.disabled = true;
+            ui.btnText.classList.add('invisible');
+            ui.loader.classList.remove('hidden');
+            setGlobalLoading(true, "CREATING PROFILE...");
+
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+
+            // Trigger Edge Function
+            await handleEdgeSignup(email, password);
         });
 
+        // --- SOCIAL SIGNUP (Standard OAuth) ---
+        // Edge Function sirf Email/Pass handle kar raha hai, Google login standard flow se jayega
         window.signInWithProvider = async (p) => {
             const { error } = await client.auth.signInWithOAuth({
                 provider: p,
                 options: { 
-                    // Social login bhi pehle onboarding check karega
-                    redirectTo: window.location.origin + '/onboarding' 
+                    // Signup ke baad seedha onboarding par bhejo
+                    redirectTo: window.location.origin + '/onboarding'
                 }
             });
             if (error) alert(error.message);
         };
+
     })();
 </script>
-
-<style>
-    @keyframes shake {
-        0%, 100% { transform: translateX(0); }
-        25% { transform: translateX(-10px); }
-        75% { transform: translateX(10px); }
-    }
-    .animate-shake { animation: shake 0.2s ease-in-out 0s 2; }
-</style>
 {% endblock %}
