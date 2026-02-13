@@ -47,6 +47,10 @@
 </div>
 
 <script>
+    // 🔥 ENABLE UNPOLY LOGGING
+    // Isse browser console mein exact error aur redirects dikhenge
+    up.log.enable();
+
     // Logic: Menu Toggle & Auto-Close on Click
     up.compiler('#menu-btn', function(btn) {
         const menu = document.getElementById('mobile-menu');
@@ -73,7 +77,6 @@
         // Close menu when a link inside is clicked
         menu.querySelectorAll('a').forEach(link => {
             link.addEventListener('click', () => {
-                // Thoda delay taaki user ko click feedback mile, phir close ho
                 if(isOpen) toggleMenu();
             });
         });
