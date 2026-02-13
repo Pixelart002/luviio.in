@@ -4,11 +4,12 @@ from fastapi.responses import RedirectResponse
 
 class AuthDomainGuard(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # ⚡ 1. OPTIONS FAST-PASS (Handshake Fix)
-        # Isse browser ke preflight checks fail nahi honge
+        # ⚡ 1. CORS HANDSHAKE (MANDATORY)
+        # Isse browser ki preflight requests fail nahi hongi
         if request.method == "OPTIONS":
             return await call_next(request)
 
+        # 🔍 Host & Path info
         raw_host = request.url.hostname or ""
         host = raw_host.lower()
         path = request.url.path
@@ -18,8 +19,8 @@ class AuthDomainGuard(BaseHTTPMiddleware):
         MAIN_DOMAINS = ["luviio.in", "www.luviio.in", "vercel.app"]
         AUTH_ONLY_PATHS = ["/login", "/signup"]
 
-        # 🚀 ONLY ONE JOB: Redirect main domain's auth paths to subdomain
-        # Agar user luviio.in/login par hai, toh use auth.luviio.in/login par bhejo
+        # 🚀 THE ONLY JOB: Redirect auth traffic from main to subdomain
+        # Agar user luviio.in par /login ya /signup mangta hai
         if any(d in host for d in MAIN_DOMAINS) and path in AUTH_ONLY_PATHS:
             target_url = f"https://{AUTH_DOMAIN}{path}"
             
@@ -34,5 +35,5 @@ class AuthDomainGuard(BaseHTTPMiddleware):
             
             return response
 
-        # ✅ BAAKI SAB ALLOWED: Koi blocking nahi, koi /error redirect nahi
+        # ✅ BAAKI SAB ALLOWED: No blocking, no /error, no interference
         return await call_next(request)
