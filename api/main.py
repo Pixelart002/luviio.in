@@ -7,13 +7,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-# 🛡️ THE ULTIMATE PATH FIX
+# 🛡️ THE ULTIMATE PATH FIX (Vercel Compatibility)
 BASE_DIR = Path(__file__).resolve().parent 
 ROOT_DIR = BASE_DIR.parent                  
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 # --- 🪵 LOGGING SETUP ---
+# Production mein har action track karne ke liye
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
@@ -30,7 +31,7 @@ except ImportError:
 app = FastAPI()
 
 # --- 🛠️ CONNECT ROUTERS ---
-# Isse /resend-email wala logic app mein merge ho jayega
+# Resend email logic ko app mein jod rahe hain
 app.include_router(resend_router, prefix="/api", tags=["Auth"])
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -63,7 +64,7 @@ async def custom_404_handler(request: Request, __):
     logger.warning(f"404 Not Found: {request.url.path} - Redirecting to /error")
     return RedirectResponse(url="/error")
 
-# --- 4. AUTH ROUTES ---
+# --- 4. AUTH ROUTES (Using new SB_URL / SB_KEY) ---
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, x_up_target: str = Header(None)):
@@ -72,26 +73,26 @@ async def login_page(request: Request, x_up_target: str = Header(None)):
         "request": request,
         "title": "Login | LUVIIO",
         "up_fragment": x_up_target is not None,
-        "supabase_url": os.environ.get("SUPABASE_URL"),
-        "supabase_key": os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
+        "supabase_url": os.environ.get("SB_URL"), # Upgraded Var
+        "supabase_key": os.environ.get("SB_KEY")   # Upgraded Var
     })
 
 @app.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request, x_up_target: str = Header(None)):
-    logger.info(f"Rendering Signup Page | Source: {request.headers.get('referer', 'Direct')}")
+    logger.info(f"Rendering Signup Page")
     return templates.TemplateResponse("app/auth/signup.html", {
         "request": request,
         "title": "Create Account | LUVIIO",
         "up_fragment": x_up_target is not None,
-        "supabase_url": os.environ.get("SUPABASE_URL"),
-        "supabase_key": os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
+        "supabase_url": os.environ.get("SB_URL"),
+        "supabase_key": os.environ.get("SB_KEY")
     })
 
 # --- 5. MAIN PAGE ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
 async def render_home(request: Request, x_up_target: str = Header(None)):
-    logger.info(f"Home page accessed by {request.headers.get('user-agent')[:50]}...")
+    logger.info(f"Home page access from IP: {request.client.host}")
     return templates.TemplateResponse("app/pages/home.html", {
         "request": request,
         "title": "LUVIIO | Verified Markets",
@@ -105,5 +106,7 @@ async def render_waitlist(request: Request, x_up_target: str = Header(None)):
     return templates.TemplateResponse("app/pages/waitlist.html", {
         "request": request,
         "title": "Join Waitlist | LUVIIO", 
-        "up_fragment": x_up_target is not None
+        "up_fragment": x_up_target is not None,
+        "supabase_url": os.environ.get("SB_URL"),
+        "supabase_key": os.environ.get("SB_KEY")
     })

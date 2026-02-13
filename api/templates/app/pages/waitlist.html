@@ -4,7 +4,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
-    /* --- SCOPED STYLES (Adapted from your code) --- */
+    /* --- SCOPED STYLES: LUVIIO DARK THEME --- */
     .waitlist-wrapper {
         font-family: 'Inter', sans-serif;
         flex: 1;
@@ -13,13 +13,8 @@
         justify-content: center;
         align-items: center;
         text-align: center;
-        position: relative;
         width: 100%;
-        overflow: hidden; /* App feel */
-    }
-
-    /* Override Global Variables for this page */
-    .waitlist-wrapper {
+        min-height: 80vh;
         --text-dim: #a1a1aa;
         --accent: #3b82f6;
         --accent-glow: rgba(59, 130, 246, 0.4);
@@ -28,101 +23,145 @@
         --ease-elastic: cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
 
+    /* Floating Pill UI */
     .pill { 
-        border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); 
-        padding: 6px 16px; border-radius: 100px; font-size: 0.75rem; color: var(--text-dim); 
-        margin-bottom: 24px; display: inline-block; backdrop-filter: blur(10px);
-        letter-spacing: 0.02em;
+        border: 1px solid rgba(255,255,255,0.08); 
+        background: rgba(255,255,255,0.02); 
+        padding: 6px 16px; 
+        border-radius: 100px; 
+        font-size: 0.75rem; 
+        color: var(--text-dim); 
+        margin-bottom: 24px; 
+        display: inline-block; 
+        backdrop-filter: blur(10px);
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
     }
     
+    /* Hero Typography */
     .hero-title { 
-        font-size: clamp(2.5rem, 6vw, 5rem); font-weight: 800; margin-bottom: 20px; 
-        line-height: 1.05; letter-spacing: -0.04em;
+        font-size: clamp(2.5rem, 6vw, 5rem); 
+        font-weight: 800; 
+        margin-bottom: 20px; 
+        line-height: 1.05; 
+        letter-spacing: -0.04em;
         background: linear-gradient(180deg, #fff 10%, #888 100%); 
-        -webkit-background-clip: text; -webkit-text-fill-color: transparent; 
-        max-width: 900px; filter: drop-shadow(0 0 30px rgba(255,255,255,0.05));
+        -webkit-background-clip: text; 
+        -webkit-text-fill-color: transparent; 
     }
     
     .hero-desc { 
-        font-size: clamp(1rem, 2vw, 1.2rem); color: var(--text-dim); 
-        max-width: 500px; line-height: 1.6; margin-bottom: 32px; 
+        font-size: clamp(1rem, 2vw, 1.2rem); 
+        color: var(--text-dim); 
+        max-width: 550px; 
+        line-height: 1.6; 
+        margin-bottom: 40px; 
     }
 
-    /* FORM STYLES */
-    .form-container { width: 100%; max-width: 440px; margin: 0 auto; }
+    /* Form UI: Glassmorphism */
+    .form-container { width: 100%; max-width: 440px; }
     
     .input-wrapper { 
-        background: rgba(20, 20, 20, 0.6); border: 1px solid rgba(255,255,255,0.08); 
-        border-radius: 16px; padding: 5px; display: flex; gap: 8px; position: relative;
-        transition: all 0.4s var(--ease-elastic); backdrop-filter: blur(20px);
+        background: rgba(20, 20, 20, 0.6); 
+        border: 1px solid rgba(255,255,255,0.08); 
+        border-radius: 18px; 
+        padding: 6px; 
+        display: flex; 
+        gap: 10px;
+        transition: all 0.4s var(--ease-elastic); 
+        backdrop-filter: blur(20px);
     }
     
     .input-wrapper:focus-within { 
-        border-color: var(--accent); box-shadow: 0 0 40px var(--accent-glow); 
-        transform: translateY(-2px); background: rgba(20, 20, 20, 0.9);
+        border-color: var(--accent); 
+        box-shadow: 0 0 40px var(--accent-glow); 
+        transform: translateY(-2px);
     }
     
     .custom-input { 
-        flex: 1; background: transparent; border: none; outline: none; 
-        padding: 12px 16px; color: white; font-size: 1rem; width: 100%; font-family: inherit;
+        flex: 1; 
+        background: transparent; 
+        border: none; 
+        outline: none; 
+        padding: 12px 16px; 
+        color: white; 
+        font-size: 1rem;
+        font-family: inherit;
     }
-    .custom-input::placeholder { color: #52525b; transition: opacity 0.2s; }
-    
+
+    /* Button Styling */
     .submit-btn { 
-        background: white; color: black; border: none; border-radius: 12px; 
-        padding: 0 24px; height: 50px; font-weight: 600; cursor: pointer; 
-        transition: all 0.3s; font-size: 0.95rem; 
-        display: flex; align-items: center; justify-content: center; gap: 10px;
+        background: white; 
+        color: black; 
+        border: none; 
+        border-radius: 14px; 
+        padding: 0 24px; 
+        height: 52px; 
+        font-weight: 700; 
+        cursor: pointer; 
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         white-space: nowrap;
     }
-    .submit-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(255, 255, 255, 0.2); }
-    .submit-btn:active:not(:disabled) { transform: scale(0.96); }
+    .submit-btn:hover:not(:disabled) { transform: scale(1.02); box-shadow: 0 10px 20px rgba(255,255,255,0.1); }
+    .submit-btn:disabled { opacity: 0.8; cursor: not-allowed; }
 
-    /* TOAST */
+    /* Custom Toast */
     .toast {
-        position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px);
-        background: rgba(10, 10, 10, 0.95); border: 1px solid rgba(255,255,255,0.1);
-        padding: 12px 24px; border-radius: 100px;
-        display: flex; align-items: center; gap: 12px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.8);
-        font-size: 0.9rem; color: #fff; z-index: 200; 
-        opacity: 0; pointer-events: none; backdrop-filter: blur(20px);
+        position: fixed; 
+        bottom: 40px; 
+        left: 50%; 
+        transform: translateX(-50%) translateY(30px);
+        background: rgba(10, 10, 10, 0.98); 
+        border: 1px solid rgba(255,255,255,0.1);
+        padding: 14px 28px; 
+        border-radius: 100px; 
+        color: #fff; 
+        z-index: 999; 
+        opacity: 0; 
         transition: all 0.5s var(--ease-elastic);
+        backdrop-filter: blur(20px);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.5);
     }
     .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
-    .toast svg { width: 18px; color: var(--success); }
-    .toast.error svg { color: var(--error); }
 
-    .spinner { width: 18px; height: 18px; border: 2px solid rgba(0,0,0,0.1); border-left-color: #000; border-radius: 50%; animation: spin 0.8s linear infinite; display: none; }
+    /* Loading Spinner */
+    .spinner { 
+        width: 20px; 
+        height: 20px; 
+        border: 2.5px solid rgba(0,0,0,0.1); 
+        border-left-color: #000; 
+        border-radius: 50%; 
+        animation: spin 0.8s linear infinite; 
+        display: none; 
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .fade-in { opacity: 0; transform: translateY(20px); }
-
-    @media (max-width: 480px) { 
-        .input-wrapper { flex-direction: column; background: transparent; border: none; padding: 0; box-shadow: none !important; transform: none !important; } 
-        .custom-input { background: #0f0f0f; border: 1px solid #27272a; border-radius: 12px; margin-bottom: 10px; height: 52px; text-align: center; } 
-        .custom-input:focus { border-color: var(--accent); background: rgba(20,20,20,0.9); }
-        .submit-btn { width: 100%; height: 52px; } 
-    }
+    .fade-in { opacity: 0; transform: translateY(25px); }
 </style>
 
-<div class="waitlist-wrapper px-6 py-20">
+<div class="waitlist-wrapper px-6">
     <div class="hero-content">
-        <div class="pill fade-in">Waitlist Access Early 2026</div>
+        <div class="pill fade-in">Early Access • 2026</div>
         
         <h1 class="hero-title fade-in">The Operating System <br> for Listings.</h1>
         
-        <p class="hero-desc fade-in">Rebuilding marketplace infrastructure. <br> Verified, API-first, and secure.</p>
+        <p class="hero-desc fade-in">
+            We are rebuilding marketplace infrastructure from the ground up. 
+            Join the verified, API-first future.
+        </p>
 
-        <div class="form-container fade-in">
+        <div class="form-container fade-in mx-auto">
             <form id="waitlistForm" novalidate>
-                <input type="text" name="_honey" style="display:none" tabindex="-1" autocomplete="off">
-                
                 <div class="input-wrapper">
-                    <input type="email" id="email" class="custom-input" placeholder="name@company.com" required autocomplete="email" spellcheck="false">
+                    <input type="email" id="email" class="custom-input" 
+                           placeholder="Enter your email" required autocomplete="off">
+                    
                     <button type="submit" id="submitBtn" class="submit-btn">
                         <span class="btn-text">Join Waitlist</span>
-                        <div class="spinner"></div>
+                        <div class="spinner" id="btnLoader"></div>
                     </button>
                 </div>
             </form>
@@ -130,93 +169,106 @@
     </div>
 
     <div id="toast" class="toast">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-        <span id="toastMsg">You're on the list.</span>
+        <span id="toastMsg">Success! You're on the list.</span>
     </div>
 </div>
 
 <script>
-    // Executed via Unpoly Compiler to ensure it runs after fragment swap
+    /**
+     * Unpoly Compiler ensures this runs correctly during partial page updates.
+     */
     up.compiler('.waitlist-wrapper', function(wrapper) {
         
-        // --- ANIMATION ENTRY ---
-        if (typeof gsap !== 'undefined') {
-            gsap.to(".fade-in", { 
-                opacity: 1, y: 0, duration: 1.2, stagger: 0.1, ease: "power4.out" 
+        // --- ENTRY ANIMATIONS (GSAP) ---
+        if (window.gsap) {
+            gsap.to(wrapper.querySelectorAll(".fade-in"), { 
+                opacity: 1, 
+                y: 0, 
+                duration: 1.2, 
+                stagger: 0.15, 
+                ease: "power4.out" 
             });
         } else {
-            document.querySelectorAll('.fade-in').forEach(el => el.style.opacity = 1);
+            wrapper.querySelectorAll('.fade-in').forEach(el => el.style.opacity = 1);
         }
 
-        // --- SUPABASE & LOGIC ---
-        const SB_URL = 'https://enqcujmzxtrbfkaungpm.supabase.co';
-        const SB_KEY = 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd';
-        let supabaseClient = null;
+        // --- DYNAMIC CONFIGURATION ---
+        const SB_URL = "{{ supabase_url }}";
+        const SB_KEY = "{{ supabase_key }}";
+        const resendEndpoint = "/api/resend-mail";
 
         const ui = {
             form: wrapper.querySelector('#waitlistForm'),
             email: wrapper.querySelector('#email'),
             btn: wrapper.querySelector('#submitBtn'),
             btnText: wrapper.querySelector('.btn-text'),
-            spinner: wrapper.querySelector('.spinner'),
+            loader: wrapper.querySelector('#btnLoader'),
             toast: wrapper.querySelector('#toast'),
-            toastMsg: wrapper.querySelector('#toastMsg'),
-            honey: wrapper.querySelector('input[name="_honey"]')
+            toastMsg: wrapper.querySelector('#toastMsg')
         };
 
-        function renderState(isLoading) {
-            ui.btn.disabled = isLoading;
-            ui.spinner.style.display = isLoading ? 'block' : 'none';
-            ui.btnText.style.display = isLoading ? 'none' : 'block';
-        }
-
-        function showToast(msg, isError = false) {
+        const showToast = (msg, isError = false) => {
             ui.toastMsg.innerText = msg;
-            ui.toast.className = isError ? 'toast visible error' : 'toast visible';
+            ui.toast.style.borderColor = isError ? '#ef4444' : 'rgba(255,255,255,0.1)';
+            ui.toast.classList.add('visible');
             setTimeout(() => ui.toast.classList.remove('visible'), 4000);
-        }
+        };
+
+        const setSubmitting = (state) => {
+            ui.btn.disabled = state;
+            ui.btnText.style.display = state ? 'none' : 'block';
+            ui.loader.style.display = state ? 'block' : 'none';
+        };
 
         ui.form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            if (ui.honey.value) return; 
-
             const email = ui.email.value.trim();
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                showToast("Please enter a valid email", true);
+            
+            // Simple Validation
+            if (!email || !email.includes('@')) {
+                showToast("Please enter a valid email address.", true);
                 return;
             }
 
-            renderState(true);
-
-            // Lazy Load Supabase
-            if (!supabaseClient && typeof supabase !== 'undefined') {
-                supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-            }
+            setSubmitting(true);
 
             try {
-                if (!supabaseClient) throw new Error("Connection failed");
+                // 1. Initialize Supabase Client
+                const client = supabase.createClient(SB_URL, SB_KEY);
 
-                const { error } = await supabaseClient.from('subscribers').insert([{ email }]);
+                // 2. Insert into 'subscribers' Table
+                const { error: sbError } = await client.from('subscribers').insert([{ email }]);
                 
-                if (error) {
-                    if (error.code === '23505') throw new Error("You're already on the list!");
-                    throw error;
+                if (sbError) {
+                    // Unique constraint error code for Supabase/Postgres
+                    if (sbError.code === '23505') throw new Error("Bhai, you're already on the list! ✨");
+                    throw sbError;
                 }
 
-                // SUCCESS
-                showToast("Welcome to the future.");
+                // 3. Trigger Professional Welcome Email via our API
+                const emailResponse = await fetch(resendEndpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
+
+                if (!emailResponse.ok) {
+                    console.error("[Waitlist] DB Saved, but Email Trigger failed.");
+                }
+
+                // --- SUCCESS UI STATE ---
+                showToast("Welcome to the list. Check your inbox! 🚀");
                 ui.email.value = "";
-                ui.email.blur();
-                ui.btnText.innerText = "Joined";
-                ui.btn.style.backgroundColor = "#22c55e";
+                ui.email.disabled = true;
+                ui.btn.style.backgroundColor = "#22c55e"; // Success Green
                 ui.btn.style.color = "#fff";
-                renderState(false);
-                ui.btn.disabled = true; // Disable after success
-                
+                ui.btnText.innerText = "Joined";
+                setSubmitting(false);
+
             } catch (err) {
-                console.error(err);
-                showToast(err.message || "Something went wrong.", true);
-                renderState(false);
+                console.error("[Waitlist Error]", err);
+                showToast(err.message || "Something went wrong. Try again.", true);
+                setSubmitting(false);
             }
         });
     });
