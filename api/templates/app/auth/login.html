@@ -4,19 +4,22 @@
 {% block content %}
 <script>
     if (window.location.hostname.startsWith("www.")) {
-        const newUrl = window.location.href.replace("www.", "");
-        window.location.replace(newUrl);
+        window.location.replace(window.location.href.replace("www.", ""));
     }
 </script>
 
 <div class="w-full max-w-[420px] animate-fade select-none px-4">
     <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] overflow-hidden transition-transform">
-        <div class="card-body p-8 sm:p-10 text-center">
-            
+        
+        <div id="verifyingOverlay" class="hidden absolute inset-0 bg-[#0A0A0A] z-50 flex flex-col items-center justify-center">
+            <div class="w-10 h-10 border-4 border-white/10 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+            <p class="text-xs font-bold text-neutral-400 tracking-widest">SECURING SESSION...</p>
+        </div>
+
+        <div class="card-body p-8 sm:p-10 text-center relative">
             <div class="mb-8">
                 <h2 class="text-2xl font-bold text-white tracking-tight mb-1" id="formTitle">Welcome Back</h2>
                 <p class="text-xs text-neutral-500 font-medium" id="formSubtitle">Secure access to your dashboard</p>
-                <p id="debugStatus" class="text-[10px] text-red-500 mt-2 hidden">Initializing...</p>
             </div>
             
             {{ forms.social_buttons() }}
@@ -42,93 +45,86 @@
         const SB_URL = "{{ supabase_url }}";
         const SB_KEY = "{{ supabase_key }}";
         
-        // Debug Logger
-        function log(msg) {
-            console.log(`[AUTH DEBUG]: ${msg}`);
-            const status = document.getElementById('debugStatus');
-            if(status) {
-                status.classList.remove('hidden');
-                status.innerText = msg;
-            }
-        }
-
-        if (!SB_URL || SB_URL === "None") {
-            log("CRITICAL: Supabase keys missing!");
-            return;
+        // 🔥 3. PRE-FLIGHT CHECK (Google se wapas aate hi Form HIDE karo)
+        // Isse "Flash" nahi hoga aur user ko lagega process chal raha hai
+        if (window.location.hash && window.location.hash.includes('access_token')) {
+            document.getElementById('verifyingOverlay').classList.remove('hidden');
         }
 
         const client = supabase.createClient(SB_URL, SB_KEY);
-        log("Supabase Client Initialized");
+        
+        // --- 4. THE TRAFFIC CONTROLLER ---
+        async function decideDestination(user) {
+            console.log("🚦 Traffic Controller: Deciding route for", user.email);
 
-        // --- THE FIX: SESSION HANDLER ---
-        async function handleSessionSuccess(session) {
-            log("Session Found! User: " + session.user.email);
-            
-            // 1. Hash clean karo
-            if (window.location.hash) {
-                window.history.replaceState(null, null, window.location.pathname);
-            }
-
-            // 2. Data Check
-            const user = session.user;
-            
-            // Metadata Check
+            // A. FAST TRACK: Metadata Check
             if (user.user_metadata?.onboarded === true) {
-                log("Redirecting to Dashboard...");
+                console.log("✅ Verified User -> Dashboard");
                 window.location.href = "/dashboard";
                 return;
             }
 
-            // DB Check
+            // B. DEEP CHECK: Database Profile
             try {
                 const { data: profile } = await client.from('profiles').select('role').eq('id', user.id).single();
                 if (profile && profile.role) {
+                    console.log("✅ Profile Found -> Dashboard");
                     window.location.href = "/dashboard";
                 } else {
+                    console.log("⚠️ New User -> Onboarding");
                     window.location.href = "/onboarding";
                 }
-            } catch (e) {
+            } catch (err) {
+                console.log("⚠️ No Profile -> Onboarding");
                 window.location.href = "/onboarding";
             }
         }
 
-        // --- CRITICAL LISTENER ---
-        // Ye function tab fire hota hai jab URL mein #access_token hota hai
-        client.auth.onAuthStateChange((event, session) => {
-            log(`Event Fired: ${event}`);
-            
+        // --- 5. TOKEN CAPTURE (Immediate) ---
+        client.auth.onAuthStateChange(async (event, session) => {
             if (event === 'SIGNED_IN' && session) {
-                handleSessionSuccess(session);
-            }
-            else if (event === 'INITIAL_SESSION' && session) {
-                // Page reload hone par agar session pehle se hai
-                handleSessionSuccess(session);
+                // UI ko turant block karo
+                document.getElementById('verifyingOverlay').classList.remove('hidden');
+                
+                // URL saaf karo
+                if (window.location.hash) {
+                    window.history.replaceState(null, null, window.location.pathname);
+                }
+
+                // Decision lo
+                await decideDestination(session.user);
             }
         });
 
-        // --- UI HANDLERS (Same as before) ---
+        // --- UI Logic (Form Toggle etc.) ---
         const ui = {
             form: document.getElementById('authForm'),
             btn: document.getElementById('authBtn'),
             btnText: document.getElementById('btnText'),
-            loader: document.getElementById('btnLoader')
+            loader: document.getElementById('btnLoader'),
+            title: document.getElementById('formTitle'),
+            sub: document.getElementById('formSubtitle'),
+            prompt: document.getElementById('footerPrompt'),
+            link: document.getElementById('toggleLink')
         };
         
         let isSignUp = false;
-        
+
         window.toggleMode = () => {
             isSignUp = !isSignUp;
-            document.getElementById('formTitle').innerText = isSignUp ? "Create Account" : "Welcome Back";
-            document.getElementById('btnText').innerText = isSignUp ? "Sign Up" : "Sign In";
-            // ... (rest of toggle logic)
+            ui.title.innerText = isSignUp ? "Create Account" : "Welcome Back";
+            ui.sub.innerText = isSignUp ? "Start your verified journey" : "Secure access to your dashboard";
+            ui.btnText.innerText = isSignUp ? "Sign Up" : "Sign In";
+            ui.prompt.innerText = isSignUp ? "Already a member?" : "New here?";
+            ui.link.innerText = isSignUp ? "Log in" : "Create account";
         };
 
+        // --- ACTIONS ---
         ui.form.addEventListener('submit', async (e) => {
             e.preventDefault();
             ui.btn.disabled = true;
             ui.btnText.classList.add('invisible');
             ui.loader.classList.remove('hidden');
-            log("Processing form...");
 
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
@@ -136,29 +132,24 @@
             try {
                 let result;
                 if (isSignUp) {
-                    // Force Non-WWW URL for redirect
-                    const origin = window.location.origin.replace("www.", "");
-                    
+                    // Force 'onboarded: false'
                     result = await client.auth.signUp({
                         email, password,
-                        options: {
+                        options: { 
                             data: { onboarded: false },
-                            emailRedirectTo: `${origin}/onboarding`
+                            emailRedirectTo: `${window.location.origin}/onboarding`
                         }
                     });
                     if (result.error) throw result.error;
                     if (result.data.user && !result.data.session) {
-                        alert("Email sent! Check inbox.");
+                        alert("Confirmation email sent!");
                         window.location.reload();
                     }
                 } else {
                     result = await client.auth.signInWithPassword({ email, password });
                     if (result.error) throw result.error;
-                    // Note: onAuthStateChange will handle the redirect automatically
-                    log("Login API Success - Waiting for State Change...");
                 }
             } catch (err) {
-                log("Error: " + err.message);
                 alert(err.message);
                 ui.btn.disabled = false;
                 ui.btnText.classList.remove('invisible');
@@ -167,10 +158,13 @@
         });
 
         window.signInWithProvider = async (p) => {
-            const origin = window.location.origin.replace("www.", "");
+            // 🔥 CRITICAL: Wapas YAHIN aana hai (Login page par)
+            // Kyunki 'onAuthStateChange' yahin baitha hai traffic control karne ke liye
             const { error } = await client.auth.signInWithOAuth({
                 provider: p,
-                options: { redirectTo: `${origin}/onboarding` }
+                options: { 
+                    redirectTo: window.location.href 
+                }
             });
             if (error) alert(error.message);
         };
