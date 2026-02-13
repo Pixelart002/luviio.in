@@ -12,56 +12,38 @@ ROOT_DIR = BASE_DIR.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-# --- MODULAR IMPORTS ---
-try:
-    from api.middleware.cors_setup import setup_cors
-    from api.middleware.domain_guard import AuthDomainGuard
-except ImportError:
-    from middleware.cors_setup import setup_cors
-    from middleware.domain_guard import AuthDomainGuard
-
 app = FastAPI()
 
-# --- 1. SETUP CORS (MANDATORY FIRST) ---
-# Preflight (OPTIONS) requests ko handle karne ke liye
-setup_cors(app)
-
-# --- 2. REGISTER DOMAIN GUARD ---
-# Subdomain isolation aur redirection logic
-app.add_middleware(AuthDomainGuard)
-
-# Mount Static & Templates
+# --- 1. MOUNT STATIC & TEMPLATES ---
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# --- 3. LOG SILENCERS (Stop 'faltoo' entries) ---
+# --- 2. LOG SILENCERS ---
+# Inhe rehne dena taaki browser ki automatic requests se logs na bharein
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
-    """Browser ko 'No Content' bhejkar chup karwane ke liye."""
     return Response(status_code=204)
 
 @app.get("/robots.txt", include_in_schema=False)
 async def robots():
-    """Bots aur crawlers ke liye clean response."""
     return Response(content="User-agent: *\nDisallow:", media_type="text/plain")
 
-# --- 4. ERROR HANDLERS ---
+# --- 3. ERROR HANDLERS ---
 
 @app.get("/error", response_class=HTMLResponse)
 async def error_page(request: Request):
-    """Professional 404/Access Denied page."""
     return templates.TemplateResponse("app/err/404.html", {
         "request": request,
-        "title": "404 - Access Denied | LUVIIO"
+        "title": "404 - Not Found | LUVIIO"
     })
 
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, __):
-    """Actual 404s ko custom error page par redirect karega."""
     return RedirectResponse(url="/error")
 
-# --- 5. AUTH ROUTES (Accessible via auth.luviio.in) ---
+# --- 4. AUTH ROUTES ---
+# Ab ye routes har domain par available honge bina redirection ke
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, x_up_target: str = Header(None)):
@@ -83,7 +65,7 @@ async def signup_page(request: Request, x_up_target: str = Header(None)):
         "supabase_key": os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
     })
 
-# --- 6. MAIN PAGE ROUTES (Accessible via luviio.in) ---
+# --- 5. MAIN PAGE ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
 async def render_home(request: Request, x_up_target: str = Header(None)):
