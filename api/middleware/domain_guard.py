@@ -1,12 +1,12 @@
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import RedirectResponse
 
 class AuthDomainGuard(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # ⚡ 1. OPTIONS & FAVICON SILENCER
-        # Browser ki automatic requests ko pehle hi pass hone do
-        if request.method == "OPTIONS" or request.url.path in ["/favicon.ico", "/favicon.png"]:
+        # ⚡ 1. OPTIONS FAST-PASS (Handshake Fix)
+        # Isse browser ke preflight checks fail nahi honge
+        if request.method == "OPTIONS":
             return await call_next(request)
 
         raw_host = request.url.hostname or ""
@@ -16,27 +16,23 @@ class AuthDomainGuard(BaseHTTPMiddleware):
         
         AUTH_DOMAIN = "auth.luviio.in"
         MAIN_DOMAINS = ["luviio.in", "www.luviio.in", "vercel.app"]
-        
-        # Allowed paths strictly for auth domain
         AUTH_ONLY_PATHS = ["/login", "/signup"]
-        ALLOWED_AUTH_PATHS = AUTH_ONLY_PATHS + ["/static", "/error"]
 
-        # 🚀 CASE 1: Request on AUTH SUBDOMAIN
-        if host == AUTH_DOMAIN:
-            is_allowed = any(path.startswith(p) for p in ALLOWED_AUTH_PATHS)
-            if not is_allowed:
-                return RedirectResponse(url="https://luviio.in/error")
-            return await call_next(request)
-        
-        # 🚀 CASE 2: Request on MAIN DOMAIN
-        elif any(d in host for d in MAIN_DOMAINS):
-            if path in AUTH_ONLY_PATHS:
-                target_url = f"https://{AUTH_DOMAIN}{path}"
-                response = RedirectResponse(url=target_url, status_code=303)
-                response.headers["X-Up-Location"] = target_url
-                if origin:
-                    response.headers["Access-Control-Allow-Origin"] = origin
-                    response.headers["Access-Control-Allow-Credentials"] = "true"
-                return response
+        # 🚀 ONLY ONE JOB: Redirect main domain's auth paths to subdomain
+        # Agar user luviio.in/login par hai, toh use auth.luviio.in/login par bhejo
+        if any(d in host for d in MAIN_DOMAINS) and path in AUTH_ONLY_PATHS:
+            target_url = f"https://{AUTH_DOMAIN}{path}"
+            
+            # 🔥 UNPOLY & CORS COMPATIBILITY
+            response = RedirectResponse(url=target_url, status_code=303)
+            response.headers["X-Up-Location"] = target_url
+            
+            if origin:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+                response.headers["Vary"] = "Origin"
+            
+            return response
 
+        # ✅ BAAKI SAB ALLOWED: Koi blocking nahi, koi /error redirect nahi
         return await call_next(request)
