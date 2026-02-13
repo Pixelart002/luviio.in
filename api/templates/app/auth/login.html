@@ -2,6 +2,153 @@
 {% import "macros/auth_macros.html" as forms %}
 
 {% block content %}
-{{ forms.auth_form(mode='login') }}
-<p>New here? <a href="/signup">Create account</a></p>
+<div class="w-full max-w-[420px] animate-fade select-none px-4 relative">
+    
+    <script>
+        if (window.location.hostname.startsWith("www.")) {
+            window.location.replace(window.location.href.replace("www.", ""));
+        }
+    </script>
+
+    <style>
+        .loading-active .card-body { display: none; }
+        .loading-active .verifying-overlay { display: flex; }
+        :target ~ #authCard .card-body { display: none; }
+        :target ~ #authCard .verifying-overlay { display: flex; }
+    </style>
+
+    <div id="access_token" class="hidden"></div>
+
+    <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] overflow-hidden min-h-[400px] flex flex-col justify-center backdrop-blur-xl">
+        
+        <div id="verifyingOverlay" class="verifying-overlay hidden absolute inset-0 bg-[#0A0A0A] z-50 flex-col items-center justify-center">
+            <div class="w-12 h-12 border-4 border-white/10 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+            <p id="loadingText" class="text-xs font-bold text-neutral-400 tracking-widest animate-pulse">SECURING SESSION...</p>
+        </div>
+
+        <div class="card-body p-8 sm:p-10 text-center relative">
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-white tracking-tight mb-1">Welcome Back</h2>
+                <p class="text-xs text-neutral-500 font-medium">Secure access to your dashboard</p>
+            </div>
+            
+            {{ forms.social_buttons() }}
+            
+            <form id="loginForm" class="flex flex-col gap-1 text-left">
+                {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
+                {{ forms.input_field('password', 'password', 'Password', 'ri-lock-2-line') }}
+                
+                {{ forms.submit_button('Sign In') }}
+                
+                <div class="text-center mt-6 text-xs text-neutral-500 font-medium">
+                    <span>New here?</span>
+                    <a href="/signup" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Create account</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+    (function() {
+        const SB_URL = "{{ supabase_url }}";
+        const SB_KEY = "{{ supabase_key }}";
+        const client = supabase.createClient(SB_URL, SB_KEY);
+        
+        // --- UI HELPERS ---
+        const ui = {
+            card: document.getElementById('authCard'),
+            btn: document.getElementById('authBtn'),
+            btnText: document.getElementById('btnText'),
+            loader: document.getElementById('btnLoader'),
+            loadingText: document.getElementById('loadingText')
+        };
+
+        function setGlobalLoading(state, text) {
+            if (state) {
+                ui.card.classList.add('loading-active');
+                ui.loadingText.innerText = text;
+            } else {
+                ui.card.classList.remove('loading-active');
+            }
+        }
+
+        // --- PRE-FLIGHT CHECK ---
+        if (window.location.hash && window.location.hash.includes('access_token')) {
+            document.getElementById('verifyingOverlay').classList.remove('hidden');
+            document.querySelector('.card-body').style.display = 'none';
+        }
+
+        // --- LOGIN SUBMIT ---
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            ui.btn.disabled = true;
+            ui.btnText.classList.add('invisible');
+            ui.loader.classList.remove('hidden');
+            setGlobalLoading(true, "VERIFYING CREDENTIALS...");
+
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+
+            try {
+                // Call Python Backend
+                const response = await fetch('/api/auth/flow', {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email, password, action: 'login' })
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || "Login failed");
+
+                if (data.session) await client.auth.setSession(data.session);
+                
+                console.log(`✅ Login Success! Going to: ${data.next}`);
+                window.location.href = "/" + data.next;
+
+            } catch (err) {
+                alert(err.message);
+                setGlobalLoading(false);
+                ui.btn.disabled = false;
+                ui.btnText.classList.remove('invisible');
+                ui.loader.classList.add('hidden');
+            }
+        });
+
+        // --- GOOGLE LOGIN ---
+        window.signInWithProvider = async (p) => {
+            const { error } = await client.auth.signInWithOAuth({
+                provider: p,
+                options: { redirectTo: window.location.href }
+            });
+            if (error) alert(error.message);
+        };
+
+        // --- GOOGLE RETURN HANDLER ---
+        client.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' && session) {
+                setGlobalLoading(true, "SECURING SESSION...");
+                if (window.location.hash) window.history.replaceState(null, null, window.location.pathname);
+
+                try {
+                    const response = await fetch('/api/auth/flow', {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ 
+                            action: 'oauth_check',
+                            user_id: session.user.id,
+                            user_email: session.user.email
+                        })
+                    });
+                    const data = await response.json();
+                    window.location.href = "/" + data.next;
+                } catch (e) {
+                    window.location.href = "/dashboard";
+                }
+            }
+        });
+    })();
+</script>
 {% endblock %}
