@@ -1,0 +1,34 @@
+{# Step Wrapper with Progress Logic #}
+{% macro step_card(id, title, label, progress, active=False) %}
+<div class="step-card {{ 'active' if active }}" id="step{{ id }}" data-progress="{{ progress }}">
+    <div class="progress-track">
+        <div class="progress-fill" style="width: {{ progress }}%"></div>
+    </div>
+    <div class="step-content">
+        <h2 class="text-2xl font-bold mb-2">{{ title }}</h2>
+        <p class="text-sm text-neutral-400 mb-8">{{ label }}</p>
+        {{ caller() }}
+    </div>
+</div>
+{% endmacro %}
+
+{# Reusable Action Footer #}
+{% macro step_actions(step, is_last=False, has_back=True, next_label="Continue", next_onclick=None) %}
+<div class="actions flex justify-between items-center mt-10">
+    {% if has_back %}
+        <button type="button" class="btn-back text-neutral-500 hover:text-white transition-colors text-sm font-medium" 
+                onclick="prevStep({{ step - 1 }})">
+            <i class="ri-arrow-left-s-line"></i> Back
+        </button>
+    {% else %}
+        <div></div>
+    {% endif %}
+    
+    <button type="button" 
+            class="btn-next bg-white text-black px-8 py-3 rounded-full font-bold text-sm disabled:opacity-30 disabled:pointer-events-none transition-all hover:scale-105" 
+            id="btn{{ step }}" 
+            onclick="{{ next_onclick if next_onclick else 'nextStep(' + (step + 1)|string + ')' }}">
+        {{ next_label }} <i class="ri-arrow-right-s-line"></i>
+    </button>
+</div>
+{% endmacro %}

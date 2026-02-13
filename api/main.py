@@ -14,7 +14,6 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 # --- 🪵 LOGGING SETUP ---
-# Production mein har action track karne ke liye
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
@@ -31,13 +30,12 @@ except ImportError:
 app = FastAPI()
 
 # --- 🛠️ CONNECT ROUTERS ---
-# Resend email logic ko app mein jod rahe hain
 app.include_router(resend_router, prefix="/api", tags=["Auth"])
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# --- 2. LOG SILENCERS (Silent but Logged) ---
+# --- 2. LOG SILENCERS ---
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
@@ -64,17 +62,17 @@ async def custom_404_handler(request: Request, __):
     logger.warning(f"404 Not Found: {request.url.path} - Redirecting to /error")
     return RedirectResponse(url="/error")
 
-# --- 4. AUTH ROUTES (Using new SB_URL / SB_KEY) ---
+# --- 4. AUTH ROUTES (Integrated Onboarding) ---
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, x_up_target: str = Header(None)):
-    logger.info(f"Rendering Login Page | Unpoly: {x_up_target is not None}")
+    logger.info(f"Rendering Login Page")
     return templates.TemplateResponse("app/auth/login.html", {
         "request": request,
         "title": "Login | LUVIIO",
         "up_fragment": x_up_target is not None,
-        "supabase_url": os.environ.get("SB_URL"), # Upgraded Var
-        "supabase_key": os.environ.get("SB_KEY")   # Upgraded Var
+        "supabase_url": os.environ.get("SB_URL"),
+        "supabase_key": os.environ.get("SB_KEY")
     })
 
 @app.get("/signup", response_class=HTMLResponse)
@@ -88,11 +86,22 @@ async def signup_page(request: Request, x_up_target: str = Header(None)):
         "supabase_key": os.environ.get("SB_KEY")
     })
 
+@app.get("/onboarding", response_class=HTMLResponse)
+async def onboarding_page(request: Request):
+    """Bina kisi router file ke, onboarding route ab main.py mein hai."""
+    logger.info("Onboarding page rendered")
+    return templates.TemplateResponse("app/auth/onboarding.html", {
+        "request": request,
+        "title": "Setup Profile | LUVIIO",
+        "supabase_url": os.environ.get("SB_URL"),
+        "supabase_key": os.environ.get("SB_KEY")
+    })
+
 # --- 5. MAIN PAGE ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
 async def render_home(request: Request, x_up_target: str = Header(None)):
-    logger.info(f"Home page access from IP: {request.client.host}")
+    logger.info(f"Home page accessed")
     return templates.TemplateResponse("app/pages/home.html", {
         "request": request,
         "title": "LUVIIO | Verified Markets",

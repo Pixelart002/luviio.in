@@ -1,0 +1,170 @@
+{% import "macros/onboarding_macros.html" as ob %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Your Profile | LUVIIO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
+    <style>
+        body { background: #050505; color: white; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }
+        .step-card { display: none; width: 100%; max-width: 450px; }
+        .step-card.active { display: block; }
+        .progress-track { background: rgba(255,255,255,0.05); height: 4px; border-radius: 10px; margin-bottom: 2rem; }
+        .progress-fill { background: #3b82f6; height: 100%; transition: width 0.6s cubic-bezier(0.23, 1, 0.32, 1); box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); }
+        input, select { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 1rem; border-radius: 12px; outline: none; transition: 0.3s; }
+        input:focus { border-color: #3b82f6; background: rgba(255,255,255,0.05); }
+        .radio-card.selected { border-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <div id="loader" class="fixed inset-0 bg-[#050505] z-50 flex flex-col items-center justify-center transition-opacity duration-500">
+        <div class="w-10 h-10 border-4 border-white/10 border-t-blue-500 rounded-full animate-spin"></div>
+        <p id="loader-status" class="mt-4 text-[10px] uppercase tracking-[0.2em] text-neutral-500 font-bold">Initializing LUVIIO...</p>
+    </div>
+
+    <main class="flex-1 flex items-center justify-center p-6">
+        <div id="wizard" class="w-full max-w-[450px]">
+            
+            {% call ob.step_card(1, "Welcome.", "Let's start with your official name.", 20, active=True) %}
+                <input type="text" id="fullName" placeholder="Rahul Sharma" oninput="validate(1)">
+                {{ ob.step_actions(1, has_back=False) }}
+            {% endcall %}
+
+            {% call ob.step_card(2, "I am a...", "Choose your primary identity.", 40) %}
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="radio-card border border-white/10 p-6 rounded-2xl cursor-pointer text-center transition-all hover:bg-white/5" onclick="selectRole('buyer', this)">
+                        <i class="ri-user-smile-line text-2xl mb-2 block"></i>
+                        <span class="font-bold">Buyer</span>
+                    </div>
+                    <div class="radio-card border border-white/10 p-6 rounded-2xl cursor-pointer text-center transition-all hover:bg-white/5" onclick="selectRole('seller', this)">
+                        <i class="ri-store-2-line text-2xl mb-2 block"></i>
+                        <span class="font-bold">Seller</span>
+                    </div>
+                </div>
+                {{ ob.step_actions(2) }}
+            {% endcall %}
+
+            {% call ob.step_card(3, "Discovery", "How did you hear about LUVIIO?", 60) %}
+                <select id="source" onchange="validate(3)">
+                    <option value="" disabled selected>Select an option</option>
+                    <option value="social">Social Media</option>
+                    <option value="referral">A Friend</option>
+                    <option value="other">Other</option>
+                </select>
+                {{ ob.step_actions(3, next_onclick="handleConditionalNext()") }}
+            {% endcall %}
+
+            {% call ob.step_card(4, "Your Store", "Tell us about your business.", 80) %}
+                <input type="text" id="storeName" placeholder="Store Name" class="mb-4" oninput="validate(4)">
+                <input type="text" id="storeContact" placeholder="Business Contact" oninput="validate(4)">
+                {{ ob.step_actions(4) }}
+            {% endcall %}
+
+            {% call ob.step_card(5, "Category", "What do you specialize in?", 100) %}
+                <select id="category" onchange="validate(5)">
+                    <option value="" disabled selected>Select Category</option>
+                    <option value="retail">Retail</option>
+                    <option value="digital">Digital Goods</option>
+                </select>
+                {{ ob.step_actions(5, is_last=True, next_label="Finish Setup", next_onclick="submitData()") }}
+            {% endcall %}
+
+        </div>
+    </main>
+
+    <script>
+        const SB_URL = "{{ supabase_url }}";
+        const SB_KEY = "{{ supabase_key }}";
+        const client = supabase.createClient(SB_URL, SB_KEY);
+        let formData = { fullName: '', role: '', source: '' };
+
+        // 1. Logic: Initialization & Metadata Fast-track
+        window.onload = async () => {
+            const { data: { session } } = await client.auth.getSession();
+            if (!session) { window.location.href = '/login'; return; }
+            
+            // Metadata Stamp check: Agar pehle hi onboarded hai toh bhagao yahan se
+            if (session.user.user_metadata?.onboarded) {
+                window.location.href = '/dashboard';
+                return;
+            }
+            
+            document.getElementById('loader').classList.add('opacity-0');
+            setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
+        };
+
+        // 2. Logic: Validation
+        window.validate = (step) => {
+            const btn = document.getElementById(`btn${step}`);
+            let valid = false;
+            if(step === 1) valid = document.getElementById('fullName').value.length > 2;
+            if(step === 3) valid = document.getElementById('source').value !== "";
+            if(step === 4) valid = document.getElementById('storeName').value && document.getElementById('storeContact').value;
+            if(step === 5) valid = document.getElementById('category').value !== "";
+            
+            btn.disabled = !valid;
+        };
+
+        window.selectRole = (role, el) => {
+            formData.role = role;
+            document.querySelectorAll('.radio-card').forEach(c => c.classList.remove('selected', 'border-blue-500'));
+            el.classList.add('selected', 'border-blue-500');
+            document.getElementById('btn2').disabled = false;
+        };
+
+        // 3. Logic: Conditional Flow
+        window.handleConditionalNext = () => {
+            formData.source = document.getElementById('source').value;
+            if(formData.role === 'buyer') {
+                submitData(); // Fast track buyer to finish
+            } else {
+                nextStep(4);
+            }
+        };
+
+        window.nextStep = (target) => {
+            const current = document.querySelector('.step-card.active');
+            const next = document.getElementById(`step${target}`);
+            gsap.to(current, { x: -20, opacity: 0, duration: 0.3, onComplete: () => {
+                current.classList.remove('active');
+                next.classList.add('active');
+                gsap.fromTo(next, { x: 20, opacity: 0 }, { x: 0, opacity: 1, duration: 0.3 });
+            }});
+        };
+
+        // 4. Logic: Final Submission & Metadata Stamping
+        window.submitData = async () => {
+            const finalBtn = document.querySelector('.step-card.active .btn-next');
+            finalBtn.innerText = "Finalizing...";
+            
+            try {
+                const { data: { user } } = await client.auth.getUser();
+                
+                // DB Update: Save Profile
+                await client.from('profiles').upsert({
+                    id: user.id,
+                    full_name: document.getElementById('fullName').value,
+                    role: formData.role
+                });
+
+                // Metadata Update: "The Stamp"
+                // Isse next time onboarding skip ho jayegi
+                await client.auth.updateUser({
+                    data: { onboarded: true, role: formData.role }
+                });
+
+                window.location.href = '/dashboard';
+            } catch (e) {
+                alert("Error: " + e.message);
+                finalBtn.innerText = "Try Again";
+            }
+        };
+    </script>
+</body>
+</html>
