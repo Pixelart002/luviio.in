@@ -1,0 +1,13 @@
+[tool.poetry]
+name = "oauth-callback"
+version = "1.0.0"
+description = "Supabase Edge Function for OAuth 2.0 token exchange"
+authors = ["Your Team <dev@luviio.in>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+httpx = "^0.24.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

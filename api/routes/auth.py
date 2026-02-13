@@ -2,10 +2,12 @@ import os
 import httpx
 import logging
 import json
+import asyncio
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import RedirectResponse, JSONResponse
 from supabase import create_client, Client
 from datetime import datetime
+from api.utils.oauth_client import SupabaseOAuthClient
 
 # --- LOGGER SETUP ---
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +31,13 @@ try:
 except Exception as e:
     logger.error(f"⚠️ Supabase initialization error: {e}")
     supabase_admin = None
+
+# Initialize OAuth Client
+try:
+    oauth_client = SupabaseOAuthClient(SB_URL, SB_KEY, SB_SERVICE_KEY) if SB_URL and SB_KEY and SB_SERVICE_KEY else None
+except Exception as e:
+    logger.error(f"⚠️ OAuth Client initialization error: {e}")
+    oauth_client = None
 
 
 # ==========================================
@@ -81,6 +90,7 @@ async def oauth_callback(request: Request, code: str = None, error: str = None, 
     OAuth 2.0 Authorization Code Flow - Server-Side Callback
     OAuth Provider redirects here with 'code' parameter.
     We exchange it for tokens server-side (secure, not exposed to client).
+    Uses the new SupabaseOAuthClient for secure, modular token exchange.
     """
     # Handle OAuth provider errors
     if error:
@@ -91,39 +101,27 @@ async def oauth_callback(request: Request, code: str = None, error: str = None, 
         logger.warning("OAuth Callback: No authorization code received")
         return RedirectResponse("/login?error=no_code&msg=Authorization+failed")
 
-    if not SB_URL or not SB_KEY:
-        logger.error("OAuth Callback: Missing Supabase configuration")
+    if not oauth_client:
+        logger.error("OAuth Client unavailable")
         return RedirectResponse("/login?error=config_error&msg=Server+misconfigured")
 
     try:
-        # A. Exchange Authorization Code for Session
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            token_res = await client.post(
-                f"{SB_URL}/auth/v1/token?grant_type=authorization_code",
-                headers={
-                    "apikey": SB_KEY,
-                    "Content-Type": "application/x-www-form-urlencoded"
-                },
-                data={
-                    "code": code,
-                    "grant_type": "authorization_code"
-                }
-            )
+        # A. Exchange Authorization Code for Session (using OAuth client)
+        token_result = await oauth_client.exchange_authorization_code(code)
+        
+        if not token_result.get("success"):
+            error_msg = token_result.get("message", "Token exchange failed")
+            logger.error(f"❌ {error_msg}")
+            return RedirectResponse(f"/login?error=token_exchange_failed&msg={error_msg}")
 
-        if token_res.status_code != 200:
-            error_detail = token_res.text
-            logger.error(f"❌ Token Exchange Failed: {token_res.status_code} - {error_detail}")
-            return RedirectResponse("/login?error=token_exchange_failed&msg=Invalid+code")
-
-        data = token_res.json()
-        access_token = data.get("access_token")
-        refresh_token = data.get("refresh_token")
-        user = data.get("user", {})
+        access_token = token_result.get("access_token")
+        refresh_token = token_result.get("refresh_token")
+        user = token_result.get("user", {})
         user_id = user.get("id")
         email = user.get("email", "unknown")
 
         if not access_token or not user_id:
-            logger.error(f"❌ Token response missing critical fields: {data.keys()}")
+            logger.error("❌ Token response missing critical data")
             return RedirectResponse("/login?error=invalid_token_response")
 
         # B. Check Profile & Determine Next Route (3-State Logic)
