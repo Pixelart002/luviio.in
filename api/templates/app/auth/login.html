@@ -34,7 +34,7 @@
         const SB_URL = "{{ supabase_url }}";
         const SB_KEY = "{{ supabase_key }}";
         const client = supabase.createClient(SB_URL, SB_KEY);
-
+        
         let isSignUp = false;
         const ui = {
             card: document.getElementById('authCard'),
@@ -47,46 +47,44 @@
             prompt: document.getElementById('footerPrompt'),
             link: document.getElementById('toggleLink')
         };
-
-        // --- 2. THE REDIRECTION BRAIN (Metadata + DB Sync) ---
+        
+        // --- 2. SMART REDIRECT (Strict Logic) ---
         async function smartRedirect(user) {
             console.log("Validating user for redirection...");
             
-            // Priority 1: Check Metadata Stamp
+            // Check Metadata First
             if (user.user_metadata && user.user_metadata.onboarded === true) {
-                console.log("Metadata success -> Dashboard");
+                console.log("User verified -> Dashboard");
                 window.location.href = "/dashboard";
                 return;
             }
-
-            // Priority 2: Check Database Profile
+            
+            // Fallback: Check Profiles Table
             try {
                 const { data: profile } = await client.from('profiles').select('role').eq('id', user.id).single();
                 if (profile && profile.role) {
-                    console.log("Profile DB success -> Dashboard");
                     window.location.href = "/dashboard";
                 } else {
-                    console.log("Incomplete profile -> Onboarding");
                     window.location.href = "/onboarding";
                 }
             } catch (err) {
-                console.log("No profile found -> Onboarding");
                 window.location.href = "/onboarding";
             }
         }
-
-        // --- 3. HASH FRAGMENT FIX (Stops the /# loop) ---
-        async function checkSession() {
-            const { data: { session } } = await client.auth.getSession();
-            if (session && session.user) {
-                // Agar URL mein # (access_token) hai, toh clean karo aur redirect karo
+        
+        // --- 3. AUTH STATE LISTENER (Fixes the /# loop) ---
+        // Ye browser ke auth events ko real-time mein catch karega
+        client.auth.onAuthStateChange(async (event, session) => {
+            console.log("Auth Event Triggered:", event);
+            if (event === 'SIGNED_IN' && session) {
+                // Token milte hi URL saaf karo aur redirect ho jao
                 if (window.location.hash) {
                     window.history.replaceState(null, null, window.location.pathname);
                 }
                 await smartRedirect(session.user);
             }
-        }
-
+        });
+        
         // --- 4. UI HANDLERS ---
         window.toggleMode = () => {
             isSignUp = !isSignUp;
@@ -96,35 +94,34 @@
             ui.prompt.innerText = isSignUp ? "Already a member?" : "New here?";
             ui.link.innerText = isSignUp ? "Log in" : "Create account";
         };
-
+        
         ui.form.addEventListener('submit', async (e) => {
             e.preventDefault();
             ui.btn.disabled = true;
             ui.btnText.classList.add('invisible');
             ui.loader.classList.remove('hidden');
-
+            
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
-
+            
             try {
-                let result;
                 if (isSignUp) {
-                    // Sign Up logic with onboarding redirect
-                    result = await client.auth.signUp({
-                        email, password, options: { emailRedirectTo: window.location.origin + '/onboarding' }
+                    // 🛡️ SIGN UP WITH DEFAULT FALSE STAMP
+                    const { data, error } = await client.auth.signUp({
+                        email,
+                        password,
+                        options: {
+                            data: { onboarded: false }, // Force default state
+                            emailRedirectTo: window.location.origin + '/onboarding'
+                        }
                     });
-                } else {
-                    // Sign In logic
-                    result = await client.auth.signInWithPassword({ email, password });
-                }
-
-                if (result.error) throw result.error;
-
-                if (isSignUp && !result.data.session) {
-                    alert("Check your email to confirm registration.");
+                    if (error) throw error;
+                    alert("Confirmation email sent! Please verify to start setup.");
                     window.location.reload();
                 } else {
-                    await smartRedirect(result.data.user);
+                    // SIGN IN logic
+                    const { error } = await client.auth.signInWithPassword({ email, password });
+                    if (error) throw error;
                 }
             } catch (err) {
                 alert(err.message);
@@ -133,7 +130,7 @@
                 ui.loader.classList.add('hidden');
             }
         });
-
+        
         window.signInWithProvider = async (p) => {
             const { error } = await client.auth.signInWithOAuth({
                 provider: p,
@@ -141,9 +138,6 @@
             });
             if (error) alert(error.message);
         };
-
-        // Initialize session check on load
-        checkSession();
     })();
 </script>
 {% endblock %}

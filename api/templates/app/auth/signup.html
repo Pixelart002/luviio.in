@@ -34,7 +34,7 @@
         const SB_URL = "{{ supabase_url }}";
         const SB_KEY = "{{ supabase_key }}";
         const client = supabase.createClient(SB_URL, SB_KEY);
-        
+
         const ui = {
             card: document.getElementById('authCard'),
             form: document.getElementById('authForm'),
@@ -42,18 +42,18 @@
             btnText: document.getElementById('btnText'),
             loader: document.getElementById('btnLoader')
         };
-        
-        // --- 2. SMART REDIRECT (Metadata + DB Check) ---
+
+        // --- 2. SMART REDIRECT (Strict Logic) ---
         async function smartRedirect(user) {
-            console.log("Validating user for redirection...");
+            console.log("Checking user status before redirection...");
             
-            // Check Metadata Stamp First (Fast Path)
+            // Priority 1: Check Metadata Stamp (onboarded must be strictly true)
             if (user.user_metadata && user.user_metadata.onboarded === true) {
                 window.location.href = "/dashboard";
                 return;
             }
-            
-            // Fallback to DB Profile
+
+            // Priority 2: Fallback to DB Profile check
             try {
                 const { data: profile } = await client.from('profiles').select('role').eq('id', user.id).single();
                 if (profile && profile.role) {
@@ -65,47 +65,50 @@
                 window.location.href = "/onboarding";
             }
         }
-        
-        // --- 3. HASH & SESSION HANDLER (Stops /# loop) ---
-        async function checkSession() {
-            const { data: { session } } = await client.auth.getSession();
-            if (session && session.user) {
-                // URL Clean-up for Social Logins/Confirmations
+
+        // --- 3. AUTH STATE & HASH HANDLER (Stops the /# loop) ---
+        client.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' && session) {
+                // Token aate hi URL clean karo aur redirection logic chalao
                 if (window.location.hash) {
                     window.history.replaceState(null, null, window.location.pathname);
                 }
                 await smartRedirect(session.user);
             }
-        }
-        
+        });
+
         // --- 4. SIGNUP ACTION ---
         ui.form.addEventListener('submit', async (e) => {
             e.preventDefault();
             ui.btn.disabled = true;
             ui.btnText.classList.add('invisible');
             ui.loader.classList.remove('hidden');
-            
+
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
-            
+
             try {
                 const { data, error } = await client.auth.signUp({
                     email,
                     password,
                     options: {
+                        // 🛡️ THE STAMP: Default state is explicitly FALSE
+                        data: { 
+                            onboarded: false,
+                            role: 'pending' 
+                        },
                         // Verification ke baad hamesha onboarding par bhejna hai
                         emailRedirectTo: window.location.origin + '/onboarding'
                     }
                 });
-                
+
                 if (error) throw error;
-                
+
                 if (data.user && !data.session) {
-                    alert("Verification email sent! Click the link in your email to continue setup.");
+                    alert("Verification email sent! Click the link in your email to start onboarding.");
                     window.location.href = "/login";
-                } else if (data.session) {
-                    await smartRedirect(data.user);
                 }
+                // Note: Agar session milta hai (auto-login), toh onAuthStateChange handle kar lega.
             } catch (err) {
                 alert(err.message);
                 ui.btn.disabled = false;
@@ -113,17 +116,26 @@
                 ui.loader.classList.add('hidden');
             }
         });
-        
+
         window.signInWithProvider = async (p) => {
             const { error } = await client.auth.signInWithOAuth({
                 provider: p,
-                options: { redirectTo: window.location.origin + '/onboarding' }
+                options: { 
+                    // Social login ke liye bhi onboarding logic
+                    redirectTo: window.location.origin + '/onboarding' 
+                }
             });
             if (error) alert(error.message);
         };
-        
-        // Run check on load
-        checkSession();
     })();
 </script>
+
+<style>
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-10px); }
+        75% { transform: translateX(10px); }
+    }
+    .animate-shake { animation: shake 0.2s ease-in-out 0s 2; }
+</style>
 {% endblock %}
