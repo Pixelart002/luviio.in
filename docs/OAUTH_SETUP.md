@@ -117,7 +117,7 @@ pip install -r requirements.txt
 Add to `.env` or Vercel project settings:
 
 ```env
-SB_URL=https://your-project.supabase.co
+SB_URL=https://enqcujmzxtrbfkaungpm.supabase.co
 SB_KEY=your-anon-key
 SB_SERVICE_ROLE_KEY=your-service-role-key
 ```
@@ -132,7 +132,8 @@ SB_SERVICE_ROLE_KEY=your-service-role-key
 4. Create OAuth 2.0 credentials (Web Application)
 5. Add authorized redirect URIs:
    - `http://localhost:8000/api/auth/callback`
-   - `https://your-domain.com/api/auth/callback`
+   - `https://enqcujmzxtrbfkaungpm.supabase.co/functions/v1/oauth-callback` (if using Edge Function)
+   - `https://your-domain.com/api/auth/callback` (your production domain)
 6. Copy Client ID and Secret
 7. Go to Supabase Dashboard → Authentication → Providers → Google
 8. Enable Google and paste credentials
@@ -142,7 +143,8 @@ SB_SERVICE_ROLE_KEY=your-service-role-key
 1. Go to GitHub Settings → Developer settings → OAuth Apps
 2. Create New OAuth App
 3. Set Authorization callback URL:
-   - `https://your-domain.com/api/auth/callback`
+   - `https://enqcujmzxtrbfkaungpm.supabase.co/functions/v1/oauth-callback` (if using Edge Function)
+   - `https://your-domain.com/api/auth/callback` (your production domain)
 4. Copy Client ID and Secret
 5. Go to Supabase Dashboard → Authentication → Providers → GitHub
 6. Enable GitHub and paste credentials
@@ -216,7 +218,7 @@ Visit: `http://localhost:8000/login`
 
 5. The function is now available at:
    ```
-   https://your-project.supabase.co/functions/v1/oauth-callback
+   https://enqcujmzxtrbfkaungpm.supabase.co/functions/v1/oauth-callback
    ```
 
 ---

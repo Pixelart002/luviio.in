@@ -28,7 +28,8 @@
 - [ ] Enable Google+ API
 - [ ] Create OAuth 2.0 credentials (Web Application)
 - [ ] Add Authorized Redirect URI: `http://localhost:8000/api/auth/callback`
-- [ ] Add Authorized Redirect URI: `https://your-domain.com/api/auth/callback`
+- [ ] Add Authorized Redirect URI: `https://enqcujmzxtrbfkaungpm.supabase.co/functions/v1/oauth-callback`
+- [ ] Add Authorized Redirect URI: `https://your-domain.com/api/auth/callback` (production)
 - [ ] Copy Client ID
 - [ ] Copy Client Secret
 - [ ] Go to Supabase Dashboard
@@ -43,8 +44,9 @@
 - [ ] Go to GitHub Settings → Developer Settings → OAuth Apps
 - [ ] Click "Create New OAuth App"
 - [ ] Set Application Name
-- [ ] Set Homepage URL: `https://your-domain.com`
-- [ ] Set Authorization callback URL: `https://your-domain.com/api/auth/callback`
+- [ ] Set Homepage URL: `https://enqcujmzxtrbfkaungpm.supabase.co` (or your domain)
+- [ ] Set Authorization callback URL: `https://enqcujmzxtrbfkaungpm.supabase.co/functions/v1/oauth-callback`
+- [ ] Also add: `https://your-domain.com/api/auth/callback` (for production)
 - [ ] Create Application
 - [ ] Copy Client ID
 - [ ] Generate and copy Client Secret

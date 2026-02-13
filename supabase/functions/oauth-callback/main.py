@@ -1,7 +1,7 @@
 """
 Supabase Edge Function: OAuth 2.0 Callback Handler (Python)
 Secure server-side token exchange using Authorization Code Flow (PKCE)
-Deployed at: https://your-project.supabase.co/functions/v1/oauth-callback
+Deployed at: https://enqcujmzxtrbfkaungpm.supabase.co/functions/v1/oauth-callback
 """
 
 import os

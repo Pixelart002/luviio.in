@@ -75,7 +75,7 @@ Features
 
 ```bash
 # 1. Set environment variables in .env
-SB_URL=https://your-project.supabase.co
+SB_URL=https://enqcujmzxtrbfkaungpm.supabase.co
 SB_KEY=your-anon-key
 SB_SERVICE_ROLE_KEY=your-service-role-key
 

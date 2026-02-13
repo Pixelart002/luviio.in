@@ -197,7 +197,7 @@ Welcome to the complete OAuth 2.0 authentication system documentation for LUVIIO
 
 ```bash
 # Create or edit .env file
-SB_URL=https://your-project.supabase.co
+SB_URL=https://enqcujmzxtrbfkaungpm.supabase.co
 SB_KEY=your-anon-key
 SB_SERVICE_ROLE_KEY=your-service-role-key
 ```
@@ -228,7 +228,9 @@ create policy "Users can update own profile"
 1. Go to Supabase Dashboard → Authentication → Providers
 2. Enable Google (add credentials from Google Cloud Console)
 3. Enable GitHub (add credentials from GitHub OAuth App)
-4. Set redirect URI: `https://your-domain.com/api/auth/callback`
+4. Set redirect URIs: 
+   - `https://enqcujmzxtrbfkaungpm.supabase.co/functions/v1/oauth-callback`
+   - `https://your-domain.com/api/auth/callback` (production)
 
 ### 4. Start Development Server
 

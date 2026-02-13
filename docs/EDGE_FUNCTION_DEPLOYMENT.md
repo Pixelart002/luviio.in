@@ -52,7 +52,7 @@ Find your project ref in Supabase Dashboard → Settings → General → Project
 Create a `.env.supabase` file:
 
 ```env
-SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_URL=https://enqcujmzxtrbfkaungpm.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 SUPABASE_ANON_KEY=your-anon-key
 ```

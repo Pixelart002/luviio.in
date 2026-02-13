@@ -95,7 +95,7 @@ STATE C: Returning and Complete
 ### 1. Add Environment Variables (Vercel)
 
 ```bash
-SB_URL=https://your-project.supabase.co
+SB_URL=https://enqcujmzxtrbfkaungpm.supabase.co
 SB_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 SB_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
@@ -117,12 +117,16 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 #### Google
 1. [Google Cloud Console](https://console.cloud.google.com) → Create OAuth App
-2. Add redirect: `https://your-project.supabase.co/auth/v1/callback`
+2. Add redirects: 
+   - `https://enqcujmzxtrbfkaungpm.supabase.co/functions/v1/oauth-callback`
+   - `https://your-domain.com/api/auth/callback`
 3. Add credentials to Supabase
 
 #### GitHub
 1. [GitHub Settings → OAuth Apps](https://github.com/settings/apps)
-2. Add redirect: `https://your-project.supabase.co/auth/v1/callback`
+2. Add redirects:
+   - `https://enqcujmzxtrbfkaungpm.supabase.co/functions/v1/oauth-callback`
+   - `https://your-domain.com/api/auth/callback`
 3. Add credentials to Supabase
 
 ### 4. Deploy to Vercel

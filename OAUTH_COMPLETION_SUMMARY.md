@@ -46,6 +46,20 @@ A **production-ready, enterprise-grade OAuth 2.0 authentication system** has bee
 
 ---
 
+## 🌐 Your Supabase Project URL
+
+```
+https://enqcujmzxtrbfkaungpm.supabase.co
+```
+
+Use this URL when:
+- Setting up OAuth provider callbacks
+- Configuring environment variables
+- Deploying Edge Functions
+- Testing authentication
+
+---
+
 ## 📦 Files Created
 
 ### Backend Code

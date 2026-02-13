@@ -47,7 +47,8 @@ CREATE POLICY "Users can update own profile" ON profiles
 3. Enable "Google+ API"
 4. Create OAuth 2.0 Client (Web Application)
 5. Add Authorized redirect URIs:
-   - `https://your-project-id.supabase.co/auth/v1/callback`
+   - `https://enqcujmzxtrbfkaungpm.supabase.co/functions/v1/oauth-callback`
+   - `https://your-domain.com/api/auth/callback` (production)
 6. Copy Client ID and Client Secret
 7. In Supabase:
    - Authentication → Providers → Google

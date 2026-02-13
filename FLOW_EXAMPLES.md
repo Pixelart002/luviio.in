@@ -37,7 +37,7 @@ Backend Processing:
 code = "ABC123XYZ"
 
 # 2. Exchange code for tokens
-POST https://your-project.supabase.co/auth/v1/token?grant_type=authorization_code
+POST https://enqcujmzxtrbfkaungpm.supabase.co/auth/v1/token?grant_type=authorization_code
 {
     "code": "ABC123XYZ",
     "grant_type": "authorization_code"
