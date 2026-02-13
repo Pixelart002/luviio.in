@@ -18,7 +18,7 @@ class AuthDomainGuard(BaseHTTPMiddleware):
         MAIN_DOMAINS = ["luviio.in", "www.luviio.in", "vercel.app"]
         
         AUTH_ONLY_PATHS = ["/login", "/signup"]
-        ALLOWED_AUTH_PATHS = AUTH_ONLY_PATHS + ["/static", "/error"]
+        ALLOWED_AUTH_PATHS = AUTH_ONLY_PATHS + ["/static", "/error", "/signup", "/login"]
 
         # 1. Agar request AUTH SUBDOMAIN par aayi hai
         if host == AUTH_DOMAIN:
