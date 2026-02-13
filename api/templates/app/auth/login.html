@@ -2,8 +2,8 @@
 {% import "macros/auth_macros.html" as forms %}
 
 {% block content %}
-<div class="w-full max-w-[420px] animate-fade">
-    <div class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] overflow-hidden">
+<div class="w-full max-w-[420px] animate-fade select-none px-4">
+    <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] overflow-hidden transition-transform">
         <div class="card-body p-8 sm:p-10 text-center">
             
             <div class="mb-8">
@@ -21,7 +21,7 @@
                 
                 <div class="text-center mt-6 text-xs text-neutral-500 font-medium">
                     <span>New here?</span>
-                    <a href="/signup" up-target="#main-content" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Create account</a>
+                    <a href="https://auth.luviio.in/signup" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Create account</a>
                 </div>
             </form>
         </div>
@@ -30,36 +30,85 @@
 
 <script>
     (function() {
-        const client = supabase.createClient('https://enqcujmzxtrbfkaungpm.supabase.co', 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd');
+        // 🔥 FIX 1: Hardcoded credentials ki jagah FastAPI se aane wale variables use karo
+        const SB_URL = "{{ supabase_url }}";
+        const SB_KEY = "{{ supabase_key }}";
+        const MAIN_DOMAIN = "https://luviio.in"; 
+
+        if (!SB_URL || SB_URL === "None") {
+            console.error("Supabase configuration is missing!");
+            return;
+        }
+
+        const client = supabase.createClient(SB_URL, SB_KEY);
         
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        const loginForm = document.getElementById('loginForm');
+        const authCard = document.getElementById('authCard');
+        const btn = document.getElementById('authBtn');
+        const btnText = document.getElementById('btnText');
+        const btnLoader = document.getElementById('btnLoader');
+
+        // Logic to reset UI after error
+        const resetUI = () => {
+            btn.disabled = false;
+            btnText.classList.remove('invisible');
+            btnLoader.classList.add('hidden');
+            // Error Shake Effect
+            authCard.classList.add('animate-shake');
+            setTimeout(() => authCard.classList.remove('animate-shake'), 500);
+        };
+
+        loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const btn = document.getElementById('authBtn');
-            const btnText = document.getElementById('btnText');
-            const btnLoader = document.getElementById('btnLoader');
             
+            // UI Loading State
             btn.disabled = true;
             btnText.classList.add('invisible');
             btnLoader.classList.remove('hidden');
             
-            const { error } = await client.auth.signInWithPassword({
-                email: document.getElementById('email').value.trim(),
-                password: document.getElementById('password').value
-            });
-            
-            if (error) {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+
+            try {
+                const { data, error } = await client.auth.signInWithPassword({ email, password });
+                
+                if (error) throw error;
+
+                // 🔥 FIX 2: Login ke baad wapas MAIN DOMAIN par redirect karna hai
+                window.location.href = `${MAIN_DOMAIN}/dashboard`;
+
+            } catch (error) {
+                console.error("Login failed:", error.message);
                 alert(error.message);
-                btn.disabled = false;
-                btnText.classList.remove('invisible');
-                btnLoader.classList.add('hidden');
-            } else {
-                window.location.href = "/dashboard";
+                resetUI();
             }
         });
         
+        // OAuth Fix
         window.signInWithProvider = async (p) => {
-            await client.auth.signInWithOAuth({ provider: p, options: { redirectTo: window.location.origin + '/onboarding' } });
+            try {
+                const { error } = await client.auth.signInWithOAuth({ 
+                    provider: p, 
+                    options: { 
+                        // Redirect wapas main domain ke onboarding par
+                        redirectTo: `${MAIN_DOMAIN}/onboarding` 
+                    } 
+                });
+                if (error) throw error;
+            } catch (error) {
+                alert("OAuth Error: " + error.message);
+            }
         };
     })();
 </script>
+
+<style>
+    /* Professional Shake Animation for errors */
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-10px); }
+        75% { transform: translateX(10px); }
+    }
+    .animate-shake { animation: shake 0.2s ease-in-out 0s 2; }
+</style>
 {% endblock %}

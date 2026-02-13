@@ -4,40 +4,52 @@ from fastapi.responses import RedirectResponse
 
 class AuthDomainGuard(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # ⚡ OPTIONS request ko bypass karo (CORS handshake)
+        # ⚡ 1. CORS PREFLIGHT FAST-PASS
+        # Browser handshake ko block nahi hone dena
         if request.method == "OPTIONS":
             return await call_next(request)
 
-        # 🔍 Hostname ko clean nikalna
+        # 🔍 CLEAN HOST & PATH
         raw_host = request.url.hostname or ""
         host = raw_host.lower()
         path = request.url.path
+        origin = request.headers.get("origin")
         
+        # CONFIGURATION
         AUTH_DOMAIN = "auth.luviio.in"
-        # Saare legit domains ki list
         MAIN_DOMAINS = ["luviio.in", "www.luviio.in", "vercel.app"]
         
         AUTH_ONLY_PATHS = ["/login", "/signup"]
-        ALLOWED_AUTH_PATHS = AUTH_ONLY_PATHS + ["/static", "/error", "/signup", "/login"]
+        # Auth domain par sirf ye paths allowed hain
+        ALLOWED_AUTH_PATHS = AUTH_ONLY_PATHS + ["/static", "/error"]
 
-        # 1. Agar request AUTH SUBDOMAIN par aayi hai
+        # 🚀 CASE 1: Request is on AUTH SUBDOMAIN (auth.luviio.in)
         if host == AUTH_DOMAIN:
-            # Check karo ki path allowed hai ya nahi
             is_allowed = any(path.startswith(p) for p in ALLOWED_AUTH_PATHS)
             if not is_allowed:
-                # Agar unauthorized path hai (e.g. dashboard), toh error par bhejo
+                # Agar user auth domain par reh kar dashboard ya home try kare
+                # Toh use wapas main domain ke error page par bhej do
                 return RedirectResponse(url="https://luviio.in/error")
             
-            # Agar path allowed hai, toh aage badhne do
             return await call_next(request)
         
-        # 2. Agar request MAIN DOMAIN par aayi hai
+        # 🚀 CASE 2: Request is on MAIN DOMAIN (luviio.in / vercel preview)
         elif any(d in host for d in MAIN_DOMAINS):
             if path in AUTH_ONLY_PATHS:
-                # Forcefully redirect to AUTH subdomain
-                # Absolute URL use karna taaki browser confuse na ho
+                # Forcefully redirect /login aur /signup to the dedicated Auth Subdomain
                 target_url = f"https://{AUTH_DOMAIN}{path}"
-                return RedirectResponse(url=target_url, status_code=303)
+                
+                # 🔥 THE UNPOLY & CORS FIX
+                response = RedirectResponse(url=target_url, status_code=303)
+                response.headers["X-Up-Location"] = target_url
+                
+                # Manual CORS Bridge (Kyunki direct return middleware chain bypass karta hai)
+                if origin:
+                    response.headers["Access-Control-Allow-Origin"] = origin
+                    response.headers["Access-Control-Allow-Credentials"] = "true"
+                    response.headers["Vary"] = "Origin"
+                
+                return response
 
-        # 3. Default fallback
+        # 🚀 CASE 3: DEFAULT FALLBACK
         return await call_next(request)

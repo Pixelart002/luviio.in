@@ -7,7 +7,6 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 # 🛡️ THE ULTIMATE PATH FIX (Vercel Compatibility)
-# Parent of 'api' ko path mein daal rahe hain taaki absolute imports fail na hon
 BASE_DIR = Path(__file__).resolve().parent 
 ROOT_DIR = BASE_DIR.parent                  
 if str(ROOT_DIR) not in sys.path:
@@ -19,18 +18,17 @@ try:
     from api.middleware.cors_setup import setup_cors
     from api.middleware.domain_guard import AuthDomainGuard
 except ImportError:
-    # Fallback for local dev environments
     from middleware.cors_setup import setup_cors
     from middleware.domain_guard import AuthDomainGuard
 
 app = FastAPI()
 
 # --- 1. SETUP CORS (MANDATORY FIRST) ---
-# Unpoly AJAX requests aur Preflight checks ke liye rasta saaf karta hai
+# Subdomain redirection ke waqt AJAX/Unpoly requests ko block hone se bachata hai
 setup_cors(app)
 
-# --- 2. REGISTER DOMAIN GUARD ---
-# Ye domain isolation aur unauthorized path protection handle karta hai
+# --- 2. REGISTER DOMAIN GUARD (Subdomain Logic) ---
+# Ye middleware check karega ki request luviio.in se hai ya auth.luviio.in se
 app.add_middleware(AuthDomainGuard)
 
 # Mount Static & Templates
@@ -41,8 +39,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 @app.get("/error", response_class=HTMLResponse)
 async def error_page(request: Request):
-    """Serve the professional 404/Access Denied page."""
-    # Context pass karna MANDATORY hai taaki 500 error na aaye
+    """Auth domain par unauthorised access hone par ye dikhega."""
     return templates.TemplateResponse("app/err/404.html", {
         "request": request,
         "title": "404 - Access Denied | LUVIIO"
@@ -50,10 +47,10 @@ async def error_page(request: Request):
 
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, __):
-    """Redirect all actual 404s to our custom security error page."""
     return RedirectResponse(url="/error")
 
 # --- 4. AUTH ROUTES (Accessible via auth.luviio.in) ---
+# Middleware ensure karega ki ye routes main domain par block hon
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, x_up_target: str = Header(None)):

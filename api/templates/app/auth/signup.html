@@ -2,8 +2,8 @@
 {% import "macros/auth_macros.html" as forms %}
 
 {% block content %}
-<div class="w-full max-w-[420px] animate-fade">
-    <div class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] overflow-hidden">
+<div class="w-full max-w-[420px] animate-fade select-none px-4">
+    <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] overflow-hidden transition-transform">
         <div class="card-body p-8 sm:p-10 text-center">
             
             <div class="mb-8">
@@ -21,7 +21,7 @@
                 
                 <div class="text-center mt-6 text-xs text-neutral-500 font-medium">
                     <span>Already a member?</span>
-                    <a href="/login" up-target="#main-content" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Log in</a>
+                    <a href="https://auth.luviio.in/login" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Log in</a>
                 </div>
             </form>
         </div>
@@ -30,31 +30,85 @@
 
 <script>
     (function() {
-        const client = supabase.createClient('https://enqcujmzxtrbfkaungpm.supabase.co', 'sb_publishable_0jeCSzd3NkL-RlQn8X-eTA_-xH03xVd');
+        // 🔥 FIX 1: FastAPI se dynamic keys uthana
+        const SB_URL = "{{ supabase_url }}";
+        const SB_KEY = "{{ supabase_key }}";
+        const MAIN_DOMAIN = "https://luviio.in";
+
+        if (!SB_URL || SB_URL === "None") {
+            console.error("Supabase configuration missing!");
+            return;
+        }
+
+        const client = supabase.createClient(SB_URL, SB_KEY);
         
-        document.getElementById('signupForm').addEventListener('submit', async (e) => {
+        const signupForm = document.getElementById('signupForm');
+        const authCard = document.getElementById('authCard');
+        const btn = document.getElementById('authBtn');
+        const btnText = document.getElementById('btnText');
+        const btnLoader = document.getElementById('btnLoader');
+
+        const resetUI = () => {
+            btn.disabled = false;
+            btnText.classList.remove('invisible');
+            btnLoader.classList.add('hidden');
+            authCard.classList.add('animate-shake');
+            setTimeout(() => authCard.classList.remove('animate-shake'), 500);
+        };
+
+        signupForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const btn = document.getElementById('authBtn');
+            
             btn.disabled = true;
+            btnText.classList.add('invisible');
+            btnLoader.classList.remove('hidden');
             
-            const { data, error } = await client.auth.signUp({
-                email: document.getElementById('email').value.trim(),
-                password: document.getElementById('password').value,
-                options: { emailRedirectTo: window.location.origin + '/onboarding' }
-            });
-            
-            if (error) {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+
+            try {
+                const { data, error } = await client.auth.signUp({
+                    email: email,
+                    password: password,
+                    options: { 
+                        // 🔥 FIX 2: Email confirmation link main domain par bhejega
+                        emailRedirectTo: `${MAIN_DOMAIN}/onboarding` 
+                    }
+                });
+                
+                if (error) throw error;
+
+                // Success State
+                alert("Confirmation email sent! Please check your inbox.");
+                window.location.href = "https://auth.luviio.in/login";
+
+            } catch (error) {
+                console.error("Signup Error:", error.message);
                 alert(error.message);
-                btn.disabled = false;
-            } else {
-                alert("Confirmation email sent!");
-                window.location.href = "/login";
+                resetUI();
             }
         });
         
         window.signInWithProvider = async (p) => {
-            await client.auth.signInWithOAuth({ provider: p, options: { redirectTo: window.location.origin + '/onboarding' } });
+            try {
+                const { error } = await client.auth.signInWithOAuth({ 
+                    provider: p, 
+                    options: { redirectTo: `${MAIN_DOMAIN}/onboarding` } 
+                });
+                if (error) throw error;
+            } catch (error) {
+                alert(error.message);
+            }
         };
     })();
 </script>
+
+<style>
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-10px); }
+        75% { transform: translateX(10px); }
+    }
+    .animate-shake { animation: shake 0.2s ease-in-out 0s 2; }
+</style>
 {% endblock %}
