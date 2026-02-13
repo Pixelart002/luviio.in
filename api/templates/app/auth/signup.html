@@ -1,181 +1,126 @@
 {% extends "app/base.html" %}
 {% import "macros/auth_macros.html" as forms %}
 
-{% block head %}
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-
-<script>
-    if (window.location.hostname.startsWith("www.")) {
-        window.location.replace(window.location.href.replace("www.", ""));
-    }
-</script>
-{% endblock %}
-
 {% block content %}
-<div class="grid-bg"></div>
-
-<nav>
-    <a href="/" class="brand">
-        <img src="/static/images/logo.png" alt="Logo" onerror="this.style.display='none'">
-        <span>LUVIIO</span>
-    </a>
-    <a href="mailto:contact@luviio.in" class="nav-link">Contact</a>
-</nav>
-
-<main>
-    <div class="auth-card" id="authCard">
-        <div class="header-text">
-            <div class="title" id="formTitle">Create Account</div>
-            <div class="subtitle" id="formSubtitle">Start your verified journey today</div>
-        </div>
-
-        {{ forms.social_buttons() }}
-
-        <form id="authForm" onsubmit="handleSignup(event)">
-            <input type="text" id="_hp_check" class="hp-field" tabindex="-1" autocomplete="off" style="display:none;">
+<div class="w-full max-w-[420px] animate-fade select-none px-4">
+    <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] overflow-hidden transition-transform">
+        <div class="card-body p-8 sm:p-10 text-center">
             
-            {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
-            {{ forms.input_field('password', 'password', 'Create Password', 'ri-lock-2-line') }}
-
-            {{ forms.submit_button('Sign Up') }}
-
-            <div class="toggle-text">
-                <span id="footerPrompt">Already a member?</span>
-                <a href="/login" class="link" id="toggleLink">Log in</a>
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-white tracking-tight mb-1" id="formTitle">Create Account</h2>
+                <p class="text-xs text-neutral-500 font-medium" id="formSubtitle">Start your verified journey today</p>
             </div>
-        </form>
+            
+            {{ forms.social_buttons() }}
+            
+            <form id="authForm" class="flex flex-col gap-1 text-left">
+                {{ forms.input_field('email', 'email', 'name@company.com', 'ri-mail-line') }}
+                {{ forms.input_field('password', 'password', 'Create Password', 'ri-lock-2-line') }}
+                
+                {{ forms.submit_button('Sign Up') }}
+                
+                <div class="text-center mt-6 text-xs text-neutral-500 font-medium">
+                    <span id="footerPrompt">Already a member?</span>
+                    <a href="/login" class="text-white hover:text-blue-400 font-bold ml-1 transition-colors">Log in</a>
+                </div>
+            </form>
+        </div>
     </div>
-</main>
-
-<footer>&copy; 2026 Luviio Technologies. Secure & Verified.</footer>
-
-<div id="toast" class="toast">
-    <i class="ri-information-fill"></i>
-    <span id="toastMsg">Notification</span>
 </div>
 
 <script>
-    // --- CONFIGURATION ---
-    const SB_URL = "{{ supabase_url }}";
-    const SB_KEY = "{{ supabase_key }}";
-    const PRODUCTION_URL = "https://luviio.in";
+    (function() {
+        // --- 1. CONFIGURATION ---
+        const SB_URL = "{{ supabase_url }}";
+        const SB_KEY = "{{ supabase_key }}";
+        const client = supabase.createClient(SB_URL, SB_KEY);
 
-    let supabaseClient = null;
-    let isProcessing = false;
+        const ui = {
+            card: document.getElementById('authCard'),
+            form: document.getElementById('authForm'),
+            btn: document.getElementById('authBtn'),
+            btnText: document.getElementById('btnText'),
+            loader: document.getElementById('btnLoader')
+        };
 
-    // --- INIT ---
-    document.addEventListener("DOMContentLoaded", () => {
-        if(typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SB_URL, SB_KEY);
-        if(typeof gsap !== 'undefined') gsap.to("#authCard", { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" });
-        
-        // Listener for Auto-Login after Email Verification
-        if(supabaseClient) {
-            supabaseClient.auth.onAuthStateChange(async (event, session) => {
-                if (event === 'SIGNED_IN' && session) {
-                    if (window.location.hash) window.history.replaceState(null, null, window.location.pathname);
-                    await smartRedirect(session.user);
+        // --- 2. AUTH STATE LISTENER (Auto-Redirect handling) ---
+        client.auth.onAuthStateChange(async (event, session) => {
+            console.log("Auth Event:", event);
+            if (event === 'SIGNED_IN' && session) {
+                // Token aate hi URL clean karo
+                if (window.location.hash) {
+                    window.history.replaceState(null, null, window.location.pathname);
                 }
-            });
-        }
-    });
-
-    // --- SIGNUP LOGIC (Strict False Default) ---
-    async function handleSignup(e) {
-        e.preventDefault();
-        if (isProcessing) return;
-        if (document.getElementById('_hp_check').value) return; 
-
-        const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
-
-        if (password.length < 6) { showToast("Password too short (min 6 chars)", "error"); shakeCard(); return; }
-
-        setLoading(true);
-
-        try {
-            // Determine Redirect Base (Localhost vs Prod)
-            const currentHost = window.location.hostname;
-            const redirectBase = (currentHost === 'localhost' || currentHost === '127.0.0.1') 
-                ? window.location.origin 
-                : PRODUCTION_URL;
-
-            // 🛡️ THE STAMP: Force 'onboarded: false'
-            const { data, error } = await supabaseClient.auth.signUp({
-                email,
-                password,
-                options: {
-                    data: { 
-                        onboarded: false, // Strict Security Lock
-                        role: 'pending' 
-                    },
-                    emailRedirectTo: `${redirectBase}/onboarding`
+                
+                // STRICT REDIRECT LOGIC:
+                // Naya user (jisne abhi signup kiya) hamesha false hota hai, toh onboarding par jayega
+                if (session.user.user_metadata?.onboarded === true) {
+                    window.location.href = "/dashboard";
+                } else {
+                    window.location.href = "/onboarding";
                 }
-            });
-
-            if (error) throw error;
-
-            if (data.user && !data.session) {
-                showToast("Verification email sent! Check inbox.", "success");
-                setTimeout(() => window.location.href = "/login", 2000);
-            } else {
-                // Agar session mil gaya (Auto-confirm disabled hai ya kuch aur), toh redirect karo
-                await smartRedirect(data.user);
             }
-
-        } catch (err) {
-            showToast(err.message, "error");
-            shakeCard();
-            setLoading(false);
-        }
-    }
-
-    // --- SOCIAL LOGIN ---
-    async function signInWithProvider(p) {
-        if(!supabaseClient) return;
-        const currentHost = window.location.hostname;
-        const redirectBase = (currentHost === 'localhost' || currentHost === '127.0.0.1') 
-            ? window.location.origin 
-            : PRODUCTION_URL;
-
-        const { error } = await supabaseClient.auth.signInWithOAuth({
-            provider: p,
-            options: { redirectTo: `${redirectBase}/onboarding` }
         });
-        if(error) showToast("Connection Error", "error");
-    }
 
-    // --- SMART REDIRECT (Metadata Check) ---
-    async function smartRedirect(user) {
-        if (user.user_metadata?.onboarded === true) {
-            window.location.href = "/dashboard";
-        } else {
-            // Fallback DB Check
+        // --- 3. SIGNUP ACTION ---
+        ui.form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            ui.btn.disabled = true;
+            ui.btnText.classList.add('invisible');
+            ui.loader.classList.remove('hidden');
+
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+
             try {
-                const { data } = await supabaseClient.from('profiles').select('role').eq('id', user.id).single();
-                window.location.href = (data && data.role) ? "/dashboard" : "/onboarding";
-            } catch (e) { window.location.href = "/onboarding"; }
-        }
-    }
+                // 🛡️ THE STAMP: Force 'onboarded: false' on creation
+                const { data, error } = await client.auth.signUp({
+                    email,
+                    password,
+                    options: {
+                        data: { 
+                            onboarded: false, // Security Lock
+                            role: 'pending' 
+                        },
+                        // Verification ke baad seedha onboarding par land karega
+                        emailRedirectTo: window.location.origin + '/onboarding'
+                    }
+                });
 
-    // --- UI HELPERS ---
-    function setLoading(state) {
-        isProcessing = state;
-        document.getElementById('btnText').style.display = state ? 'none' : 'block';
-        document.getElementById('btnLoader').style.display = state ? 'block' : 'none';
-        document.getElementById('authBtn').disabled = state;
-    }
+                if (error) throw error;
 
-    function showToast(msg, type) {
-        const t = document.getElementById('toast');
-        document.getElementById('toastMsg').innerText = msg;
-        t.className = `toast visible ${type}`;
-        t.querySelector('i').className = type === 'error' ? "ri-error-warning-fill" : "ri-checkbox-circle-fill";
-        setTimeout(() => t.className = "toast", 3000);
-    }
+                if (data.user && !data.session) {
+                    alert("Confirmation email sent! Please verify to start setup.");
+                    window.location.href = "/login";
+                }
+                
+            } catch (err) {
+                alert(err.message);
+                ui.btn.disabled = false;
+                ui.btnText.classList.remove('invisible');
+                ui.loader.classList.add('hidden');
+            }
+        });
 
-    function shakeCard() {
-        if(typeof gsap !== 'undefined') gsap.to(".auth-card", { x: -6, duration: 0.08, repeat: 3, yoyo: true });
-    }
+        window.signInWithProvider = async (p) => {
+            const { error } = await client.auth.signInWithOAuth({
+                provider: p,
+                options: { 
+                    // Social login bhi pehle onboarding check karega
+                    redirectTo: window.location.origin + '/onboarding' 
+                }
+            });
+            if (error) alert(error.message);
+        };
+    })();
 </script>
+
+<style>
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-10px); }
+        75% { transform: translateX(10px); }
+    }
+    .animate-shake { animation: shake 0.2s ease-in-out 0s 2; }
+</style>
 {% endblock %}
