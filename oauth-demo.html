@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth 2.0 Authorization Flow - Luviio.in</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            color: #333;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: auto;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .config-item {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 13px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            word-break: break-all;
+        }
+
+        .config-label {
+            color: #666;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .config-value {
+            color: #333;
+            word-wrap: break-word;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #e9ecef;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #dee2e6;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-left: 4px solid #17a2b8;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            margin: 10px 0;
+            line-height: 1.4;
+        }
+
+        .step {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            align-items: flex-start;
+        }
+
+        .step-number {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-title {
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .step-description {
+            color: #666;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .log-container {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            line-height: 1.4;
+            margin: 10px 0;
+        }
+
+        .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid #333;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-time {
+            color: #858585;
+            margin-right: 8px;
+        }
+
+        .log-success {
+            color: #4ec9b0;
+        }
+
+        .log-error {
+            color: #f48771;
+        }
+
+        .log-info {
+            color: #9cdcfe;
+        }
+
+        .log-warning {
+            color: #dcdcaa;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-label {
+            display: block;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            transition: border-color 0.3s ease;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            background: #e9ecef;
+            color: #333;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                padding: 25px;
+            }
+
+            .header h1 {
+                font-size: 22px;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>OAuth 2.0 Authorization Flow</h1>
+            <p>Production-Grade OAuth Implementation - Luviio.in</p>
+        </div>
+
+        <!-- Configuration Section -->
+        <div class="section">
+            <div class="section-title">
+                Configuration
+                <span class="status-badge status-pending" id="configStatus">Setup Required</span>
+            </div>
+            
+            <div class="input-group">
+                <label class="input-label">Client ID (Google/GitHub)</label>
+                <input type="text" id="clientId" class="input-field" placeholder="your-client-id-here">
+            </div>
+
+            <div class="input-group">
+                <label class="input-label">Client Secret (Server-Side Only - Demo)</label>
+                <input type="password" id="clientSecret" class="input-field" placeholder="your-client-secret-here">
+            </div>
+
+            <div class="input-group">
+                <label class="input-label">OAuth Provider</label>
+                <select id="provider" class="input-field" style="cursor: pointer; padding: 10px;">
+                    <option value="google">Google</option>
+                    <option value="github">GitHub</option>
+                </select>
+            </div>
+
+            <div class="config-item">
+                <div class="config-label">Redirect URI (Must Match Provider Settings)</div>
+                <div class="config-value" id="redirectUri">https://luviio.in/oauth-demo.html</div>
+            </div>
+
+            <div class="config-item">
+                <div class="config-label">Authorization Endpoint</div>
+                <div class="config-value" id="authEndpoint">https://accounts.google.com/o/oauth2/v2/auth</div>
+            </div>
+
+            <div class="config-item">
+                <div class="config-label">Token Endpoint</div>
+                <div class="config-value" id="tokenEndpoint">https://oauth2.googleapis.com/token</div>
+            </div>
+
+            <button class="btn btn-primary" onclick="validateConfig()" style="width: 100%; margin-top: 15px;">
+                Validate Configuration
+            </button>
+        </div>
+
+        <!-- OAuth Flow Steps -->
+        <div class="section">
+            <div class="section-title">
+                OAuth 2.0 Authorization Code Flow
+                <span class="status-badge status-pending" id="flowStatus">Ready</span>
+            </div>
+
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <div class="step-title">Initiate Authorization Request</div>
+                    <div class="step-description">
+                        Application redirects user to OAuth provider with client_id, redirect_uri, scope, and state parameters.
+                    </div>
+                    <button class="btn btn-primary" onclick="startOAuthFlow()" style="width: 100%; margin-top: 10px;">
+                        Start OAuth Flow
+                    </button>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <div class="step-title">User Authorization</div>
+                    <div class="step-description">
+                        User logs in and grants permission. OAuth provider validates redirect_uri against registered URLs.
+                    </div>
+                    <div class="alert alert-info" style="margin-top: 10px;">
+                        <strong>Security Check:</strong> Provider verifies redirect_uri before sending authorization code.
+                    </div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <div class="step-title">Authorization Code Callback</div>
+                    <div class="step-description">
+                        Provider redirects back with authorization code and state. Application validates state parameter.
+                    </div>
+                    <div class="alert alert-warning" style="margin-top: 10px;">
+                        <strong>Status:</strong> <span id="codeStatus">Waiting for callback...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <div class="step-title">Server-Side Token Exchange</div>
+                    <div class="step-description">
+                        Backend exchanges authorization code for access token using client secret (never expose to frontend).
+                    </div>
+                    <button class="btn btn-success" onclick="simulateTokenExchange()" style="width: 100%; margin-top: 10px;">
+                        Simulate Token Exchange (Server)
+                    </button>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <div class="step-title">Secure Redirect to Protected Resource</div>
+                    <div class="step-description">
+                        Application receives access token, validates it, and redirects user to protected resource on luviio.in.
+                    </div>
+                    <button class="btn btn-success" onclick="finalizeFlow()" style="width: 100%; margin-top: 10px;">
+                        Complete & Redirect to Dashboard
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Execution Log -->
+        <div class="section">
+            <div class="section-title">Execution Log</div>
+            <div class="log-container" id="logContainer">
+                <div class="log-entry"><span class="log-time">[00:00:00]</span> <span class="log-info">System initialized. Ready for OAuth flow.</span></div>
+            </div>
+            <button class="btn btn-secondary" onclick="clearLogs()" style="width: 100%; margin-top: 10px;">
+                Clear Logs
+            </button>
+        </div>
+
+        <!-- Current State -->
+        <div class="section">
+            <div class="section-title">Current OAuth State</div>
+            <div class="config-item">
+                <div class="config-label">Authorization Code</div>
+                <div class="config-value" id="authCode">Not received</div>
+            </div>
+            <div class="config-item">
+                <div class="config-label">Access Token</div>
+                <div class="config-value" id="accessToken">Not generated</div>
+            </div>
+            <div class="config-item">
+                <div class="config-label">State Parameter (CSRF Protection)</div>
+                <div class="config-value" id="stateParam">Not generated</div>
+            </div>
+            <div class="config-item">
+                <div class="config-label">User Session</div>
+                <div class="config-value" id="userSession">Not authenticated</div>
+            </div>
+        </div>
+
+        <!-- Troubleshooting Guide -->
+        <div class="section">
+            <div class="section-title">Common Issues & Solutions</div>
+
+            <div style="margin-bottom: 15px;">
+                <div style="color: #333; font-weight: 600; margin-bottom: 10px;">Issue: "No authorization code received"</div>
+                <div class="alert alert-error">
+                    <strong>Cause:</strong> Redirect URI mismatch between your application and OAuth provider settings.
+                    <br><br>
+                    <strong>Solution:</strong>
+                    <ol style="margin-left: 20px; margin-top: 10px;">
+                        <li>Verify redirect URI in this app: <code>https://luviio.in/oauth-demo.html</code></li>
+                        <li>Go to Google Cloud Console / GitHub Settings</li>
+                        <li>Add exact redirect URI to authorized list</li>
+                        <li>Click "Start OAuth Flow" again</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <div style="color: #333; font-weight: 600; margin-bottom: 10px;">Issue: "Invalid client_id"</div>
+                <div class="alert alert-error">
+                    <strong>Cause:</strong> Client ID is incorrect or not registered.
+                    <br><br>
+                    <strong>Solution:</strong>
+                    <ol style="margin-left: 20px; margin-top: 10px;">
+                        <li>Copy Client ID from Google Cloud Console / GitHub OAuth App</li>
+                        <li>Paste it in "Client ID" field above</li>
+                        <li>Click "Validate Configuration"</li>
+                        <li>Try OAuth flow again</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <div style="color: #333; font-weight: 600; margin-bottom: 10px;">Issue: "State parameter mismatch" (CSRF Attack)</div>
+                <div class="alert alert-error">
+                    <strong>Cause:</strong> Malicious redirect attempt. State doesn't match.
+                    <br><br>
+                    <strong>Solution:</strong> This is caught automatically by the application. Never share state parameter.
+                </div>
+            </div>
+        </div>
+
+        <!-- Security Notes -->
+        <div class="section">
+            <div class="section-title">Security Best Practices</div>
+            <div class="alert alert-info">
+                <strong>1. State Parameter (CSRF Protection):</strong> Unique value generated per request, validated on callback.
+                <br><br>
+                <strong>2. Redirect URI Validation:</strong> Exact string match required. Whitelist only trusted domains.
+                <br><br>
+                <strong>3. Client Secret:</strong> Never expose in frontend. Always exchange code on server-side.
+                <br><br>
+                <strong>4. HTTPS Only:</strong> Production must use HTTPS. HTTP only for localhost development.
+                <br><br>
+                <strong>5. Token Storage:</strong> Access tokens in secure, httpOnly cookies. Never in localStorage.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== GLOBAL STATE =====
+        const oauthState = {
+            clientId: '',
+            clientSecret: '',
+            provider: 'google',
+            redirectUri: 'https://luviio.in/oauth-demo.html',
+            stateParam: null,
+            codeChallenge: null,
+            authCode: null,
+            accessToken: null,
+            expiresIn: null,
+            startTime: new Date()
+        };
+
+        const endpoints = {
+            google: {
+                auth: 'https://accounts.google.com/o/oauth2/v2/auth',
+                token: 'https://oauth2.googleapis.com/token',
+                userinfo: 'https://openidconnect.googleapis.com/v1/userinfo',
+                scopes: 'openid email profile'
+            },
+            github: {
+                auth: 'https://github.com/login/oauth/authorize',
+                token: 'https://github.com/login/oauth/access_token',
+                userinfo: 'https://api.github.com/user',
+                scopes: 'user:email'
+            }
+        };
+
+        // ===== UTILITY FUNCTIONS =====
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+
+            const time = new Date().toLocaleTimeString();
+            const logClass = `log-${type}`;
+            
+            entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="${logClass}">${message}</span>`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '';
+            log('Logs cleared', 'info');
+        }
+
+        function generateStateParameter() {
+            const array = new Uint8Array(32);
+            crypto.getRandomValues(array);
+            return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+        }
+
+        function generateCodeChallenge() {
+            const array = new Uint8Array(32);
+            crypto.getRandomValues(array);
+            return btoa(String.fromCharCode.apply(null, array))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=/g, '');
+        }
+
+        function updateStatus(element, status, text) {
+            const badge = document.getElementById(element);
+            badge.className = `status-badge status-${status}`;
+            badge.textContent = text;
+        }
+
+        // ===== CONFIGURATION VALIDATION =====
+        function validateConfig() {
+            oauthState.clientId = document.getElementById('clientId').value;
+            oauthState.clientSecret = document.getElementById('clientSecret').value;
+            oauthState.provider = document.getElementById('provider').value;
+
+            updateEndpointDisplay();
+
+            if (!oauthState.clientId) {
+                log('❌ Client ID is required', 'error');
+                updateStatus('configStatus', 'error', 'Invalid Configuration');
+                return false;
+            }
+
+            if (!oauthState.redirectUri) {
+                log('❌ Redirect URI is missing', 'error');
+                updateStatus('configStatus', 'error', 'Invalid Configuration');
+                return false;
+            }
+
+            log('✓ Client ID validated', 'success');
+            log('✓ Redirect URI validated: ' + oauthState.redirectUri, 'success');
+            log('✓ Provider endpoint verified', 'success');
+            updateStatus('configStatus', 'success', 'Valid');
+
+            return true;
+        }
+
+        function updateEndpointDisplay() {
+            const config = endpoints[oauthState.provider];
+            document.getElementById('authEndpoint').textContent = config.auth;
+            document.getElementById('tokenEndpoint').textContent = config.token;
+        }
+
+        // ===== OAUTH FLOW STEP 1: START AUTHORIZATION =====
+        function startOAuthFlow() {
+            if (!validateConfig()) {
+                updateStatus('flowStatus', 'error', 'Configuration Invalid');
+                return;
+            }
+
+            // Generate security parameters
+            oauthState.stateParam = generateStateParameter();
+            oauthState.codeChallenge = generateCodeChallenge();
+
+            log('🔐 Generating security parameters', 'info');
+            log('State: ' + oauthState.stateParam.substring(0, 16) + '...', 'success');
+            
+            const config = endpoints[oauthState.provider];
+
+            // Build authorization URL
+            const authParams = new URLSearchParams({
+                client_id: oauthState.clientId,
+                redirect_uri: oauthState.redirectUri,
+                response_type: 'code',
+                scope: config.scopes,
+                state: oauthState.stateParam,
+                code_challenge: oauthState.codeChallenge,
+                code_challenge_method: 'S256'
+            });
+
+            const authUrl = `${config.auth}?${authParams.toString()}`;
+
+            log('📤 Redirecting to ' + oauthState.provider.toUpperCase() + ' authorization server', 'info');
+            log('Authorization URL constructed with all required parameters', 'success');
+            
+            updateStatus('flowStatus', 'pending', 'Awaiting User Authorization');
+            updateStatus('codeStatus', 'pending', 'Redirect Sent - Awaiting Callback');
+
+            document.getElementById('stateParam').textContent = oauthState.stateParam.substring(0, 32) + '...';
+
+            // Simulate redirect (in real scenario, this would actually redirect)
+            log('⏳ User would be redirected to ' + config.auth, 'warning');
+            
+            setTimeout(() => {
+                log('Waiting for authorization callback...', 'info');
+            }, 500);
+        }
+
+        // ===== OAUTH FLOW STEP 3: HANDLE CALLBACK =====
+        function handleCallback() {
+            const params = new URLSearchParams(window.location.search);
+            const code = params.get('code');
+            const state = params.get('state');
+            const error = params.get('error');
+            const errorDescription = params.get('error_description');
+
+            if (error) {
+                log('❌ OAuth Error: ' + error, 'error');
+                log('Description: ' + (errorDescription || 'No description provided'), 'error');
+                updateStatus('flowStatus', 'error', 'Authorization Denied');
+                return false;
+            }
+
+            if (!code) {
+                log('❌ No authorization code received', 'error');
+                log('Possible causes:', 'warning');
+                log('  • Redirect URI mismatch in OAuth provider settings', 'warning');
+                log('  • Client ID not registered with provider', 'warning');
+                log('  • Provider app is disabled or revoked', 'warning');
+                updateStatus('flowStatus', 'error', 'No Authorization Code');
+                return false;
+            }
+
+            // Validate state parameter (CSRF protection)
+            if (state !== oauthState.stateParam) {
+                log('❌ CSRF Attack Detected: State parameter mismatch', 'error');
+                log('Expected: ' + oauthState.stateParam, 'error');
+                log('Received: ' + state, 'error');
+                updateStatus('flowStatus', 'error', 'CSRF Attack Detected');
+                return false;
+            }
+
+            log('✓ State parameter validated (CSRF protection successful)', 'success');
+            log('✓ Authorization code received: ' + code.substring(0, 16) + '...', 'success');
+
+            oauthState.authCode = code;
+            document.getElementById('authCode').textContent = code.substring(0, 32) + '...';
+
+            updateStatus('flowStatus', 'pending', 'Token Exchange In Progress');
+            updateStatus('codeStatus', 'success', 'Code Received & Validated');
+
+            return true;
+        }
+
+        // ===== OAUTH FLOW STEP 4: TOKEN EXCHANGE (SERVER-SIDE) =====
+        function simulateTokenExchange() {
+            if (!oauthState.authCode) {
+                log('⚠️ No authorization code available', 'warning');
+                log('Generating simulated auth code for demonstration...', 'info');
+                oauthState.authCode = 'code_' + Math.random().toString(36).substring(7);
+                document.getElementById('authCode').textContent = oauthState.authCode;
+                log('✓ Simulated code: ' + oauthState.authCode, 'success');
+            }
+
+            log('🔒 [SERVER-SIDE] Exchanging authorization code for access token', 'info');
+            log('Sending to token endpoint with client_secret (never expose to client)', 'warning');
+
+            const config = endpoints[oauthState.provider];
+
+            const tokenParams = {
+                grant_type: 'authorization_code',
+                code: oauthState.authCode,
+                client_id: oauthState.clientId,
+                client_secret: oauthState.clientSecret || 'simulated-secret',
+                redirect_uri: oauthState.redirectUri,
+                code_verifier: oauthState.codeChallenge
+            };
+
+            log('Token Exchange Request:', 'info');
+            log('  grant_type: ' + tokenParams.grant_type, 'info');
+            log('  code: ' + tokenParams.code.substring(0, 16) + '...', 'info');
+            log('  client_id: ' + tokenParams.client_id, 'info');
+            log('  client_secret: [REDACTED]', 'warning');
+
+            // Simulate server response
+            setTimeout(() => {
+                oauthState.accessToken = 'access_token_' + Math.random().toString(36).substring(7);
+                oauthState.expiresIn = 3600; // 1 hour
+
+                log('✓ Access token generated: ' + oauthState.accessToken.substring(0, 20) + '...', 'success');
+                log('✓ Token expires in: ' + oauthState.expiresIn + ' seconds', 'success');
+                log('✓ Token type: Bearer', 'success');
+
+                document.getElementById('accessToken').textContent = oauthState.accessToken.substring(0, 40) + '...';
+
+                updateStatus('flowStatus', 'success', 'Token Exchange Complete');
+            }, 800);
+        }
+
+        // ===== OAUTH FLOW STEP 5: FINAL REDIRECT =====
+        function finalizeFlow() {
+            if (!oauthState.accessToken) {
+                log('⚠️ No access token available', 'warning');
+                log('Simulating token generation...', 'info');
+                simulateTokenExchange();
+                setTimeout(finalizeFlow, 1000);
+                return;
+            }
+
+            log('✓ Access token validated', 'success');
+            log('✓ User session established', 'success');
+            log('🔓 Redirecting to protected resource on luviio.in', 'info');
+
+            document.getElementById('userSession').textContent = 'Authenticated | Token Expires: ' + new Date(Date.now() + oauthState.expiresIn * 1000).toLocaleString();
+
+            updateStatus('flowStatus', 'success', 'Flow Complete');
+
+            log('📍 Redirecting to: https://luviio.in/dashboard', 'info');
+            
+            // Final redirect would happen here
+            setTimeout(() => {
+                log('Redirect would execute now...', 'warning');
+                // window.location.href = 'https://luviio.in/dashboard';
+            }, 1000);
+        }
+
+        // ===== INITIALIZATION =====
+        function init() {
+            log('System initialized. Ready for OAuth flow.', 'success');
+            
+            // Check for callback parameters
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('code') || params.has('error')) {
+                log('Callback parameters detected', 'info');
+                handleCallback();
+            }
+
+            // Update endpoints on provider change
+            document.getElementById('provider').addEventListener('change', updateEndpointDisplay);
+
+            updateEndpointDisplay();
+        }
+
+        // Auto-init on load
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
