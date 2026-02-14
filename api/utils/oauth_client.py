@@ -41,12 +41,6 @@ class SupabaseOAuthClient:
     ):
         """
         Initialize OAuth client.
-        
-        Args:
-            supabase_url: Supabase project URL (defaults to SB_URL env)
-            supabase_key: Supabase anon key (defaults to SB_KEY env)
-            service_role_key: Supabase service role key (defaults to SB_SERVICE_ROLE_KEY env)
-            timeout: HTTP request timeout in seconds
         """
         self.supabase_url = supabase_url or os.environ.get("SB_URL")
         self.supabase_key = supabase_key or os.environ.get("SB_KEY")
@@ -63,16 +57,10 @@ class SupabaseOAuthClient:
         
         logger.info("✓ SupabaseOAuthClient initialized")
     
-    async def exchange_authorization_code(self, code: str) -> Dict:
+    async def exchange_authorization_code(self, code: str, code_verifier: str) -> Dict:
         """
         Exchange OAuth authorization code for session tokens.
-        Uses Authorization Code Flow (PKCE).
-        
-        Args:
-            code: Authorization code from OAuth provider
-            
-        Returns:
-            Dict with access_token, refresh_token, user data, or error
+        Strictly upgraded to support PKCE by including code_verifier.
         """
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -84,7 +72,8 @@ class SupabaseOAuthClient:
                     },
                     data={
                         "code": code,
-                        "grant_type": "authorization_code"
+                        "grant_type": "authorization_code",
+                        "code_verifier": code_verifier  # Added for PKCE support
                     }
                 )
             
@@ -133,15 +122,7 @@ class SupabaseOAuthClient:
     async def email_password_signup(self, email: str, password: str) -> Dict:
         """
         Sign up user with email and password.
-        
-        Args:
-            email: User email
-            password: User password (min 6 chars)
-            
-        Returns:
-            Dict with user data or error
         """
-        # Validation
         if not email or not password:
             return {"success": False, "error": "missing_fields"}
         
@@ -191,13 +172,6 @@ class SupabaseOAuthClient:
     async def email_password_login(self, email: str, password: str) -> Dict:
         """
         Log in user with email and password.
-        
-        Args:
-            email: User email
-            password: User password
-            
-        Returns:
-            Dict with session data or error
         """
         if not email or not password:
             return {"success": False, "error": "missing_fields"}
@@ -252,12 +226,6 @@ class SupabaseOAuthClient:
     async def verify_token(self, access_token: str) -> Dict:
         """
         Verify if access token is valid and return user data.
-        
-        Args:
-            access_token: JWT access token
-            
-        Returns:
-            Dict with user data or error
         """
         if not access_token:
             return {"success": False, "authenticated": False}
@@ -293,12 +261,6 @@ class SupabaseOAuthClient:
     async def refresh_session(self, refresh_token: str) -> Dict:
         """
         Refresh expired access token using refresh token.
-        
-        Args:
-            refresh_token: Refresh token
-            
-        Returns:
-            Dict with new access token or error
         """
         if not refresh_token:
             return {"success": False, "error": "no_refresh_token"}
@@ -339,14 +301,6 @@ class SupabaseOAuthClient:
     ) -> Tuple[bool, Optional[Dict]]:
         """
         Get existing profile or create new one for onboarding flow.
-        Implements 3-State Logic: State A (New), State B (Incomplete), State C (Complete).
-        
-        Args:
-            user_id: Supabase user ID
-            email: User email
-            
-        Returns:
-            Tuple: (success: bool, profile_data: dict)
         """
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -363,12 +317,11 @@ class SupabaseOAuthClient:
             if check_res.status_code == 200:
                 profiles = check_res.json()
                 if profiles:
-                    # STATE B/C: Profile exists
                     profile = profiles[0]
                     logger.info(f"Profile exists for {email}")
                     return True, profile
             
-            # STATE A: Create new profile
+            # Create new profile
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 create_res = await client.post(
                     f"{self.supabase_url}/rest/v1/profiles",
@@ -392,7 +345,6 @@ class SupabaseOAuthClient:
                 return True, profile
             else:
                 logger.warning(f"Profile creation returned {create_res.status_code}")
-                # Failsafe: Return minimal profile data
                 return True, {
                     "id": user_id,
                     "email": email,
@@ -402,7 +354,6 @@ class SupabaseOAuthClient:
         
         except Exception as e:
             logger.error(f"Profile operation error: {str(e)}")
-            # Failsafe: Return minimal profile
             return True, {
                 "id": user_id,
                 "email": email,
@@ -412,11 +363,5 @@ class SupabaseOAuthClient:
     def get_next_redirect_url(self, is_onboarded: bool) -> str:
         """
         Determine next redirect URL based on onboarding status.
-        
-        Args:
-            is_onboarded: Whether user has completed onboarding
-            
-        Returns:
-            Redirect URL path
         """
         return "/dashboard" if is_onboarded else "/onboarding"
