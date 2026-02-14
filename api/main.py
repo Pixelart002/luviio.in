@@ -22,6 +22,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger("LUVIIO-APP")
 
+# --- ✅ ENVIRONMENT VARIABLE VALIDATION ---
+REQUIRED_ENV_VARS = ["SB_URL", "SB_KEY", "SB_SERVICE_ROLE_KEY"]
+missing_vars = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
+
+if missing_vars:
+    logger.warning(f"⚠️  WARNING: Missing environment variables: {', '.join(missing_vars)}")
+    logger.warning("App will continue but OAuth/Auth features may not work properly")
+    logger.warning("Add these to your Vercel project settings → Environment Variables")
+else:
+    logger.info("✅ All required Supabase environment variables configured")
+
 # --- 📂 ROUTE IMPORTS ---
 try:
     from api.routes.resend_mail import router as resend_router

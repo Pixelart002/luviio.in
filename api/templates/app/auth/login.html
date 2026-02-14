@@ -2,103 +2,218 @@
 {% import "macros/auth_macros.html" as forms %}
 
 {% block content %}
-<div class="w-full max-w-[420px] px-4">
-    <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] p-8 text-center backdrop-blur-xl">
-        
-        <h2 class="text-2xl font-bold text-white mb-2" id="formTitle">Welcome Back</h2>
-        <p class="text-xs text-neutral-500 mb-6">Secure access via OAuth 2.0</p>
-        
-        <div class="grid grid-cols-2 gap-3 mb-6">
-            <button onclick="oauthLogin('google')" class="flex items-center justify-center gap-2 bg-white/5 border border-white/10 rounded-xl py-3 hover:bg-white/10 transition">
-                <i class="ri-google-fill text-xl text-white"></i> <span class="text-sm font-semibold text-white">Google</span>
-            </button>
-            <button onclick="oauthLogin('github')" class="flex items-center justify-center gap-2 bg-white/5 border border-white/10 rounded-xl py-3 hover:bg-white/10 transition">
-                <i class="ri-github-fill text-xl text-white"></i> <span class="text-sm font-semibold text-white">GitHub</span>
-            </button>
-        </div>
-        
-        <div class="relative flex items-center justify-center mb-6">
-            <div class="absolute inset-0 border-t border-white/10"></div>
-            <span class="relative bg-[#0A0A0A] px-2 text-xs text-white/40 uppercase">Or email</span>
-        </div>
-        
-        <form id="authForm" class="flex flex-col gap-3">
-            <input type="email" id="email" placeholder="Email" class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-blue-500" required>
-            <input type="password" id="password" placeholder="Password" class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-blue-500" required>
+<div class="w-full min-h-screen flex items-center justify-center py-8">
+    <div class="w-full max-w-[420px] px-4 mx-auto">
+        <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-2xl p-8 text-center backdrop-blur-xl">
             
-            <button type="submit" id="submitBtn" class="w-full bg-white text-black font-bold rounded-xl py-4 mt-2 hover:scale-[1.02] transition">Sign In</button>
-        </form>
-        
-        <div class="mt-4 text-xs text-neutral-500">
-            <button onclick="toggleMode()" id="toggleBtn" class="text-white hover:underline">Create an account</button>
+            <h2 class="text-2xl font-bold text-white mb-1" id="formTitle">Welcome Back</h2>
+            <p class="text-xs text-neutral-500 mb-6">Secure OAuth 2.0 Authentication</p>
+
+            {# Error Alert #}
+            {{ forms.error_alert('', 'errorAlert') }}
+            {{ forms.success_alert('', 'successAlert') }}
+
+            {# OAuth Buttons #}
+            {{ forms.oauth_buttons() }}
+
+            {# Email/Password Form #}
+            <form id="authForm" class="flex flex-col gap-4">
+                {{ forms.input_field('email', 'email', 'Email address', 'ri-mail-line', autocomplete_type='email') }}
+                {{ forms.input_field('password', 'password', 'Password', 'ri-lock-line', autocomplete_type='current-password') }}
+                
+                {{ forms.submit_button('Sign In', 'submitBtn') }}
+            </form>
+
+            {# Toggle to Signup #}
+            <div class="mt-6 text-xs text-neutral-400">
+                Don't have an account?
+                <button 
+                    type="button"
+                    onclick="toggleMode()" 
+                    id="toggleBtn" 
+                    class="text-white font-semibold hover:underline ml-1 focus:outline-none focus:underline"
+                    aria-label="Switch to signup"
+                >
+                    Create one
+                </button>
+            </div>
+
+            {# Privacy/Terms Links #}
+            <div class="mt-6 pt-6 border-t border-white/10 text-xs text-neutral-500 flex justify-center gap-4">
+                <a href="#" class="hover:text-white transition">Privacy</a>
+                <span>•</span>
+                <a href="#" class="hover:text-white transition">Terms</a>
+            </div>
         </div>
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+    // --- CONFIGURATION ---
     const SB_URL = "{{ supabase_url }}";
     const SB_KEY = "{{ supabase_key }}";
-    const client = supabase.createClient(SB_URL, SB_KEY);
     let isSignup = false;
-    
-    // --- 1. OAUTH LOGIN (SERVER SIDE FLOW) ---
-    async function oauthLogin(provider) {
-        // 🔥 MAGIC: Redirect to Backend Callback, NOT Frontend
-        const callbackUrl = window.location.origin + "/api/auth/callback";
-        
-        const { error } = await client.auth.signInWithOAuth({
-            provider: provider,
-            options: { redirectTo: callbackUrl }
-        });
-        if (error) alert(error.message);
+
+    // Initialize Supabase client (for OAuth provider flow only)
+    const supabaseClient = SB_URL && SB_KEY ? supabase.createClient(SB_URL, SB_KEY) : null;
+
+    // --- UTILITY FUNCTIONS ---
+    function showError(message) {
+        const alert = document.getElementById('errorAlert');
+        const msg = document.getElementById('errorMessage');
+        msg.textContent = message;
+        alert.classList.remove('hidden');
+        setTimeout(() => alert.classList.add('hidden'), 5000);
     }
-    
-    // --- 2. MANUAL LOGIN/SIGNUP ---
+
+    function showSuccess(message) {
+        const alert = document.getElementById('successAlert');
+        const msg = document.getElementById('successMessage');
+        msg.textContent = message;
+        alert.classList.remove('hidden');
+    }
+
+    function setButtonLoading(btn, loading = true) {
+        const text = document.getElementById('btnText');
+        const loader = document.getElementById('btnLoader');
+        
+        if (loading) {
+            text.classList.add('hidden');
+            loader.classList.remove('hidden');
+            btn.disabled = true;
+        } else {
+            text.classList.remove('hidden');
+            loader.classList.add('hidden');
+            btn.disabled = false;
+        }
+    }
+
+    // --- 1. OAUTH LOGIN (Server-Side Authorization Code Flow) ---
+    async function oauthLogin(provider) {
+        if (!supabaseClient) {
+            showError('Server configuration error - OAuth unavailable');
+            return;
+        }
+
+        try {
+            // Initiate OAuth flow with server callback
+            const { error } = await supabaseClient.auth.signInWithOAuth({
+                provider: provider,
+                options: {
+                    redirectTo: window.location.origin + '/api/auth/callback'
+                }
+            });
+
+            if (error) {
+                showError(`OAuth failed: ${error.message}`);
+                console.error('[v0] OAuth error:', error);
+            }
+        } catch (err) {
+            showError(`OAuth error: ${err.message}`);
+            console.error('[v0] Unexpected OAuth error:', err);
+        }
+    }
+
+    // --- 2. EMAIL/PASSWORD AUTHENTICATION ---
     document.getElementById('authForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const btn = document.getElementById('submitBtn');
-        btn.innerText = "Processing...";
-        btn.disabled = true;
         
-        const email = document.getElementById('email').value;
+        const btn = document.getElementById('submitBtn');
+        const email = document.getElementById('email').value.trim().toLowerCase();
         const password = document.getElementById('password').value;
         const action = isSignup ? 'signup' : 'login';
-        
+
+        // Validation
+        if (!email || !password) {
+            showError('Please fill in all fields');
+            return;
+        }
+
+        if (password.length < 6 && isSignup) {
+            showError('Password must be at least 6 characters');
+            return;
+        }
+
+        setButtonLoading(btn, true);
+
         try {
             const res = await fetch('/api/auth/flow', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include', // Send cookies
                 body: JSON.stringify({ email, password, action })
             });
-            
+
             const data = await res.json();
-            
-            if (data.error) throw new Error(data.error);
-            
-            // Login Success
-            if (data.session) {
-                // Client-side session set (Optional backup)
-                await client.auth.setSession(data.session);
-                window.location.href = "/" + data.next;
-            } else if (data.msg) {
-                alert(data.msg); // Signup email sent
-                window.location.reload();
+
+            if (!res.ok) {
+                showError(data.error || 'Authentication failed');
+                setButtonLoading(btn, false);
+                return;
             }
-            
+
+            console.log('[v0] Auth response:', data.next);
+
+            // Signup Success
+            if (data.msg) {
+                showSuccess('✓ ' + data.msg);
+                setTimeout(() => {
+                    window.location.href = '/login';
+                }, 2000);
+                return;
+            }
+
+            // Login Success
+            if (data.next) {
+                showSuccess('✓ Authentication successful');
+                setTimeout(() => {
+                    window.location.href = '/' + data.next;
+                }, 1000);
+                return;
+            }
+
         } catch (err) {
-            alert(err.message);
-            btn.innerText = isSignup ? "Sign Up" : "Sign In";
-            btn.disabled = false;
+            showError(`Error: ${err.message}`);
+            console.error('[v0] Auth error:', err);
+            setButtonLoading(btn, false);
         }
     });
-    
-    // Toggle Mode
+
+    // --- 3. TOGGLE BETWEEN LOGIN/SIGNUP ---
     function toggleMode() {
         isSignup = !isSignup;
-        document.getElementById('formTitle').innerText = isSignup ? "Create Account" : "Welcome Back";
-        document.getElementById('submitBtn').innerText = isSignup ? "Sign Up" : "Sign In";
-        document.getElementById('toggleBtn').innerText = isSignup ? "Already have an account? Sign In" : "Create an account";
+        const title = document.getElementById('formTitle');
+        const btn = document.getElementById('submitBtn');
+        const toggleBtn = document.getElementById('toggleBtn');
+        const btnText = document.getElementById('btnText');
+
+        if (isSignup) {
+            title.textContent = 'Create Account';
+            btnText.textContent = 'Sign Up';
+            toggleBtn.textContent = 'Already have an account?';
+        } else {
+            title.textContent = 'Welcome Back';
+            btnText.textContent = 'Sign In';
+            toggleBtn.textContent = 'Create one';
+        }
+
+        // Clear form
+        document.getElementById('authForm').reset();
+        document.getElementById('errorAlert').classList.add('hidden');
     }
+
+    // --- 4. CHECK FOR ERROR PARAMS IN URL ---
+    window.addEventListener('DOMContentLoaded', () => {
+        const params = new URLSearchParams(window.location.search);
+        const error = params.get('error');
+        const msg = params.get('msg');
+
+        if (error) {
+            showError(msg || `Authentication error: ${error}`);
+            // Clean URL
+            window.history.replaceState({}, document.title, '/login');
+        }
+    });
 </script>
 {% endblock %}
