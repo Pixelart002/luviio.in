@@ -7,6 +7,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+# --- 🆕 IMPORT FOR SESSIONS ---
+from starlette.middleware.sessions import SessionMiddleware 
 
 # 🛡️ THE ULTIMATE PATH FIX (Vercel Compatibility)
 BASE_DIR = Path(__file__).resolve().parent 
@@ -28,27 +30,36 @@ missing_vars = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
 
 if missing_vars:
     logger.warning(f"⚠️  WARNING: Missing environment variables: {', '.join(missing_vars)}")
-    logger.warning("App will continue but OAuth/Auth features may not work properly")
-    logger.warning("Add these to your Vercel project settings → Environment Variables")
 else:
     logger.info("✅ All required Supabase environment variables configured")
 
 # --- 📂 ROUTE IMPORTS ---
 try:
     from api.routes.resend_mail import router as resend_router
-    from api.routes.auth import router as auth_router # Updated Path
+    from api.routes.auth import router as auth_router 
 except ImportError:
     from routes.resend_mail import router as resend_router
     from routes.auth import router as auth_router
 
 app = FastAPI()
 
-# --- 🛡️ DOMAIN GUARD: Force Non-WWW (Industry Standard) ---
+# ==========================================
+# 🆕 SESSION MIDDLEWARE (Required for PKCE)
+# ==========================================
+# 'secret_key' ko .env mein zaroor daalna, warna default use hoga
+SESSION_SECRET = os.environ.get("SESSION_SECRET_KEY", "luviio-ultra-secret-key-123")
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=SESSION_SECRET,
+    session_cookie="luviio_session",
+    max_age=3600 # 1 hour
+)
+
+# --- 🛡️ DOMAIN GUARD: Force Non-WWW ---
 class ForceNonWWWMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         host = request.headers.get("host", "")
         if host.startswith("www.luviio.in"):
-            # Strictly redirecting www to root domain
             url = str(request.url).replace("www.", "", 1)
             return RedirectResponse(url=url, status_code=301)
         return await call_next(request)
@@ -57,13 +68,12 @@ app.add_middleware(ForceNonWWWMiddleware)
 
 # --- 🛠️ CONNECT ROUTERS ---
 app.include_router(resend_router, prefix="/api", tags=["Auth"])
-app.include_router(auth_router, prefix="/api", tags=["Auth-Flow"]) # New Router Connected
+app.include_router(auth_router, prefix="/api", tags=["Auth-Flow"]) 
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # --- 2. LOG SILENCERS ---
-
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return Response(status_code=204)
@@ -73,10 +83,8 @@ async def robots():
     return Response(content="User-agent: *\nDisallow:", media_type="text/plain")
 
 # --- 3. ERROR HANDLERS ---
-
 @app.get("/error", response_class=HTMLResponse)
 async def error_page(request: Request):
-    logger.error(f"Error page triggered for IP: {request.client.host}")
     return templates.TemplateResponse("app/err/404.html", {
         "request": request,
         "title": "404 - Not Found | LUVIIO"
@@ -86,11 +94,9 @@ async def error_page(request: Request):
 async def custom_404_handler(request: Request, __):
     return RedirectResponse(url="/error")
 
-# --- 4. AUTH ROUTES ---
-
+# --- 4. AUTH PAGES ---
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, x_up_target: str = Header(None)):
-    logger.info("Rendering Login Page")
     return templates.TemplateResponse("app/auth/login.html", {
         "request": request,
         "title": "Login | LUVIIO",
@@ -101,7 +107,6 @@ async def login_page(request: Request, x_up_target: str = Header(None)):
 
 @app.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request, x_up_target: str = Header(None)):
-    logger.info("Signup page accessed")
     return templates.TemplateResponse("app/auth/signup.html", {
         "request": request,
         "title": "Create Account | LUVIIO",
@@ -112,7 +117,6 @@ async def signup_page(request: Request, x_up_target: str = Header(None)):
 
 @app.get("/onboarding", response_class=HTMLResponse)
 async def onboarding_page(request: Request):
-    logger.info("Onboarding page rendered")
     return templates.TemplateResponse("app/auth/onboarding.html", {
         "request": request,
         "title": "Setup Profile | LUVIIO",
@@ -121,7 +125,6 @@ async def onboarding_page(request: Request):
     })
 
 # --- 5. MAIN PAGE ROUTES ---
-
 @app.get("/", response_class=HTMLResponse)
 async def render_home(request: Request, x_up_target: str = Header(None)):
     return templates.TemplateResponse("app/pages/home.html", {
