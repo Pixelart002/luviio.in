@@ -39,6 +39,7 @@ except Exception as e:
     oauth_client = None
 
 # Hardcoded constant to ensure matching between initiation and exchange
+# Note: This MUST match exactly with the redirect URI configured in Supabase and the OAuth provider.
 REDIRECT_URI = "https://luviio.in/api/auth/callback"
 
 # ==========================================

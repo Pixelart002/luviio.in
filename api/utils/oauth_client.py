@@ -73,7 +73,7 @@ class SupabaseOAuthClient:
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    f"{self.supabase_url}/auth/v1/token?grant_type=authorization_code",
+                    f"{self.supabase_url}/auth/v1/token",
                     headers={
                         "apikey": self.supabase_key,
                         "Content-Type": "application/x-www-form-urlencoded"
@@ -82,8 +82,13 @@ class SupabaseOAuthClient:
                 )
             
             if response.status_code != 200:
-                error_msg = response.json().get("error_description", "Token exchange failed")
-                logger.error(f"Token exchange failed: {response.status_code} - {error_msg}")
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("error_description") or error_data.get("error") or "Token exchange failed"
+                    logger.error(f"Token exchange failed: {response.status_code} - {error_msg} - Full response: {error_data}")
+                except Exception:
+                    error_msg = response.text or "Token exchange failed"
+                    logger.error(f"Token exchange failed: {response.status_code} - {error_msg}")
                 return {
                     "success": False,
                     "error": "token_exchange_failed",
