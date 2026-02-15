@@ -94,7 +94,6 @@ async def login_init(request: Request, provider: str = "google"):
         f"&code_challenge_method=S256"
     )
     
-    # Ensure redirect happens through the session middleware to save the cookie
     return RedirectResponse(url=auth_url)
 
 
@@ -116,12 +115,15 @@ async def oauth_callback(request: Request, code: str = None, error: str = None, 
     
     if not code_verifier:
         logger.error("❌ Token Grant Error: Code verifier missing in session")
-        # Iska matlab user seedha callback par aaya hai bina /api/login hit kiye
         return RedirectResponse("/login?error=session_expired&msg=Please+try+logging+in+again")
 
+    # This MUST match the redirect_uri used in login_init exactly
+    REDIRECT_URI = "https://luviio.in/api/auth/callback"
+
     try:
-        # A. Exchange Code AND Verifier for Tokens
-        token_result = await oauth_client.exchange_authorization_code(code, code_verifier)
+        # A. Exchange Code, Verifier, AND Redirect URI for Tokens
+        # Upgrade: Passing REDIRECT_URI to fix the 400 Bad Request error
+        token_result = await oauth_client.exchange_authorization_code(code, code_verifier, REDIRECT_URI)
         
         # Clean up session verifier
         request.session.pop("code_verifier", None)
@@ -143,7 +145,7 @@ async def oauth_callback(request: Request, code: str = None, error: str = None, 
         
         response = RedirectResponse(url=next_url, status_code=302)
 
-        # 🔒 Set Secure Cookies (XSS Safe)
+        # 🔒 Set Secure Cookies
         response.set_cookie(
             key="sb-access-token", value=access_token,
             httponly=True, secure=True, samesite="lax", max_age=3600, path="/"
