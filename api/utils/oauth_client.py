@@ -57,12 +57,20 @@ class SupabaseOAuthClient:
         
         logger.info("✓ SupabaseOAuthClient initialized")
     
-    async def exchange_authorization_code(self, code: str, code_verifier: str) -> Dict:
+    async def exchange_authorization_code(self, code: str, code_verifier: str, redirect_uri: str = None) -> Dict:
         """
         Exchange OAuth authorization code for session tokens.
-        Strictly upgraded to support PKCE by including code_verifier.
+        Strictly upgraded to support PKCE by including code_verifier and redirect_uri.
         """
         try:
+            payload = {
+                "code": code,
+                "grant_type": "authorization_code",
+                "code_verifier": code_verifier
+            }
+            if redirect_uri:
+                payload["redirect_uri"] = redirect_uri
+
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     f"{self.supabase_url}/auth/v1/token?grant_type=authorization_code",
@@ -70,11 +78,7 @@ class SupabaseOAuthClient:
                         "apikey": self.supabase_key,
                         "Content-Type": "application/x-www-form-urlencoded"
                     },
-                    data={
-                        "code": code,
-                        "grant_type": "authorization_code",
-                        "code_verifier": code_verifier  # Added for PKCE support
-                    }
+                    data=payload
                 )
             
             if response.status_code != 200:
