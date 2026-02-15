@@ -7,9 +7,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.sessions import SessionMiddleware  # Added for PKCE support
+from starlette.middleware.sessions import SessionMiddleware
 
 # 🛡️ THE ULTIMATE PATH FIX (Vercel Compatibility)
+# Isse ensure hota hai ki 'api' folder se imports sahi se kaam karein
 BASE_DIR = Path(__file__).resolve().parent 
 ROOT_DIR = BASE_DIR.parent                  
 if str(ROOT_DIR) not in sys.path:
@@ -29,24 +30,27 @@ missing_vars = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
 
 if missing_vars:
     logger.warning(f"⚠️  WARNING: Missing environment variables: {', '.join(missing_vars)}")
-    logger.warning("App will continue but OAuth/Auth features may not work properly")
-    logger.warning("Add these to your Vercel project settings → Environment Variables")
 else:
     logger.info("✅ All required Supabase environment variables configured")
 
 # --- 📂 ROUTE IMPORTS ---
+# Vercel environment ke hisaab se robust imports
 try:
     from api.routes.resend_mail import router as resend_router
-    from api.routes.auth import router as auth_router 
+    from api.routes.auth import router as auth_router
 except ImportError:
-    from routes.resend_mail import router as resend_router
-    from routes.auth import router as auth_router
+    try:
+        from routes.resend_mail import router as resend_router
+        from routes.auth import router as auth_router
+    except ImportError as e:
+        logger.error(f"❌ Critical Import Error: {e}")
+        raise
 
 app = FastAPI()
 
 # --- 🛡️ MIDDLEWARE STACK ---
 
-# 1. Force Non-WWW (Industry Standard)
+# 1. Force Non-WWW (Strict Domain Logic)
 class ForceNonWWWMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         host = request.headers.get("host", "")
@@ -57,22 +61,25 @@ class ForceNonWWWMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(ForceNonWWWMiddleware)
 
-# 2. Session Middleware (Required for PKCE code_verifier persistence)
-# Set SESSION_SECRET in your environment variables for production security
+# 2. Session Middleware (Required for PKCE)
+# SESSION_SECRET ko env mein 'lambi random string' ki tarah zaroor daalein
 app.add_middleware(
     SessionMiddleware, 
-    secret_key=os.environ.get("SESSION_SECRET", "luviio-fallback-secret-key"),
-    session_cookie="luviio_session"
+    secret_key=os.environ.get("SESSION_SECRET", "luviio-fallback-secret-key-32-chars-long"),
+    session_cookie="luviio_session",
+    same_site="lax",
+    https_only=True if os.environ.get("VERCEL") else False
 )
 
 # --- 🛠️ CONNECT ROUTERS ---
 app.include_router(resend_router, prefix="/api", tags=["Auth"])
 app.include_router(auth_router, prefix="/api", tags=["Auth-Flow"])
 
+# Static and Template Paths
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# --- 2. LOG SILENCERS ---
+# --- 2. SYSTEM ROUTES ---
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
@@ -86,7 +93,6 @@ async def robots():
 
 @app.get("/error", response_class=HTMLResponse)
 async def error_page(request: Request):
-    logger.error(f"Error page triggered for IP: {request.client.host}")
     return templates.TemplateResponse("app/err/404.html", {
         "request": request,
         "title": "404 - Not Found | LUVIIO"
@@ -100,7 +106,6 @@ async def custom_404_handler(request: Request, __):
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, x_up_target: str = Header(None)):
-    logger.info("Rendering Login Page")
     return templates.TemplateResponse("app/auth/login.html", {
         "request": request,
         "title": "Login | LUVIIO",
@@ -111,7 +116,6 @@ async def login_page(request: Request, x_up_target: str = Header(None)):
 
 @app.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request, x_up_target: str = Header(None)):
-    logger.info("Signup page accessed")
     return templates.TemplateResponse("app/auth/signup.html", {
         "request": request,
         "title": "Create Account | LUVIIO",
@@ -122,7 +126,6 @@ async def signup_page(request: Request, x_up_target: str = Header(None)):
 
 @app.get("/onboarding", response_class=HTMLResponse)
 async def onboarding_page(request: Request):
-    logger.info("Onboarding page rendered")
     return templates.TemplateResponse("app/auth/onboarding.html", {
         "request": request,
         "title": "Setup Profile | LUVIIO",
