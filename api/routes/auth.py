@@ -83,7 +83,7 @@ async def login_init(request: Request, provider: str = "google"):
     
     # Securely store in session
     request.session["code_verifier"] = code_verifier
-    logger.info(f"🔑 Session Set: Verifier generated for {provider}")
+    logger.info(f"🔑 Session Set: Verifier generated for {provider}. Session ID: {request.session.get('session_id', 'N/A')}")
     
     auth_url = (
         f"{SB_URL}/auth/v1/authorize?provider={provider}"
@@ -109,7 +109,7 @@ async def oauth_callback(request: Request, code: str = None, error: str = None, 
     code_verifier = request.session.get("code_verifier")
     
     if not code_verifier:
-        logger.error("❌ Verifier missing in session")
+        logger.error(f"❌ Verifier missing in session. Current session keys: {list(request.session.keys())}")
         return RedirectResponse("/login?error=session_expired&msg=Please+login+again")
 
     try:

@@ -63,9 +63,9 @@ app.add_middleware(
     SessionMiddleware, 
     secret_key=os.environ.get("SESSION_SECRET", "luviio-fallback-secret-key-32-chars-long"),
     session_cookie="luviio_session",
-    same_site="lax",  # OAuth redirects ke liye Lax hona zaroori hai
-    https_only=True,   # Vercel hamesha HTTPS hota hai, isse cookie secure rehti hai
-    max_age=600        # 10 minutes (Auth code exchange ke liye kaafi hai)
+    same_site="lax",
+    https_only=False,  # Set to False to allow local testing and mixed environments if needed
+    max_age=3600       # Increased to 1 hour
 )
 
 app.add_middleware(ForceNonWWWMiddleware)
