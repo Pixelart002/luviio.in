@@ -54,19 +54,12 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-    // --- CONFIGURATION ---
-    const SB_URL = "{{ supabase_url }}";
-    const SB_KEY = "{{ supabase_key }}";
-    
-    // Initialize Supabase (OAuth provider flow only)
-    const supabaseClient = SB_URL && SB_KEY ? supabase.createClient(SB_URL, SB_KEY) : null;
-
     // --- UTILITY FUNCTIONS ---
     function showError(message) {
         const alert = document.getElementById('errorAlert');
         const msg = document.getElementById('errorMessage');
+        if (!alert || !msg) return;
         msg.textContent = message;
         alert.classList.remove('hidden');
         setTimeout(() => alert.classList.add('hidden'), 5000);
@@ -75,6 +68,7 @@
     function showSuccess(message) {
         const alert = document.getElementById('successAlert');
         const msg = document.getElementById('successMessage');
+        if (!alert || !msg) return;
         msg.textContent = message;
         alert.classList.remove('hidden');
     }
@@ -82,6 +76,7 @@
     function setButtonLoading(btn, loading = true) {
         const text = document.getElementById('btnText');
         const loader = document.getElementById('btnLoader');
+        if (!btn || !text || !loader) return;
         
         if (loading) {
             text.classList.add('hidden');
@@ -94,29 +89,10 @@
         }
     }
 
-    // --- 1. OAUTH (SERVER-SIDE CALLBACK) ---
-    async function oauthLogin(provider) {
-        if (!supabaseClient) {
-            showError('Server configuration error - OAuth unavailable');
-            return;
-        }
-
-        try {
-            const { error } = await supabaseClient.auth.signInWithOAuth({
-                provider: provider,
-                options: {
-                    redirectTo: window.location.origin + '/api/auth/callback'
-                }
-            });
-
-            if (error) {
-                showError(`OAuth failed: ${error.message}`);
-                console.error('[v0] OAuth error:', error);
-            }
-        } catch (err) {
-            showError(`OAuth error: ${err.message}`);
-            console.error('[v0] Unexpected OAuth error:', err);
-        }
+    // --- 1. UPGRADED OAUTH (SERVER-SIDE INITIATION) ---
+    function oauthLogin(provider) {
+        // OAuth flow ko strictly server-side start karo PKCE support ke liye
+        window.location.href = `/api/login?provider=${provider}`;
     }
 
     // --- 2. SIGNUP FORM HANDLER ---
@@ -144,25 +120,13 @@
             return;
         }
 
-        // Email validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            showError('Please enter a valid email address');
-            return;
-        }
-
         setButtonLoading(btn, true);
 
         try {
             const res = await fetch('/api/auth/flow', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({
-                    email: email,
-                    password: password,
-                    action: 'signup'
-                })
+                body: JSON.stringify({ email, password, action: 'signup' })
             });
 
             const data = await res.json();
@@ -173,28 +137,24 @@
                 return;
             }
 
-            console.log('[v0] Signup response:', data);
-
-            // Success Cases
+            // Success Case (Verification email sent)
             if (data.msg) {
                 showSuccess('✓ ' + data.msg);
-                setTimeout(() => {
-                    window.location.href = '/login';
-                }, 2000);
+                setTimeout(() => window.location.href = '/login', 3000);
                 return;
             }
 
+            // Direct Login Case (If auto-onboarding enabled)
             if (data.next) {
                 showSuccess('✓ Account created successfully');
                 setTimeout(() => {
-                    window.location.href = '/' + data.next;
+                    window.location.href = data.next.startsWith('/') ? data.next : '/' + data.next;
                 }, 1500);
                 return;
             }
 
         } catch (err) {
             showError(`Error: ${err.message}`);
-            console.error('[v0] Signup error:', err);
             setButtonLoading(btn, false);
         }
     });

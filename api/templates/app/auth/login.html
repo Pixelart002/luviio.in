@@ -9,11 +9,12 @@
             <h2 class="text-2xl font-bold text-white mb-1" id="formTitle">Welcome Back</h2>
             <p class="text-xs text-neutral-500 mb-6">Secure OAuth 2.0 Authentication</p>
 
-            {# Error Alert #}
+            {# Error Alerts #}
             {{ forms.error_alert('', 'errorAlert') }}
             {{ forms.success_alert('', 'successAlert') }}
 
             {# OAuth Buttons #}
+            {# Ensure your macro calls oauthLogin(provider) #}
             {{ forms.oauth_buttons() }}
 
             {# Email/Password Form #}
@@ -48,20 +49,15 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
     // --- CONFIGURATION ---
-    const SB_URL = "{{ supabase_url }}";
-    const SB_KEY = "{{ supabase_key }}";
     let isSignup = false;
-
-    // Initialize Supabase client (for OAuth provider flow only)
-    const supabaseClient = SB_URL && SB_KEY ? supabase.createClient(SB_URL, SB_KEY) : null;
 
     // --- UTILITY FUNCTIONS ---
     function showError(message) {
         const alert = document.getElementById('errorAlert');
         const msg = document.getElementById('errorMessage');
+        if (!alert || !msg) return;
         msg.textContent = message;
         alert.classList.remove('hidden');
         setTimeout(() => alert.classList.add('hidden'), 5000);
@@ -70,6 +66,7 @@
     function showSuccess(message) {
         const alert = document.getElementById('successAlert');
         const msg = document.getElementById('successMessage');
+        if (!alert || !msg) return;
         msg.textContent = message;
         alert.classList.remove('hidden');
     }
@@ -77,6 +74,7 @@
     function setButtonLoading(btn, loading = true) {
         const text = document.getElementById('btnText');
         const loader = document.getElementById('btnLoader');
+        if (!btn || !text || !loader) return;
         
         if (loading) {
             text.classList.add('hidden');
@@ -89,30 +87,11 @@
         }
     }
 
-    // --- 1. OAUTH LOGIN (Server-Side Authorization Code Flow) ---
-    async function oauthLogin(provider) {
-        if (!supabaseClient) {
-            showError('Server configuration error - OAuth unavailable');
-            return;
-        }
-
-        try {
-            // Initiate OAuth flow with server callback
-            const { error } = await supabaseClient.auth.signInWithOAuth({
-                provider: provider,
-                options: {
-                    redirectTo: window.location.origin + '/api/auth/callback'
-                }
-            });
-
-            if (error) {
-                showError(`OAuth failed: ${error.message}`);
-                console.error('[v0] OAuth error:', error);
-            }
-        } catch (err) {
-            showError(`OAuth error: ${err.message}`);
-            console.error('[v0] Unexpected OAuth error:', err);
-        }
+    // --- 1. UPGRADED OAUTH LOGIN (Server-Side Initiation) ---
+    function oauthLogin(provider) {
+        // PKCE Flow ke liye seedha backend par redirect karo
+        // Ye aapke auth.py ke @router.get("/login") ko hit karega
+        window.location.href = `/api/login?provider=${provider}`;
     }
 
     // --- 2. EMAIL/PASSWORD AUTHENTICATION ---
@@ -124,14 +103,8 @@
         const password = document.getElementById('password').value;
         const action = isSignup ? 'signup' : 'login';
 
-        // Validation
         if (!email || !password) {
             showError('Please fill in all fields');
-            return;
-        }
-
-        if (password.length < 6 && isSignup) {
-            showError('Password must be at least 6 characters');
             return;
         }
 
@@ -141,7 +114,6 @@
             const res = await fetch('/api/auth/flow', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                credentials: 'include', // Send cookies
                 body: JSON.stringify({ email, password, action })
             });
 
@@ -153,29 +125,21 @@
                 return;
             }
 
-            console.log('[v0] Auth response:', data.next);
-
-            // Signup Success
             if (data.msg) {
                 showSuccess('✓ ' + data.msg);
-                setTimeout(() => {
-                    window.location.href = '/login';
-                }, 2000);
+                setTimeout(() => window.location.href = '/login', 2000);
                 return;
             }
 
-            // Login Success
             if (data.next) {
                 showSuccess('✓ Authentication successful');
-                setTimeout(() => {
-                    window.location.href = '/' + data.next;
-                }, 1000);
+                // Redirecting based on onboarding status
+                setTimeout(() => window.location.href = data.next.startsWith('/') ? data.next : '/' + data.next, 1000);
                 return;
             }
 
         } catch (err) {
             showError(`Error: ${err.message}`);
-            console.error('[v0] Auth error:', err);
             setButtonLoading(btn, false);
         }
     });
@@ -184,9 +148,8 @@
     function toggleMode() {
         isSignup = !isSignup;
         const title = document.getElementById('formTitle');
-        const btn = document.getElementById('submitBtn');
-        const toggleBtn = document.getElementById('toggleBtn');
         const btnText = document.getElementById('btnText');
+        const toggleBtn = document.getElementById('toggleBtn');
 
         if (isSignup) {
             title.textContent = 'Create Account';
@@ -197,10 +160,7 @@
             btnText.textContent = 'Sign In';
             toggleBtn.textContent = 'Create one';
         }
-
-        // Clear form
         document.getElementById('authForm').reset();
-        document.getElementById('errorAlert').classList.add('hidden');
     }
 
     // --- 4. CHECK FOR ERROR PARAMS IN URL ---
@@ -211,7 +171,6 @@
 
         if (error) {
             showError(msg || `Authentication error: ${error}`);
-            // Clean URL
             window.history.replaceState({}, document.title, '/login');
         }
     });
