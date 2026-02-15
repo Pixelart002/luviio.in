@@ -1,226 +1,126 @@
 import os
-import httpx
-import logging
-import json
-import asyncio
 import secrets
-import base64
 import hashlib
-from fastapi import APIRouter, Request, Response, HTTPException
-from fastapi.responses import RedirectResponse, JSONResponse
-from supabase import create_client, Client
-from datetime import datetime
+import base64
+import logging
+from fastapi import APIRouter, Request, HTTPException, Query
+from fastapi.responses import RedirectResponse
 from api.utils.oauth_client import SupabaseOAuthClient
 
-# --- LOGGER SETUP ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("AUTH-ENGINE")
-
+# --- Setup ---
+logger = logging.getLogger("AUTH-ROUTER")
 router = APIRouter()
 
-# --- CONFIGURATION VALIDATION ---
+# Environment Variables
 SB_URL = os.environ.get("SB_URL")
 SB_KEY = os.environ.get("SB_KEY")
-SB_SERVICE_KEY = os.environ.get("SB_SERVICE_ROLE_KEY")
+# Base URL for redirects - fallback to luviio.in if not set
+BASE_URL = os.environ.get("BASE_URL", "https://luviio.in").rstrip('/')
+REDIRECT_URI = f"{BASE_URL}/api/auth/callback"
 
-if not SB_URL or not SB_KEY or not SB_SERVICE_KEY:
-    logger.critical("❌ Missing Supabase environment variables")
+# Initialize Client
+oauth_client = SupabaseOAuthClient(SB_URL, SB_KEY) if SB_URL and SB_KEY else None
 
-try:
-    supabase_admin: Client = create_client(SB_URL, SB_SERVICE_KEY) if SB_URL and SB_SERVICE_KEY else None
-except Exception as e:
-    logger.error(f"⚠️ Supabase initialization error: {e}")
-    supabase_admin = None
-
-try:
-    oauth_client = SupabaseOAuthClient(SB_URL, SB_KEY, SB_SERVICE_KEY) if SB_URL and SB_KEY and SB_SERVICE_KEY else None
-except Exception as e:
-    logger.error(f"⚠️ OAuth Client initialization error: {e}")
-    oauth_client = None
-
-# Hardcoded constant to ensure matching between initiation and exchange
-# Note: This MUST match exactly with the redirect URI configured in Supabase and the OAuth provider.
-REDIRECT_URI = "https://luviio.in/api/auth/callback"
-
-# ==========================================
-# HELPER: CHECK/CREATE PROFILE & DECIDE ROUTE
-# ==========================================
-async def get_next_path(user_id: str, email: str) -> str:
-    if not supabase_admin:
-        return "/dashboard"
-
-    try:
-        res = supabase_admin.table("profiles").select("onboarded").eq("id", user_id).execute()
-
-        if not res.data:
-            logger.info(f"✓ Creating new profile for {email}")
-            supabase_admin.table("profiles").insert({
-                "id": user_id,
-                "email": email,
-                "onboarded": False,
-                "created_at": datetime.utcnow().isoformat()
-            }).execute()
-            return "/onboarding"
-
-        is_onboarded = res.data[0].get("onboarded", False)
-        return "/dashboard" if is_onboarded else "/onboarding"
-
-    except Exception as e:
-        logger.error(f"❌ Profile Check Failed: {str(e)}")
-        return "/onboarding"
-
-# ==========================================
-# OAUTH INITIATION (PKCE Support)
-# ==========================================
 @router.get("/login")
-async def login_init(request: Request, provider: str = "google"):
+async def login(request: Request, provider: str = "google"):
     """
-    Generates PKCE verifier and stores it in the session.
+    Step 1: Initiation - Generate PKCE and redirect to Supabase
     """
-    code_verifier = secrets.token_urlsafe(64)
-    code_challenge = base64.urlsafe_b64encode(
-        hashlib.sha256(code_verifier.encode()).digest()
+    if not oauth_client:
+        raise HTTPException(status_code=500, detail="OAuth client not configured")
+
+    # 1. Generate PKCE Verifier and Challenge
+    verifier = secrets.token_urlsafe(64)
+    challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode()).digest()
     ).decode().replace('=', '')
+
+    # 2. Store verifier in session for Step 2
+    request.session["pkce_verifier"] = verifier
     
-    # Securely store in session
-    request.session["code_verifier"] = code_verifier
-    logger.info(f"🔑 Session Set: Verifier generated for {provider}. Session ID: {request.session.get('session_id', 'N/A')}")
-    
+    # 3. Build Supabase Authorize URL
     auth_url = (
         f"{SB_URL}/auth/v1/authorize?provider={provider}"
         f"&redirect_to={REDIRECT_URI}"
-        f"&code_challenge={code_challenge}"
+        f"&code_challenge={challenge}"
         f"&code_challenge_method=S256"
     )
     
+    logger.info(f"Initiating {provider} login. Redirecting to Supabase.")
     return RedirectResponse(url=auth_url)
 
-# ==========================================
-# 1. OAUTH CALLBACK (PKCE Exchange)
-# ==========================================
 @router.get("/auth/callback")
-async def oauth_callback(request: Request, code: str = None, error: str = None, error_description: str = None):
+async def callback(
+    request: Request, 
+    code: str = Query(None), 
+    error: str = Query(None), 
+    error_description: str = Query(None)
+):
+    """
+    Step 2: Callback - Exchange code for tokens
+    """
+    # 1. Handle errors from provider
     if error:
+        logger.error(f"OAuth Error: {error} - {error_description}")
         return RedirectResponse(f"/login?error={error}")
 
     if not code:
         return RedirectResponse("/login?error=no_code")
 
-    # Retrieve verifier from session
-    code_verifier = request.session.get("code_verifier")
+    # 2. Retrieve PKCE verifier from session
+    verifier = request.session.pop("pkce_verifier", None)
+    if not verifier:
+        logger.error("PKCE verifier missing in session")
+        return RedirectResponse("/login?error=session_expired")
+
+    # 3. Exchange code for tokens
+    result = await oauth_client.exchange_code(code, verifier, REDIRECT_URI)
     
-    if not code_verifier:
-        logger.error(f"❌ Verifier missing in session. Current session keys: {list(request.session.keys())}")
-        return RedirectResponse("/login?error=session_expired&msg=Please+login+again")
+    if not result["success"]:
+        return RedirectResponse(f"/login?error=token_exchange_failed")
 
-    try:
-        # A. Exchange with exactly 3 arguments (code, verifier, redirect_uri)
-        token_result = await oauth_client.exchange_authorization_code(code, code_verifier, REDIRECT_URI)
-        
-        # Cleanup
-        request.session.pop("code_verifier", None)
-        
-        if not token_result.get("success"):
-            error_msg = token_result.get("message", "Token exchange failed")
-            return RedirectResponse(f"/login?error=token_exchange_failed&msg={error_msg}")
+    # 4. Success! Set tokens in cookies and redirect
+    data = result["data"]
+    access_token = data.get("access_token")
+    refresh_token = data.get("refresh_token")
 
-        access_token = token_result.get("access_token")
-        refresh_token = token_result.get("refresh_token")
-        user = token_result.get("user", {})
-        
-        # B. Check Profile & Route
-        next_url = await get_next_path(user.get("id"), user.get("email", "unknown"))
-        
-        response = RedirectResponse(url=next_url, status_code=302)
-
-        # 🔒 Set Secure Cookies
-        response.set_cookie(
-            key="sb-access-token", value=access_token,
-            httponly=True, secure=True, samesite="lax", max_age=3600, path="/"
-        )
-
-        if refresh_token:
-            response.set_cookie(
-                key="sb-refresh-token", value=refresh_token,
-                httponly=True, secure=True, samesite="lax", max_age=2592000, path="/"
-            )
-
-        return response
-
-    except Exception as e:
-        logger.error(f"❌ Callback error: {str(e)}")
-        return RedirectResponse("/login?error=server_error")
-
-# ==========================================
-# 2. MANUAL EMAIL/PASSWORD AUTH (Unchanged)
-# ==========================================
-@router.post("/auth/flow")
-async def auth_flow_manual(request: Request):
-    if not SB_URL or not SB_KEY:
-        return JSONResponse(status_code=500, content={"error": "Server misconfigured"})
-
-    try:
-        body = await request.json()
-        email, password, action = body.get("email", "").strip().lower(), body.get("password", ""), body.get("action", "").lower()
-
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            if action == "signup":
-                auth_res = await client.post(
-                    f"{SB_URL}/auth/v1/signup",
-                    headers={"apikey": SB_KEY, "Content-Type": "application/json"},
-                    json={"email": email, "password": password}
-                )
-                if auth_res.status_code not in [200, 201]:
-                    return JSONResponse(status_code=400, content={"error": auth_res.json().get("message", "Signup failed")})
-                
-                data = auth_res.json()
-                await get_next_path(data.get("id") or data.get("user", {}).get("id"), email)
-                return JSONResponse(status_code=200, content={"next": "onboarding", "msg": "Signup successful!"})
-
-            else:
-                auth_res = await client.post(
-                    f"{SB_URL}/auth/v1/token?grant_type=password",
-                    headers={"apikey": SB_KEY, "Content-Type": "application/json"},
-                    json={"email": email, "password": password}
-                )
-                if auth_res.status_code != 200:
-                    return JSONResponse(status_code=401, content={"error": "Invalid credentials"})
-
-                data = auth_res.json()
-                user_id = data.get("user", {}).get("id")
-                next_url = await get_next_path(user_id, email)
-                return JSONResponse(status_code=200, content={"next": next_url.strip("/"), "session": data})
-
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": "Server error"})
-
-# ==========================================
-# 3. LOGOUT (Unchanged)
-# ==========================================
-@router.get("/auth/logout")
-async def logout(request: Request):
-    response = RedirectResponse(url="/login", status_code=302)
-    response.delete_cookie("sb-access-token", path="/")
-    response.delete_cookie("sb-refresh-token", path="/")
+    response = RedirectResponse(url="/dashboard")
+    
+    # Set secure cookies
+    cookie_params = {
+        "httponly": True,
+        "secure": True, # Always True for production
+        "samesite": "lax",
+        "max_age": 3600 * 24 * 7 # 7 days
+    }
+    
+    response.set_cookie(key="sb-access-token", value=access_token, **cookie_params)
+    response.set_cookie(key="sb-refresh-token", value=refresh_token, **cookie_params)
+    
+    logger.info("Login successful. Tokens set in cookies.")
     return response
 
-# ==========================================
-# 4. AUTH STATUS CHECK (Unchanged)
-# ==========================================
-@router.get("/auth/status")
-async def auth_status(request: Request):
-    access_token = request.cookies.get("sb-access-token")
-    if not access_token:
-        return JSONResponse(status_code=401, content={"authenticated": False})
+@router.get("/logout")
+async def logout():
+    """
+    Clear session and cookies
+    """
+    response = RedirectResponse(url="/login")
+    response.delete_cookie("sb-access-token")
+    response.delete_cookie("sb-refresh-token")
+    return response
 
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            user_res = await client.get(
-                f"{SB_URL}/auth/v1/user",
-                headers={"Authorization": f"Bearer {access_token}", "apikey": SB_KEY}
-            )
-        if user_res.status_code == 200:
-            return JSONResponse(status_code=200, content={"authenticated": True, "user": user_res.json()})
-        return JSONResponse(status_code=401, content={"authenticated": False})
-    except Exception:
-        return JSONResponse(status_code=500, content={"error": "Status check failed"})
+@router.get("/status")
+async def status(request: Request):
+    """
+    Check if user is logged in
+    """
+    token = request.cookies.get("sb-access-token")
+    if not token:
+        return {"authenticated": False}
+    
+    user_result = await oauth_client.get_user(token)
+    if not user_result["success"]:
+        return {"authenticated": False}
+        
+    return {"authenticated": True, "user": user_result["data"]}

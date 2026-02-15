@@ -89,9 +89,8 @@
 
     // --- 1. UPGRADED OAUTH LOGIN (Server-Side Initiation) ---
     function oauthLogin(provider) {
-        // PKCE Flow ke liye seedha backend par redirect karo
-        // Ye aapke auth.py ke @router.get("/login") ko hit karega
-        window.location.href = `/api/login?provider=${provider}`;
+        // Redirect to the new auth initiation endpoint
+        window.location.href = `/api/auth/login?provider=${provider}`;
     }
 
     // --- 2. EMAIL/PASSWORD AUTHENTICATION ---
