@@ -1,8 +1,9 @@
 fastapi
 uvicorn
-jinja2
-python-multipart
-supabase
-resend
 httpx
+supabase
 python-dotenv
+resend
+itsdangerous==2.1.2
+python-multipart
+starlette
