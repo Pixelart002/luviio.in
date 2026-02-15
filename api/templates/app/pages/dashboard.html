@@ -1,0 +1,292 @@
+{% extends "app/base.html" %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+  <!-- Navigation Header -->
+  <nav class="sticky top-0 z-50 border-b border-slate-700/50 backdrop-blur-md bg-slate-900/80">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-8">
+          <a href="/" class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+            LUVIIO
+          </a>
+        </div>
+        <div class="flex items-center gap-4">
+          <button id="profile-menu-btn" class="px-4 py-2 rounded-lg bg-slate-700/50 hover:bg-slate-600 transition text-slate-200">
+            <span id="user-email">Loading...</span>
+          </button>
+          <button id="logout-btn" class="px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 transition font-medium">
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Welcome Section -->
+    <div class="mb-12">
+      <h1 class="text-4xl sm:text-5xl font-bold text-white mb-4">
+        Welcome to your Dashboard
+      </h1>
+      <p class="text-slate-300 text-lg">
+        Manage your account and explore verified markets
+      </p>
+    </div>
+
+    <!-- Profile Card -->
+    <div class="grid md:grid-cols-3 gap-8 mb-12">
+      <!-- User Profile Section -->
+      <div class="md:col-span-1 bg-slate-800/40 border border-slate-700/50 rounded-xl p-8 backdrop-blur">
+        <div class="flex flex-col items-center text-center">
+          <div id="avatar" class="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center mb-4">
+            <span class="text-2xl font-bold text-slate-900">?</span>
+          </div>
+          <h2 id="profile-name" class="text-xl font-bold text-white mb-2">User Profile</h2>
+          <p id="profile-email" class="text-slate-400 mb-4">Loading...</p>
+          <div class="w-full pt-4 border-t border-slate-700/50">
+            <button id="edit-profile-btn" class="w-full px-4 py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 transition font-medium">
+              Edit Profile
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Account Stats -->
+      <div class="md:col-span-2 space-y-4">
+        <div class="bg-slate-800/40 border border-slate-700/50 rounded-xl p-6 backdrop-blur">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Account Status</h3>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <p class="text-slate-400 text-sm">Auth Provider</p>
+              <p id="auth-provider" class="text-white font-semibold">Loading...</p>
+            </div>
+            <div>
+              <p class="text-slate-400 text-sm">Member Since</p>
+              <p id="member-since" class="text-white font-semibold">Loading...</p>
+            </div>
+            <div>
+              <p class="text-slate-400 text-sm">Onboarding Status</p>
+              <p id="onboarding-status" class="text-white font-semibold">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-500/20 text-yellow-300">
+                  Pending
+                </span>
+              </p>
+            </div>
+            <div>
+              <p class="text-slate-400 text-sm">Session Status</p>
+              <p class="text-white font-semibold">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-500/20 text-green-300">
+                  Active
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="bg-slate-800/40 border border-slate-700/50 rounded-xl p-6 backdrop-blur">
+          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Quick Actions</h3>
+          <div class="space-y-2">
+            <button class="w-full text-left px-4 py-2 rounded-lg hover:bg-slate-700/50 text-slate-300 transition">
+              → Explore Markets
+            </button>
+            <button class="w-full text-left px-4 py-2 rounded-lg hover:bg-slate-700/50 text-slate-300 transition">
+              → View Watchlist
+            </button>
+            <button class="w-full text-left px-4 py-2 rounded-lg hover:bg-slate-700/50 text-slate-300 transition">
+              → Account Settings
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Verified Markets Section (Coming Soon) -->
+    <div class="bg-slate-800/40 border border-slate-700/50 rounded-xl p-8 backdrop-blur">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-white">Verified Markets</h2>
+        <span class="px-3 py-1 rounded-full text-sm font-medium bg-blue-500/20 text-blue-300">
+          Coming Soon
+        </span>
+      </div>
+      <p class="text-slate-400">
+        Access verified market data and analytics. This feature is currently in development.
+      </p>
+    </div>
+  </main>
+</div>
+
+<!-- Edit Profile Modal -->
+<div id="edit-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 hidden flex items-center justify-center p-4">
+  <div class="bg-slate-800 border border-slate-700/50 rounded-xl p-8 w-full max-w-md">
+    <h3 class="text-xl font-bold text-white mb-6">Edit Profile</h3>
+    
+    <form id="edit-profile-form" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-300 mb-2">Full Name</label>
+        <input 
+          id="full-name-input" 
+          type="text" 
+          placeholder="Your full name"
+          class="w-full px-4 py-2 rounded-lg bg-slate-700/50 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-300 mb-2">Bio</label>
+        <textarea 
+          id="bio-input" 
+          placeholder="Tell us about yourself"
+          rows="3"
+          class="w-full px-4 py-2 rounded-lg bg-slate-700/50 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        ></textarea>
+      </div>
+
+      <div class="flex gap-3 pt-4">
+        <button type="submit" class="flex-1 px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-medium transition">
+          Save Changes
+        </button>
+        <button type="button" id="close-modal-btn" class="flex-1 px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium transition">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Initialize dashboard
+  document.addEventListener("DOMContentLoaded", async () => {
+    await loadUserProfile();
+    setupEventListeners();
+  });
+
+  async function loadUserProfile() {
+    try {
+      const response = await fetch("/api/user/profile", {
+        credentials: "include"
+      });
+
+      if (response.status === 401) {
+        window.location.href = "/login?redirect=/dashboard";
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Failed to load profile");
+      }
+
+      const data = await response.json();
+      const user = data.user;
+      const profile = data.profile;
+
+      // Update UI with user data
+      document.getElementById("user-email").textContent = user.email;
+      document.getElementById("profile-email").textContent = user.email;
+      document.getElementById("auth-provider").textContent = user.provider || "Email";
+
+      // Set avatar initials
+      const initials = user.email.split("@")[0].substring(0, 2).toUpperCase();
+      document.getElementById("avatar").innerHTML = `<span class="text-2xl font-bold text-slate-900">${initials}</span>`;
+
+      // Format member since date
+      if (user.created_at) {
+        const date = new Date(user.created_at);
+        document.getElementById("member-since").textContent = date.toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric"
+        });
+      }
+
+      // Update onboarding status
+      if (profile && profile.onboarded) {
+        document.getElementById("onboarding-status").innerHTML = 
+          '<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-500/20 text-green-300">Complete</span>';
+      }
+
+      // Pre-fill edit form
+      if (profile) {
+        document.getElementById("full-name-input").value = profile.full_name || "";
+        document.getElementById("bio-input").value = profile.bio || "";
+        if (profile.full_name) {
+          document.getElementById("profile-name").textContent = profile.full_name;
+        }
+      }
+    } catch (error) {
+      console.error("Error loading profile:", error);
+      document.getElementById("user-email").textContent = "Error loading profile";
+    }
+  }
+
+  function setupEventListeners() {
+    // Edit profile button
+    document.getElementById("edit-profile-btn").addEventListener("click", () => {
+      document.getElementById("edit-modal").classList.remove("hidden");
+    });
+
+    // Close modal button
+    document.getElementById("close-modal-btn").addEventListener("click", () => {
+      document.getElementById("edit-modal").classList.add("hidden");
+    });
+
+    // Edit profile form submission
+    document.getElementById("edit-profile-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await updateProfile();
+    });
+
+    // Logout button
+    document.getElementById("logout-btn").addEventListener("click", () => {
+      window.location.href = "/api/auth/logout";
+    });
+
+    // Close modal on outside click
+    document.getElementById("edit-modal").addEventListener("click", (e) => {
+      if (e.target === document.getElementById("edit-modal")) {
+        document.getElementById("edit-modal").classList.add("hidden");
+      }
+    });
+  }
+
+  async function updateProfile() {
+    try {
+      const fullName = document.getElementById("full-name-input").value;
+      const bio = document.getElementById("bio-input").value;
+
+      const response = await fetch("/api/user/profile/update", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          full_name: fullName,
+          bio: bio
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update profile");
+      }
+
+      const data = await response.json();
+      
+      // Update display name
+      if (fullName) {
+        document.getElementById("profile-name").textContent = fullName;
+      }
+
+      // Close modal and show success
+      document.getElementById("edit-modal").classList.add("hidden");
+      alert("Profile updated successfully!");
+      
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      alert("Failed to update profile. Please try again.");
+    }
+  }
+</script>
+{% endblock %}

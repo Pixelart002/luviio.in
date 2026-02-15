@@ -113,8 +113,8 @@ async def oauth_callback(request: Request, code: str = None, error: str = None, 
         return RedirectResponse("/login?error=session_expired&msg=Please+login+again")
 
     try:
-        # A. Exchange with exactly 3 arguments (code, verifier, redirect_uri)
-        token_result = await oauth_client.exchange_authorization_code(code, code_verifier, REDIRECT_URI)
+        # A. Exchange authorization code for tokens (PKCE flow)
+        token_result = await oauth_client.exchange_authorization_code(code, code_verifier)
         
         # Cleanup
         request.session.pop("code_verifier", None)
@@ -204,7 +204,7 @@ async def logout(request: Request):
     return response
 
 # ==========================================
-# 4. AUTH STATUS CHECK (Unchanged)
+# 4. AUTH STATUS CHECK
 # ==========================================
 @router.get("/auth/status")
 async def auth_status(request: Request):
@@ -223,3 +223,112 @@ async def auth_status(request: Request):
         return JSONResponse(status_code=401, content={"authenticated": False})
     except Exception:
         return JSONResponse(status_code=500, content={"error": "Status check failed"})
+
+# ==========================================
+# 5. PROTECTED USER PROFILE ENDPOINT
+# ==========================================
+@router.get("/user/profile")
+async def get_user_profile(request: Request):
+    """
+    Get authenticated user's profile data from Supabase.
+    Returns 401 if token is invalid or missing.
+    """
+    access_token = request.cookies.get("sb-access-token")
+    
+    if not access_token:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # Get authenticated user
+            user_res = await client.get(
+                f"{SB_URL}/auth/v1/user",
+                headers={"Authorization": f"Bearer {access_token}", "apikey": SB_KEY}
+            )
+        
+        if user_res.status_code != 200:
+            return JSONResponse(status_code=401, content={"error": "Invalid token"})
+        
+        user_data = user_res.json()
+        user_id = user_data.get("id")
+        
+        # Fetch profile from database
+        if supabase_admin:
+            try:
+                profile_res = supabase_admin.table("profiles").select("*").eq("id", user_id).execute()
+                profile = profile_res.data[0] if profile_res.data else None
+            except Exception as e:
+                logger.warning(f"Profile fetch error: {str(e)}")
+                profile = None
+        else:
+            profile = None
+        
+        return JSONResponse(status_code=200, content={
+            "success": True,
+            "user": {
+                "id": user_data.get("id"),
+                "email": user_data.get("email"),
+                "provider": user_data.get("app_metadata", {}).get("provider"),
+                "created_at": user_data.get("created_at")
+            },
+            "profile": profile or {
+                "id": user_id,
+                "email": user_data.get("email"),
+                "onboarded": False
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Profile endpoint error: {str(e)}")
+        return JSONResponse(status_code=500, content={"error": "Server error"})
+
+# ==========================================
+# 6. UPDATE USER PROFILE ENDPOINT
+# ==========================================
+@router.post("/user/profile/update")
+async def update_user_profile(request: Request):
+    """
+    Update authenticated user's profile (onboarding data, etc).
+    """
+    access_token = request.cookies.get("sb-access-token")
+    
+    if not access_token:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    try:
+        # Get authenticated user
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            user_res = await client.get(
+                f"{SB_URL}/auth/v1/user",
+                headers={"Authorization": f"Bearer {access_token}", "apikey": SB_KEY}
+            )
+        
+        if user_res.status_code != 200:
+            return JSONResponse(status_code=401, content={"error": "Invalid token"})
+        
+        user_id = user_res.json().get("id")
+        body = await request.json()
+        
+        if not supabase_admin:
+            return JSONResponse(status_code=500, content={"error": "Database unavailable"})
+        
+        # Update profile
+        update_data = {
+            k: v for k, v in body.items() 
+            if k in ["full_name", "avatar_url", "onboarded", "bio"]
+        }
+        
+        if not update_data:
+            return JSONResponse(status_code=400, content={"error": "No valid fields to update"})
+        
+        result = supabase_admin.table("profiles").update(update_data).eq("id", user_id).execute()
+        
+        return JSONResponse(status_code=200, content={
+            "success": True,
+            "message": "Profile updated successfully",
+            "profile": result.data[0] if result.data else update_data
+        })
+    
+    except Exception as e:
+        logger.error(f"Profile update error: {str(e)}")
+        return JSONResponse(status_code=500, content={"error": "Update failed"})

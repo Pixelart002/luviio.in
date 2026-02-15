@@ -152,3 +152,24 @@ async def render_waitlist(request: Request, x_up_target: str = Header(None)):
         "supabase_url": os.environ.get("SB_URL"),
         "supabase_key": os.environ.get("SB_KEY")
     })
+
+# --- 6. PROTECTED DASHBOARD (Auth Required) ---
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request):
+    """
+    Authenticated user dashboard - only accessible with valid session cookie.
+    Returns 302 redirect to login if no valid token found.
+    """
+    access_token = request.cookies.get("sb-access-token")
+    
+    # If no token, redirect to login
+    if not access_token:
+        return RedirectResponse(url="/login?redirect=/dashboard", status_code=302)
+    
+    return templates.TemplateResponse("app/pages/dashboard.html", {
+        "request": request,
+        "title": "Dashboard | LUVIIO",
+        "supabase_url": os.environ.get("SB_URL"),
+        "supabase_key": os.environ.get("SB_KEY")
+    })
