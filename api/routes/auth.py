@@ -38,6 +38,8 @@ except Exception as e:
     logger.error(f"⚠️ OAuth Client initialization error: {e}")
     oauth_client = None
 
+# Hardcoded constant to ensure matching between initiation and exchange
+REDIRECT_URI = "https://luviio.in/api/auth/callback"
 
 # ==========================================
 # HELPER: CHECK/CREATE PROFILE & DECIDE ROUTE
@@ -66,82 +68,67 @@ async def get_next_path(user_id: str, email: str) -> str:
         logger.error(f"❌ Profile Check Failed: {str(e)}")
         return "/onboarding"
 
-
 # ==========================================
-# NEW: OAUTH INITIATION (PKCE Support)
+# OAUTH INITIATION (PKCE Support)
 # ==========================================
 @router.get("/login")
 async def login_init(request: Request, provider: str = "google"):
     """
-    Initiates the OAuth flow by generating a PKCE code_verifier and challenge.
+    Generates PKCE verifier and stores it in the session.
     """
-    # 1. Generate PKCE Verifier and Challenge
     code_verifier = secrets.token_urlsafe(64)
     code_challenge = base64.urlsafe_b64encode(
         hashlib.sha256(code_verifier.encode()).digest()
     ).decode().replace('=', '')
     
-    # 2. Store verifier in session
+    # Securely store in session
     request.session["code_verifier"] = code_verifier
-    logger.info(f"🔑 Session Set: PKCE Verifier generated for {provider}")
+    logger.info(f"🔑 Session Set: Verifier generated for {provider}")
     
-    # 3. Construct Supabase Authorize URL
-    redirect_uri = "https://luviio.in/api/auth/callback"
     auth_url = (
         f"{SB_URL}/auth/v1/authorize?provider={provider}"
-        f"&redirect_to={redirect_uri}"
+        f"&redirect_to={REDIRECT_URI}"
         f"&code_challenge={code_challenge}"
         f"&code_challenge_method=S256"
     )
     
     return RedirectResponse(url=auth_url)
 
-
 # ==========================================
-# 1. OAUTH CALLBACK (Upgraded for PKCE)
+# 1. OAUTH CALLBACK (PKCE Exchange)
 # ==========================================
 @router.get("/auth/callback")
 async def oauth_callback(request: Request, code: str = None, error: str = None, error_description: str = None):
     if error:
-        logger.warning(f"OAuth Error: {error} - {error_description}")
         return RedirectResponse(f"/login?error={error}")
 
     if not code:
-        logger.warning("No code received in callback")
         return RedirectResponse("/login?error=no_code")
 
-    # --- PKCE UPGRADE: Retrieve verifier from session ---
+    # Retrieve verifier from session
     code_verifier = request.session.get("code_verifier")
     
     if not code_verifier:
-        logger.error("❌ Token Grant Error: Code verifier missing in session")
-        return RedirectResponse("/login?error=session_expired&msg=Please+try+logging+in+again")
-
-    # This MUST match the redirect_uri used in login_init exactly
-    REDIRECT_URI = "https://luviio.in/api/auth/callback"
+        logger.error("❌ Verifier missing in session")
+        return RedirectResponse("/login?error=session_expired&msg=Please+login+again")
 
     try:
-        # A. Exchange Code, Verifier, AND Redirect URI for Tokens
-        # Upgrade: Passing REDIRECT_URI to fix the 400 Bad Request error
+        # A. Exchange with exactly 3 arguments (code, verifier, redirect_uri)
         token_result = await oauth_client.exchange_authorization_code(code, code_verifier, REDIRECT_URI)
         
-        # Clean up session verifier
+        # Cleanup
         request.session.pop("code_verifier", None)
         
         if not token_result.get("success"):
             error_msg = token_result.get("message", "Token exchange failed")
-            logger.error(f"❌ Exchange Failed: {error_msg}")
             return RedirectResponse(f"/login?error=token_exchange_failed&msg={error_msg}")
 
         access_token = token_result.get("access_token")
         refresh_token = token_result.get("refresh_token")
         user = token_result.get("user", {})
-        user_id = user.get("id")
-        email = user.get("email", "unknown")
-
-        # B. Check Profile & Determine Next Route
-        next_url = await get_next_path(user_id, email)
-        logger.info(f"✓ Auth success for {email} -> Redirecting to {next_url}")
+        
+        # B. Check Profile & Route
+        next_url = await get_next_path(user.get("id"), user.get("email", "unknown"))
         
         response = RedirectResponse(url=next_url, status_code=302)
 
@@ -160,9 +147,8 @@ async def oauth_callback(request: Request, code: str = None, error: str = None, 
         return response
 
     except Exception as e:
-        logger.error(f"❌ Unexpected callback error: {str(e)}")
+        logger.error(f"❌ Callback error: {str(e)}")
         return RedirectResponse("/login?error=server_error")
-
 
 # ==========================================
 # 2. MANUAL EMAIL/PASSWORD AUTH (Unchanged)
@@ -207,7 +193,6 @@ async def auth_flow_manual(request: Request):
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": "Server error"})
 
-
 # ==========================================
 # 3. LOGOUT (Unchanged)
 # ==========================================
@@ -216,9 +201,7 @@ async def logout(request: Request):
     response = RedirectResponse(url="/login", status_code=302)
     response.delete_cookie("sb-access-token", path="/")
     response.delete_cookie("sb-refresh-token", path="/")
-    logger.info("✓ User logged out")
     return response
-
 
 # ==========================================
 # 4. AUTH STATUS CHECK (Unchanged)
