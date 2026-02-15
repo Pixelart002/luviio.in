@@ -10,7 +10,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 # 🛡️ THE ULTIMATE PATH FIX (Vercel Compatibility)
-# Isse ensure hota hai ki 'api' folder se imports sahi se kaam karein
 BASE_DIR = Path(__file__).resolve().parent 
 ROOT_DIR = BASE_DIR.parent                  
 if str(ROOT_DIR) not in sys.path:
@@ -25,16 +24,15 @@ logging.basicConfig(
 logger = logging.getLogger("LUVIIO-APP")
 
 # --- ✅ ENVIRONMENT VARIABLE VALIDATION ---
-REQUIRED_ENV_VARS = ["SB_URL", "SB_KEY", "SB_SERVICE_ROLE_KEY"]
+REQUIRED_ENV_VARS = ["SB_URL", "SB_KEY", "SB_SERVICE_ROLE_KEY", "SESSION_SECRET"]
 missing_vars = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
 
 if missing_vars:
     logger.warning(f"⚠️  WARNING: Missing environment variables: {', '.join(missing_vars)}")
 else:
-    logger.info("✅ All required Supabase environment variables configured")
+    logger.info("✅ All required environment variables configured")
 
 # --- 📂 ROUTE IMPORTS ---
-# Vercel environment ke hisaab se robust imports
 try:
     from api.routes.resend_mail import router as resend_router
     from api.routes.auth import router as auth_router
@@ -59,17 +57,18 @@ class ForceNonWWWMiddleware(BaseHTTPMiddleware):
             return RedirectResponse(url=url, status_code=301)
         return await call_next(request)
 
-app.add_middleware(ForceNonWWWMiddleware)
-
-# 2. Session Middleware (Required for PKCE)
-# SESSION_SECRET ko env mein 'lambi random string' ki tarah zaroor daalein
+# 2. Session Middleware (REQUIRED FOR PKCE)
+# Iska placement zaroori hai taaki ye har request ko wrap kare
 app.add_middleware(
     SessionMiddleware, 
     secret_key=os.environ.get("SESSION_SECRET", "luviio-fallback-secret-key-32-chars-long"),
     session_cookie="luviio_session",
-    same_site="lax",
-    https_only=True if os.environ.get("VERCEL") else False
+    same_site="lax",  # OAuth redirects ke liye Lax hona zaroori hai
+    https_only=True,   # Vercel hamesha HTTPS hota hai, isse cookie secure rehti hai
+    max_age=600        # 10 minutes (Auth code exchange ke liye kaafi hai)
 )
+
+app.add_middleware(ForceNonWWWMiddleware)
 
 # --- 🛠️ CONNECT ROUTERS ---
 app.include_router(resend_router, prefix="/api", tags=["Auth"])

@@ -74,7 +74,6 @@ async def get_next_path(user_id: str, email: str) -> str:
 async def login_init(request: Request, provider: str = "google"):
     """
     Initiates the OAuth flow by generating a PKCE code_verifier and challenge.
-    Stores the verifier in the session for the callback to use.
     """
     # 1. Generate PKCE Verifier and Challenge
     code_verifier = secrets.token_urlsafe(64)
@@ -82,8 +81,9 @@ async def login_init(request: Request, provider: str = "google"):
         hashlib.sha256(code_verifier.encode()).digest()
     ).decode().replace('=', '')
     
-    # 2. Store verifier in session (Requires SessionMiddleware in main.py)
+    # 2. Store verifier in session
     request.session["code_verifier"] = code_verifier
+    logger.info(f"🔑 Session Set: PKCE Verifier generated for {provider}")
     
     # 3. Construct Supabase Authorize URL
     redirect_uri = "https://luviio.in/api/auth/callback"
@@ -94,6 +94,7 @@ async def login_init(request: Request, provider: str = "google"):
         f"&code_challenge_method=S256"
     )
     
+    # Ensure redirect happens through the session middleware to save the cookie
     return RedirectResponse(url=auth_url)
 
 
@@ -103,16 +104,20 @@ async def login_init(request: Request, provider: str = "google"):
 @router.get("/auth/callback")
 async def oauth_callback(request: Request, code: str = None, error: str = None, error_description: str = None):
     if error:
+        logger.warning(f"OAuth Error: {error} - {error_description}")
         return RedirectResponse(f"/login?error={error}")
 
     if not code:
+        logger.warning("No code received in callback")
         return RedirectResponse("/login?error=no_code")
 
     # --- PKCE UPGRADE: Retrieve verifier from session ---
     code_verifier = request.session.get("code_verifier")
+    
     if not code_verifier:
         logger.error("❌ Token Grant Error: Code verifier missing in session")
-        return RedirectResponse("/login?error=session_expired")
+        # Iska matlab user seedha callback par aaya hai bina /api/login hit kiye
+        return RedirectResponse("/login?error=session_expired&msg=Please+try+logging+in+again")
 
     try:
         # A. Exchange Code AND Verifier for Tokens
@@ -123,6 +128,7 @@ async def oauth_callback(request: Request, code: str = None, error: str = None, 
         
         if not token_result.get("success"):
             error_msg = token_result.get("message", "Token exchange failed")
+            logger.error(f"❌ Exchange Failed: {error_msg}")
             return RedirectResponse(f"/login?error=token_exchange_failed&msg={error_msg}")
 
         access_token = token_result.get("access_token")
@@ -133,10 +139,11 @@ async def oauth_callback(request: Request, code: str = None, error: str = None, 
 
         # B. Check Profile & Determine Next Route
         next_url = await get_next_path(user_id, email)
+        logger.info(f"✓ Auth success for {email} -> Redirecting to {next_url}")
         
         response = RedirectResponse(url=next_url, status_code=302)
 
-        # 🔒 Set Secure Cookies
+        # 🔒 Set Secure Cookies (XSS Safe)
         response.set_cookie(
             key="sb-access-token", value=access_token,
             httponly=True, secure=True, samesite="lax", max_age=3600, path="/"
@@ -207,6 +214,7 @@ async def logout(request: Request):
     response = RedirectResponse(url="/login", status_code=302)
     response.delete_cookie("sb-access-token", path="/")
     response.delete_cookie("sb-refresh-token", path="/")
+    logger.info("✓ User logged out")
     return response
 
 
