@@ -1,69 +1,196 @@
-{% extends "base.html" %}
-{% block content %}
-<div class="max-w-2xl mx-auto py-8">
-    <div class="prose mb-8 text-center">
-        <h1 class="font-black text-4xl mb-0">Set Up Your Profile</h1>
-        <p class="text-lg opacity-70">Welcome to LUVIIO. Let's get you ready.</p>
+{% import "macros/onboarding_macros.html" as ob %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Your Profile | LUVIIO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
+    <style>
+        body { background: #050505; color: white; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; }
+        .step-card { display: none; width: 100%; max-width: 450px; }
+        .step-card.active { display: block; }
+        .progress-track { background: rgba(255,255,255,0.05); height: 4px; border-radius: 10px; margin-bottom: 2rem; overflow: hidden; }
+        .progress-fill { background: #3b82f6; height: 100%; transition: width 0.6s cubic-bezier(0.23, 1, 0.32, 1); box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); }
+        input, select { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 1rem; border-radius: 12px; outline: none; transition: 0.3s; color: white; }
+        input:focus { border-color: #3b82f6; background: rgba(255,255,255,0.05); }
+        .radio-card.selected { border-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <div id="loader" class="fixed inset-0 bg-[#050505] z-50 flex flex-col items-center justify-center transition-opacity duration-500">
+        <div class="w-10 h-10 border-4 border-white/10 border-t-blue-500 rounded-full animate-spin"></div>
+        <p class="mt-4 text-[10px] uppercase tracking-[0.2em] text-neutral-500 font-bold">Syncing Profile...</p>
     </div>
 
-    <form action="/api/auth/complete-onboarding" 
-          up-submit 
-          method="POST" 
-          class="card bg-base-100 shadow-2xl p-8 space-y-6 border border-primary/20">
-        
-        <div class="form-control">
-            <label class="label font-bold">What are you here to do?</label>
-            <div class="flex gap-4">
-                <label class="label cursor-pointer flex-1 border border-base-300 rounded-xl p-4 hover:bg-base-200 transition">
-                    <span class="label-text flex flex-col">
-                        <span class="font-bold text-lg">Buyer</span>
-                        <span class="text-xs opacity-60 text-wrap">I want to discover and purchase.</span>
-                    </span> 
-                    <input type="radio" name="role" value="buyer" class="radio radio-primary" checked />
-                </label>
-                <label class="label cursor-pointer flex-1 border border-base-300 rounded-xl p-4 hover:bg-base-200 transition">
-                    <span class="label-text flex flex-col">
-                        <span class="font-bold text-lg">Seller</span>
-                        <span class="text-xs opacity-60 text-wrap">I want to sell and manage items.</span>
-                    </span> 
-                    <input type="radio" name="role" value="seller" class="radio radio-primary" />
-                </label>
-            </div>
+    <main class="flex-1 flex items-center justify-center p-6">
+        <div id="wizard" class="w-full max-w-[450px]">
+            
+            {% call ob.step_card(1, "Who are you?", "Official name for your verified profile.", 20, active=True) %}
+                <input type="text" id="fullName" placeholder="e.g. Rahul Sharma" oninput="validate(1)">
+                {{ ob.step_actions(1, has_back=False) }}
+            {% endcall %}
+
+            {% call ob.step_card(2, "Your Purpose?", "Choose your primary role.", 40) %}
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="radio-card border border-white/10 p-6 rounded-2xl cursor-pointer text-center transition-all" onclick="selectRole('buyer', this)">
+                        <i class="ri-user-smile-line text-2xl mb-2 block"></i>
+                        <span class="font-bold">Buyer</span>
+                    </div>
+                    <div class="radio-card border border-white/10 p-6 rounded-2xl cursor-pointer text-center transition-all" onclick="selectRole('seller', this)">
+                        <i class="ri-store-2-line text-2xl mb-2 block"></i>
+                        <span class="font-bold">Seller</span>
+                    </div>
+                </div>
+                {{ ob.step_actions(2) }}
+            {% endcall %}
+
+            {% call ob.step_card(3, "Discovery?", "How did you find Luviio?", 60) %}
+                <select id="source" onchange="validate(3)">
+                    <option value="" disabled selected>Select Option</option>
+                    <option value="social">Social Media</option>
+                    <option value="search">Search Engine</option>
+                    <option value="referral">Friend / Referral</option>
+                </select>
+                {{ ob.step_actions(3, next_onclick="handleConditionalNext()") }}
+            {% endcall %}
+
+            {% call ob.step_card(4, "Store Details", "Tell us about your business.", 80) %}
+                <input type="text" id="storeName" placeholder="Store Name" class="mb-4" oninput="validate(4)">
+                <input type="text" id="storeContact" placeholder="Business Phone/Email" oninput="validate(4)">
+                {{ ob.step_actions(4) }}
+            {% endcall %}
+
+            {% call ob.step_card(5, "Category", "What do you specialize in?", 100) %}
+                <select id="category" onchange="validate(5)">
+                    <option value="" disabled selected>Select Category</option>
+                    <option value="retail">Retail</option>
+                    <option value="digital">Digital Goods</option>
+                    <option value="services">Services</option>
+                </select>
+                {{ ob.step_actions(5, is_last=True, next_onclick="submitData()") }}
+            {% endcall %}
+
         </div>
+    </main>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-                <label class="label"><span class="label-text font-semibold">Full Name</span></label>
-                <input type="text" name="fullName" value="{{ user.full_name or '' }}" class="input input-bordered focus:input-primary" required />
-            </div>
-            <div class="form-control">
-                <label class="label"><span class="label-text font-semibold">Username</span></label>
-                <input type="text" name="username" placeholder="johndoe123" class="input input-bordered focus:input-primary" required />
-            </div>
-        </div>
+    <script>
+        let formData = { fullName: '', role: '', source: '', storeName: '', storeContact: '', category: '' };
 
-        <div id="seller-fields" class="hidden space-y-4 p-4 bg-primary/5 rounded-xl border border-primary/10">
-            <h3 class="font-bold text-primary">Store Details</h3>
-            <div class="form-control">
-                <input type="text" name="storeName" placeholder="Store Name" class="input input-bordered" />
-            </div>
-        </div>
+        window.onload = () => {
+            // Loader remove logic
+            setTimeout(() => {
+                document.getElementById('loader').classList.add('opacity-0');
+                setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
+            }, 800);
+        };
 
-        <button type="submit" class="btn btn-primary btn-block text-lg">Complete Onboarding 🚀</button>
-    </form>
-</div>
+        window.validate = (step) => {
+            const btn = document.getElementById(`btn${step}`);
+            let valid = false;
+            
+            if(step === 1) valid = document.getElementById('fullName').value.length > 2;
+            if(step === 3) valid = document.getElementById('source').value !== "";
+            if(step === 4) valid = document.getElementById('storeName').value.length > 2 && document.getElementById('storeContact').value.length > 5;
+            if(step === 5) valid = document.getElementById('category').value !== "";
+            
+            if(btn) btn.disabled = !valid;
+        };
 
-<script>
-    // Simple toggle for Seller fields
-    document.querySelectorAll('input[name="role"]').forEach(radio => {
-        radio.addEventListener('change', (e) => {
-            const sellerFields = document.getElementById('seller-fields');
-            if (e.target.value === 'seller') {
-                sellerFields.classList.remove('hidden');
+        window.selectRole = (role, el) => {
+            formData.role = role;
+            document.querySelectorAll('.radio-card').forEach(c => c.classList.remove('selected', 'border-blue-500', 'bg-blue-500/10'));
+            el.classList.add('selected', 'border-blue-500', 'bg-blue-500/10');
+            document.getElementById('btn2').disabled = false;
+        };
+
+        window.handleConditionalNext = () => {
+            formData.fullName = document.getElementById('fullName').value;
+            formData.source = document.getElementById('source').value;
+            
+            if(formData.role === 'buyer') {
+                submitData(); // Buyer seedha submit karega
             } else {
-                sellerFields.classList.add('hidden');
+                nextStep(4); // Seller extra steps par jayega
             }
-        });
-    });
-</script>
-{% endblock %}
+        };
+
+        window.nextStep = (target) => {
+            const current = document.querySelector('.step-card.active');
+            const next = document.getElementById(`step${target}`);
+            
+            gsap.to(current, { x: -20, opacity: 0, duration: 0.3, onComplete: () => {
+                current.classList.remove('active');
+                next.classList.add('active');
+                gsap.fromTo(next, { x: 20, opacity: 0 }, { x: 0, opacity: 1, duration: 0.3 });
+            }});
+        };
+
+        window.prevStep = (target) => {
+            const current = document.querySelector('.step-card.active');
+            const prev = document.getElementById(`step${target}`);
+            
+            gsap.to(current, { x: 20, opacity: 0, duration: 0.3, onComplete: () => {
+                current.classList.remove('active');
+                prev.classList.add('active');
+                gsap.fromTo(prev, { x: -20, opacity: 0 }, { x: 0, opacity: 1, duration: 0.3 });
+            }});
+        };
+
+        // --- 🚀 SERVER-SIDE SUBMISSION (Strict Mode) ---
+        window.submitData = async () => {
+            const activeStep = document.querySelector('.step-card.active');
+            // Try to f ind the button inside the active step
+            const btn = activeStep.querySelector('button.bg-white') || activeStep.querySelector('button');
+            const originalText = btn ? btn.innerText : "Submit";
+            
+            if(btn) {
+                btn.innerText = "Setting up...";
+                btn.disabled = true;
+            }
+
+            // Collect final data
+            if(formData.role === 'seller') {
+                formData.storeName = document.getElementById('storeName').value;
+                formData.storeContact = document.getElementById('storeContact').value;
+                formData.category = document.getElementById('category').value;
+            }
+
+            try {
+                // Backend API Call (Self-Hosted Auth Server)
+                const response = await fetch('/api/auth/complete-onboarding', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData),
+                    
+                    // 🔥 CRITICAL FIX: Ensures cookie is sent to backend
+                    credentials: 'include' 
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    console.log("Onboarding Success!");
+                    // 🚀 Redirect to Main Dashboard (Relative Path)
+                    window.location.href = "/dashboard";
+                } else {
+                    throw new Error(result.detail || "Onboarding failed");
+                }
+
+            } catch (err) {
+                console.error(err);
+                alert("Error: " + err.message);
+                if(btn) {
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
+            }
+        };
+    </script>
+</body>
+</html>

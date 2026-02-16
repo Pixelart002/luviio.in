@@ -1,81 +1,103 @@
-{% extends "base.html" %}
+{% extends "app/base.html" %}
+
 {% block content %}
-<div class="flex justify-center items-center py-12">
-    <div class="card w-full max-w-md bg-base-100 shadow-2xl border border-base-content/5">
-        <div class="card-body">
-            <div class="text-center mb-6">
-                <h2 class="text-3xl font-black tracking-tighter">Create Account</h2>
-                <p class="text-sm opacity-60">Join the LUVIIO engine today.</p>
+<div class="w-full max-w-[420px] px-4">
+    <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] p-8 text-center backdrop-blur-xl">
+        
+        <h2 class="text-2xl font-bold text-white mb-2">Create Account</h2>
+        <p class="text-xs text-neutral-500 mb-6">Join LUVIIO via Self-Hosted Auth</p>
+        
+        <div class="grid grid-cols-2 gap-3 mb-6">
+            <button onclick="oauthLogin('google')" class="flex items-center justify-center gap-2 bg-white/5 border border-white/10 rounded-xl py-3 hover:bg-white/10 transition group">
+                <i class="ri-google-fill text-xl text-white group-hover:scale-110 transition"></i>
+                <span class="text-sm font-semibold text-white">Google</span>
+            </button>
+            <button onclick="oauthLogin('github')" class="flex items-center justify-center gap-2 bg-white/5 border border-white/10 rounded-xl py-3 hover:bg-white/10 transition group">
+                <i class="ri-github-fill text-xl text-white group-hover:scale-110 transition"></i>
+                <span class="text-sm font-semibold text-white">GitHub</span>
+            </button>
+        </div>
+        
+        <div class="relative flex items-center justify-center mb-6">
+            <div class="absolute inset-0 border-t border-white/10"></div>
+            <span class="relative bg-[#0A0A0A] px-2 text-xs text-white/40 uppercase">Or email</span>
+        </div>
+        
+        <form id="signupForm" class="flex flex-col gap-3 text-left">
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase text-neutral-500 ml-2">Email Address</label>
+                <input type="email" id="email" placeholder="name@company.com" class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-blue-500 transition placeholder-white/20" required>
             </div>
-
-            <div class="grid grid-cols-2 gap-3 mb-6">
-                <a href="/api/auth/login/google" up-follow class="btn btn-outline gap-2 border-base-300 hover:bg-base-200">
-                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-4 h-4">
-                    Google
-                </a>
-                <a href="/api/auth/login/github" up-follow class="btn btn-outline gap-2 border-base-300 hover:bg-base-200">
-                    <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                    GitHub
-                </a>
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase text-neutral-500 ml-2">Create Password</label>
+                <input type="password" id="password" placeholder="Min 8 chars" class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-blue-500 transition placeholder-white/20" required>
             </div>
-
-            <div class="divider text-xs opacity-40 uppercase tracking-widest">Or Register With Email</div>
-
-            <form action="/api/auth/register" up-submit method="POST" class="space-y-4">
-                <div class="form-control">
-                    <label class="label"><span class="label-text font-bold">Email Address</span></label>
-                    <input type="email" name="email" placeholder="you@example.com" class="input input-bordered focus:input-primary" required />
-                </div>
-
-                <div class="form-control">
-                    <label class="label"><span class="label-text font-bold">Password</span></label>
-                    <input type="password" id="password" name="password" placeholder="••••••••" class="input input-bordered focus:input-primary" required minlength="8" />
-                    <label class="label">
-                        <span class="label-text-alt text-error hidden" id="pass-error">Passwords do not match</span>
-                    </label>
-                </div>
-
-                <div class="form-control">
-                    <label class="label"><span class="label-text font-bold">Confirm Password</span></label>
-                    <input type="password" id="confirm_password" placeholder="••••••••" class="input input-bordered focus:input-primary" required />
-                </div>
-
-                <div class="flex items-center gap-2 py-2">
-                    <input type="checkbox" checked="checked" class="checkbox checkbox-xs checkbox-primary" required />
-                    <span class="text-xs opacity-70">I agree to the Terms of Service and Privacy Policy.</span>
-                </div>
-
-                <button type="submit" id="submit-btn" class="btn btn-primary w-full shadow-lg shadow-primary/20">
-                    Create Account 🚀
-                </button>
-            </form>
-
-            <div class="text-center mt-6 text-sm">
-                <span class="opacity-60">Already have an account?</span>
-                <a href="/login" up-follow class="link link-primary font-bold ml-1">Log In</a>
-            </div>
+            
+            <button type="submit" id="submitBtn" class="w-full bg-white text-black font-bold rounded-xl py-4 mt-2 hover:scale-[1.02] active:scale-[0.98] transition shadow-lg shadow-white/5 relative overflow-hidden">
+                <span id="btnText">Create Account</span>
+            </button>
+        </form>
+        
+        <div class="mt-6 text-xs text-neutral-500 font-medium">
+            <span>Already a member?</span>
+            <a href="/login" class="text-white hover:text-blue-400 hover:underline font-bold ml-1 transition-colors">Log in</a>
         </div>
     </div>
 </div>
 
 <script>
-    // Simple client-side match check
-    const password = document.getElementById("password");
-    const confirm = document.getElementById("confirm_password");
-    const errorMsg = document.getElementById("pass-error");
-    const submitBtn = document.getElementById("submit-btn");
-
-    function validate() {
-        if (password.value !== confirm.value && confirm.value.length > 0) {
-            errorMsg.classList.remove("hidden");
-            submitBtn.disabled = true;
-        } else {
-            errorMsg.classList.add("hidden");
-            submitBtn.disabled = false;
-        }
+    // --- 1. OAUTH HANDLER (Direct Server Redirect) ---
+    function oauthLogin(provider) {
+        console.log(`🚀 Initiating OAuth Signup: ${provider}`);
+        // Backend handles CSRF state generation and redirect
+        window.location.href = `/api/auth/login/${provider}`;
     }
-
-    password.addEventListener("change", validate);
-    confirm.addEventListener("keyup", validate);
+    
+    // --- 2. MANUAL SIGNUP HANDLER ---
+    document.getElementById('signupForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const btn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        
+        // UI Feedback
+        const originalText = btnText.innerText;
+        btnText.innerText = "Creating Profile...";
+        btn.disabled = true;
+        btn.classList.add('opacity-70', 'cursor-not-allowed');
+        
+        try {
+            // Hit the Register Endpoint
+            const response = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.detail || "Registration failed");
+            }
+            
+            // ✅ Success Logic
+            console.log("✅ Signup Successful");
+            alert("Account created successfully! Redirecting to login...");
+            
+            // Redirect to Login page to establish session
+            window.location.href = "/login";
+            
+        } catch (err) {
+            console.error("❌ Signup Error:", err);
+            alert(err.message);
+            
+            // Reset Loading State
+            btnText.innerText = originalText;
+            btn.disabled = false;
+            btn.classList.remove('opacity-70', 'cursor-not-allowed');
+        }
+    });
 </script>
 {% endblock %}

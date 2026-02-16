@@ -1,54 +1,47 @@
+{% import "macros/nav.html" as nav %}
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title or "LUVIIO" }}</title>
+    <title>{{ title | default('LUVIIO') }}</title>
     
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.19/dist/full.min.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <script src="https://unpkg.com/unpoly@3.5.0/unpoly.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/unpoly@3.5.0/unpoly.min.css">
+    <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
 
     <style>
-        /* Unpoly loading bar color */
-        .up-progress-bar { background: #3b82f6; height: 3px; }
+        body { 
+            background: #050505; 
+            color: white; 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            overflow-x: hidden;
+        }
+        /* Grid Background Effect */
+        .bg-grid { 
+            position: fixed; 
+            inset: 0; 
+            background-image: radial-gradient(rgba(255,255,255,0.1) 1px, transparent 0); 
+            background-size: 40px 40px; 
+            opacity: 0.2; 
+            pointer-events: none; 
+            z-index: -1; 
+        }
     </style>
 </head>
-<body class="min-h-screen bg-base-300">
+<body class="min-h-screen flex flex-col selection:bg-blue-500/30">
+    <div class="bg-grid"></div>
 
-    <nav class="navbar bg-base-100 shadow-lg px-4 lg:px-12">
-        <div class="flex-1">
-            <a href="/" up-follow class="btn btn-ghost text-xl font-bold tracking-tighter">LUVIIO</a>
-        </div>
-        <div class="flex-none gap-2">
-            {% if user %}
-                <span class="text-sm opacity-70 hidden sm:inline">{{ user.email }}</span>
-                <div class="dropdown dropdown-end">
-                    <div tabindex="0" role="button" class="btn btn-ghost btn-circle avatar">
-                        <div class="w-10 rounded-full">
-                            <img src="{{ user.avatar_url or 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.email }}" />
-                        </div>
-                    </div>
-                    <ul tabindex="0" class="mt-3 z-[1] p-2 shadow menu menu-sm dropdown-content bg-base-200 rounded-box w-52">
-                        <li><a href="/dashboard" up-follow>Dashboard</a></li>
-                        <li><a href="/api/auth/logout" class="text-error">Logout</a></li>
-                    </ul>
-                </div>
-            {% else %}
-                <a href="/login" up-follow class="btn btn-primary btn-sm">Sign In</a>
-            {% endif %}
-        </div>
-    </nav>
+    {{ nav.render_header(active_page | default('home'), request) }}
 
-    <main id="main-content" up-main class="container mx-auto p-4 lg:p-8">
+    <main id="main-content" class="flex-1 flex flex-col" up-main>
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="footer footer-center p-4 bg-base-100 text-base-content mt-auto">
-        <aside><p>© 2026 LUVIIO Engine - Elite Auth Integrated</p></aside>
+    <footer class="py-10 text-center text-[10px] font-black uppercase tracking-[0.4em] text-neutral-700 border-t border-white/5">
+        &copy; 2026 Luviio Technologies &bull; Secure Node
     </footer>
-
 </body>
 </html>
