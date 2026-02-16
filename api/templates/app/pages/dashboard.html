@@ -1,0 +1,80 @@
+{% extends "app/base.html" %}
+
+{% block content %}
+<div class="flex h-screen w-full overflow-hidden bg-black text-white">
+  
+  <aside class="w-64 border-r border-white/10 bg-[#0A0A0A] hidden md:flex flex-col">
+    <div class="p-6 border-b border-white/10">
+      <h1 class="text-xl font-bold tracking-widest">LUVIIO</h1>
+      <span class="text-xs text-neutral-500 uppercase tracking-wider">{{ user.role }} Account</span>
+    </div>
+    
+    <nav class="flex-1 p-4 space-y-2">
+      <a href="#" class="flex items-center gap-3 px-4 py-3 bg-white/5 text-white rounded-xl border border-white/10">
+        <i class="ri-dashboard-line"></i>
+        <span class="font-medium">Overview</span>
+      </a>
+      <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition">
+        <i class="ri-store-2-line"></i>
+        <span class="font-medium">Store</span>
+      </a>
+      <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition">
+        <i class="ri-settings-4-line"></i>
+        <span class="font-medium">Settings</span>
+      </a>
+    </nav>
+    
+    <div class="p-4 border-t border-white/10">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center font-bold text-sm">
+          {{ user.email[0] | upper }}
+        </div>
+        <div class="overflow-hidden">
+          <p class="text-sm font-bold truncate">{{ user.full_name or 'User' }}</p>
+          <p class="text-xs text-neutral-500 truncate">{{ user.email }}</p>
+        </div>
+      </div>
+      <a href="/api/auth/logout" class="flex items-center justify-center gap-2 w-full py-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition text-sm font-medium">
+        <i class="ri-logout-box-line"></i> Logout
+      </a>
+    </div>
+  </aside>
+  
+  <main class="flex-1 overflow-y-auto relative">
+    <header class="md:hidden flex items-center justify-between p-4 border-b border-white/10 bg-[#0A0A0A]">
+      <span class="font-bold">LUVIIO</span>
+      <a href="/api/auth/logout" class="text-neutral-400"><i class="ri-logout-box-r-line"></i></a>
+    </header>
+    
+    <div class="p-6 max-w-7xl mx-auto">
+      <div class="mb-8">
+        <h2 class="text-3xl font-bold mb-2">Hello, {{ user.full_name.split(' ')[0] }} 👋</h2>
+        <p class="text-neutral-400">Here's what's happening with your account today.</p>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="p-6 rounded-2xl bg-[#0F0F0F] border border-white/5">
+          <p class="text-neutral-500 text-sm mb-1">Total Orders</p>
+          <h3 class="text-2xl font-bold">0</h3>
+        </div>
+        <div class="p-6 rounded-2xl bg-[#0F0F0F] border border-white/5">
+          <p class="text-neutral-500 text-sm mb-1">Revenue</p>
+          <h3 class="text-2xl font-bold">₹0.00</h3>
+        </div>
+        <div class="p-6 rounded-2xl bg-[#0F0F0F] border border-white/5">
+          <p class="text-neutral-500 text-sm mb-1">Account Status</p>
+          <h3 class="text-2xl font-bold text-green-500">Active</h3>
+        </div>
+      </div>
+      
+      <div class="text-center py-20 border border-dashed border-white/10 rounded-3xl">
+        <div class="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
+          <i class="ri-box-3-line text-2xl text-neutral-400"></i>
+        </div>
+        <h3 class="text-lg font-medium text-white">No Activity Yet</h3>
+        <p class="text-neutral-500 max-w-xs mx-auto mt-2">Your dashboard will populate as you start using the platform.</p>
+      </div>
+    </div>
+  </main>
+</div>
+{% endblock %}

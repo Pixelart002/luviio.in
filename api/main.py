@@ -154,7 +154,9 @@ async def dashboard_page(request: Request):
         # Dependency verification
         user = await require_onboarded(await get_current_user(request))
         logger.info(f"📊 Dashboard authenticated for: {user['email']}")
-        return templates.TemplateResponse("app/pages/home.html", {"request": request, "user": user})
+        
+        # 🔥 UPDATE: Pointing to dashboard.html strictly
+        return templates.TemplateResponse("app/pages/dashboard.html", {"request": request, "user": user})
     except HTTPException as e:
         # Unified redirection logic based on exception detail
         if e.detail == "onboarding_required":
