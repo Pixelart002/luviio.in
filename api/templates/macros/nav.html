@@ -1,27 +1,81 @@
-{# 1. Side Navigation Macro (Pehle wala) #}
+{# 1. Side Navigation Macro (For Dashboard/Onboarding) #}
 {% macro render_sidebar(user) %}
-{# ... aapka existing sidebar code ... #}
+<aside class="w-64 border-r border-white/10 bg-[#0A0A0A] hidden md:flex flex-col h-full fixed left-0 top-0 z-40">
+    <div class="p-6 border-b border-white/10">
+        <h1 class="text-xl font-bold tracking-widest text-white">LUVIIO</h1>
+        <span class="text-[10px] text-blue-400 uppercase tracking-widest font-black bg-blue-500/10 px-2 py-1 rounded-md mt-2 inline-block">
+            {{ user.role or 'Member' }}
+        </span>
+    </div>
+    
+    <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
+        <p class="px-4 text-[10px] font-black text-neutral-600 uppercase tracking-[0.2em] mb-4 mt-2">Core Menu</p>
+        
+        <a href="/dashboard" class="flex items-center gap-3 px-4 py-3 bg-white/5 text-white rounded-xl border border-white/10 transition-all">
+            <i class="ri-dashboard-3-line text-lg"></i>
+            <span class="font-bold text-sm">Dashboard</span>
+        </a>
+        
+        {% if user.role == 'seller' %}
+        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-500 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+            <i class="ri-store-2-line text-lg"></i>
+            <span class="font-bold text-sm">My Store</span>
+        </a>
+        {% endif %}
+        
+        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-500 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+            <i class="ri-settings-5-line text-lg"></i>
+            <span class="font-bold text-sm">Settings</span>
+        </a>
+    </nav>
+    
+    {# 🔥 BOTTOM USER PROFILE: Synced with Onboarding Data #}
+    <div class="p-4 border-t border-white/10 bg-white/[0.02]">
+        <div class="flex items-center gap-3 mb-4 p-2">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center font-black text-white shadow-lg shadow-blue-500/20">
+                {{ user.full_name[0] | upper if user.full_name else user.email[0] | upper }}
+            </div>
+            <div class="overflow-hidden">
+                <p class="text-sm font-black text-white truncate">{{ user.full_name or 'Syncing...' }}</p>
+                <p class="text-[10px] text-neutral-600 truncate font-bold uppercase tracking-tighter">{{ user.email }}</p>
+            </div>
+        </div>
+        <a href="/api/auth/logout" class="flex items-center justify-center gap-2 w-full py-3 bg-red-500/5 text-red-500 rounded-xl hover:bg-red-500/10 transition-all border border-red-500/10 text-[10px] font-black uppercase tracking-widest">
+            <i class="ri-logout-circle-line text-sm"></i> Terminate Session
+        </a>
+    </div>
+</aside>
 {% endmacro %}
 
-{# 2. Top Header Macro (Jo MISSING hai) #}
-{% macro render_header(active_page='home') %}
-<header class="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-black/50 backdrop-blur-xl">
+{# 2. Top Header Macro (For Landing/Waitlist) #}
+{% macro render_header(active_page='home', user=none) %}
+<header class="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-black/60 backdrop-blur-2xl">
     <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span class="font-bold text-xs text-white">L</span>
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 bg-white rounded-xl flex items-center justify-center">
+                <span class="font-black text-xs text-black">L</span>
             </div>
-            <span class="font-bold tracking-[0.2em] text-white">LUVIIO</span>
+            <span class="font-black tracking-[0.3em] text-white text-sm">LUVIIO</span>
         </div>
         
-        <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-neutral-400">
-            <a href="/" class="hover:text-white transition {{ 'text-white' if active_page == 'home' }}">Home</a>
-            <a href="/waitlist" class="hover:text-white transition {{ 'text-white' if active_page == 'waitlist' }}">Waitlist</a>
+        <nav class="hidden md:flex items-center gap-10 text-[11px] font-black uppercase tracking-[0.2em] text-neutral-500">
+            <a href="/" class="hover:text-white transition-colors {{ 'text-white' if active_page == 'home' }}">Home</a>
+            <a href="/waitlist" class="hover:text-white transition-colors {{ 'text-white' if active_page == 'waitlist' }}">Waitlist</a>
+            <a href="#" class="hover:text-white transition-colors">Marketplace</a>
         </nav>
         
-        <div class="flex items-center gap-4">
-            <a href="/login" class="text-sm font-bold text-white hover:opacity-80 transition">Sign In</a>
-            <a href="/signup" class="bg-white text-black text-sm font-bold px-5 py-2.5 rounded-xl hover:scale-105 transition">Get Started</a>
+        <div class="flex items-center gap-6">
+            {% if request.cookies.get("access_token") %}
+            {# If logged in, show Dashboard link instead of Sign In #}
+            <a href="/dashboard" class="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2 bg-white/10 px-4 py-2 rounded-lg border border-white/10 hover:bg-white/20 transition">
+                Go to Console <i class="ri-arrow-right-up-line"></i>
+            </a>
+            {% else %}
+            <a href="/login" class="text-[11px] font-black text-white uppercase tracking-widest hover:opacity-70 transition">Sign In</a>
+            <a href="/signup" class="bg-white text-black text-[11px] font-black uppercase tracking-widest px-6 py-3 rounded-xl hover:scale-105 active:scale-95 transition-all shadow-xl shadow-white/10">
+                Join Network
+            </a>
+            {% endif %}
         </div>
     </div>
 </header>
