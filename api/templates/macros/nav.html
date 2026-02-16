@@ -1,85 +1,59 @@
-{% macro render_header(active_page='home') %}
-<header class="fixed top-0 left-0 w-full h-20 bg-black/80 backdrop-blur-md border-b border-white/10 z-50">
-    <div class="max-w-7xl mx-auto px-6 h-full flex justify-between items-center">
+{% macro render_sidebar(user) %}
+<aside class="w-64 border-r border-white/10 bg-[#0A0A0A] hidden md:flex flex-col h-full fixed left-0 top-0">
+    <div class="p-6 border-b border-white/10">
+        <h1 class="text-xl font-bold tracking-widest text-white">LUVIIO</h1>
+        <span class="text-[10px] text-blue-400 uppercase tracking-wider font-bold bg-blue-500/10 px-2 py-1 rounded-full">
+            {{ user.role }} Account
+        </span>
+    </div>
+    
+    <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+        <p class="px-4 text-xs font-bold text-neutral-600 uppercase tracking-widest mb-2 mt-2">Menu</p>
         
-        <a href="/" 
-           class="text-2xl font-black tracking-tighter text-white" 
-           up-target="#main-content" 
-           up-transition="cross-fade">
-            LUVIIO<span class="text-blue-500">.</span>
+        <a href="/dashboard" class="flex items-center gap-3 px-4 py-3 bg-white/5 text-white rounded-xl border border-white/10 transition-all hover:bg-white/10">
+            <i class="ri-dashboard-line text-lg"></i>
+            <span class="font-medium text-sm">Overview</span>
         </a>
         
-        <nav class="hidden md:flex items-center gap-8">
-            <a href="mailto:contact@luviio.in" class="text-sm font-medium text-gray-400 hover:text-white transition-colors">Contact</a>
-            
-            <a href="/login" 
-               class="bg-white text-black text-xs font-bold px-6 py-2.5 rounded-full hover:scale-105 transition-transform" 
-               up-target="#main-content" 
-               up-transition="cross-fade">
-                Sign In
-            </a>
-        </nav>
+        {% if user.role == 'seller' %}
+        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+            <i class="ri-store-2-line text-lg"></i>
+            <span class="font-medium text-sm">My Store</span>
+        </a>
+        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+            <i class="ri-shopping-bag-3-line text-lg"></i>
+            <span class="font-medium text-sm">Orders</span>
+        </a>
+        {% else %}
+        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+            <i class="ri-shopping-cart-2-line text-lg"></i>
+            <span class="font-medium text-sm">My Orders</span>
+        </a>
+        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+            <i class="ri-heart-line text-lg"></i>
+            <span class="font-medium text-sm">Wishlist</span>
+        </a>
+        {% endif %}
         
-        <button id="menu-btn" class="md:hidden flex flex-col gap-1.5 z-50 relative group">
-            <span class="w-6 h-0.5 bg-white transition-all duration-300 group-hover:bg-blue-400"></span>
-            <span class="w-6 h-0.5 bg-white transition-all duration-300 group-hover:bg-blue-400"></span>
-        </button>
-    </div>
-</header>
-
-<div id="mobile-menu" class="fixed inset-0 bg-black z-40 transform translate-x-full transition-transform duration-300 ease-in-out md:hidden flex flex-col justify-center items-center gap-8">
+        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+            <i class="ri-settings-4-line text-lg"></i>
+            <span class="font-medium text-sm">Settings</span>
+        </a>
+    </nav>
     
-    <a href="/" 
-       class="text-3xl font-bold text-white hover:text-blue-500 transition-colors"
-       up-target="#main-content" 
-       up-transition="cross-fade">
-       Home
-    </a>
-
-    <a href="mailto:contact@luviio.in" class="text-3xl font-bold text-gray-400 hover:text-white transition-colors">Contact</a>
-
-    <a href="/signup" 
-       class="bg-white text-black text-lg font-bold px-10 py-4 rounded-full" 
-       up-target="#main-content" 
-       up-transition="cross-fade">
-       Sign up
-    </a>
-</div>
-
-<script>
-    // 🔥 ENABLE UNPOLY LOGGING
-    // Isse browser console mein exact error aur redirects dikhenge
-    up.log.enable();
-
-    // Logic: Menu Toggle & Auto-Close on Click
-    up.compiler('#menu-btn', function(btn) {
-        const menu = document.getElementById('mobile-menu');
-        const spans = btn.querySelectorAll('span');
-        let isOpen = false;
-        
-        const toggleMenu = () => {
-            isOpen = !isOpen;
-            if (isOpen) {
-                menu.classList.remove('translate-x-full');
-                spans[0].style.transform = 'translateY(4px) rotate(45deg)';
-                spans[1].style.transform = 'translateY(-4px) rotate(-45deg)';
-                document.body.style.overflow = 'hidden';
-            } else {
-                menu.classList.add('translate-x-full');
-                spans[0].style.transform = 'none';
-                spans[1].style.transform = 'none';
-                document.body.style.overflow = '';
-            }
-        };
-
-        btn.onclick = toggleMenu;
-        
-        // Close menu when a link inside is clicked
-        menu.querySelectorAll('a').forEach(link => {
-            link.addEventListener('click', () => {
-                if(isOpen) toggleMenu();
-            });
-        });
-    });
-</script>
+    <div class="p-4 border-t border-white/10 bg-[#0F0F0F]">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-sm text-white shadow-lg shadow-blue-500/20">
+                {{ user.email[0] | upper }}
+            </div>
+            <div class="overflow-hidden">
+                <p class="text-sm font-bold text-white truncate">{{ user.full_name or 'User' }}</p>
+                <p class="text-xs text-neutral-500 truncate">{{ user.email }}</p>
+            </div>
+        </div>
+        <a href="/api/auth/logout" class="flex items-center justify-center gap-2 w-full py-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition text-sm font-medium border border-red-500/10">
+            <i class="ri-logout-box-line"></i> Logout
+        </a>
+    </div>
+</aside>
 {% endmacro %}
