@@ -290,7 +290,7 @@ async def oauth_callback(
     redirect_target = DASHBOARD_URL if user.get("onboarded") else ONBOARDING_URL
     response = RedirectResponse(url=redirect_target, status_code=303)
     set_auth_cookies(response, access, refresh, session_id)
-    response.delete_cookie("oauth_state"
+    response.delete_cookie("oauth_state",
         path="/",
         domain=COOKIE_DOMAIN
         ),
