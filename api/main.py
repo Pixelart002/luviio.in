@@ -29,6 +29,7 @@ try:
     from api.routes.resend_mail import router as resend_router
     from api.routes.auth import router as auth_router 
     from api.utils.deps import get_current_user, require_onboarded
+    # Database import for profile fetching
     from api.routes.database import supabase_admin
     logger.info("✅ Core modules imported successfully")
 except ImportError as e:
@@ -47,7 +48,7 @@ app = FastAPI(
 )
 
 # ==========================================
-# 🛡️ MIDDLEWARES
+# 🛡️ MIDDLEWARES (Security & Routing)
 # ==========================================
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -82,6 +83,7 @@ class UnifiedDomainMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         is_dev = any(h in host for h in ["localhost", "127.0.0.1", ".vercel.app"])
         if host != "luviio.in" and not is_dev:
+            logger.warning(f"🚨 Unauthorized host: {host}. Purging to luviio.in")
             return RedirectResponse(
                 url=f"https://luviio.in{path}", 
                 status_code=status.HTTP_308_PERMANENT_REDIRECT
@@ -93,7 +95,7 @@ class UnifiedDomainMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(UnifiedDomainMiddleware)
 
-# --- 🔗 ROUTERS & STATIC ---
+# --- 🔗 ROUTERS ---
 app.include_router(resend_router, prefix="/api", tags=["Utility"])
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth-Flow"])
 
@@ -103,6 +105,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 # --- 📄 EXCEPTION HANDLERS ---
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, __):
+    logger.warning(f"🚩 404 Attempt on: {request.url.path}")
     return templates.TemplateResponse("app/err/404.html", {"request": request, "title": "404 - Not Found"}, status_code=404)
 
 # ==========================================
@@ -113,13 +116,13 @@ async def custom_404_handler(request: Request, __):
 async def login_page(request: Request):
     if request.cookies.get("access_token"):
         return RedirectResponse(url="/dashboard")
-    return templates.TemplateResponse("app/auth/login.html", {"request": request})
+    return templates.TemplateResponse("app/auth/login.html", {"request": request, "title": "Login | LUVIIO"})
 
 @app.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request):
     if request.cookies.get("access_token"):
         return RedirectResponse(url="/dashboard")
-    return templates.TemplateResponse("app/auth/signup.html", {"request": request})
+    return templates.TemplateResponse("app/auth/signup.html", {"request": request, "title": "Sign Up | LUVIIO"})
 
 @app.get("/onboarding", response_class=HTMLResponse)
 async def onboarding_page(request: Request, user: dict = Depends(get_current_user)):
@@ -129,20 +132,27 @@ async def onboarding_page(request: Request, user: dict = Depends(get_current_use
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
+    """
+    Main Protected Application Entry Point.
+    🔥 ULTRA UPGRADE: Fetches 'profiles' table data to show real Name & Role.
+    """
     try:
         # 1. Identity Verification
         user_auth = await require_onboarded(await get_current_user(request))
         
-        # 2. Fetch Onboarding Details from Supabase
+        # 2. Fetch Onboarding Details (Name, Role) from Supabase Profiles
         profile_query = supabase_admin.table("profiles").select("*").eq("id", user_auth["id"]).execute()
         
-        full_name, role = "User", "member"
+        # Default context if profile fetch fails or is partial
+        full_name = "User"
+        role = "member"
+        
         if profile_query.data:
             profile = profile_query.data[0]
             full_name = profile.get("full_name", "User")
             role = profile.get("role", "member")
         
-        # 3. Final Context Scope
+        # 3. Final User Context for Jinja2
         user_context = {
             "id": user_auth["id"],
             "email": user_auth["email"],
@@ -152,10 +162,12 @@ async def dashboard_page(request: Request):
 
         logger.info(f"📊 Dashboard authenticated for: {user_context['full_name']}")
         return templates.TemplateResponse("app/pages/dashboard.html", {
-            "request": request, # Required for base.html
-            "user": user_context # Required for macros
+            "request": request, 
+            "user": user_context # Pass merged data
         })
-    except HTTPException:
+    except HTTPException as e:
+        if e.detail == "onboarding_required":
+            return RedirectResponse(url="/onboarding")
         response = RedirectResponse(url="/login")
         response.delete_cookie("access_token", path="/")
         return response
@@ -164,8 +176,7 @@ async def dashboard_page(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def render_home(request: Request):
-    # Pass 'user' as none if not logged in to avoid scope errors
-    return templates.TemplateResponse("app/pages/home.html", {"request": request, "active_page": "home", "user": None})
+    return templates.TemplateResponse("app/pages/home.html", {"request": request, "active_page": "home"})
 
 @app.get("/waitlist", response_class=HTMLResponse)
 async def render_waitlist(request: Request):
