@@ -3,70 +3,57 @@
 {% import "macros/dashboard_ui.html" as ui %}
 
 {% block content %}
-<div class="flex min-h-screen bg-[#050505] text-white font-['Plus_Jakarta_Sans']">
+<div class="flex min-h-screen bg-black/50">
   
-  {# Pass 'overview' as active_page if your macro supports it #}
+  {# Navigation Sidebar with Sync Status #}
   {{ nav.render_sidebar(user) }}
   
-  <main class="flex-1 md:ml-64 p-4 md:p-10 transition-all duration-300">
+  <main class="flex-1 md:ml-64 p-6 md:p-12 animate-fade-in">
     
-    <header class="md:hidden flex items-center justify-between mb-10 pb-4 border-b border-white/5">
-      <div class="flex items-center gap-2">
-        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <span class="font-bold text-xs">L</span>
-        </div>
-        <span class="font-bold tracking-[0.2em] text-sm">LUVIIO</span>
-      </div>
-      <a href="/api/auth/logout" class="text-neutral-500 hover:text-red-500 transition-colors">
-        <i class="ri-logout-box-r-line text-xl"></i>
-      </a>
-    </header>
+    {# 1. Dynamic Greeting using DB Name (Confirmed: VIVEK) #}
+    {{ ui.welcome_header(user.full_name, user.role) }}
     
-    {{ ui.welcome_header(user.full_name or 'Valued User', user.role or 'Member') }}
-    
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
-      {{ ui.stat_card('Identity Status', 'Verified', 'ri-shield-check-line', 'green') }}
+    {# 2. Live Identity Status #}
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+      {{ ui.stat_card('Identity Verification', 'Success', 'ri-shield-user-fill', 'green') }}
       
       {% if user.role == 'seller' %}
-        {# Seller Specific Metrics #}
-        {{ ui.stat_card('Total Revenue', '₹0.00', 'ri-money-dollar-circle-line', 'blue') }}
-        {{ ui.stat_card('Live Listings', '0', 'ri-box-3-line', 'purple') }}
+        {{ ui.stat_card('Store Reach', 'Initializing', 'ri-radar-line', 'blue') }}
+        {{ ui.stat_card('Revenue Engine', 'Active', 'ri-flashlight-line', 'purple') }}
       {% else %}
-        {# Buyer Specific Metrics #}
-        {{ ui.stat_card('Active Orders', '0', 'ri-shopping-bag-line', 'blue') }}
-        {{ ui.stat_card('My Favorites', '0', 'ri-heart-line', 'red') }}
+        {{ ui.stat_card('Marketplace access', 'Unlocked', 'ri-shopping-cart-2-line', 'blue') }}
+        {{ ui.stat_card('Trust Score', '100%', 'ri-verified-badge-line', 'purple') }}
       {% endif %}
     </div>
     
-    <div class="mt-10">
-      {% if user.role == 'seller' %}
-        {{ ui.empty_state(
-            'Launch Your Store', 
-            'Your inventory is currently empty. List your first product to begin your selling journey.', 
-            'Create Listing', 
-            'ri-add-circle-line'
-        ) }}
-      {% else %}
-        {{ ui.empty_state(
-            'Marketplace is Open', 
-            'Discover hand-picked verified products tailored for your needs.', 
-            'Start Exploring', 
-            'ri-compass-3-line'
-        ) }}
-      {% endif %}
+    {# 3. Role-Based Dynamic Actions #}
+    <div class="bg-gradient-to-br from-white/[0.03] to-transparent rounded-3xl border border-white/5 p-8 md:p-12 relative overflow-hidden group">
+        <div class="absolute -right-20 -top-20 w-64 h-64 bg-blue-600/10 blur-[100px] group-hover:bg-blue-600/20 transition-all"></div>
+        
+        <div class="relative z-10">
+            {% if user.role == 'seller' %}
+                {{ ui.empty_state(
+                    'Setup Your Inventory', 
+                    'Your verified seller profile is active. It is time to list your first digital or physical asset.', 
+                    'Initialize Storefront', 
+                    'ri-store-3-line'
+                ) }}
+            {% else %}
+                {{ ui.empty_state(
+                    'Browse the Network', 
+                    'Access thousands of verified sellers and products within the Luviio ecosystem.', 
+                    'Explore Marketplace', 
+                    'ri-global-line'
+                ) }}
+            {% endif %}
+        </div>
     </div>
     
   </main>
 </div>
 
 <style>
-  /* Smooth entry for the grid components */
-  .animate-fade-in {
-    animation: fadeIn 0.8s ease-out forwards;
-  }
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
 </style>
 {% endblock %}
