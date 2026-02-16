@@ -5,33 +5,30 @@
 {% block content %}
 <div class="flex min-h-screen bg-black/50">
   
-  {# 1. Navigation Sidebar - Using direct 'user' scope #}
+  {# Navigation Sidebar with Sync Status #}
   {{ nav.render_sidebar(user) }}
   
   <main class="flex-1 md:ml-64 p-6 md:p-12 animate-fade-in">
     
-    {# 2. Dynamic Greeting - Displays "VIVEK" from DB #}
+    {# 1. Dynamic Greeting using DB Name (Confirmed: VIVEK) #}
     {{ ui.welcome_header(user.full_name, user.role) }}
     
-    {# 3. Live Identity Status Grid #}
+    {# 2. Live Identity Status #}
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
       {{ ui.stat_card('Identity Verification', 'Success', 'ri-shield-user-fill', 'green') }}
       
       {% if user.role == 'seller' %}
-        {# Seller Perspective #}
         {{ ui.stat_card('Store Reach', 'Initializing', 'ri-radar-line', 'blue') }}
         {{ ui.stat_card('Revenue Engine', 'Active', 'ri-flashlight-line', 'purple') }}
       {% else %}
-        {# Buyer/Member Perspective #}
         {{ ui.stat_card('Marketplace access', 'Unlocked', 'ri-shopping-cart-2-line', 'blue') }}
         {{ ui.stat_card('Trust Score', '100%', 'ri-verified-badge-line', 'purple') }}
       {% endif %}
     </div>
     
-    {# 4. Dynamic Actions Container #}
+    {# 3. Role-Based Dynamic Actions #}
     <div class="bg-gradient-to-br from-white/[0.03] to-transparent rounded-3xl border border-white/5 p-8 md:p-12 relative overflow-hidden group">
-        {# Visual Glow Effect #}
-        <div class="absolute -right-20 -top-20 w-64 h-64 bg-blue-600/10 blur-[100px] group-hover:bg-blue-600/20 transition-all duration-700"></div>
+        <div class="absolute -right-20 -top-20 w-64 h-64 bg-blue-600/10 blur-[100px] group-hover:bg-blue-600/20 transition-all"></div>
         
         <div class="relative z-10">
             {% if user.role == 'seller' %}
@@ -56,11 +53,7 @@
 </div>
 
 <style>
-    /* Smooth entrance for components */
-    @keyframes fadeInUp { 
-        from { opacity: 0; transform: translateY(10px); } 
-        to { opacity: 1; transform: translateY(0); } 
-    }
-    .animate-fade-in { animation: fadeInUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
 </style>
 {% endblock %}
