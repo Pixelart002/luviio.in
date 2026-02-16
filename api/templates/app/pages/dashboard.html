@@ -1,59 +1,122 @@
-{% extends "app/base.html" %}
-{% import "macros/nav.html" as nav %}
-{% import "macros/dashboard_ui.html" as ui %}
+{% extends "base.html" %}
 
 {% block content %}
-<div class="flex min-h-screen bg-black/50">
-  
-  {# Navigation Sidebar with Sync Status #}
-  {{ nav.render_sidebar(user) }}
-  
-  <main class="flex-1 md:ml-64 p-6 md:p-12 animate-fade-in">
+<div class="flex flex-col gap-8 pb-12">
     
-    {# 1. Dynamic Greeting using DB Name (Confirmed: VIVEK) #}
-    {{ ui.welcome_header(user.full_name, user.role) }}
-    
-    {# 2. Live Identity Status #}
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-      {{ ui.stat_card('Identity Verification', 'Success', 'ri-shield-user-fill', 'green') }}
-      
-      {% if user.role == 'seller' %}
-        {{ ui.stat_card('Store Reach', 'Initializing', 'ri-radar-line', 'blue') }}
-        {{ ui.stat_card('Revenue Engine', 'Active', 'ri-flashlight-line', 'purple') }}
-      {% else %}
-        {{ ui.stat_card('Marketplace access', 'Unlocked', 'ri-shopping-cart-2-line', 'blue') }}
-        {{ ui.stat_card('Trust Score', '100%', 'ri-verified-badge-line', 'purple') }}
-      {% endif %}
-    </div>
-    
-    {# 3. Role-Based Dynamic Actions #}
-    <div class="bg-gradient-to-br from-white/[0.03] to-transparent rounded-3xl border border-white/5 p-8 md:p-12 relative overflow-hidden group">
-        <div class="absolute -right-20 -top-20 w-64 h-64 bg-blue-600/10 blur-[100px] group-hover:bg-blue-600/20 transition-all"></div>
-        
-        <div class="relative z-10">
-            {% if user.role == 'seller' %}
-                {{ ui.empty_state(
-                    'Setup Your Inventory', 
-                    'Your verified seller profile is active. It is time to list your first digital or physical asset.', 
-                    'Initialize Storefront', 
-                    'ri-store-3-line'
-                ) }}
-            {% else %}
-                {{ ui.empty_state(
-                    'Browse the Network', 
-                    'Access thousands of verified sellers and products within the Luviio ecosystem.', 
-                    'Explore Marketplace', 
-                    'ri-global-line'
-                ) }}
-            {% endif %}
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-base-100 p-8 rounded-3xl border border-base-content/5 shadow-sm">
+        <div class="flex items-center gap-6">
+            <div class="avatar">
+                <div class="w-20 rounded-2xl ring ring-primary ring-offset-base-100 ring-offset-2">
+                    <img src="{{ user.avatar or 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.email }}" />
+                </div>
+            </div>
+            <div>
+                <h1 class="text-3xl font-black tracking-tight">Welcome back, {{ user.full_name.split(' ')[0] }}! 🚀</h1>
+                <p class="opacity-60 font-medium">@{ { user.username or 'member' } } • <span class="badge badge-primary badge-outline">{{ user.role | upper }}</span></p>
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <button class="btn btn-primary shadow-lg shadow-primary/20">Quick Action</button>
+            <button class="btn btn-ghost border-base-300">Settings</button>
         </div>
     </div>
     
-  </main>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="stats shadow bg-base-100 border border-base-content/5">
+            <div class="stat">
+                <div class="stat-title">Total Balance</div>
+                <div class="stat-value text-primary">₹12,400</div>
+                <div class="stat-desc">21% more than last month</div>
+            </div>
+        </div>
+        
+        <div class="stats shadow bg-base-100 border border-base-content/5">
+            <div class="stat">
+                <div class="stat-title">Active Tasks</div>
+                <div class="stat-value text-secondary">42</div>
+                <div class="stat-desc">5 pending review</div>
+            </div>
+        </div>
+        
+        <div class="stats shadow bg-base-100 border border-base-content/5">
+            <div class="stat">
+                <div class="stat-title">Platform Rating</div>
+                <div class="stat-value">4.9</div>
+                <div class="stat-desc">From 1.2k reviews</div>
+            </div>
+        </div>
+        
+        <div class="stats shadow bg-base-100 border border-base-content/5">
+            <div class="stat">
+                <div class="stat-title">Uptime</div>
+                <div class="stat-value text-success">99.9%</div>
+                <div class="stat-desc">All systems operational</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <div class="lg:col-span-2 space-y-6">
+            <div class="bg-base-100 rounded-3xl p-6 border border-base-content/5">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold">Recent Activities</h3>
+                    <a href="#" class="btn btn-xs btn-ghost opacity-50">View All</a>
+                </div>
+                
+                
+                <div class="overflow-x-auto">
+                    <table class="table table-zebra">
+                        <thead>
+                            <tr class="opacity-50">
+                                <th>Project</th>
+                                <th>Status</th>
+                                <th>Date</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>
+                                    <div class="font-bold">Luviiio Core v4</div>
+                                    <div class="text-xs opacity-50">Auth Engine</div>
+                                </td>
+                                <td><span class="badge badge-success badge-sm">Deployed</span></td>
+                                <td>Feb 16, 2026</td>
+                                <td><button class="btn btn-ghost btn-xs">Edit</button></td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div class="font-bold">Payment Gateway</div>
+                                    <div class="text-xs opacity-50">Stripe Integration</div>
+                                </td>
+                                <td><span class="badge badge-warning badge-sm">In Review</span></td>
+                                <td>Feb 15, 2026</td>
+                                <td><button class="btn btn-ghost btn-xs">Edit</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <div class="space-y-6">
+            <div class="card bg-primary text-primary-content shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title">Pro Tip for {{ user.role | title }}s!</h2>
+                    <p>Complete your KYC to unlock higher withdrawal limits and premium features.</p>
+                    <div class="card-actions justify-end">
+                        <button class="btn btn-sm bg-base-100 border-none text-primary">Verify Now</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-base-100 rounded-3xl p-6 border border-base-content/5">
+                <h3 class="font-bold mb-4">Profile Strength</h3>
+                <progress class="progress progress-primary w-full" value="70" max="100"></progress>
+                <p class="text-xs mt-2 opacity-60 italic">Add a bio and website to reach 100%.</p>
+            </div>
+        </div>
+    </div>
 </div>
-
-<style>
-    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    .animate-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
-</style>
 {% endblock %}

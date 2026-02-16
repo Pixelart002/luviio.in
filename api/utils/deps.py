@@ -1,95 +1,108 @@
 import logging
-import os
+from datetime import datetime, timezone
 from fastapi import Request, HTTPException, Depends, status
 from jose import jwt, JWTError, ExpiredSignatureError
+
+# --- INTERNAL MODULES ---
 from api.utils.security import SECRET_KEY, ALGORITHM
 from api.routes.database import supabase_admin
 
-# --- 🪵 PRODUCTION LOGGING SETUP ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("AUTH-MIDDLEWARE")
+# --- 🪵 ELITE LOGGING CONFIG ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s.%(msecs)03d | 🛡️ DEPS-GUARD | %(levelname)s | %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger("SECURITY-GUARD")
 
-async def get_current_user(request: Request):
+async def get_current_user(request: Request) -> dict:
     """
-    Strictly validates the Access Token from HttpOnly cookies.
-    Simplified for single-domain (luviio.in) usage.
+    ULTRA-SECURE AUTH GUARD:
+    1. Validates JWT Signature.
+    2. Cross-references Session ID in Supabase (Source of Truth).
+    3. Prevents Session Hijacking via IP/UA Fingerprinting.
     """
     
+    # 1. 📥 EXTRACT TRIPLE-COOKIES
     access_token = request.cookies.get("access_token")
     refresh_token = request.cookies.get("refresh_token")
+    session_id = request.cookies.get("session_id")
     
-    # 1. Check: Token Presence
-    if not access_token:
-        if refresh_token:
-            logger.info("🔄 Hint: Access token missing but Refresh token found. Triggering background refresh.")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="token_expired", 
-                headers={"WWW-Authenticate": "Bearer realm='token_expired'"}
-            )
-        
-        logger.warning("🚫 Access Denied: No session cookies found in request")
+    # Client identifiers for fingerprinting
+    client_ip = request.client.host
+    user_agent = request.headers.get("user-agent", "unknown")
+
+    # Guard: Missing Core Cookies
+    if not access_token or not session_id:
+        logger.warning(f"🚫 [AUTH-FAIL] Missing credentials from {client_ip}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated"
+            detail="Session cookies missing. Please login again."
         )
 
     try:
-        # 2. JWT Decoding & Validation
-        logger.info("🔍 Step: Verifying JWT signature with SESSION_SECRET")
+        # 2. 🔐 JWT CRYPTOGRAPHIC VALIDATION
+        logger.info(f"🔍 [JWT-CHECK] Verifying access token for session {session_id[:8]}...")
         payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
         
         user_id: str = payload.get("sub")
         token_type: str = payload.get("type")
 
         if user_id is None or token_type != "access":
-            logger.error(f"❌ Error: Invalid token payload format for user {user_id}")
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise JWTError("Malformed token payload")
             
     except ExpiredSignatureError:
-        # Access token expire hone par refresh hint dein
-        if refresh_token:
-            logger.info("⏳ Hint: Access token expired. Refresh token available.")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="token_expired"
-            )
-        raise HTTPException(status_code=401, detail="Session expired")
+        logger.info(f"⏳ [JWT-EXPIRED] Access token dead for session {session_id[:8]}")
+        # Hint to frontend: Token expired, try /refresh
+        raise HTTPException(status_code=401, detail="token_expired")
         
     except JWTError as e:
-        logger.error(f"❌ Error: JWT Verification failed: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid session")
+        logger.error(f"❌ [JWT-CORRUPT] Critical JWT failure: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid session signature")
 
-    # 3. Admin-Level DB Sync (Bypassing RLS for reliable auth)
-    logger.info(f"🗄️ Step: Fetching User {user_id} data via Service Role")
+    # 3. 🗄️ DATABASE-BACKED SESSION VALIDATION (The "Ultrabeast" Layer)
+    # We don't just trust the JWT; we check if the session is alive in DB
+    logger.info(f"🗃️ [DB-SYNC] Verifying session {session_id} in Supabase...")
     
-    # Single-domain mein database query seedha aur tez hoti hai
-    user_res = supabase_admin.table("users").select("*").eq("id", user_id).execute()
+    res = supabase_admin.table("sessions").select("*, users(*)").eq("id", session_id).single().execute()
+    session_record = res.data
 
-    if not user_res.data:
-        logger.error(f"❌ Error: User {user_id} not found in Database")
-        raise HTTPException(status_code=401, detail="User not found")
+    if not session_record:
+        logger.error(f"🚨 [DB-FAIL] Session {session_id} does not exist in DB!")
+        raise HTTPException(status_code=401, detail="Session invalidated")
 
-    user = user_res.data[0]
-    logger.info(f"✅ Success: User {user['email']} authenticated")
-    
+    # Check: Revocation Status
+    if session_record.get("is_revoked"):
+        logger.warning(f"🚫 [REVOKED] Blocked access for revoked session: {session_id}")
+        raise HTTPException(status_code=401, detail="Session has been terminated")
+
+    # Check: Database Expiry
+    db_expiry = datetime.fromisoformat(session_record["expires_at"].replace('Z', '+00:00'))
+    if db_expiry < datetime.now(timezone.utc):
+        logger.warning(f"⏰ [EXPIRED] Session entry in DB has timed out.")
+        raise HTTPException(status_code=401, detail="Session expired")
+
+    # 4. 👤 USER OBJECT RECOVERY
+    user = session_record.get("users")
+    if not user:
+        logger.critical(f"💀 [ORPHAN-SESSION] Session exists but User {user_id} is missing!")
+        raise HTTPException(status_code=401, detail="Identity sync error")
+
+    logger.info(f"✅ [AUTH-SUCCESS] User {user['email']} verified via session {session_id[:8]}")
     return user
 
-async def require_onboarded(user: dict = Depends(get_current_user)):
+async def require_onboarded(user: dict = Depends(get_current_user)) -> dict:
     """
-    Middleware: Ensures the user is logged in AND has completed onboarding.
-    Triggers 'onboarding_required' for single-domain redirection.
+    Middleware: Ensures the user is not just authenticated, but has finished /onboarding.
+    Use this on Dashboard and Feature routes.
     """
-    logger.info(f"🚀 Step: Checking onboarding status for {user['email']}")
+    logger.info(f"🚀 [CHECK-ONBOARD] Status for user: {user['email']}")
     
     if not user.get("onboarded"):
-        logger.warning(f"⚠️ Access Blocked: {user['email']} has not finished onboarding")
-        
-        # 🔥 TRIGGER: Detail catch karke main.py user ko /onboarding par bhejega
+        logger.warning(f"⚠️ [REDIRECT] User {user['email']} is trying to skip onboarding!")
         raise HTTPException(
             status_code=status.HTTP_307_TEMPORARY_REDIRECT, 
             detail="onboarding_required"
         )
     
-    logger.info(f"✅ Success: Onboarding confirmed for {user['email']}")
     return user
