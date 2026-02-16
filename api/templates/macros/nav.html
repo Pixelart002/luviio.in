@@ -1,59 +1,28 @@
+{# 1. Side Navigation Macro (Pehle wala) #}
 {% macro render_sidebar(user) %}
-<aside class="w-64 border-r border-white/10 bg-[#0A0A0A] hidden md:flex flex-col h-full fixed left-0 top-0">
-    <div class="p-6 border-b border-white/10">
-        <h1 class="text-xl font-bold tracking-widest text-white">LUVIIO</h1>
-        <span class="text-[10px] text-blue-400 uppercase tracking-wider font-bold bg-blue-500/10 px-2 py-1 rounded-full">
-            {{ user.role }} Account
-        </span>
-    </div>
-    
-    <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
-        <p class="px-4 text-xs font-bold text-neutral-600 uppercase tracking-widest mb-2 mt-2">Menu</p>
-        
-        <a href="/dashboard" class="flex items-center gap-3 px-4 py-3 bg-white/5 text-white rounded-xl border border-white/10 transition-all hover:bg-white/10">
-            <i class="ri-dashboard-line text-lg"></i>
-            <span class="font-medium text-sm">Overview</span>
-        </a>
-        
-        {% if user.role == 'seller' %}
-        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
-            <i class="ri-store-2-line text-lg"></i>
-            <span class="font-medium text-sm">My Store</span>
-        </a>
-        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
-            <i class="ri-shopping-bag-3-line text-lg"></i>
-            <span class="font-medium text-sm">Orders</span>
-        </a>
-        {% else %}
-        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
-            <i class="ri-shopping-cart-2-line text-lg"></i>
-            <span class="font-medium text-sm">My Orders</span>
-        </a>
-        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
-            <i class="ri-heart-line text-lg"></i>
-            <span class="font-medium text-sm">Wishlist</span>
-        </a>
-        {% endif %}
-        
-        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
-            <i class="ri-settings-4-line text-lg"></i>
-            <span class="font-medium text-sm">Settings</span>
-        </a>
-    </nav>
-    
-    <div class="p-4 border-t border-white/10 bg-[#0F0F0F]">
-        <div class="flex items-center gap-3 mb-4">
-            <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-sm text-white shadow-lg shadow-blue-500/20">
-                {{ user.email[0] | upper }}
+{# ... aapka existing sidebar code ... #}
+{% endmacro %}
+
+{# 2. Top Header Macro (Jo MISSING hai) #}
+{% macro render_header(active_page='home') %}
+<header class="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-black/50 backdrop-blur-xl">
+    <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <span class="font-bold text-xs text-white">L</span>
             </div>
-            <div class="overflow-hidden">
-                <p class="text-sm font-bold text-white truncate">{{ user.full_name or 'User' }}</p>
-                <p class="text-xs text-neutral-500 truncate">{{ user.email }}</p>
-            </div>
+            <span class="font-bold tracking-[0.2em] text-white">LUVIIO</span>
         </div>
-        <a href="/api/auth/logout" class="flex items-center justify-center gap-2 w-full py-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition text-sm font-medium border border-red-500/10">
-            <i class="ri-logout-box-line"></i> Logout
-        </a>
+        
+        <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-neutral-400">
+            <a href="/" class="hover:text-white transition {{ 'text-white' if active_page == 'home' }}">Home</a>
+            <a href="/waitlist" class="hover:text-white transition {{ 'text-white' if active_page == 'waitlist' }}">Waitlist</a>
+        </nav>
+        
+        <div class="flex items-center gap-4">
+            <a href="/login" class="text-sm font-bold text-white hover:opacity-80 transition">Sign In</a>
+            <a href="/signup" class="bg-white text-black text-sm font-bold px-5 py-2.5 rounded-xl hover:scale-105 transition">Get Started</a>
+        </div>
     </div>
-</aside>
+</header>
 {% endmacro %}
