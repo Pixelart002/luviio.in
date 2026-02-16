@@ -21,14 +21,12 @@
             overflow-x: hidden;
         }
 
-        /* High-Definition Progress Bar for Unpoly */
         .up-progress-bar {
             background: linear-gradient(to right, #3b82f6, #6366f1);
             height: 3px;
             box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
         }
 
-        /* 🌌 Deep Grid Effect */
         .bg-grid { 
             position: fixed; 
             inset: 0; 
@@ -39,7 +37,6 @@
             z-index: -1; 
         }
 
-        /* Custom Scrollbar for Elite look */
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: #050505; }
         ::-webkit-scrollbar-thumb { background: #1a1a1a; border-radius: 10px; }
@@ -49,31 +46,24 @@
 <body class="min-h-screen flex flex-col selection:bg-blue-500/30">
     <div class="bg-grid"></div>
 
-    {# 🛡️ HEADER: Hamesha top par rahega (Public ya Dashboard dono mein) #}
     {{ nav.render_header(active_page | default('home'), request) }}
 
-    {# 
-        🚀 LAYOUT LOGIC: 
-        Agar 'user' object present hai aur hum home/login/signup par nahi hain, 
-        toh Sidebar render karo aur content ko shift karo.
-    #}
+    {# 🚀 ELITE LAYOUT LOGIC #}
     {% set is_auth_page = request.url.path in ['/login', '/signup', '/', '/waitlist'] %}
+    {% set show_sidebar = user and not is_auth_page %}
     
     <div class="flex flex-1 pt-20">
-        {% if user and not is_auth_page %}
-            {# Sidebar render using your macro #}
+        {% if show_sidebar %}
             {{ nav.render_sidebar(user) }}
-            
-            <main id="main-content" class="flex-1 md:pl-64 transition-all duration-500" up-main>
-                <div class="p-6 lg:p-10">
-                    {% block content %}{% endblock %}
-                </div>
-            </main>
-        {% else %}
-            <main id="main-content" class="flex-1 w-full" up-main>
-                {% block content %}{% endblock %}
-            </main>
         {% endif %}
+
+        <main id="main-content" 
+              class="flex-1 transition-all duration-500 {{ 'md:pl-64' if show_sidebar else 'w-full' }}" 
+              up-main>
+            <div class="{{ 'p-6 lg:p-10' if show_sidebar else '' }}">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
     </div>
 
     <footer class="py-10 text-center text-[9px] font-black uppercase tracking-[0.5em] text-neutral-800 border-t border-white/5">
@@ -81,7 +71,6 @@
     </footer>
 
     <script>
-        // ⚡ GSAP Page Entry Animation
         up.on('up:content:updated', (event) => {
             gsap.from("#main-content", {
                 opacity: 0,
@@ -91,7 +80,6 @@
             });
         });
 
-        // Initial Load
         gsap.from("#main-content", {
             opacity: 0,
             y: 15,
