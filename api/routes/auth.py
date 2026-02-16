@@ -47,6 +47,7 @@ REDIRECT_BASE = os.environ.get("REDIRECT_URI_BASE", "https://luviio.in/api/auth/
 DASHBOARD_URL = "/dashboard"
 ONBOARDING_URL = "/onboarding"
 LOGIN_URL = "/login"
+COOKIE_DOMAIN = ".luviio.in" if IS_PROD else None
 
 PROVIDERS = {
     "google": {
@@ -289,7 +290,11 @@ async def oauth_callback(
     redirect_target = DASHBOARD_URL if user.get("onboarded") else ONBOARDING_URL
     response = RedirectResponse(url=redirect_target, status_code=303)
     set_auth_cookies(response, access, refresh, session_id)
-    response.delete_cookie("oauth_state")
+    response.delete_cookie("oauth_state"
+        path="/",
+        domain=COOKIE_DOMAIN
+        ),
+        
     
     background_tasks.add_task(log_audit_event, user_id=user["id"], action=f"login_{provider}", request=request)
     return response
