@@ -9,31 +9,43 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
     <style>
-        body { background: #050505; color: white; font-family: sans-serif; }
-        /* Grid Background Effect */
-        .bg-grid { position: fixed; inset: 0; background-image: radial-gradient(#ffffff 1px, transparent 0); background-size: 40px 40px; opacity: 0.05; pointer-events: none; z-index: -1; }
+        /* Premium Typography & Global Styles */
+        body { 
+            background: #050505; 
+            color: white; 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        /* Fixed Grid Background Effect */
+        .bg-grid { 
+            position: fixed; 
+            inset: 0; 
+            background-image: radial-gradient(rgba(255,255,255,0.1) 1px, transparent 0); 
+            background-size: 40px 40px; 
+            opacity: 0.3; 
+            pointer-events: none; 
+            z-index: -1; 
+        }
+
+        /* Page Transition Smoothing */
+        .up-active main { transition: opacity 0.3s ease-out; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col selection:bg-blue-500 selection:text-white">
     <div class="bg-grid"></div>
 
-    {{ nav.render_header(active_page | default('home')) }}
+    {{ nav.render_header(active_page | default('home'), request) }}
 
-    <main id="main-content" class="flex-1 flex items-center justify-center min-h-screen px-4 select-none" up-main>
-    
+    <main id="main-content" class="flex-1 flex flex-col items-center justify-center min-h-screen px-4" up-main>
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="py-8 text-center text-xs text-gray-600 border-t border-white/5">
-        &copy; 2026 Luviio Technologies.
+    <footer class="py-10 text-center text-[10px] font-black uppercase tracking-[0.3em] text-neutral-600 border-t border-white/5">
+        &copy; 2026 Luviio Technologies &bull; Decentralized Identity Protocol
     </footer>
-
-
-
-
 </body>
 </html>
