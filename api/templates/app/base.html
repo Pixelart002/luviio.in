@@ -4,43 +4,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title | default('LUVIIO | Secure Node') }}</title>
+    <title>{{ title | default('LUVIIO') }}</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
-        
         body { 
             background: #050505; 
             color: white; 
             font-family: 'Plus Jakarta Sans', sans-serif; 
             overflow-x: hidden;
         }
-
-        .up-progress-bar {
-            background: linear-gradient(to right, #3b82f6, #6366f1);
-            height: 3px;
-            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
-        }
-
+        /* Grid Background Effect */
         .bg-grid { 
             position: fixed; 
             inset: 0; 
-            background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 0); 
+            background-image: radial-gradient(rgba(255,255,255,0.1) 1px, transparent 0); 
             background-size: 40px 40px; 
-            opacity: 0.5; 
+            opacity: 0.2; 
             pointer-events: none; 
             z-index: -1; 
         }
-
-        ::-webkit-scrollbar { width: 5px; }
-        ::-webkit-scrollbar-track { background: #050505; }
-        ::-webkit-scrollbar-thumb { background: #1a1a1a; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #333; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col selection:bg-blue-500/30">
@@ -48,45 +36,12 @@
 
     {{ nav.render_header(active_page | default('home'), request) }}
 
-    {# 🚀 ELITE LAYOUT LOGIC #}
-    {% set is_auth_page = request.url.path in ['/login', '/signup', '/', '/waitlist'] %}
-    {% set show_sidebar = user and not is_auth_page %}
-    
-    <div class="flex flex-1 pt-20">
-        {% if show_sidebar %}
-            {{ nav.render_sidebar(user) }}
-        {% endif %}
+    <main id="main-content" class="flex-1 flex flex-col" up-main>
+        {% block content %}{% endblock %}
+    </main>
 
-        <main id="main-content" 
-              class="flex-1 transition-all duration-500 {{ 'md:pl-64' if show_sidebar else 'w-full' }}" 
-              up-main>
-            <div class="{{ 'p-6 lg:p-10' if show_sidebar else '' }}">
-                {% block content %}{% endblock %}
-            </div>
-        </main>
-    </div>
-
-    <footer class="py-10 text-center text-[9px] font-black uppercase tracking-[0.5em] text-neutral-800 border-t border-white/5">
-        &copy; 2026 LUVIIO ENGINE &bull; NODE ID: {{ "V4.1" if not user else user.id[:8] | upper }}
+    <footer class="py-10 text-center text-[10px] font-black uppercase tracking-[0.4em] text-neutral-700 border-t border-white/5">
+        &copy; 2026 Luviio Technologies &bull; Secure Node
     </footer>
-
-    <script>
-        up.on('up:content:updated', (event) => {
-            gsap.from("#main-content", {
-                opacity: 0,
-                y: 10,
-                duration: 0.4,
-                ease: "power2.out"
-            });
-        });
-
-        gsap.from("#main-content", {
-            opacity: 0,
-            y: 15,
-            duration: 0.6,
-            delay: 0.2,
-            ease: "expo.out"
-        });
-    </script>
 </body>
 </html>
