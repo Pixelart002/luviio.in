@@ -3,52 +3,57 @@
 {% import "macros/dashboard_ui.html" as ui %}
 
 {% block content %}
-<div class="flex min-h-screen bg-[#050505]">
+<div class="flex min-h-screen bg-black/50">
   
+  {# Navigation Sidebar with Sync Status #}
   {{ nav.render_sidebar(user) }}
   
-  <main class="flex-1 md:ml-64 p-6 md:p-12">
-    <div class="md:hidden flex items-center justify-between mb-10 pb-6 border-b border-white/5">
-      <span class="font-black tracking-[0.3em] text-sm">LUVIIO</span>
-      <button class="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-        <i class="ri-menu-4-line text-xl"></i>
-      </button>
-    </div>
+  <main class="flex-1 md:ml-64 p-6 md:p-12 animate-fade-in">
     
-    {{ ui.welcome_header(user) }}
+    {# 1. Dynamic Greeting using DB Name (Confirmed: VIVEK) #}
+    {{ ui.welcome_header(user.full_name, user.role) }}
     
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-      {{ ui.stat_card('Network Status', 'Operational', 'ri-pulse-line', 'green') }}
+    {# 2. Live Identity Status #}
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+      {{ ui.stat_card('Identity Verification', 'Success', 'ri-shield-user-fill', 'green') }}
       
       {% if user.role == 'seller' %}
-      {{ ui.stat_card('Active Sales', '₹0.00', 'ri-money-rupee-circle-line', 'blue', '+0% today') }}
-      {{ ui.stat_card('Store Visits', '1.2k', 'ri-eye-line', 'purple', 'Stable') }}
-      {{ ui.stat_card('Pending Orders', '0', 'ri-timer-flash-line', 'red') }}
+        {{ ui.stat_card('Store Reach', 'Initializing', 'ri-radar-line', 'blue') }}
+        {{ ui.stat_card('Revenue Engine', 'Active', 'ri-flashlight-line', 'purple') }}
       {% else %}
-      {{ ui.stat_card('Marketplace', 'Verified', 'ri-verified-badge-line', 'blue') }}
-      {{ ui.stat_card('Orders', '0', 'ri-shopping-bag-line', 'purple') }}
-      {{ ui.stat_card('Trust Score', '98%', 'ri-shield-star-line', 'blue') }}
+        {{ ui.stat_card('Marketplace access', 'Unlocked', 'ri-shopping-cart-2-line', 'blue') }}
+        {{ ui.stat_card('Trust Score', '100%', 'ri-verified-badge-line', 'purple') }}
       {% endif %}
     </div>
     
-    {% if user.role == 'seller' %}
-    {{ ui.action_banner(
-                'Launch Your Inventory',
-                'Start listing your products to the global LUVIIO marketplace. Our AI-driven engine handles the distribution while you focus on the craft.',
-                'Create First Listing',
-                '/api/inventory/new',
-                'ri-store-3-line'
-            ) }}
-    {% else %}
-    {{ ui.action_banner(
-                'Explore Verified Listings',
-                'Discover premium products from our community of verified sellers. Every transaction is secured via the LUVIIO trust protocol.',
-                'Browse Marketplace',
-                '/marketplace',
-                'ri-compass-3-line'
-            ) }}
-    {% endif %}
+    {# 3. Role-Based Dynamic Actions #}
+    <div class="bg-gradient-to-br from-white/[0.03] to-transparent rounded-3xl border border-white/5 p-8 md:p-12 relative overflow-hidden group">
+        <div class="absolute -right-20 -top-20 w-64 h-64 bg-blue-600/10 blur-[100px] group-hover:bg-blue-600/20 transition-all"></div>
+        
+        <div class="relative z-10">
+            {% if user.role == 'seller' %}
+                {{ ui.empty_state(
+                    'Setup Your Inventory', 
+                    'Your verified seller profile is active. It is time to list your first digital or physical asset.', 
+                    'Initialize Storefront', 
+                    'ri-store-3-line'
+                ) }}
+            {% else %}
+                {{ ui.empty_state(
+                    'Browse the Network', 
+                    'Access thousands of verified sellers and products within the Luviio ecosystem.', 
+                    'Explore Marketplace', 
+                    'ri-global-line'
+                ) }}
+            {% endif %}
+        </div>
+    </div>
     
   </main>
 </div>
+
+<style>
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
+</style>
 {% endblock %}
