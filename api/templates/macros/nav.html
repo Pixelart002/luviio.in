@@ -1,10 +1,10 @@
 {# 1. Side Navigation Macro (For Dashboard/Onboarding) #}
-{% macro render_sidebar(user) %}
+{% macro render_sidebar(user=none) %}
 <aside class="w-64 border-r border-white/10 bg-[#0A0A0A] hidden md:flex flex-col h-full fixed left-0 top-0 z-40">
     <div class="p-6 border-b border-white/10">
         <h1 class="text-xl font-bold tracking-widest text-white">LUVIIO</h1>
         <span class="text-[10px] text-blue-400 uppercase tracking-widest font-black bg-blue-500/10 px-2 py-1 rounded-md mt-2 inline-block">
-            {{ user.role or 'Member' }}
+            {{ user.role or 'Member' if user else 'Guest' }}
         </span>
     </div>
     
@@ -16,7 +16,7 @@
             <span class="font-bold text-sm">Dashboard</span>
         </a>
         
-        {% if user.role == 'seller' %}
+        {% if user and user.role == 'seller' %}
         <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-500 hover:text-white hover:bg-white/5 rounded-xl transition-all">
             <i class="ri-store-2-line text-lg"></i>
             <span class="font-bold text-sm">My Store</span>
@@ -29,15 +29,19 @@
         </a>
     </nav>
     
-    {# BOTTOM USER PROFILE #}
+    {# BOTTOM USER PROFILE: Synced with Onboarding Data #}
     <div class="p-4 border-t border-white/10 bg-white/[0.02]">
         <div class="flex items-center gap-3 mb-4 p-2">
             <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center font-black text-white shadow-lg shadow-blue-500/20">
+                {% if user %}
                 {{ user.full_name[0] | upper if user.full_name else user.email[0] | upper }}
+                {% else %}
+                ?
+                {% endif %}
             </div>
             <div class="overflow-hidden">
-                <p class="text-sm font-black text-white truncate">{{ user.full_name or 'Syncing...' }}</p>
-                <p class="text-[10px] text-neutral-600 truncate font-bold uppercase tracking-tighter">{{ user.email }}</p>
+                <p class="text-sm font-black text-white truncate">{{ user.full_name if user else 'Syncing...' }}</p>
+                <p class="text-[10px] text-neutral-600 truncate font-bold uppercase tracking-tighter">{{ user.email if user else '...' }}</p>
             </div>
         </div>
         <a href="/api/auth/logout" class="flex items-center justify-center gap-2 w-full py-3 bg-red-500/5 text-red-500 rounded-xl hover:bg-red-500/10 transition-all border border-red-500/10 text-[10px] font-black uppercase tracking-widest">
@@ -47,7 +51,7 @@
 </aside>
 {% endmacro %}
 
-{# 2. Top Header Macro (Fixed Request Context) #}
+{# 2. Top Header Macro (Strictly Fixed Request Context) #}
 {% macro render_header(active_page='home', request=none) %}
 <header class="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-black/60 backdrop-blur-2xl">
     <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
@@ -65,7 +69,7 @@
         </nav>
         
         <div class="flex items-center gap-6">
-            {# 🔥 FIX: Added 'request and' check to prevent UndefinedError on landing page #}
+            {# 🔥 ULTRA-STABLE CHECK: Ensures no UndefinedError if request object is missing #}
             {% if request and request.cookies.get("access_token") %}
             <a href="/dashboard" class="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2 bg-white/10 px-4 py-2 rounded-lg border border-white/10 hover:bg-white/20 transition">
                 Go to Console <i class="ri-arrow-right-up-line"></i>
