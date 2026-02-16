@@ -3,36 +3,70 @@
 {% import "macros/dashboard_ui.html" as ui %}
 
 {% block content %}
-<div class="flex min-h-screen bg-black text-white">
+<div class="flex min-h-screen bg-[#050505] text-white font-['Plus_Jakarta_Sans']">
   
+  {# Pass 'overview' as active_page if your macro supports it #}
   {{ nav.render_sidebar(user) }}
   
-  <main class="flex-1 md:ml-64 p-4 md:p-8">
-    <header class="md:hidden flex items-center justify-between mb-8 pb-4 border-b border-white/10">
-      <span class="font-bold tracking-widest text-lg">LUVIIO</span>
-      <a href="/api/auth/logout" class="text-neutral-400"><i class="ri-logout-box-r-line"></i></a>
+  <main class="flex-1 md:ml-64 p-4 md:p-10 transition-all duration-300">
+    
+    <header class="md:hidden flex items-center justify-between mb-10 pb-4 border-b border-white/5">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <span class="font-bold text-xs">L</span>
+        </div>
+        <span class="font-bold tracking-[0.2em] text-sm">LUVIIO</span>
+      </div>
+      <a href="/api/auth/logout" class="text-neutral-500 hover:text-red-500 transition-colors">
+        <i class="ri-logout-box-r-line text-xl"></i>
+      </a>
     </header>
     
-    {{ ui.welcome_header(user.full_name or 'User', user.role) }}
+    {{ ui.welcome_header(user.full_name or 'Valued User', user.role or 'Member') }}
     
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {{ ui.stat_card('Account Status', 'Active', 'ri-shield-check-line', 'green') }}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
+      {{ ui.stat_card('Identity Status', 'Verified', 'ri-shield-check-line', 'green') }}
       
       {% if user.role == 'seller' %}
-      {{ ui.stat_card('Total Sales', '₹0.00', 'ri-money-dollar-circle-line', 'blue') }}
-      {{ ui.stat_card('Products', '0', 'ri-box-3-line', 'purple') }}
+        {# Seller Specific Metrics #}
+        {{ ui.stat_card('Total Revenue', '₹0.00', 'ri-money-dollar-circle-line', 'blue') }}
+        {{ ui.stat_card('Live Listings', '0', 'ri-box-3-line', 'purple') }}
       {% else %}
-      {{ ui.stat_card('Orders', '0', 'ri-shopping-bag-line', 'blue') }}
-      {{ ui.stat_card('Wishlist', '0', 'ri-heart-line', 'red') }}
+        {# Buyer Specific Metrics #}
+        {{ ui.stat_card('Active Orders', '0', 'ri-shopping-bag-line', 'blue') }}
+        {{ ui.stat_card('My Favorites', '0', 'ri-heart-line', 'red') }}
       {% endif %}
     </div>
     
-    {% if user.role == 'seller' %}
-    {{ ui.empty_state('Ready to Sell?', 'Add your first product to start earning.', '+ Add Product') }}
-    {% else %}
-    {{ ui.empty_state('Start Shopping', 'Explore verified listings and find what you love.', 'Browse Marketplace', 'ri-shopping-cart-line') }}
-    {% endif %}
+    <div class="mt-10">
+      {% if user.role == 'seller' %}
+        {{ ui.empty_state(
+            'Launch Your Store', 
+            'Your inventory is currently empty. List your first product to begin your selling journey.', 
+            'Create Listing', 
+            'ri-add-circle-line'
+        ) }}
+      {% else %}
+        {{ ui.empty_state(
+            'Marketplace is Open', 
+            'Discover hand-picked verified products tailored for your needs.', 
+            'Start Exploring', 
+            'ri-compass-3-line'
+        ) }}
+      {% endif %}
+    </div>
     
   </main>
 </div>
+
+<style>
+  /* Smooth entry for the grid components */
+  .animate-fade-in {
+    animation: fadeIn 0.8s ease-out forwards;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
 {% endblock %}

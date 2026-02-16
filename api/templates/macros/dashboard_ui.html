@@ -1,35 +1,46 @@
-{# Stats Card Macro #}
+{# Stats Card Macro - Fixed Dynamic Colors #}
 {% macro stat_card(label, value, icon, color='blue') %}
-<div class="p-6 rounded-2xl bg-[#0F0F0F] border border-white/5 hover:border-{{ color }}-500/30 transition-all group">
+{% set color_map = {
+    'blue': 'hover:border-blue-500/30 bg-blue-500/10 text-blue-500 group-hover:text-blue-400',
+    'green': 'hover:border-green-500/30 bg-green-500/10 text-green-500 group-hover:text-green-400',
+    'red': 'hover:border-red-500/30 bg-red-500/10 text-red-500 group-hover:text-red-400',
+    'purple': 'hover:border-purple-500/30 bg-purple-500/10 text-purple-500 group-hover:text-purple-400',
+    'yellow': 'hover:border-yellow-500/30 bg-yellow-500/10 text-yellow-500 group-hover:text-yellow-400'
+} %}
+{% set classes = color_map[color] or color_map['blue'] %}
+
+<div class="p-6 rounded-2xl bg-[#0F0F0F] border border-white/5 transition-all group {{ classes.split(' ')[0] }}">
   <div class="flex justify-between items-start mb-4">
     <p class="text-neutral-500 text-xs uppercase tracking-wider font-bold">{{ label }}</p>
-    <div class="w-8 h-8 rounded-lg bg-{{ color }}-500/10 flex items-center justify-center">
-      <i class="{{ icon }} text-{{ color }}-500"></i>
+    <div class="w-8 h-8 rounded-lg flex items-center justify-center {{ classes.split(' ')[1] }}">
+      <i class="{{ icon }} {{ classes.split(' ')[2] }}"></i>
     </div>
   </div>
-  <h3 class="text-2xl font-bold text-white group-hover:text-{{ color }}-400 transition">{{ value }}</h3>
+  <h3 class="text-2xl font-bold text-white transition {{ classes.split(' ')[3] }}">{{ value }}</h3>
 </div>
 {% endmacro %}
 
-{# Welcome Header Macro #}
+{# Welcome Header Macro - Fixed Null Safety #}
 {% macro welcome_header(name, role) %}
-<div class="mb-8">
+<div class="mb-8 animate-fade-in">
   <h2 class="text-3xl md:text-4xl font-bold mb-2 bg-gradient-to-r from-white to-neutral-500 bg-clip-text text-transparent">
-    Hello, {{ name.split(' ')[0] }} 👋
+    Hello, {{ (name.split(' ')[0] if name else 'User') }} 👋
   </h2>
-  <p class="text-neutral-400">Managing your <span class="text-white font-medium">{{ role }}</span> portal.</p>
+  <p class="text-neutral-400 uppercase text-[10px] tracking-[0.2em] font-bold">
+    Managing your <span class="text-blue-500">{{ role or 'Standard' }}</span> portal
+  </p>
 </div>
 {% endmacro %}
 
-{# Empty State Action Macro #}
+{# Empty State Action Macro - Fixed button spacing #}
 {% macro empty_state(title, desc, btn_text, icon='ri-rocket-2-line') %}
-<div class="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-12 text-center mt-8">
-  <div class="w-16 h-16 bg-gradient-to-br from-white/10 to-transparent rounded-2xl flex items-center justify-center mx-auto mb-4">
+<div class="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-12 text-center mt-8 backdrop-blur-sm">
+  <div class="w-16 h-16 bg-gradient-to-br from-white/10 to-transparent rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/5">
     <i class="{{ icon }} text-2xl text-white/50"></i>
   </div>
   <h3 class="text-lg font-bold text-white mb-2">{{ title }}</h3>
-  <p class="text-neutral-500 text-sm max-w-md mx-auto mb-6">{{ desc }}</p>
-  <button class="px-6 py-3 bg-white text-black font-bold rounded-xl hover:scale-105 transition shadow-lg shadow-white/10">
+  <p class="text-neutral-500 text-sm max-w-md mx-auto mb-8">{{ desc }}</p>
+  <button class="px-8 py-4 bg-white text-black font-bold rounded-xl hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)]">
     {{ btn_text }}
   </button>
 </div>
