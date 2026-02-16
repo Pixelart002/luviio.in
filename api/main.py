@@ -1,90 +1,154 @@
 import os
+import sys
 import logging
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import RedirectResponse
+from pathlib import Path
+from fastapi import FastAPI, Request, Header, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from starlette.middleware.sessions import SessionMiddleware
+from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from api.routes.auth import router as auth_router
+from starlette.middleware.sessions import SessionMiddleware
 
-# Configure Logger
+# 🛡️ THE ULTIMATE PATH FIX (Vercel Compatibility)
+BASE_DIR = Path(__file__).resolve().parent 
+ROOT_DIR = BASE_DIR.parent                  
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+# --- 🪵 LOGGING SETUP ---
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
+    format='%(asctime)s | %(levelname)s | %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
-logger = logging.getLogger("LUVIIO-CORE")
+logger = logging.getLogger("LUVIIO-APP")
 
-app = FastAPI(
-    title="LUVIIO Enterprise",
-    description="Secure, Scalable Auth & App Engine",
-    version="2.0.0"
-)
+# --- ✅ ENVIRONMENT VARIABLE VALIDATION ---
+REQUIRED_ENV_VARS = ["SB_URL", "SB_KEY", "SB_SERVICE_ROLE_KEY", "SESSION_SECRET"]
+missing_vars = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
 
-# --- Security & Optimization Middleware ---
+if missing_vars:
+    logger.warning(f"⚠️  WARNING: Missing environment variables: {', '.join(missing_vars)}")
+else:
+    logger.info("✅ All required environment variables configured")
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+# --- 📂 ROUTE IMPORTS ---
+try:
+    from api.routes.resend_mail import router as resend_router
+    from api.routes.auth import router as auth_router
+except ImportError:
+    try:
+        from routes.resend_mail import router as resend_router
+        from routes.auth import router as auth_router
+    except ImportError as e:
+        logger.error(f"❌ Critical Import Error: {e}")
+        raise
+
+app = FastAPI()
+
+# --- 🛡️ MIDDLEWARE STACK ---
+
+# 1. Force Non-WWW (Strict Domain Logic)
+class ForceNonWWWMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        response: Response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        return response
+        host = request.headers.get("host", "")
+        if host.startswith("www.luviio.in"):
+            url = str(request.url).replace("www.", "", 1)
+            return RedirectResponse(url=url, status_code=301)
+        return await call_next(request)
 
-app.add_middleware(SecurityHeadersMiddleware)
-
-# Session Middleware (Encrypted state for PKCE)
+# 2. Session Middleware (REQUIRED FOR PKCE)
+# Iska placement zaroori hai taaki ye har request ko wrap kare
 app.add_middleware(
-    SessionMiddleware,
-    secret_key=os.environ.get("SESSION_SECRET", "luviio-enterprise-fallback-secret-key-32-chars"),
-    session_cookie="luviio_state",
-    same_site="lax",
-    https_only=True,
-    max_age=1800 # 30 minutes state TTL
+    SessionMiddleware, 
+    secret_key=os.environ.get("SESSION_SECRET", "luviio-fallback-secret-key-32-chars-long"),
+    session_cookie="luviio_session",
+    same_site="lax",  # OAuth redirects ke liye Lax hona zaroori hai
+    https_only=True,   # Vercel hamesha HTTPS hota hai, isse cookie secure rehti hai
+    max_age=600        # 10 minutes (Auth code exchange ke liye kaafi hai)
 )
 
-# --- Routing ---
+app.add_middleware(ForceNonWWWMiddleware)
 
-app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+# --- 🛠️ CONNECT ROUTERS ---
+app.include_router(resend_router, prefix="/api", tags=["Auth"])
+app.include_router(auth_router, prefix="/api", tags=["Auth-Flow"])
 
-# Static Assets
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+# Static and Template Paths
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# --- Page Handlers ---
+# --- 2. SYSTEM ROUTES ---
 
-@app.get("/")
-async def index(request: Request):
-    """Public landing page."""
-    is_auth = request.cookies.get("sb-access-token") is not None
-    return templates.TemplateResponse("app/pages/home.html", {
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots():
+    return Response(content="User-agent: *\nDisallow:", media_type="text/plain")
+
+# --- 3. ERROR HANDLERS ---
+
+@app.get("/error", response_class=HTMLResponse)
+async def error_page(request: Request):
+    return templates.TemplateResponse("app/err/404.html", {
         "request": request,
-        "user_logged_in": is_auth
+        "title": "404 - Not Found | LUVIIO"
     })
 
-@app.get("/login")
-async def login_page(request: Request):
-    """Authentication entry point."""
-    if request.cookies.get("sb-access-token"):
-        return RedirectResponse(url="/dashboard")
-    return templates.TemplateResponse("app/auth/login.html", {"request": request})
-
-@app.get("/dashboard")
-async def dashboard_page(request: Request):
-    """Protected user dashboard."""
-    if not request.cookies.get("sb-access-token") and not request.cookies.get("sb-refresh-token"):
-        return RedirectResponse(url="/login?error=auth_required")
-    
-    return templates.TemplateResponse("app/pages/home.html", {
-        "request": request, 
-        "user_logged_in": True,
-        "is_dashboard": True
-    })
-
-# Global Exception Handling
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, __):
-    return templates.TemplateResponse("app/err/404.html", {"request": request}, status_code=404)
+    return RedirectResponse(url="/error")
+
+# --- 4. AUTH PAGES ---
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, x_up_target: str = Header(None)):
+    return templates.TemplateResponse("app/auth/login.html", {
+        "request": request,
+        "title": "Login | LUVIIO",
+        "up_fragment": x_up_target is not None,
+        "supabase_url": os.environ.get("SB_URL"),
+        "supabase_key": os.environ.get("SB_KEY")
+    })
+
+@app.get("/signup", response_class=HTMLResponse)
+async def signup_page(request: Request, x_up_target: str = Header(None)):
+    return templates.TemplateResponse("app/auth/signup.html", {
+        "request": request,
+        "title": "Create Account | LUVIIO",
+        "up_fragment": x_up_target is not None,
+        "supabase_url": os.environ.get("SB_URL"),
+        "supabase_key": os.environ.get("SB_KEY")
+    })
+
+@app.get("/onboarding", response_class=HTMLResponse)
+async def onboarding_page(request: Request):
+    return templates.TemplateResponse("app/auth/onboarding.html", {
+        "request": request,
+        "title": "Setup Profile | LUVIIO",
+        "supabase_url": os.environ.get("SB_URL"),
+        "supabase_key": os.environ.get("SB_KEY")
+    })
+
+# --- 5. MAIN PAGE ROUTES ---
+
+@app.get("/", response_class=HTMLResponse)
+async def render_home(request: Request, x_up_target: str = Header(None)):
+    return templates.TemplateResponse("app/pages/home.html", {
+        "request": request,
+        "title": "LUVIIO | Verified Markets",
+        "active_page": "home",
+        "up_fragment": x_up_target is not None
+    })
+
+@app.get("/waitlist", response_class=HTMLResponse)
+async def render_waitlist(request: Request, x_up_target: str = Header(None)):
+    return templates.TemplateResponse("app/pages/waitlist.html", {
+        "request": request,
+        "title": "Join Waitlist | LUVIIO", 
+        "up_fragment": x_up_target is not None,
+        "supabase_url": os.environ.get("SB_URL"),
+        "supabase_key": os.environ.get("SB_KEY")
+    })
