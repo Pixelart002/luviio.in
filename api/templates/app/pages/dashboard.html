@@ -1,58 +1,141 @@
-{% extends "base.html" %}
+{% extends "app/base.html" %}
 {% from "macros/beast_ui.html" import stat_card, activity_row, nav_item %}
 
 {% block content %}
-<div class="flex flex-col lg:flex-row gap-8">
+<div class="flex flex-col lg:flex-row gap-8 items-start">
   
-  <aside class="w-full lg:w-72 flex-none">
-    <div class="sticky top-8 space-y-4">
-      <div class="px-4 mb-2">
-        <h2 class="text-[10px] font-black uppercase tracking-[0.2em] opacity-40">System Core</h2>
+  <aside class="w-full lg:w-72 flex-none sticky top-24">
+    <div class="bg-base-100 rounded-[2rem] p-4 border border-white/5 shadow-2xl">
+      <div class="px-4 py-4 mb-2 border-b border-white/5">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <i class="ri-command-line text-primary text-xl font-bold"></i>
+          </div>
+          <div>
+            <h2 class="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 leading-tight">System Node</h2>
+            <p class="text-sm font-bold truncate w-32">{{ user.full_name or 'Elite User' }}</p>
+          </div>
+        </div>
       </div>
+      
       <ul class="menu p-0 space-y-1">
-        {{ nav_item("Overview", "/dashboard", '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>', active=True) }}
-        {{ nav_item("Analytics", "/analytics", '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>') }}
-        {{ nav_item("Settings", "/settings", '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>') }}
+        {{ nav_item("Overview", "/dashboard", '<i class="ri-dashboard-3-line"></i>', active=True) }}
+        {{ nav_item("Inventory", "/inventory", '<i class="ri-box-3-line"></i>') }}
+        {{ nav_item("Transactions", "/billing", '<i class="ri-exchange-funds-line"></i>') }}
+        {{ nav_item("Analytics", "/reports", '<i class="ri-bar-chart-grouped-line"></i>') }}
+        <div class="divider opacity-5 my-2"></div>
+        {{ nav_item("Settings", "/settings", '<i class="ri-settings-5-line"></i>') }}
       </ul>
+      
+      <div class="p-4 mt-4 bg-primary/5 rounded-2xl border border-primary/10">
+        <p class="text-[10px] font-bold uppercase opacity-50 mb-1">Status</p>
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
+          <span class="text-xs font-black uppercase tracking-widest text-success">Operational</span>
+        </div>
+      </div>
     </div>
   </aside>
   
-  <div class="flex-1 space-y-8">
+  <div class="flex-1 space-y-8 w-full">
     
-    <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-base-100 p-8 rounded-[2.5rem] border border-white/5 shadow-sm">
       <div>
-        <h1 class="text-4xl font-black tracking-tighter italic uppercase text-primary">Beast Dashboard</h1>
-        <p class="text-sm font-medium opacity-50">Operational Node: {{ user.email }}</p>
+        <h1 class="text-4xl font-black tracking-tighter italic uppercase text-white mb-1">Command Center</h1>
+        <p class="text-sm font-medium text-neutral-500">Node ID: <span class="font-mono text-primary select-all">{{ user.id[:8] if user.id else 'DEV-MODE' }}</span></p>
       </div>
-      <div class="flex gap-2">
-        <button class="btn btn-sm btn-outline border-base-300">Export PDF</button>
-        <button class="btn btn-sm btn-primary px-6">New Action +</button>
+      <div class="flex gap-3">
+        <button class="btn btn-outline border-white/10 no-animation rounded-2xl px-6">
+          <i class="ri-download-2-line"></i> Export
+        </button>
+        <button class="btn btn-primary rounded-2xl px-8 font-black shadow-xl shadow-primary/20">
+          NEW DEPLOYMENT +
+        </button>
       </div>
     </div>
     
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-      {{ stat_card("Platform Revenue", "₹82.4k", "↑ 14% this month", "primary") }}
-      {{ stat_card("Active Sessions", "1,204", "Stable latency", "secondary") }}
-      {{ stat_card("Error Rate", "0.02%", "Below threshold", "success") }}
-      {{ stat_card("Compute Power", "74%", "Node: AWS-Mumbai", "accent") }}
+      {{ stat_card("Node Revenue", "₹1.2M", "↑ 24.5% vs last week", "primary", '<i class="ri-money-dollar-circle-line text-3xl"></i>') }}
+      {{ stat_card("Active Peer Sessions", "842", "Latency: 14ms", "secondary", '<i class="ri-pulse-line text-3xl"></i>') }}
+      {{ stat_card("Success Rate", "99.98%", "Below threshold", "success", '<i class="ri-shield-check-line text-3xl"></i>') }}
+      {{ stat_card("CPU Load", "42%", "Core: 8/16", "accent", '<i class="ri-cpu-line text-3xl"></i>') }}
     </div>
     
-    <div class="bg-base-100 rounded-[2rem] border border-base-content/5 shadow-sm overflow-hidden">
-      <div class="p-6 border-b border-base-content/5 flex justify-between items-center">
-        <h3 class="font-black text-xs uppercase tracking-widest opacity-60">High-Priority Activity</h3>
-        <span class="badge badge-sm font-bold opacity-50">REAL-TIME</span>
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      
+      <div class="xl:col-span-2 bg-base-100 rounded-[2.5rem] border border-white/5 shadow-sm overflow-hidden">
+        <div class="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+          <h3 class="font-black text-xs uppercase tracking-[0.3em] text-neutral-400">Execution Logs</h3>
+          <div class="badge badge-primary font-black text-[10px] py-3 px-4">REAL-TIME SYNC</div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="table w-full">
+            <tbody class="divide-y divide-white/5">
+              {{ activity_row("Auth Encryption Engine", "AUTH-V4", "Deployed", "success", "14s ago") }}
+              {{ activity_row("Supabase Data Push", "DB-REPLICA", "Syncing", "info", "2m ago") }}
+              {{ activity_row("Worker Node #07", "SYSTEM", "Warning", "warning", "1h ago") }}
+              {{ activity_row("SSL Certificate Update", "SECURITY", "Critical", "error", "4h ago") }}
+              {{ activity_row("API Gateway Optimization", "ROUTING", "Optimized", "success", "Yesterday") }}
+            </tbody>
+          </table>
+        </div>
+        <div class="p-6 text-center border-t border-white/5">
+          <button class="btn btn-ghost btn-xs opacity-40 hover:opacity-100 uppercase font-black tracking-widest">Load Full History</button>
+        </div>
       </div>
-      <div class="overflow-x-auto">
-        <table class="table w-full">
-          <tbody>
-            {{ activity_row("Luviiio Auth Engine", "AUTH-V4", "Deployed", "success", "2m ago") }}
-            {{ activity_row("Supabase Push", "DB-SYNC", "Warning", "warning", "14m ago") }}
-            {{ activity_row("Worker Node #4", "SYSTEM", "Critical", "error", "1h ago") }}
-            {{ activity_row("API Gateway", "ROUTING", "Optimized", "info", "3h ago") }}
-          </tbody>
-        </table>
+      
+      <div class="space-y-6">
+        <div class="bg-gradient-to-br from-primary/20 to-secondary/10 p-1 rounded-[2.5rem]">
+          <div class="bg-base-100 rounded-[2.4rem] p-8">
+            <div class="flex flex-col items-center text-center">
+              <div class="avatar mb-4">
+                <div class="w-24 h-24 rounded-[2rem] ring ring-primary ring-offset-base-100 ring-offset-4">
+                  <img src="{{ user.avatar_url or 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.email }}" />
+                </div>
+              </div>
+              <h4 class="text-xl font-black tracking-tight">{{ user.full_name or 'Elite Dev' }}</h4>
+              <p class="text-xs font-bold uppercase opacity-40 tracking-widest mb-4">{{ user.role }} Mode</p>
+              <div class="flex gap-2 w-full">
+                <a href="/settings" up-follow class="btn btn-sm flex-1 bg-white/5 border-white/10 rounded-xl">Edit Profile</a>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="alert bg-base-100 border-white/5 rounded-[2rem] p-6 shadow-xl">
+          <i class="ri-notification-3-line text-2xl text-primary"></i>
+          <div class="flex flex-col">
+            <span class="font-black text-xs uppercase tracking-widest">Update Available</span>
+            <span class="text-xs opacity-50">Core Engine v5.0 is ready to deploy.</span>
+          </div>
+          <button class="btn btn-sm btn-ghost btn-circle"><i class="ri-arrow-right-s-line"></i></button>
+        </div>
       </div>
     </div>
   </div>
 </div>
+
+{# --- ⚡ BEAST ENGINE INTERACTIVITY --- #}
+<script>
+  // Smooth GSAP Entry for Dashboard Components
+  gsap.from(".stat", {
+    y: 20,
+    opacity: 0,
+    duration: 0.5,
+    stagger: 0.1,
+    ease: "power2.out"
+  });
+  
+  gsap.from(".xl\\:col-span-2, .space-y-6 > *", {
+    y: 40,
+    opacity: 0,
+    duration: 0.8,
+    delay: 0.3,
+    stagger: 0.2,
+    ease: "expo.out"
+  });
+  
+  // Unpoly Polling example (Optional: Auto-update stats every 30s)
+  // up.poll('.stats', { interval: 30000 });
+</script>
 {% endblock %}
