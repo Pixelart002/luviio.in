@@ -1,0 +1,276 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+    /* --- SCOPED STYLES: LUVIIO DARK THEME --- */
+    .waitlist-wrapper {
+        font-family: 'Inter', sans-serif;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        width: 100%;
+        min-height: 80vh;
+        --text-dim: #a1a1aa;
+        --accent: #3b82f6;
+        --accent-glow: rgba(59, 130, 246, 0.4);
+        --error: #ef4444;
+        --success: #22c55e;
+        --ease-elastic: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    /* Floating Pill UI */
+    .pill { 
+        border: 1px solid rgba(255,255,255,0.08); 
+        background: rgba(255,255,255,0.02); 
+        padding: 6px 16px; 
+        border-radius: 100px; 
+        font-size: 0.75rem; 
+        color: var(--text-dim); 
+        margin-bottom: 24px; 
+        display: inline-block; 
+        backdrop-filter: blur(10px);
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+    
+    /* Hero Typography */
+    .hero-title { 
+        font-size: clamp(2.5rem, 6vw, 5rem); 
+        font-weight: 800; 
+        margin-bottom: 20px; 
+        line-height: 1.05; 
+        letter-spacing: -0.04em;
+        background: linear-gradient(180deg, #fff 10%, #888 100%); 
+        -webkit-background-clip: text; 
+        -webkit-text-fill-color: transparent; 
+    }
+    
+    .hero-desc { 
+        font-size: clamp(1rem, 2vw, 1.2rem); 
+        color: var(--text-dim); 
+        max-width: 550px; 
+        line-height: 1.6; 
+        margin-bottom: 40px; 
+    }
+
+    /* Form UI: Glassmorphism */
+    .form-container { width: 100%; max-width: 440px; }
+    
+    .input-wrapper { 
+        background: rgba(20, 20, 20, 0.6); 
+        border: 1px solid rgba(255,255,255,0.08); 
+        border-radius: 18px; 
+        padding: 6px; 
+        display: flex; 
+        gap: 10px;
+        transition: all 0.4s var(--ease-elastic); 
+        backdrop-filter: blur(20px);
+    }
+    
+    .input-wrapper:focus-within { 
+        border-color: var(--accent); 
+        box-shadow: 0 0 40px var(--accent-glow); 
+        transform: translateY(-2px);
+    }
+    
+    .custom-input { 
+        flex: 1; 
+        background: transparent; 
+        border: none; 
+        outline: none; 
+        padding: 12px 16px; 
+        color: white; 
+        font-size: 1rem;
+        font-family: inherit;
+    }
+
+    /* Button Styling */
+    .submit-btn { 
+        background: white; 
+        color: black; 
+        border: none; 
+        border-radius: 14px; 
+        padding: 0 24px; 
+        height: 52px; 
+        font-weight: 700; 
+        cursor: pointer; 
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+    }
+    .submit-btn:hover:not(:disabled) { transform: scale(1.02); box-shadow: 0 10px 20px rgba(255,255,255,0.1); }
+    .submit-btn:disabled { opacity: 0.8; cursor: not-allowed; }
+
+    /* Custom Toast */
+    .toast {
+        position: fixed; 
+        bottom: 40px; 
+        left: 50%; 
+        transform: translateX(-50%) translateY(30px);
+        background: rgba(10, 10, 10, 0.98); 
+        border: 1px solid rgba(255,255,255,0.1);
+        padding: 14px 28px; 
+        border-radius: 100px; 
+        color: #fff; 
+        z-index: 999; 
+        opacity: 0; 
+        transition: all 0.5s var(--ease-elastic);
+        backdrop-filter: blur(20px);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+    .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* Loading Spinner */
+    .spinner { 
+        width: 20px; 
+        height: 20px; 
+        border: 2.5px solid rgba(0,0,0,0.1); 
+        border-left-color: #000; 
+        border-radius: 50%; 
+        animation: spin 0.8s linear infinite; 
+        display: none; 
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .fade-in { opacity: 0; transform: translateY(25px); }
+</style>
+
+<div class="waitlist-wrapper px-6">
+    <div class="hero-content">
+        <div class="pill fade-in">Early Access • 2026</div>
+        
+        <h1 class="hero-title fade-in">The Operating System <br> for Listings.</h1>
+        
+        <p class="hero-desc fade-in">
+            We are rebuilding marketplace infrastructure from the ground up. 
+            Join the verified, API-first future.
+        </p>
+
+        <div class="form-container fade-in mx-auto">
+            <form id="waitlistForm" novalidate>
+                <div class="input-wrapper">
+                    <input type="email" id="email" class="custom-input" 
+                           placeholder="Enter your email" required autocomplete="off">
+                    
+                    <button type="submit" id="submitBtn" class="submit-btn">
+                        <span class="btn-text">Join Waitlist</span>
+                        <div class="spinner" id="btnLoader"></div>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">
+        <span id="toastMsg">Success! You're on the list.</span>
+    </div>
+</div>
+
+<script>
+    /**
+     * Unpoly Compiler ensures this runs correctly during partial page updates.
+     */
+    up.compiler('.waitlist-wrapper', function(wrapper) {
+        
+        // --- ENTRY ANIMATIONS (GSAP) ---
+        if (window.gsap) {
+            gsap.to(wrapper.querySelectorAll(".fade-in"), { 
+                opacity: 1, 
+                y: 0, 
+                duration: 1.2, 
+                stagger: 0.15, 
+                ease: "power4.out" 
+            });
+        } else {
+            wrapper.querySelectorAll('.fade-in').forEach(el => el.style.opacity = 1);
+        }
+
+        // --- DYNAMIC CONFIGURATION ---
+        const SB_URL = "{{ supabase_url }}";
+        const SB_KEY = "{{ supabase_key }}";
+        const resendEndpoint = "/api/resend-mail";
+
+        const ui = {
+            form: wrapper.querySelector('#waitlistForm'),
+            email: wrapper.querySelector('#email'),
+            btn: wrapper.querySelector('#submitBtn'),
+            btnText: wrapper.querySelector('.btn-text'),
+            loader: wrapper.querySelector('#btnLoader'),
+            toast: wrapper.querySelector('#toast'),
+            toastMsg: wrapper.querySelector('#toastMsg')
+        };
+
+        const showToast = (msg, isError = false) => {
+            ui.toastMsg.innerText = msg;
+            ui.toast.style.borderColor = isError ? '#ef4444' : 'rgba(255,255,255,0.1)';
+            ui.toast.classList.add('visible');
+            setTimeout(() => ui.toast.classList.remove('visible'), 4000);
+        };
+
+        const setSubmitting = (state) => {
+            ui.btn.disabled = state;
+            ui.btnText.style.display = state ? 'none' : 'block';
+            ui.loader.style.display = state ? 'block' : 'none';
+        };
+
+        ui.form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = ui.email.value.trim();
+            
+            // Simple Validation
+            if (!email || !email.includes('@')) {
+                showToast("Please enter a valid email address.", true);
+                return;
+            }
+
+            setSubmitting(true);
+
+            try {
+                // 1. Initialize Supabase Client
+                const client = supabase.createClient(SB_URL, SB_KEY);
+
+                // 2. Insert into 'subscribers' Table
+                const { error: sbError } = await client.from('subscribers').insert([{ email }]);
+                
+                if (sbError) {
+                    // Unique constraint error code for Supabase/Postgres
+                    if (sbError.code === '23505') throw new Error("Bhai, you're already on the list! ✨");
+                    throw sbError;
+                }
+
+                // 3. Trigger Professional Welcome Email via our API
+                const emailResponse = await fetch(resendEndpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
+
+                if (!emailResponse.ok) {
+                    console.error("[Waitlist] DB Saved, but Email Trigger failed.");
+                }
+
+                // --- SUCCESS UI STATE ---
+                showToast("Welcome to the list. Check your inbox! 🚀");
+                ui.email.value = "";
+                ui.email.disabled = true;
+                ui.btn.style.backgroundColor = "#22c55e"; // Success Green
+                ui.btn.style.color = "#fff";
+                ui.btnText.innerText = "Joined";
+                setSubmitting(false);
+
+            } catch (err) {
+                console.error("[Waitlist Error]", err);
+                showToast(err.message || "Something went wrong. Try again.", true);
+                setSubmitting(false);
+            }
+        });
+    });
+</script>
+{% endblock %}
