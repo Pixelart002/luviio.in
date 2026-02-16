@@ -1,59 +1,58 @@
-{% extends "app/base.html" %}
-{% import "macros/nav.html" as nav %}
-{% import "macros/dashboard_ui.html" as ui %}
+{% extends "base.html" %}
+{% from "macros/beast_ui.html" import stat_card, activity_row, nav_item %}
 
 {% block content %}
-<div class="flex min-h-screen bg-black/50">
+<div class="flex flex-col lg:flex-row gap-8">
   
-  {# Navigation Sidebar with Sync Status #}
-  {{ nav.render_sidebar(user) }}
+  <aside class="w-full lg:w-72 flex-none">
+    <div class="sticky top-8 space-y-4">
+      <div class="px-4 mb-2">
+        <h2 class="text-[10px] font-black uppercase tracking-[0.2em] opacity-40">System Core</h2>
+      </div>
+      <ul class="menu p-0 space-y-1">
+        {{ nav_item("Overview", "/dashboard", '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>', active=True) }}
+        {{ nav_item("Analytics", "/analytics", '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>') }}
+        {{ nav_item("Settings", "/settings", '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>') }}
+      </ul>
+    </div>
+  </aside>
   
-  <main class="flex-1 md:ml-64 p-6 md:p-12 animate-fade-in">
+  <div class="flex-1 space-y-8">
     
-    {# 1. Dynamic Greeting using DB Name (Confirmed: VIVEK) #}
-    {{ ui.welcome_header(user.full_name, user.role) }}
-    
-    {# 2. Live Identity Status #}
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-      {{ ui.stat_card('Identity Verification', 'Success', 'ri-shield-user-fill', 'green') }}
-      
-      {% if user.role == 'seller' %}
-        {{ ui.stat_card('Store Reach', 'Initializing', 'ri-radar-line', 'blue') }}
-        {{ ui.stat_card('Revenue Engine', 'Active', 'ri-flashlight-line', 'purple') }}
-      {% else %}
-        {{ ui.stat_card('Marketplace access', 'Unlocked', 'ri-shopping-cart-2-line', 'blue') }}
-        {{ ui.stat_card('Trust Score', '100%', 'ri-verified-badge-line', 'purple') }}
-      {% endif %}
+    <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div>
+        <h1 class="text-4xl font-black tracking-tighter italic uppercase text-primary">Beast Dashboard</h1>
+        <p class="text-sm font-medium opacity-50">Operational Node: {{ user.email }}</p>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-sm btn-outline border-base-300">Export PDF</button>
+        <button class="btn btn-sm btn-primary px-6">New Action +</button>
+      </div>
     </div>
     
-    {# 3. Role-Based Dynamic Actions #}
-    <div class="bg-gradient-to-br from-white/[0.03] to-transparent rounded-3xl border border-white/5 p-8 md:p-12 relative overflow-hidden group">
-        <div class="absolute -right-20 -top-20 w-64 h-64 bg-blue-600/10 blur-[100px] group-hover:bg-blue-600/20 transition-all"></div>
-        
-        <div class="relative z-10">
-            {% if user.role == 'seller' %}
-                {{ ui.empty_state(
-                    'Setup Your Inventory', 
-                    'Your verified seller profile is active. It is time to list your first digital or physical asset.', 
-                    'Initialize Storefront', 
-                    'ri-store-3-line'
-                ) }}
-            {% else %}
-                {{ ui.empty_state(
-                    'Browse the Network', 
-                    'Access thousands of verified sellers and products within the Luviio ecosystem.', 
-                    'Explore Marketplace', 
-                    'ri-global-line'
-                ) }}
-            {% endif %}
-        </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      {{ stat_card("Platform Revenue", "₹82.4k", "↑ 14% this month", "primary") }}
+      {{ stat_card("Active Sessions", "1,204", "Stable latency", "secondary") }}
+      {{ stat_card("Error Rate", "0.02%", "Below threshold", "success") }}
+      {{ stat_card("Compute Power", "74%", "Node: AWS-Mumbai", "accent") }}
     </div>
     
-  </main>
+    <div class="bg-base-100 rounded-[2rem] border border-base-content/5 shadow-sm overflow-hidden">
+      <div class="p-6 border-b border-base-content/5 flex justify-between items-center">
+        <h3 class="font-black text-xs uppercase tracking-widest opacity-60">High-Priority Activity</h3>
+        <span class="badge badge-sm font-bold opacity-50">REAL-TIME</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table w-full">
+          <tbody>
+            {{ activity_row("Luviiio Auth Engine", "AUTH-V4", "Deployed", "success", "2m ago") }}
+            {{ activity_row("Supabase Push", "DB-SYNC", "Warning", "warning", "14m ago") }}
+            {{ activity_row("Worker Node #4", "SYSTEM", "Critical", "error", "1h ago") }}
+            {{ activity_row("API Gateway", "ROUTING", "Optimized", "info", "3h ago") }}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
-
-<style>
-    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    .animate-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
-</style>
 {% endblock %}

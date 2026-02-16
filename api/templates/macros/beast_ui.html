@@ -1,0 +1,54 @@
+{# --- ELITE BEAST COMPONENT LIBRARY --- #}
+
+{# 1. Metric/Stat Card #}
+{% macro stat_card(title, value, desc, color="primary", icon=none) %}
+<div class="stats shadow-md bg-base-100 border border-base-content/5 transition-all hover:border-{{ color }}/30 group">
+    <div class="stat">
+        {% if icon %}
+        <div class="stat-figure text-{{ color }} opacity-40 group-hover:opacity-100 transition-opacity">
+            {{ icon | safe }}
+        </div>
+        {% endif %}
+        <div class="stat-title text-[10px] font-black uppercase tracking-widest opacity-60">{{ title }}</div>
+        <div class="stat-value text-{{ color }} text-2xl tracking-tighter">{{ value }}</div>
+        <div class="stat-desc font-medium opacity-50">{{ desc }}</div>
+    </div>
+</div>
+{% endmacro %}
+
+{# 2. Activity Table Row #}
+{% macro activity_row(label, sub_label, status_text, type="success", time="Just now") %}
+<tr class="hover:bg-base-200/40 transition-all group">
+    <td>
+        <div class="flex items-center gap-4">
+            <div class="w-1.5 h-8 rounded-full bg-{{ type }} opacity-20 group-hover:opacity-100 transition-opacity"></div>
+            <div>
+                <div class="font-bold text-sm">{{ label }}</div>
+                <div class="text-[10px] opacity-40 uppercase font-black">{{ sub_label }}</div>
+            </div>
+        </div>
+    </td>
+    <td>
+        <div class="badge badge-{{ type }} badge-outline badge-sm border-opacity-30 font-bold text-[10px]">
+            {{ status_text | upper }}
+        </div>
+    </td>
+    <td class="text-xs font-medium opacity-60 italic">{{ time }}</td>
+    <th class="text-right">
+        <button class="btn btn-ghost btn-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity">Manage</button>
+    </th>
+</tr>
+{% endmacro %}
+
+{# 3. Sidebar Navigation Link #}
+{% macro nav_item(label, path, icon_svg, active=False) %}
+<li>
+    <a href="{{ path }}" 
+       up-follow 
+       class="flex items-center gap-4 py-3.5 rounded-2xl transition-all
+       {% if active %} bg-primary/10 text-primary font-bold shadow-sm shadow-primary/5 {% else %} hover:bg-base-200 opacity-70 hover:opacity-100 {% endif %}">
+        <span class="w-5 h-5">{{ icon_svg | safe }}</span>
+        <span class="text-sm tracking-tight">{{ label }}</span>
+    </a>
+</li>
+{% endmacro %}
