@@ -93,17 +93,19 @@
         window.validate = (step) => {
             const btn = document.getElementById(`btn${step}`);
             let valid = false;
+            
             if(step === 1) valid = document.getElementById('fullName').value.length > 2;
             if(step === 3) valid = document.getElementById('source').value !== "";
             if(step === 4) valid = document.getElementById('storeName').value.length > 2 && document.getElementById('storeContact').value.length > 5;
             if(step === 5) valid = document.getElementById('category').value !== "";
-            btn.disabled = !valid;
+            
+            if(btn) btn.disabled = !valid;
         };
 
         window.selectRole = (role, el) => {
             formData.role = role;
-            document.querySelectorAll('.radio-card').forEach(c => c.classList.remove('selected', 'border-blue-500'));
-            el.classList.add('selected', 'border-blue-500');
+            document.querySelectorAll('.radio-card').forEach(c => c.classList.remove('selected', 'border-blue-500', 'bg-blue-500/10'));
+            el.classList.add('selected', 'border-blue-500', 'bg-blue-500/10');
             document.getElementById('btn2').disabled = false;
         };
 
@@ -121,6 +123,7 @@
         window.nextStep = (target) => {
             const current = document.querySelector('.step-card.active');
             const next = document.getElementById(`step${target}`);
+            
             gsap.to(current, { x: -20, opacity: 0, duration: 0.3, onComplete: () => {
                 current.classList.remove('active');
                 next.classList.add('active');
@@ -128,14 +131,28 @@
             }});
         };
 
-        // --- 🚀 SERVER-SIDE SUBMISSION ---
+        window.prevStep = (target) => {
+            const current = document.querySelector('.step-card.active');
+            const prev = document.getElementById(`step${target}`);
+            
+            gsap.to(current, { x: 20, opacity: 0, duration: 0.3, onComplete: () => {
+                current.classList.remove('active');
+                prev.classList.add('active');
+                gsap.fromTo(prev, { x: -20, opacity: 0 }, { x: 0, opacity: 1, duration: 0.3 });
+            }});
+        };
+
+        // --- 🚀 SERVER-SIDE SUBMISSION (Strict Mode) ---
         window.submitData = async () => {
             const activeStep = document.querySelector('.step-card.active');
-            const btn = activeStep.querySelector('.btn-next');
-            const originalText = btn.innerText;
+            // Try to find the button inside the active step
+            const btn = activeStep.querySelector('button.bg-white') || activeStep.querySelector('button');
+            const originalText = btn ? btn.innerText : "Submit";
             
-            btn.innerText = "Setting up...";
-            btn.disabled = true;
+            if(btn) {
+                btn.innerText = "Setting up...";
+                btn.disabled = true;
+            }
 
             // Collect final data
             if(formData.role === 'seller') {
@@ -149,15 +166,18 @@
                 const response = await fetch('/api/auth/complete-onboarding', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(formData)
+                    body: JSON.stringify(formData),
+                    
+                    // 🔥 CRITICAL FIX: Ensures cookie is sent to backend
+                    credentials: 'include' 
                 });
 
                 const result = await response.json();
 
                 if (response.ok) {
                     console.log("Onboarding Success!");
-                    // 🚀 Redirect to Subdomain Dashboard
-                    window.location.href = "https://dashboard.luviio.in";
+                    // 🚀 Redirect to Main Dashboard (Relative Path)
+                    window.location.href = "/dashboard";
                 } else {
                     throw new Error(result.detail || "Onboarding failed");
                 }
@@ -165,8 +185,10 @@
             } catch (err) {
                 console.error(err);
                 alert("Error: " + err.message);
-                btn.innerText = originalText;
-                btn.disabled = false;
+                if(btn) {
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
             }
         };
     </script>

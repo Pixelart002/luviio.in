@@ -1,19 +1,20 @@
 {% extends "app/base.html" %}
-{% import "macros/auth_macros.html" as forms %}
 
 {% block content %}
 <div class="w-full max-w-[420px] px-4">
     <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-[2rem] p-8 text-center backdrop-blur-xl">
         
         <h2 class="text-2xl font-bold text-white mb-2" id="formTitle">Welcome Back</h2>
-        <p class="text-xs text-neutral-500 mb-6">Secure access via Self-Hosted Auth 2.0</p>
+        <p class="text-xs text-neutral-500 mb-6">Secure access via LUVIIO Unified Auth</p>
         
         <div class="grid grid-cols-2 gap-3 mb-6">
-            <button onclick="oauthLogin('google')" class="flex items-center justify-center gap-2 bg-white/5 border border-white/10 rounded-xl py-3 hover:bg-white/10 transition">
-                <i class="ri-google-fill text-xl text-white"></i> <span class="text-sm font-semibold text-white">Google</span>
+            <button onclick="oauthLogin('google')" class="flex items-center justify-center gap-2 bg-white/5 border border-white/10 rounded-xl py-3 hover:bg-white/10 transition group">
+                <i class="ri-google-fill text-xl text-white group-hover:scale-110 transition"></i>
+                <span class="text-sm font-semibold text-white">Google</span>
             </button>
-            <button onclick="oauthLogin('github')" class="flex items-center justify-center gap-2 bg-white/5 border border-white/10 rounded-xl py-3 hover:bg-white/10 transition">
-                <i class="ri-github-fill text-xl text-white"></i> <span class="text-sm font-semibold text-white">GitHub</span>
+            <button onclick="oauthLogin('github')" class="flex items-center justify-center gap-2 bg-white/5 border border-white/10 rounded-xl py-3 hover:bg-white/10 transition group">
+                <i class="ri-github-fill text-xl text-white group-hover:scale-110 transition"></i>
+                <span class="text-sm font-semibold text-white">GitHub</span>
             </button>
         </div>
         
@@ -25,11 +26,11 @@
         <form id="authForm" class="flex flex-col gap-3 text-left">
             <div class="flex flex-col gap-1">
                 <label class="text-[10px] uppercase text-neutral-500 ml-2">Email Address</label>
-                <input type="email" id="email" placeholder="name@example.com" class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-blue-500 transition" required>
+                <input type="email" id="email" placeholder="name@example.com" class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-blue-500 transition placeholder-white/20" required>
             </div>
             <div class="flex flex-col gap-1">
                 <label class="text-[10px] uppercase text-neutral-500 ml-2">Password</label>
-                <input type="password" id="password" placeholder="••••••••" class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-blue-500 transition" required>
+                <input type="password" id="password" placeholder="••••••••" class="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-blue-500 transition placeholder-white/20" required>
             </div>
             
             <button type="submit" id="submitBtn" class="w-full bg-white text-black font-bold rounded-xl py-4 mt-2 hover:scale-[1.02] active:scale-[0.98] transition shadow-lg shadow-white/5">
@@ -38,7 +39,7 @@
         </form>
         
         <div class="mt-4 text-xs text-neutral-500">
-            <button onclick="toggleMode()" id="toggleBtn" class="text-white hover:underline transition">
+            <button onclick="toggleMode()" id="toggleBtn" class="text-white hover:text-blue-400 hover:underline transition">
                 Create an account
             </button>
         </div>
@@ -48,14 +49,14 @@
 <script>
     let isSignup = false;
     
-    // --- 1. OAUTH LOGIN (Strictly Backend Redirect) ---
+    // --- 1. OAUTH LOGIN (Direct Backend Hit) ---
     function oauthLogin(provider) {
-        console.log(`🚀 Redirecting to ${provider} Auth...`);
-        // Hum Supabase SDK use nahi karenge, seedha backend endpoint hit karenge
+        console.log(`🚀 Initiating Self-Hosted OAuth for: ${provider}`);
+        // Backend handles the redirect logic now
         window.location.href = `/api/auth/login/${provider}`;
     }
     
-    // --- 2. MANUAL LOGIN/SIGNUP (Fetch API) ---
+    // --- 2. MANUAL LOGIN/SIGNUP (Fixed Fetch) ---
     document.getElementById('authForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = document.getElementById('submitBtn');
@@ -63,56 +64,74 @@
         const password = document.getElementById('password').value;
         
         // UI Feedback
+        const originalText = btn.innerText;
         btn.innerText = "Processing...";
         btn.disabled = true;
+        btn.classList.add("opacity-70", "cursor-not-allowed");
         
-        // Backend Endpoint Selection
+        // Dynamic Endpoint
         const endpoint = isSignup ? '/api/auth/register' : '/api/auth/login';
         
         try {
             const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
+                body: JSON.stringify({ email, password }),
+                
+                // 🔥 CRITICAL FIX: Iske bina cookies save nahi hongi!
+                credentials: 'include'
             });
             
             const data = await res.json();
             
-            if (!res.ok) throw new Error(data.detail || "Something went wrong");
+            if (!res.ok) throw new Error(data.detail || "Authentication failed");
             
-            // ✅ Success Logic
+            // ✅ SUCCESS HANDLERS
             if (isSignup) {
-                alert("Account created! Now please Sign In.");
+                // Registration successful -> Switch to Login
+                alert("Account created successfully! Please Sign In.");
                 toggleMode();
+                // Clear fields
+                document.getElementById('password').value = "";
             } else {
-                // Login Success: Server has already set HttpOnly Cookies
-                // Agar user onboarded hai toh Dashboard (Subdomain), varna Onboarding
+                // Login Successful -> Redirect based on onboarding status
+                console.log("✅ Login Success, Cookies set via JSONResponse");
+                
+                // 🔥 STRICT RELATIVE REDIRECT (No Subdomains)
                 if (data.onboarded) {
-                    window.location.href = "https://dashboard.luviio.in";
+                    window.location.href = "/dashboard";
                 } else {
                     window.location.href = "/onboarding";
                 }
             }
             
         } catch (err) {
-            console.error("❌ Auth Error:", err);
+            console.error("❌ Auth Logic Error:", err);
+            // Shake animation or error toast here
             alert(err.message);
-        } finally {
-            btn.innerText = isSignup ? "Sign Up" : "Sign In";
+            btn.innerText = originalText;
             btn.disabled = false;
+            btn.classList.remove("opacity-70", "cursor-not-allowed");
         }
     });
     
-    // Toggle Mode Logic
+    // Toggle Mode Logic (Login <-> Signup)
     function toggleMode() {
         isSignup = !isSignup;
         const title = document.getElementById('formTitle');
         const submitBtn = document.getElementById('submitBtn');
         const toggleBtn = document.getElementById('toggleBtn');
         
-        title.innerText = isSignup ? "Create Account" : "Welcome Back";
-        submitBtn.innerText = isSignup ? "Sign Up" : "Sign In";
-        toggleBtn.innerText = isSignup ? "Already have an account? Sign In" : "Create an account";
+        // Smooth transition setup could go here
+        if (isSignup) {
+            title.innerText = "Create Account";
+            submitBtn.innerText = "Sign Up";
+            toggleBtn.innerText = "Already have an account? Sign In";
+        } else {
+            title.innerText = "Welcome Back";
+            submitBtn.innerText = "Sign In";
+            toggleBtn.innerText = "Create an account";
+        }
     }
 </script>
 {% endblock %}
