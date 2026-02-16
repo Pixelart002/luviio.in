@@ -2,176 +2,197 @@
 {% import "macros/auth_macros.html" as forms %}
 
 {% block content %}
-<div class="w-full min-h-screen flex items-center justify-center py-8">
-    <div class="w-full max-w-[420px] px-4 mx-auto">
-        <div id="authCard" class="card bg-[#0A0A0A]/90 border border-white/10 shadow-2xl rounded-2xl p-8 text-center backdrop-blur-xl">
+<div class="w-full min-h-screen flex items-center justify-center py-12 bg-[#050505]">
+    <div class="w-full max-w-[440px] px-6 mx-auto">
+        <div id="authCard" class="relative group card bg-[#0A0A0A] border border-white/10 shadow-[0_0_50px_-12px_rgba(255,255,255,0.05)] rounded-3xl p-10 text-center overflow-hidden">
             
-            <h2 class="text-2xl font-bold text-white mb-1" id="formTitle">Welcome Back</h2>
-            <p class="text-xs text-neutral-500 mb-6">Secure OAuth 2.0 Authentication</p>
+            <!-- Animated Background Glow -->
+            <div class="absolute -top-24 -left-24 w-48 h-48 bg-blue-500/10 blur-[80px] rounded-full pointer-events-none group-hover:bg-blue-500/20 transition-all duration-700"></div>
+            
+            <div class="relative z-10">
+                <div class="mb-8">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/5 border border-white/10 mb-6 group-hover:scale-110 transition-transform duration-500">
+                        <i class="ri-shield-user-line text-3xl text-white"></i>
+                    </div>
+                    <h2 class="text-3xl font-bold text-white tracking-tight mb-2" id="formTitle">Welcome Back</h2>
+                    <p class="text-sm text-neutral-500 font-medium">Enterprise OAuth 2.0 Security</p>
+                </div>
 
-            {# Error Alerts #}
-            {{ forms.error_alert('', 'errorAlert') }}
-            {{ forms.success_alert('', 'successAlert') }}
+                {# Feedback Alerts #}
+                <div id="alertContainer" class="space-y-3 mb-6">
+                    {{ forms.error_alert('', 'errorAlert') }}
+                    {{ forms.success_alert('', 'successAlert') }}
+                </div>
 
-            {# OAuth Buttons #}
-            {# Ensure your macro calls oauthLogin(provider) #}
-            {{ forms.oauth_buttons() }}
+                {# Enterprise OAuth Options #}
+                <div class="space-y-3 mb-8">
+                    <button 
+                        onclick="initiateOAuth('google')"
+                        class="w-full flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl py-4 transition-all duration-300 hover:border-white/20 active:scale-[0.98] group/btn"
+                    >
+                        <i class="ri-google-fill text-xl text-white/80 group-hover/btn:text-white"></i>
+                        <span class="text-sm font-bold text-white/90">Continue with Google</span>
+                    </button>
+                    
+                    <button 
+                        onclick="initiateOAuth('github')"
+                        class="w-full flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl py-4 transition-all duration-300 hover:border-white/20 active:scale-[0.98] group/btn"
+                    >
+                        <i class="ri-github-fill text-xl text-white/80 group-hover/btn:text-white"></i>
+                        <span class="text-sm font-bold text-white/90">Continue with GitHub</span>
+                    </button>
+                </div>
 
-            {# Email/Password Form #}
-            <form id="authForm" class="flex flex-col gap-4">
-                {{ forms.input_field('email', 'email', 'Email address', 'ri-mail-line', autocomplete_type='email') }}
-                {{ forms.input_field('password', 'password', 'Password', 'ri-lock-line', autocomplete_type='current-password') }}
-                
-                {{ forms.submit_button('Sign In', 'submitBtn') }}
-            </form>
+                <div class="relative flex items-center justify-center mb-8">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-white/5"></div>
+                    </div>
+                    <span class="relative bg-[#0A0A0A] px-4 text-[10px] font-bold text-white/20 tracking-[0.2em] uppercase">Legacy Access</span>
+                </div>
 
-            {# Toggle to Signup #}
-            <div class="mt-6 text-xs text-neutral-400">
-                Don't have an account?
-                <button 
-                    type="button"
-                    onclick="toggleMode()" 
-                    id="toggleBtn" 
-                    class="text-white font-semibold hover:underline ml-1 focus:outline-none focus:underline"
-                    aria-label="Switch to signup"
-                >
-                    Create one
-                </button>
-            </div>
+                {# Email Access Form #}
+                <form id="authForm" class="space-y-4">
+                    {{ forms.input_field('email', 'email', 'Email Address', 'ri-mail-line', autocomplete_type='email') }}
+                    {{ forms.input_field('password', 'password', 'Secure Password', 'ri-lock-line', autocomplete_type='current-password') }}
+                    
+                    {{ forms.submit_button('Sign In', 'submitBtn') }}
+                </form>
 
-            {# Privacy/Terms Links #}
-            <div class="mt-6 pt-6 border-t border-white/10 text-xs text-neutral-500 flex justify-center gap-4">
-                <a href="#" class="hover:text-white transition">Privacy</a>
-                <span>•</span>
-                <a href="#" class="hover:text-white transition">Terms</a>
+                <div class="mt-8 text-sm text-neutral-500">
+                    <span id="toggleText">New to Luviio?</span>
+                    <button 
+                        type="button"
+                        onclick="toggleAuthMode()" 
+                        id="toggleBtn" 
+                        class="text-white font-bold hover:underline ml-1 focus:outline-none"
+                    >
+                        Create Account
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    // --- CONFIGURATION ---
-    let isSignup = false;
-
-    // --- UTILITY FUNCTIONS ---
-    function showError(message) {
-        const alert = document.getElementById('errorAlert');
-        const msg = document.getElementById('errorMessage');
-        if (!alert || !msg) return;
-        msg.textContent = message;
-        alert.classList.remove('hidden');
-        setTimeout(() => alert.classList.add('hidden'), 5000);
-    }
-
-    function showSuccess(message) {
-        const alert = document.getElementById('successAlert');
-        const msg = document.getElementById('successMessage');
-        if (!alert || !msg) return;
-        msg.textContent = message;
-        alert.classList.remove('hidden');
-    }
-
-    function setButtonLoading(btn, loading = true) {
-        const text = document.getElementById('btnText');
-        const loader = document.getElementById('btnLoader');
-        if (!btn || !text || !loader) return;
+    // --- Global Auth Controller ---
+    const AuthController = {
+        isSignup: false,
         
-        if (loading) {
-            text.classList.add('hidden');
-            loader.classList.remove('hidden');
-            btn.disabled = true;
-        } else {
-            text.classList.remove('hidden');
-            loader.classList.add('hidden');
-            btn.disabled = false;
-        }
-    }
+        init() {
+            this.checkURLParams();
+            this.bindEvents();
+        },
 
-    // --- 1. UPGRADED OAUTH LOGIN (Server-Side Initiation) ---
-    function oauthLogin(provider) {
-        // Redirect to the new auth initiation endpoint
-        window.location.href = `/api/auth/login?provider=${provider}`;
-    }
-
-    // --- 2. EMAIL/PASSWORD AUTHENTICATION ---
-    document.getElementById('authForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const btn = document.getElementById('submitBtn');
-        const email = document.getElementById('email').value.trim().toLowerCase();
-        const password = document.getElementById('password').value;
-        const action = isSignup ? 'signup' : 'login';
-
-        if (!email || !password) {
-            showError('Please fill in all fields');
-            return;
-        }
-
-        setButtonLoading(btn, true);
-
-        try {
-            const res = await fetch('/api/auth/flow', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password, action })
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                showError(data.error || 'Authentication failed');
-                setButtonLoading(btn, false);
-                return;
+        bindEvents() {
+            const form = document.getElementById('authForm');
+            if (form) {
+                form.addEventListener('submit', (e) => this.handleEmailAuth(e));
             }
+        },
 
-            if (data.msg) {
-                showSuccess('✓ ' + data.msg);
-                setTimeout(() => window.location.href = '/login', 2000);
-                return;
+        // 1. Enterprise OAuth Initiation
+        initiateOAuth(provider) {
+            const btn = event.currentTarget;
+            btn.classList.add('opacity-50', 'pointer-events-none');
+            // Redirect to backend initiation endpoint
+            window.location.href = `/api/auth/login?provider=${provider}`;
+        },
+
+        // 2. Email/Password Flow
+        async handleEmailAuth(e) {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const action = this.isSignup ? 'signup' : 'login';
+
+            this.setLoading(true);
+
+            try {
+                // Note: Legacy endpoint handling
+                const response = await fetch('/api/auth/flow', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, action })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) throw new Error(result.error || 'Authentication failed');
+
+                if (result.msg) {
+                    this.showAlert('success', result.msg);
+                    if (!this.isSignup) setTimeout(() => window.location.href = '/dashboard', 1000);
+                } else if (result.next) {
+                    window.location.href = result.next;
+                }
+
+            } catch (err) {
+                this.showAlert('error', err.message);
+                this.setLoading(false);
             }
+        },
 
-            if (data.next) {
-                showSuccess('✓ Authentication successful');
-                // Redirecting based on onboarding status
-                setTimeout(() => window.location.href = data.next.startsWith('/') ? data.next : '/' + data.next, 1000);
-                return;
+        // 3. UI Helpers
+        toggleAuthMode() {
+            this.isSignup = !this.isSignup;
+            const title = document.getElementById('formTitle');
+            const btnText = document.getElementById('btnText');
+            const toggleBtn = document.getElementById('toggleBtn');
+            const toggleText = document.getElementById('toggleText');
+
+            title.textContent = this.isSignup ? 'Create Account' : 'Welcome Back';
+            btnText.textContent = this.isSignup ? 'Create Account' : 'Sign In';
+            toggleBtn.textContent = this.isSignup ? 'Sign In' : 'Create Account';
+            toggleText.textContent = this.isSignup ? 'Already have an account?' : 'New to Luviio?';
+        },
+
+        showAlert(type, message) {
+            const alertId = type === 'success' ? 'successAlert' : 'errorAlert';
+            const msgId = type === 'success' ? 'successMessage' : 'errorMessage';
+            const alert = document.getElementById(alertId);
+            const msg = document.getElementById(msgId);
+            
+            if (alert && msg) {
+                msg.textContent = message;
+                alert.classList.remove('hidden');
+                setTimeout(() => alert.classList.add('hidden'), 6000);
             }
+        },
 
-        } catch (err) {
-            showError(`Error: ${err.message}`);
-            setButtonLoading(btn, false);
+        setLoading(loading) {
+            const btn = document.getElementById('submitBtn');
+            const text = document.getElementById('btnText');
+            const loader = document.getElementById('btnLoader');
+            if (loading) {
+                text.classList.add('opacity-0');
+                loader.classList.remove('hidden');
+                btn.disabled = true;
+            } else {
+                text.classList.remove('opacity-0');
+                loader.classList.add('hidden');
+                btn.disabled = false;
+            }
+        },
+
+        checkURLParams() {
+            const params = new URLSearchParams(window.location.search);
+            const error = params.get('error');
+            const msg = params.get('msg');
+            if (error) {
+                this.showAlert('error', msg || `Error: ${error.replace('_', ' ')}`);
+                // Clean URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
         }
-    });
+    };
 
-    // --- 3. TOGGLE BETWEEN LOGIN/SIGNUP ---
-    function toggleMode() {
-        isSignup = !isSignup;
-        const title = document.getElementById('formTitle');
-        const btnText = document.getElementById('btnText');
-        const toggleBtn = document.getElementById('toggleBtn');
-
-        if (isSignup) {
-            title.textContent = 'Create Account';
-            btnText.textContent = 'Sign Up';
-            toggleBtn.textContent = 'Already have an account?';
-        } else {
-            title.textContent = 'Welcome Back';
-            btnText.textContent = 'Sign In';
-            toggleBtn.textContent = 'Create one';
-        }
-        document.getElementById('authForm').reset();
-    }
-
-    // --- 4. CHECK FOR ERROR PARAMS IN URL ---
-    window.addEventListener('DOMContentLoaded', () => {
-        const params = new URLSearchParams(window.location.search);
-        const error = params.get('error');
-        const msg = params.get('msg');
-
-        if (error) {
-            showError(msg || `Authentication error: ${error}`);
-            window.history.replaceState({}, document.title, '/login');
-        }
-    });
+    // Initialize on load
+    document.addEventListener('DOMContentLoaded', () => AuthController.init());
+    
+    // Global scope for onclick handlers
+    window.initiateOAuth = (p) => AuthController.initiateOAuth(p);
+    window.toggleAuthMode = () => AuthController.toggleAuthMode();
 </script>
 {% endblock %}
