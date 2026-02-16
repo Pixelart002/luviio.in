@@ -1,0 +1,56 @@
+{% macro render_sidebar(active_page, request) %}
+
+    <aside class="w-64 bg-[#050505] border-r border-white/5 hidden md:flex flex-col relative z-20 h-full">
+        
+        <div class="h-20 flex items-center px-6 border-b border-white/5">
+            <div class="w-8 h-8 rounded bg-indigo-600 flex items-center justify-center mr-3 font-bold text-black shadow-[0_0_15px_rgba(99,102,241,0.5)]">
+                L
+            </div>
+            <span class="text-lg font-bold tracking-widest text-white">LUVIIO</span>
+        </div>
+
+        {% set menu_items = [
+            ('Home', '/', 'ri-home-4-line', 'home'),
+            ('Dashboard', '/dashboard', 'ri-dashboard-line', 'dashboard'),
+            ('Users', '/users', 'ri-user-3-line', 'users'),
+            ('Settings', '/settings', 'ri-settings-4-line', 'settings')
+        ] %}
+
+        <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+            <div class="text-[10px] font-bold text-neutral-600 uppercase tracking-widest px-4 mb-3">Menu</div>
+
+            {% for label, url, icon, id in menu_items %}
+                {% set is_active = (active_page == id) %}
+                
+                <a href="{{ url }}" 
+                   up-target="#main-content" 
+                   class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group mb-1 border
+                          {% if is_active %}
+                              bg-indigo-500/10 border-indigo-500/20 text-white shadow-[0_0_20px_rgba(99,102,241,0.15)]
+                          {% else %}
+                              border-transparent text-neutral-500 hover:bg-white/5 hover:text-white
+                          {% endif %}">
+                    
+                    <i class="{{ icon }} text-lg 
+                              {% if is_active %} text-indigo-400 {% else %} group-hover:text-white {% endif %}">
+                    </i>
+                    
+                    <span class="font-medium text-sm tracking-wide">{{ label }}</span>
+                    
+                    {% if is_active %}
+                        <div class="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_#6366f1]"></div>
+                    {% endif %}
+                </a>
+            {% endfor %}
+        </nav>
+
+        <div class="p-4 border-t border-white/5 mt-auto">
+            <button class="flex items-center gap-3 text-red-400/70 hover:text-red-400 hover:bg-red-500/10 w-full px-4 py-3 rounded-xl transition text-sm font-medium">
+                <i class="ri-logout-box-line"></i>
+                <span>Logout</span>
+            </button>
+        </div>
+
+    </aside>
+
+{% endmacro %}
