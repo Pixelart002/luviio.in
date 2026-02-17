@@ -1,19 +1,17 @@
-import sys
 import os
+import sys
 
-# --- THE FIX ---
-# Get the directory where this script (api/index.py) is located
+# 1. Get the current directory (api/)
 current_dir = os.path.dirname(os.path.abspath(__file__))
-# Get the parent directory (project root)
+
+# 2. Get the parent directory (project root where 'app/' lives)
 parent_dir = os.path.dirname(current_dir)
 
-# Add the parent directory to sys.path so Python can find the 'app' folder
+# 3. Inject the parent directory into sys.path
 sys.path.append(parent_dir)
-# ---------------
 
-# Now we can safely import the app
+# 4. Now import the app
 from app.main import app
 
-# Handler for Vercel Serverless (required for some older runtimes, but good safety)
-# Usually 'app' object is enough, but this is explicit.
-handler = app
+# This is required for Vercel to find the entry point
+# No other code is needed here.
