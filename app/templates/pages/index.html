@@ -1,0 +1,87 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+
+<section class="relative h-screen flex flex-col justify-center items-center overflow-hidden" id="hero">
+  <div class="absolute inset-0 z-0 opacity-20 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"></div>
+  
+  <div class="z-10 text-center mix-blend-exclusion">
+    <h1 class="hero-title text-[12vw] leading-[0.8] font-black tracking-tighter transform-gpu">
+      DIGITAL<br>
+      <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-500 to-brand-accent">ALCHEMY</span>
+    </h1>
+    <p class="hero-subtitle mt-8 text-xl md:text-2xl font-mono text-gray-400 max-w-2xl mx-auto opacity-0 translate-y-10">
+      Enterprise-grade scalability meets physics-defying aesthetics.
+    </p>
+  </div>
+  
+  <div class="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+    <span class="text-xs font-mono uppercase">Scroll to Explore</span>
+    <div class="w-[1px] h-16 bg-white/20 overflow-hidden">
+      <div class="w-full h-full bg-brand-500 animate-scroll-down"></div>
+    </div>
+  </div>
+</section>
+
+<section id="showcase-pin" class="h-screen w-full overflow-hidden flex items-center bg-zinc-950 relative">
+  <div class="absolute top-10 left-10 font-mono text-xs text-gray-500">01 / SELECTED WORKS</div>
+  
+  <div id="showcase-track" class="flex gap-20 px-[20vw] items-center">
+    <div class="showcase-card w-[60vw] md:w-[40vw] flex-shrink-0 group cursor-pointer">
+      <div class="aspect-video bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden relative">
+        <div class="absolute inset-0 bg-brand-900/20 group-hover:bg-brand-900/0 transition-colors duration-500"></div>
+        <div class="w-full h-full bg-gradient-to-br from-zinc-800 to-black flex items-center justify-center">
+          <span class="text-4xl font-bold text-zinc-700 group-hover:text-white transition-colors">FINTECH V1</span>
+        </div>
+      </div>
+      <h3 class="mt-6 text-2xl font-bold">Neo-Banking Core</h3>
+      <p class="text-gray-500 font-mono text-sm mt-2">Pydantic / Supabase / Real-time</p>
+    </div>
+    
+    <div class="showcase-card w-[60vw] md:w-[40vw] flex-shrink-0 group cursor-pointer">
+      <div class="aspect-video bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+        <div class="w-full h-full bg-gradient-to-br from-zinc-800 to-black flex items-center justify-center">
+          <span class="text-4xl font-bold text-zinc-700 group-hover:text-white transition-colors">ECOMMERCE</span>
+        </div>
+      </div>
+      <h3 class="mt-6 text-2xl font-bold">Headless Commerce</h3>
+      <p class="text-gray-500 font-mono text-sm mt-2">Unpoly / Tailwind / Stripe</p>
+    </div>
+    
+    <div class="showcase-card w-[60vw] md:w-[40vw] flex-shrink-0 group cursor-pointer">
+      <div class="aspect-video bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+        <div class="w-full h-full bg-gradient-to-br from-zinc-800 to-black flex items-center justify-center">
+          <span class="text-4xl font-bold text-zinc-700 group-hover:text-white transition-colors">SAAS</span>
+        </div>
+      </div>
+      <h3 class="mt-6 text-2xl font-bold">Analytics Dashboard</h3>
+      <p class="text-gray-500 font-mono text-sm mt-2">FastAPI / D3.js</p>
+    </div>
+  </div>
+</section>
+
+<section class="min-h-screen py-32 px-8 flex flex-col items-center justify-center relative">
+  <h2 class="text-6xl md:text-8xl font-black mb-20 text-center" id="tech-title">THE STACK</h2>
+  
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-6xl" id="tech-grid">
+    {% for tech in ['PYTHON', 'FASTAPI', 'SUPABASE', 'VERCEL', 'GSAP', 'UNPOLY', 'TAILWIND', 'PANDAS'] %}
+    <div class="tech-item border border-white/10 p-12 flex items-center justify-center hover:bg-white hover:text-black transition-colors duration-300">
+      <span class="font-mono font-bold text-xl">{{ tech }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="h-[80vh] flex items-center justify-center bg-brand-500 text-black overflow-hidden relative" id="cta-section">
+  <div class="absolute inset-0 flex items-center justify-center">
+    <div class="w-[200vw] h-[200vw] rounded-full border-[100px] border-black/10 scale-0 cta-circle"></div>
+  </div>
+  <div class="z-10 text-center">
+    <h2 class="text-6xl md:text-9xl font-black tracking-tighter mb-8">READY?</h2>
+    <a href="#" class="inline-block border-4 border-black px-12 py-4 text-2xl font-bold hover:bg-black hover:text-brand-500 transition-colors uppercase">
+      Start Project
+    </a>
+  </div>
+</section>
+
+{% endblock %}
