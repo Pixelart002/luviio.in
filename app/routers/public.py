@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Request, Form
 from fastapi.templating import Jinja2Templates
+import os
 
-# FIX: '..' means go up one level from 'routers' to 'app', then into 'core'
-from ..core.supabase import SupabaseService 
+# Using absolute imports for consistency
+from app.core.supabase import SupabaseService 
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+
+# Define template directory relative to this file
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 @router.get("/")
 async def landing_page(request: Request):
