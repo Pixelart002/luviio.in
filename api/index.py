@@ -1,17 +1,17 @@
-import os
-import sys
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
-# 1. Get the current directory (api/)
-current_dir = os.path.dirname(os.path.abspath(__file__))
+# FIX: Use relative import (dot syntax)
+from .routers import public 
 
-# 2. Get the parent directory (project root where 'app/' lives)
-parent_dir = os.path.dirname(current_dir)
+app = FastAPI(title="Luviio Platform", docs_url=None, redoc_url=None)
 
-# 3. Inject the parent directory into sys.path
-sys.path.append(parent_dir)
+# Mount Static Files (CSS/JS)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-# 4. Now import the app
-from .main import app
+# Include Routers
+app.include_router(public.router)
 
-# This is required for Vercel to find the entry point
-# No other code is needed here.
+@app.on_event("startup")
+async def startup_event():
+    print("Luviio Engine: INITIALIZED")

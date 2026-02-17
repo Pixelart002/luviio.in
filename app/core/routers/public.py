@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Request, Form
 from fastapi.templating import Jinja2Templates
-from app.core.supabase import SupabaseService
+
+# FIX: Use relative import to go up to core (..)
+from ..core.supabase import SupabaseService 
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -12,7 +14,6 @@ async def landing_page(request: Request):
         "page_title": "Luviio | Redefining Digital Physics"
     })
 
-# Example Lead Capture Endpoint
 @router.post("/join-waitlist")
 async def join_waitlist(email: str = Form(...)):
     db = SupabaseService.get_client()
