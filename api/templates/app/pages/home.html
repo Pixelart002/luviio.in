@@ -1,0 +1,44 @@
+{% extends "app/base.html" %}
+
+{% block content %}
+<section class="flex-1 flex flex-col items-center justify-center text-center px-6 py-20 md:pt-32">
+    
+    <div class="hero-anim opacity-0 translate-y-4 mb-6 inline-flex items-center px-3 py-1 rounded-full border border-white/10 bg-white/5">
+        <span class="text-[10px] uppercase tracking-[0.2em] text-gray-400">The Trust Layer</span>
+    </div>
+
+    <h1 class="hero-anim opacity-0 translate-y-4 text-[clamp(2.5rem,10vw,5.5rem)] font-extrabold leading-none tracking-tight mb-6 text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-500">
+        Infrastructure for <br class="hidden md:block" /> Verified Markets.
+    </h1>
+
+    <p class="hero-anim opacity-0 translate-y-4 text-gray-400 text-base md:text-xl max-w-lg mb-10 leading-relaxed">
+        We verify, secure, and streamline <br class="md:hidden" /> marketplace infrastructure.
+    </p>
+
+    <div class="hero-anim opacity-0 translate-y-4">
+        <a href="/waitlist" 
+           up-target="#main-content" 
+           up-transition="cross-fade"
+           class="bg-white text-black font-bold px-8 py-4 rounded-full transition-transform hover:scale-105 active:scale-95 inline-flex items-center gap-2">
+            Join Waitlist
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+        </a>
+    </div>
+
+    <script>
+        // GSAP Animation Logic (Optimized for Unpoly)
+        up.compiler('#main-content', function(element) {
+            if (window.gsap) {
+                // Scoped selection: animate only elements inside this new fragment
+                gsap.to(element.querySelectorAll(".hero-anim"), {
+                    opacity: 1,
+                    y: 0,
+                    duration: 0.8,
+                    stagger: 0.1,
+                    ease: "power2.out"
+                });
+            }
+        });
+    </script>
+</section>
+{% endblock %}
