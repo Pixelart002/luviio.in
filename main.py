@@ -1,14 +1,21 @@
 # main.py
 
-# Absolute import using "as" style
+from fastapi import FastAPI
 from backend.api import supabase as sb_router
 
-# Access Supabase clients directly from the module
+# ----------------------------
+# Access Supabase clients
+# ----------------------------
 supabase = sb_router.supabase_client
 supabase_service = sb_router.supabase_service_client
 
 # ----------------------------
-# Simple Health Check Function
+# Initialize FastAPI app
+# ----------------------------
+app = FastAPI(title="Luviio Backend", version="1.0")
+
+# ----------------------------
+# Health Check Function
 # ----------------------------
 def health_check():
     """
@@ -26,7 +33,15 @@ def health_check():
         return False, f"Supabase connection failed ❌: {e}"
 
 # ----------------------------
-# Run health check automatically
+# FastAPI Health Endpoint
+# ----------------------------
+@app.get("/health")
+def health():
+    status, message = health_check()
+    return {"status": status, "message": message}
+
+# ----------------------------
+# Optional: Run health check immediately (for local dev/demo)
 # ----------------------------
 status, message = health_check()
 print(message)
