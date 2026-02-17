@@ -11,7 +11,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
 # 4. Now import the app
-from app.main import app
+from .main import app
 
 # This is required for Vercel to find the entry point
 # No other code is needed here.
