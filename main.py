@@ -2,19 +2,23 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 import os
 
-# Absolute imports are preferred in production packages
-from app.routers import public 
+# Import router as requested
+from routers.public import router as public_router
 
 app = FastAPI(title="Luviio Platform", docs_url=None, redoc_url=None)
 
-# Get the base directory of the app
+# Base directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Mount Static Files (CSS/JS)
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+# Ensure static folder exists
+static_path = os.path.join(BASE_DIR, "static")
+os.makedirs(static_path, exist_ok=True)
 
-# Include Routers
-app.include_router(public.router)
+# Mount static files
+app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+# Include public router
+app.include_router(public_router)
 
 @app.on_event("startup")
 async def startup_event():
