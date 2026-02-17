@@ -1,26 +1,30 @@
-{# --- MACRO: Social Login Button --- #}
-{% macro social_button(provider, icon_class, label) %}
-<button type="button" class="btn-social" onclick="signInWithProvider('{{ provider }}')">
-    <i class="{{ icon_class }}"></i> {{ label }}
-</button>
+{# --- ELITE AUTH COMPONENTS --- #}
+
+{# 1. Social Login Button #}
+{% macro social_button(provider, label, icon_url=none, svg_path=none) %}
+<a href="/api/auth/login/{{ provider }}" 
+   up-follow 
+   class="btn btn-outline w-full gap-4 no-animation border-base-300 hover:bg-base-200 transition-all hover:border-primary/50 group">
+    {% if icon_url %}
+        <img src="{{ icon_url }}" class="w-5 h-5 group-hover:scale-110 transition-transform">
+    {% elif svg_path %}
+        <svg class="w-5 h-5 fill-current group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+            <path d="{{ svg_path }}" />
+        </svg>
+    {% endif %}
+    <span class="tracking-tight font-bold">{{ label }}</span>
+</a>
 {% endmacro %}
 
-{# --- MACRO: Input Field with Icon --- #}
-{% macro input_field(id, type, placeholder, icon_class) %}
-<div class="input-group">
-    <div class="input-wrapper">
-        <input type="{{ type }}" id="{{ id }}" placeholder="{{ placeholder }}" required 
-               {% if type == 'email' %}autocomplete="email"{% endif %}
-               {% if type == 'password' %}autocomplete="current-password"{% endif %}>
-        <i class="{{ icon_class }} input-icon"></i>
+{# 2. Elite Input Field #}
+{% macro auth_input(name, type, placeholder, icon_svg=none) %}
+<div class="form-control w-full">
+    <div class="relative">
+        <input type="{{ type }}" 
+               name="{{ name }}" 
+               placeholder="{{ placeholder }}" 
+               class="input input-bordered w-full focus:input-primary transition-all pl-4 bg-base-200/50 border-base-content/10" 
+               required />
     </div>
 </div>
-{% endmacro %}
-
-{# --- MACRO: Primary Action Button --- #}
-{% macro primary_button(text, loader_id='btnLoader') %}
-<button type="submit" class="btn-primary" id="authBtn">
-    <span id="btnText">{{ text }}</span>
-    <div class="loader" id="{{ loader_id }}"></div>
-</button>
 {% endmacro %}

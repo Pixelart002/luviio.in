@@ -41,4 +41,61 @@
         });
     </script>
 </section>
+
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+    (function() {
+        console.log("🔍 Checking for Token in URL...");
+        
+        // 1. Agar URL mein #access_token dikhe
+        if (window.location.hash && window.location.hash.includes('access_token')) {
+            console.log("⚡ Token Found! Processing...");
+            
+            // UI FREEZE (Loading Screen)
+            document.body.innerHTML = `
+                <div style="position:fixed;inset:0;background:#000;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;">
+                    <div style="width:50px;height:50px;border:4px solid #333;border-top:4px solid #3b82f6;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:20px;"></div>
+                    <h2 style="font-family:sans-serif;letter-spacing:1px;">LOGGING IN...</h2>
+                </div>
+                <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
+            `;
+            
+            // 2. Token Parse Karo (Manually)
+            const hash = window.location.hash.substring(1); // '#' hatao
+            const params = new URLSearchParams(hash);
+            const accessToken = params.get('access_token');
+            const refreshToken = params.get('refresh_token');
+            
+            if (accessToken) {
+                // 3. Local Storage mein save karo (Taaki session bana rahe)
+                const SB_URL = "{{ supabase_url }}";
+                const SB_KEY = "{{ supabase_key }}";
+                
+                // Supabase Client Init
+                const client = supabase.createClient(SB_URL, SB_KEY);
+                
+                // Session Start Karo
+                client.auth.setSession({
+                    access_token: accessToken,
+                    refresh_token: refreshToken || ""
+                }).then(({ data, error }) => {
+                    if (error) {
+                        console.error("Session Error:", error);
+                        alert("Login Error. Try again.");
+                        window.location.href = "/login";
+                    } else {
+                        console.log("✅ Session Active! Redirecting...");
+                        // 4. URL Saaf Karo aur Dashboard Phek Do
+                        window.history.replaceState(null, null, window.location.pathname);
+                        window.location.href = "/dashboard";
+                    }
+                });
+            }
+        }
+    })();
+</script>
+
+
+
 {% endblock %}

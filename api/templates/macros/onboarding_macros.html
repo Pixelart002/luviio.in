@@ -1,0 +1,44 @@
+{# --- ELITE ONBOARDING WIZARD MACROS --- #}
+
+{# 1. Step Card Wrapper: Handles the structure, progress, and animations #}
+{% macro step_card(step_number, title, description, progress_val, active=False) %}
+<div id="step{{ step_number }}" class="step-card {% if active %}active{% endif %}">
+    <div class="progress-track">
+        <div class="progress-fill" style="width: {{ progress_val }}%"></div>
+    </div>
+
+    <div class="mb-8">
+        <h2 class="text-3xl font-black tracking-tight mb-2 italic uppercase text-blue-500">{{ title }}</h2>
+        <p class="text-neutral-500 text-sm font-medium leading-relaxed">{{ description }}</p>
+    </div>
+
+    <div class="step-content space-y-6">
+        {{ caller() }}
+    </div>
+</div>
+{% endmacro %}
+
+{# 2. Step Actions: Handles navigation buttons (Next, Back, Submit) #}
+{% macro step_actions(step_number, has_back=True, is_last=False, next_onclick=none) %}
+<div class="flex gap-3 mt-10">
+    {% if has_back %}
+        <button type="button" 
+                onclick="prevStep({{ step_number - 1 }})" 
+                class="flex-1 py-4 rounded-xl border border-white/10 font-bold text-sm hover:bg-white/5 transition-all text-neutral-400">
+            Back
+        </button>
+    {% endif %}
+    
+    <button type="button" 
+            id="btn{{ step_number }}" 
+            {% if step_number == 1 or step_number == 3 or step_number == 4 or step_number == 5 %}disabled{% endif %}
+            onclick="{% if next_onclick %}{{ next_onclick }}{% else %}nextStep({{ step_number + 1 }}){% endif %}" 
+            class="flex-[2] py-4 rounded-xl bg-white text-black font-black text-sm hover:bg-neutral-200 transition-all shadow-xl shadow-blue-500/10">
+        {% if is_last %}
+            Complete Setup 🚀
+        {% else %}
+            Continue
+        {% endif %}
+    </button>
+</div>
+{% endmacro %}

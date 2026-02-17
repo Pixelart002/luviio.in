@@ -4,3 +4,9 @@ jinja2
 python-multipart
 supabase
 resend
+httpx
+python-dotenv
+python-jose[cryptography]
+passlib[bcrypt]
+itsdangerous==2.1.2
+email-validator>=2.0.0

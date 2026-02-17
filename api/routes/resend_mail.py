@@ -1,93 +1,82 @@
-from fastapi import APIRouter, Request, HTTPException, Header, status
+from fastapi import APIRouter, Request, HTTPException
 import resend
 import os
+import logging
 
+# --- LOGGING SETUP ---
+# Wahi logger use kar rahe hain jo main.py mein define kiya tha
+logger = logging.getLogger("LUVIIO-APP")
 router = APIRouter()
 
 # --- CONFIGURATION ---
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
-# 🔒 New: Admin Secret for Security (Ise Vercel Env Variables mein add karna hoga)
-ADMIN_SECRET = os.environ.get("ADMIN_SECRET") 
 
 if not RESEND_API_KEY:
-    print("⚠️ WARNING: RESEND_API_KEY is missing")
+    logger.error("❌ RESEND_API_KEY is missing in environment variables!")
 else:
     resend.api_key = RESEND_API_KEY
+    logger.info("✅ Resend API initialized successfully")
 
-# --- SECURE ADMIN ROUTE ---
-# URL: https://admin.luviio.in/resend-mail
+# --- OPEN EMAIL ROUTE ---
+# URL: /api/resend-mail (Ab koi bhi hit kar sakta hai)
 @router.post("/resend-mail")
-async def send_email_securely(
-    request: Request,
-    # Header se secret key check karein
-    x_admin_secret: str = Header(None, alias="x-admin-secret")
-):
-    # 🔒 LAYER 1: HOST CHECK (Subdomain Restriction)
-    # Check karein ki request 'admin.luviio.in' se hi aa rahi hai
-    host = request.headers.get("host", "")
-    if "admin.luviio.in" not in host:
-        # Agar koi 'www' ya kisi aur domain se try kare, toh 404 dikhao
-        raise HTTPException(status_code=404, detail="Endpoint not found on this domain")
-
-    # 🔒 LAYER 2: SECURITY CHECK (Block Everyone Else)
-    # Agar Secret Key match nahi hui, toh 401 Unauthorized
-    if not ADMIN_SECRET or x_admin_secret != ADMIN_SECRET:
-        print(f"🛑 Unauthorized Access Attempt from {request.client.host}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Access Denied: You are not authorized."
-        )
-
+async def send_email_anywhere(request: Request):
+    logger.info(f"📩 New Email Request received from IP: {request.client.host}")
+    
     try:
-        # 1. Payload Parse
+        # 1. Payload Parse aur Log
         payload = await request.json()
+        logger.info(f"📦 Payload received: {payload}")
         
-        # NOTE: Agar ye Admin Panel se aa raha hai, toh payload structure simple ho sakta hai
-        # Agar Supabase Webhook hai toh 'record' check karein, nahi toh direct 'email'
+        # 2. Email Extract karne ki logic
+        # Handle karta hai: Direct JSON {"email": "..."} OR Supabase Webhook {"record": {"email": "..."}}
         if 'record' in payload:
             user_email = payload.get('record', {}).get('email')
         else:
             user_email = payload.get('email')
 
         if not user_email: 
+            logger.warning("⚠️ Request ignored: No email found in payload")
             return {"status": "skipped", "message": "No email provided"}
 
-        print(f"🚀 Sending Admin Triggered Email to: {user_email}")
+        logger.info(f"🚀 Preparing to send Waitlist Email to: {user_email}")
 
-        # 2. EMAIL CONTENT
-        html_content = """
+        # 3. Email Content (Strictly Professional)
+        html_content = f"""
         <!DOCTYPE html>
-        <html lang="en">
+        <html>
         <head>
-            <meta charset="UTF-8">
             <style>
-                body { font-family: sans-serif; background: #000; color: #fff; padding: 20px; }
-                .box { border: 1px solid #333; padding: 30px; border-radius: 10px; max-width: 500px; margin: auto; }
-                .btn { display: inline-block; background: #fff; color: #000; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-top: 20px; font-weight: bold; }
+                body {{ font-family: sans-serif; background: #000; color: #fff; padding: 20px; text-align: center; }}
+                .box {{ border: 1px solid #333; padding: 40px; border-radius: 20px; max-width: 500px; margin: auto; }}
+                .btn {{ display: inline-block; background: #fff; color: #000; padding: 12px 24px; text-decoration: none; border-radius: 50px; font-weight: bold; margin-top: 20px; }}
             </style>
         </head>
         <body>
             <div class="box">
-                <h2>LUVIIO<span style="color: #3b82f6;">.</span></h2>
-                <p>Hi there,</p>
-                <p>You have successfully secured your spot on the exclusive waitlist.</p>
-                <a href="https://x.com/LUVIIO_in" class="btn">Follow Updates</a>
+                <h1 style="letter-spacing: -1px;">LUVIIO<span style="color: #3b82f6;">.</span></h1>
+                <p style="color: #888;">Hi there,</p>
+                <p style="font-size: 18px;">You’re officially on the exclusive waitlist for the future of markets.</p>
+                <a href="https://x.com/LUVIIO_in" class="btn">Join the Community</a>
             </div>
         </body>
         </html>
         """
 
-        # 3. Send Email
+        # 4. Actual Send
         params = {
             "from": "Luviio Team <hi@luviio.in>",
             "to": [user_email],
-            "subject": "You’re in. Welcome to the future of listings.",
+            "subject": "You’re in. Welcome to LUVIIO.",
             "html": html_content,
         }
 
-        email = resend.Emails.send(params)
-        return {"status": "success", "email_id": email}
+        email_response = resend.Emails.send(params)
+        logger.info(f"✅ Success! Email sent to {user_email}. Resend ID: {email_response}")
+        
+        return {"status": "success", "email_id": email_response}
 
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"❌ CRITICAL ERROR in resend_mail: {str(e)}")
+        # Internal error ko bhi log kar rahe hain taaki debugging makkhan rahe
+        raise HTTPException(status_code=500, detail="Internal Server Error - Check Logs")
