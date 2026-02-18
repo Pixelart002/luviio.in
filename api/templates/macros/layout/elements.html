@@ -1,0 +1,26 @@
+{% macro render_main(id="main-content", class="") %}
+<main id="{{ id }}" up-main class="min-h-screen relative overflow-hidden {{ class }}">
+  {{ caller() }}
+</main>
+{% endmacro %}
+
+{% macro render_section(id="", class="") %}
+<section {% if id %}id="{{ id }}" {% endif %} class="relative py-16 md:py-24 px-6 {{ class }}">
+  <div class="max-w-7xl mx-auto">
+    {{ caller() }}
+  </div>
+</section>
+{% endmacro %}
+
+{% macro render_article(title="", class="") %}
+<article class="prose prose-slate max-w-none {{ class }}">
+  {% if title %}<h2 class="text-3xl font-bold mb-6 text-slate-900">{{ title }}</h2>{% endif %}
+  {{ caller() }}
+</article>
+{% endmacro %}
+
+{% macro render_aside(class="") %}
+<aside class="hidden lg:block w-80 shrink-0 p-6 bg-slate-50 border-l border-slate-200 {{ class }}">
+  {{ caller() }}
+</aside>
+{% endmacro %}

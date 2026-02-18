@@ -1,0 +1,14 @@
+{# High-performance Navigation Macro with Unpoly support #}
+{% macro render(links=[]) %}
+<nav class="flex items-center gap-8">
+    {% for link in links %}
+    <a href="{{ link.url }}" 
+       up-follow 
+       up-preload
+       class="text-[15px] font-semibold text-slate-500 hover:text-indigo-600 transition-all duration-300 relative group">
+       {{ link.text }}
+       <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-indigo-600 transition-all duration-300 group-hover:w-full"></span>
+    </a>
+    {% endfor %}
+</nav>
+{% endmacro %}

@@ -1,45 +1,64 @@
-{% import "macros/layout.html" as layout %}
+{% import "macros/layout/body.html" as Body %}
+{% import "macros/layout/header.html" as Header %}
+{% import "macros/layout/nav.html" as Nav %}
+{% import "macros/layout/elements.html" as Layout %}
+{% import "macros/layout/footer.html" as Footer %}
+
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Luviio | Advanced Dashboard{% endblock %}</title>
+    <title>{% block title %}Luviio | Beast Foundation{% endblock %}</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
     <script src="https://unpkg.com/unpoly@3.0.0-beta.5/unpoly.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/unpoly@3.0.0-beta.5/unpoly.min.css">
-    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
-
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        [up-main] { min-height: 80vh; }
-    </style>
 </head>
-<body class="bg-slate-50 text-slate-900 antialiased">
 
-    {% call layout.render_header() %}
-        {% set nav_links = [
+{# Hum Body Macro call kar rahe hain jo pure content ko wrap karega #}
+{% call Body.render(class="min-h-screen flex flex-col") %}
+    
+    {# 1. Header Section #}
+    {% call Header.render(site_name="Luviio.in") %}
+        {{ Nav.render(links=[
             {'url': '/', 'text': 'Home'},
-            {'url': '/features', 'text': 'Features'},
-            {'url': '/docs', 'text': 'Documentation'}
-        ] %}
-        {{ layout.render_nav(nav_links) }}
+            {'url': '/features', 'text': 'Features'}
+        ]) }}
     {% endcall %}
 
-    <main up-main>
+    {# 2. Main Content (Dynamic via Blocks) #}
+    {% call Layout.render_main(class="flex-grow") %}
         {% block content %}{% endblock %}
-    </main>
+    {% endcall %}
 
-    {{ layout.render_footer() }}
+    {# 3. Global Footer #}
+    {{ Footer.render() }}
 
     <script>
-        // Global GSAP Entry Animation
-        gsap.from("main", { opacity: 0, y: 20, duration: 0.8, ease: "power2.out" });
+        // Human-Readable Initialization Logic
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("System Initialized: Luviio Foundation");
+            
+            // Initial Page Load Animation
+            gsap.from("[up-main]", {
+                opacity: 0,
+                y: 15,
+                duration: 1,
+                ease: "power3.out"
+            });
+        });
+
+        // Unpoly Fragment Refresh Animation
+        up.on('up:fragment:inserted', (event) => {
+            gsap.from(event.fragment, {
+                opacity: 0,
+                scale: 0.99,
+                duration: 0.4,
+                ease: "circ.out"
+            });
+        });
     </script>
-</body>
+{% endcall %}
 </html>
