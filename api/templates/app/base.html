@@ -1,8 +1,7 @@
 {# 
-    Master Base Template - Luviio Enterprise Foundation
-    Hierarchy: Macros -> Core Skeleton -> Scripts
+   Documentation: Master Base File 
+   Workflow: Imports Macros -> Wraps Body -> Inject Blocks
 #}
-
 {% import "macros/layout/body.html" as Body %}
 {% import "macros/layout/header.html" as Header %}
 {% import "macros/layout/nav.html" as Nav %}
@@ -14,86 +13,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>{% block title %}Luviio | Advanced System{% endblock %}</title>
     
-    <title>{% block title %}Luviio | Beast Foundation{% endblock %}</title>
-    
-    {# Production Grade Assets #}
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/unpoly@3.0.0-beta.5/unpoly.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/unpoly@3.0.0-beta.5/unpoly.min.css">
-    
-    {# Animation Engine #}
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
-
-    {# Critical CSS for Smooth Transitions #}
-    <style>
-        [up-main] { min-height: 85vh; }
-        .up-progress-bar { background: #4f46e5; height: 3px; }
-        /* Prevent GSAP flash of unstyled content */
-        .gsap-reveal { opacity: 0; }
-    </style>
 </head>
 
-{# Body Macro wraps the entire visible content area #}
-{% call Body.render(class="min-h-screen flex flex-col bg-[#fafafa] antialiased selection:bg-indigo-100") %}
+{% call Body.render() %}
     
-    {# Header Section with Embedded Nav #}
+    {# Global Header using Macros #}
     {% call Header.render(site_name="Luviio.in") %}
         {{ Nav.render(links=[
             {'url': '/', 'text': 'Home'},
-            {'url': '/features', 'text': 'Features'},
             {'url': '/docs', 'text': 'Documentation'}
         ]) }}
     {% endcall %}
 
-    {# Semantic Main Wrapper - Managed by Unpoly #}
-    {% call Layout.render_main(class="flex-grow gsap-reveal") %}
+    {# Main Content Wrapper with Unpoly Fragment #}
+    {% call Layout.render_main() %}
         {% block content %}{% endblock %}
     {% endcall %}
 
-    {# Global Footer #}
     {{ Footer.render() }}
 
-    {# System Scripts #}
     <script>
-        // Senior Dev Note: Initialize animations after DOM is ready
+        // Human-Readable GSAP Logic
         document.addEventListener('DOMContentLoaded', () => {
-            console.info("Luviio: Foundation initialized. Running core checks...");
-            
-            // Register GSAP Plugins
-            gsap.registerPlugin(ScrollTrigger);
-
-            // Entry Animation: Standard Human Motion
-            gsap.to(".gsap-reveal", {
-                opacity: 1,
-                y: 0,
-                duration: 0.8,
-                delay: 0.2,
-                ease: "expo.out"
-            });
+            gsap.from("[up-main]", { opacity: 0, y: 10, duration: 1, ease: "power4.out" });
         });
 
-        // SPA Navigation Logic (Unpoly + GSAP)
+        // Unpoly logic for smooth navigation
         up.on('up:fragment:inserted', (event) => {
-            // Re-trigger animations on new content
-            gsap.from(event.fragment, {
-                opacity: 0,
-                y: 10,
-                duration: 0.6,
-                ease: "power2.out",
-                clearProps: "all"
-            });
-            
-            console.log("Fragment updated: ", event.request.url);
+            gsap.from(event.fragment, { opacity: 0, scale: 0.98, duration: 0.5 });
         });
-
-        // Error Catching for Assets
-        window.onerror = function(msg, url, line) {
-            console.error(`System Error: ${msg} at ${url}:${line}`);
-            return false;
-        };
     </script>
 {% endcall %}
 </html>

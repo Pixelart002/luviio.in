@@ -1,20 +1,5 @@
-{# 
-   Workflow: Global Body Wrapper
-   Purpose: Handles dynamic classes, accessibility attributes, and Unpoly state.
-#}
-{% macro render(class="bg-slate-50", theme="light") %}
-<body 
-    class="{{ class }} text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-700 transition-colors duration-300"
-    data-theme="{{ theme }}"
-    up-container
->
-    {# 
-       Hum caller() use karenge taaki base.html ka saara 
-       content iske andar wrap ho sake.
-    #}
+{% macro render(class="bg-slate-50") %}
+<body class="{{ class }} text-slate-900 antialiased selection:bg-indigo-100">
     {{ caller() }}
-
-    {# Global Overlay for Unpoly Loading (Beast Mode UI) #}
-    <div class="up-progress-bar bg-indigo-600 fixed top-0 left-0 h-1 z-[999] transition-all"></div>
 </body>
 {% endmacro %}

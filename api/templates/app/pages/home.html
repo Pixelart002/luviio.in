@@ -1,54 +1,16 @@
 {% extends "app/base.html" %}
-{% import "macros/layout.html" as layout %}
-
-{% block title %}Luviio | Advanced Ecosystem{% endblock %}
+{# Hum yahan macros ko phir se import karenge agar page-specific logic chahiye #}
+{% import "macros/layout/elements.html" as Layout %}
 
 {% block content %}
-{# Hero Section using our Layout Macro #}
-{% call layout.render_section(id="hero", custom_class="min-h-screen flex items-center") %}
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-  
-  <div class="hero-content space-y-8">
-    <h1 class="h1-beast opacity-0 translate-y-10">
-      Build Faster. <br>
-      <span class="text-indigo-600">Think Deeper.</span>
-    </h1>
-    <p class="text-xl text-slate-600 max-w-lg opacity-0 translate-y-5">
-      Humne FastAPI, Jinja 3.1 aur Unpoly ko milakar ek aisa Beast foundation banaya hai jo enterprise standards ko break karta hai.
-    </p>
-    <div class="flex space-x-4 opacity-0">
-      <button class="btn-primary">Get Started</button>
-      <button class="px-6 py-3 text-slate-600 font-medium hover:text-indigo-600 transition-colors">
-        Learn More &rarr;
-      </button>
-    </div>
-  </div>
-  
-  <div class="hero-visual opacity-0 scale-95">
-    <div class="glass-card p-8 aspect-square flex items-center justify-center text-indigo-600">
-      <svg class="w-48 h-48 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
-      </svg>
-    </div>
-  </div>
-  
+{% call Layout.render_section() %}
+<div class="text-center py-20">
+  <h1 class="text-6xl font-black tracking-tight text-slate-900 mb-6">
+    Beast Mode <span class="text-indigo-600">Activated.</span>
+  </h1>
+  <p class="text-lg text-slate-600 max-w-2xl mx-auto">
+    Clean code, modular macros, and enterprise hierarchy are now in place.
+  </p>
 </div>
 {% endcall %}
-{% endblock %}
-
-{% block extra_scripts %}
-<script>
-  // GSAP Timeline for High-End Sequencing
-  document.addEventListener("DOMContentLoaded", () => {
-    const tl = gsap.timeline({ defaults: { ease: "power4.out" } });
-    
-    tl.to(".h1-beast", { opacity: 1, y: 0, duration: 1.2 })
-      .to(".hero-content p", { opacity: 1, y: 0, duration: 0.8 }, "-=0.8")
-      .to(".hero-content div", { opacity: 1, duration: 0.5 }, "-=0.4")
-      .to(".hero-visual", { opacity: 1, scale: 1, duration: 1.5, ease: "elastic.out(1, 0.75)" }, "-=1");
-    
-    // Advanced ScrollTrigger (Optional logic for future sections)
-    gsap.registerPlugin(ScrollTrigger);
-  });
-</script>
 {% endblock %}
