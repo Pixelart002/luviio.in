@@ -1,304 +1,119 @@
-{% extends "app/base.html" %}
+{# 1. Side Navigation Macro (Responsive Drawer) #}
+{% macro render_sidebar(user=none) %}
+<div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-30 hidden transition-opacity opacity-0 md:hidden"></div>
 
-{% block content %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-
-<style>
-    :root {
-        --bg-color: #050505;
-        --text-dim: #a1a1aa;
-        --accent: #fff;
-    }
-
-    body {
-        background-color: var(--bg-color);
-        overflow-x: hidden; /* Prevent scrollbars during animation */
-    }
-
-    .waitlist-wrapper {
-        font-family: 'Inter', sans-serif;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        text-align: center;
-        width: 100%;
-        min-height: 100dvh;
-        position: relative;
-        z-index: 10;
-    }
-
-    /* --- 1. AMBIENT BACKGROUND GLOW --- */
-    .ambient-glow {
-        position: absolute;
-        width: 600px;
-        height: 600px;
-        background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, rgba(0,0,0,0) 70%);
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        z-index: -1;
-        pointer-events: none;
-        opacity: 0; /* Hidden initially, revealed by GSAP */
-    }
-
-    /* --- 2. TYPOGRAPHY & UI --- */
-    .pill-container { margin-bottom: 2rem; overflow: hidden; }
-    .pill { 
-        border: 1px solid rgba(255,255,255,0.1); 
-        background: rgba(255,255,255,0.03); 
-        padding: 8px 20px; 
-        border-radius: 100px; 
-        font-size: 0.75rem; 
-        font-weight: 600;
-        color: var(--text-dim); 
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        display: inline-block;
-        /* Initial state for GSAP */
-        opacity: 0;
-        transform: translateY(20px);
-    }
-
-    .hero-title { 
-        font-size: clamp(2.5rem, 6vw, 5rem); 
-        font-weight: 800; 
-        line-height: 1.1; 
-        letter-spacing: -0.04em;
-        background: linear-gradient(180deg, #fff 0%, #71717a 100%); 
-        -webkit-background-clip: text; 
-        -webkit-text-fill-color: transparent; 
-        margin-bottom: 1.5rem;
-        /* Initial state */
-        opacity: 0;
-        transform: translateY(30px) scale(0.95);
-        filter: blur(10px); /* The "Focus" Effect */
-    }
-
-    .hero-desc { 
-        font-size: clamp(1rem, 1.5vw, 1.125rem); 
-        color: var(--text-dim); 
-        max-width: 500px; 
-        line-height: 1.6; 
-        margin-bottom: 3rem;
-        opacity: 0;
-        transform: translateY(20px);
-    }
-
-    /* --- 3. MAGNETIC FORM --- */
-    .form-container { 
-        width: 100%; 
-        max-width: 480px; 
-        position: relative;
-        opacity: 0;
-    }
-
-    .input-wrapper { 
-        background: rgba(255,255,255,0.03); 
-        border: 1px solid rgba(255,255,255,0.08); 
-        border-radius: 100px; 
-        padding: 6px; 
-        display: flex; 
-        align-items: center;
-        gap: 8px;
-        transition: border-color 0.3s;
-    }
-    .input-wrapper:focus-within { border-color: rgba(255,255,255,0.3); }
-
-    .custom-input { 
-        flex: 1; 
-        background: transparent; 
-        border: none; 
-        outline: none; 
-        padding: 16px 24px; 
-        color: white; 
-        font-size: 1rem; 
-    }
-
-    .submit-btn { 
-        background: white; 
-        color: black; 
-        border: none; 
-        border-radius: 100px; 
-        padding: 0 32px; 
-        height: 56px; 
-        font-weight: 700; 
-        cursor: pointer; 
-        display: flex; 
-        align-items: center; 
-        justify-content: center;
-        /* Hardware acceleration for smooth movement */
-        will-change: transform; 
-    }
+<aside id="sidebar" class="w-64 border-r border-white/10 bg-[#0A0A0A] fixed left-0 top-0 h-full z-40 transition-transform duration-300 ease-in-out transform -translate-x-full md:translate-x-0 flex flex-col">
+    <div class="p-6 border-b border-white/10 flex justify-between items-start">
+        <div>
+            <h1 class="text-xl font-bold tracking-widest text-white">LUVIIO</h1>
+            <span class="text-[10px] text-blue-400 uppercase tracking-widest font-black bg-blue-500/10 px-2 py-1 rounded-md mt-2 inline-block">
+                {{ user.role or 'Member' if user else 'Guest' }}
+            </span>
+        </div>
+        <button onclick="toggleSidebar()" class="md:hidden text-neutral-400 hover:text-white p-1">
+            <i class="ri-close-line text-2xl"></i>
+        </button>
+    </div>
     
-    /* --- TOAST --- */
-    .toast {
-        position: fixed; bottom: 40px; left: 50%; 
-        transform: translateX(-50%) translateY(20px);
-        background: #111; border: 1px solid #333;
-        padding: 12px 24px; border-radius: 50px; color: #fff;
-        opacity: 0; pointer-events: none; transition: 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-        display: flex; align-items: center; gap: 10px; font-size: 0.9rem;
-    }
-    .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
-</style>
-
-<div class="waitlist-wrapper">
-    <div class="ambient-glow"></div>
-
-    <div class="hero-content flex flex-col items-center">
+    <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
+        <p class="px-4 text-[10px] font-black text-neutral-600 uppercase tracking-[0.2em] mb-4 mt-2">Core Menu</p>
         
-        <div class="pill-container">
-            <div class="pill">Verified Access • 2026</div>
+        <a href="/dashboard" class="flex items-center gap-3 px-4 py-3 bg-white/5 text-white rounded-xl border border-white/10 transition-all hover:bg-white/10">
+            <i class="ri-dashboard-3-line text-lg"></i>
+            <span class="font-bold text-sm">Dashboard</span>
+        </a>
+        
+        {% if user and user.role == 'seller' %}
+        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-500 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+            <i class="ri-store-2-line text-lg"></i>
+            <span class="font-bold text-sm">My Store</span>
+        </a>
+        {% endif %}
+        
+        <a href="#" class="flex items-center gap-3 px-4 py-3 text-neutral-500 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+            <i class="ri-settings-5-line text-lg"></i>
+            <span class="font-bold text-sm">Settings</span>
+        </a>
+    </nav>
+    
+    {# BOTTOM USER PROFILE #}
+    <div class="p-4 border-t border-white/10 bg-white/[0.02]">
+        <div class="flex items-center gap-3 mb-4 p-2">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center font-black text-white shadow-lg shadow-blue-500/20 shrink-0">
+                {% if user %}
+                {{ user.full_name[0] | upper if user.full_name else user.email[0] | upper }}
+                {% else %}
+                ?
+                {% endif %}
+            </div>
+            <div class="overflow-hidden">
+                <p class="text-sm font-black text-white truncate">{{ user.full_name if user else 'Syncing...' }}</p>
+                <p class="text-[10px] text-neutral-600 truncate font-bold uppercase tracking-tighter">{{ user.email if user else '...' }}</p>
+            </div>
         </div>
-        
-        <h1 class="hero-title">
-            The Operating System <br class="hidden sm:block"> for Listings.
-        </h1>
-        
-        <p class="hero-desc">
-            Rebuilding marketplace infrastructure from the ground up. <br class="hidden sm:block">
-            Join the API-first future.
-        </p>
-
-        <div class="form-container">
-            <form id="waitlistForm" novalidate>
-                <div class="input-wrapper">
-                    <input type="email" id="email" class="custom-input" 
-                           placeholder="Enter your email" required autocomplete="off">
-                    
-                    <button type="submit" id="submitBtn" class="submit-btn">
-                        <span class="btn-text">Join Waitlist</span>
-                    </button>
-                </div>
-            </form>
-        </div>
+        <a href="/api/auth/logout" class="flex items-center justify-center gap-2 w-full py-3 bg-red-500/5 text-red-500 rounded-xl hover:bg-red-500/10 transition-all border border-red-500/10 text-[10px] font-black uppercase tracking-widest">
+            <i class="ri-logout-circle-line text-sm"></i> Terminate Session
+        </a>
     </div>
-
-    <div id="toast" class="toast">
-        <span id="toastIcon">✨</span>
-        <span id="toastMsg">Success</span>
-    </div>
-</div>
+</aside>
 
 <script>
-    document.addEventListener("DOMContentLoaded", function() {
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
         
-        // --- 1. THE "PRECISION ASSEMBLE" ANIMATION (GSAP) ---
-        const tl = gsap.timeline({ defaults: { ease: "power4.out" } });
-
-        // Step 1: Background Glow breaths in
-        tl.to(".ambient-glow", { 
-            opacity: 1, 
-            duration: 2, 
-            scale: 1.2, 
-            ease: "sine.inOut" 
-        });
-
-        // Step 2: Pill drops in with precision
-        tl.to(".pill", { 
-            opacity: 1, 
-            y: 0, 
-            duration: 1 
-        }, "-=1.5");
-
-        // Step 3: Hero Title "Focuses" (Blur + Scale + Fade)
-        tl.to(".hero-title", { 
-            opacity: 1, 
-            y: 0, 
-            scale: 1, 
-            filter: "blur(0px)", 
-            duration: 1.2,
-            stagger: 0.1
-        }, "-=0.8");
-
-        // Step 4: Description & Form slide up cleanly
-        tl.to([".hero-desc", ".form-container"], { 
-            opacity: 1, 
-            y: 0, 
-            duration: 1, 
-            stagger: 0.1 
-        }, "-=0.9");
-
-        // --- 2. MAGNETIC BUTTON EFFECT ---
-        // Makes the button feel heavy and follow the cursor slightly
-        const btn = document.querySelector('.submit-btn');
-        
-        if (btn) {
-            btn.addEventListener('mousemove', (e) => {
-                const rect = btn.getBoundingClientRect();
-                const x = e.clientX - rect.left - rect.width / 2;
-                const y = e.clientY - rect.top - rect.height / 2;
-                
-                // Move button slightly towards cursor
-                gsap.to(btn, {
-                    x: x * 0.2, // Strength of magnetism
-                    y: y * 0.2,
-                    duration: 0.3,
-                    ease: "power2.out"
-                });
-            });
-
-            btn.addEventListener('mouseleave', () => {
-                // Snap back to center
-                gsap.to(btn, { x: 0, y: 0, duration: 0.6, ease: "elastic.out(1, 0.5)" });
-            });
+        if (sidebar.classList.contains('-translate-x-full')) {
+            // Open
+            sidebar.classList.remove('-translate-x-full');
+            overlay.classList.remove('hidden');
+            setTimeout(() => overlay.classList.remove('opacity-0'), 10);
+        } else {
+            // Close
+            sidebar.classList.add('-translate-x-full');
+            overlay.classList.add('opacity-0');
+            setTimeout(() => overlay.classList.add('hidden'), 300);
         }
-
-        // --- 3. FORM LOGIC (Backend Connected) ---
-        const form = document.getElementById('waitlistForm');
-        const toast = document.getElementById('toast');
-        const toastMsg = document.getElementById('toastMsg');
-        const emailInput = document.getElementById('email');
-
-        const showToast = (msg, isError = false) => {
-            toastMsg.innerText = msg;
-            toast.style.borderColor = isError ? '#ef4444' : '#333';
-            toast.classList.add('visible');
-            setTimeout(() => toast.classList.remove('visible'), 4000);
-        };
-
-        if (form) {
-            form.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const email = emailInput.value.trim();
-
-                if (!email || !email.includes('@')) {
-                    showToast("Please enter a valid email.", true);
-                    return;
-                }
-
-                // Animate Button Loading State
-                const originalText = btn.innerText;
-                btn.innerText = "Processing...";
-                gsap.to(btn, { scale: 0.95, duration: 0.2 });
-
-                try {
-                    const res = await fetch('/waitlist', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ email: email })
-                    });
-                    const data = await res.json();
-
-                    if (!res.ok) throw new Error(data.error || "Failed");
-
-                    // Success Animation
-                    showToast(data.message || "Welcome aboard! 🚀");
-                    emailInput.value = "";
-                    btn.innerText = "Joined";
-                    btn.style.background = "#22c55e";
-                    btn.style.color = "white";
-                    gsap.to(btn, { scale: 1, duration: 0.4, ease: "back.out" });
-                    
-                } catch (err) {
-                    console.error(err);
-                    showToast(err.message.includes("already") ? "You're already on the list!" : "Error joining list.", true);
-                    btn.innerText = originalText;
-                    gsap.to(btn, { scale: 1, duration: 0.2 });
-                }
-            });
-        }
-    });
+    }
 </script>
-{% endblock %}
+{% endmacro %}
+
+
+{# 2. Top Header Macro (Responsive with Mobile Toggle) #}
+{% macro render_header(active_page='home', request=none) %}
+<header class="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-black/80 backdrop-blur-2xl">
+    <div class="max-w-7xl mx-auto px-4 md:px-6 h-20 flex items-center justify-between">
+        
+        <div class="flex items-center gap-4">
+            <button onclick="toggleSidebar()" class="md:hidden text-white p-2 rounded-lg hover:bg-white/10">
+                <i class="ri-menu-4-line text-xl"></i>
+            </button>
+            
+            <a href="/" class="flex items-center gap-3 group">
+                <div class="w-9 h-9 bg-white rounded-xl flex items-center justify-center group-hover:scale-95 transition-transform">
+                    <span class="font-black text-xs text-black">L</span>
+                </div>
+                <span class="font-black tracking-[0.3em] text-white text-sm hidden sm:block">LUVIIO</span>
+            </a>
+        </div>
+        
+        <nav class="hidden md:flex items-center gap-10 text-[11px] font-black uppercase tracking-[0.2em] text-neutral-500">
+            <a href="/" class="hover:text-white transition-colors {{ 'text-white' if active_page == 'home' }}">Home</a>
+            <a href="/waitlist" class="hover:text-white transition-colors {{ 'text-white' if active_page == 'waitlist' }}">Waitlist</a>
+            <a href="#" class="hover:text-white transition-colors">Marketplace</a>
+        </nav>
+        
+        <div class="flex items-center gap-4">
+            {% if request and request.cookies.get("access_token") %}
+            <a href="/dashboard" class="text-[10px] md:text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2 bg-white/10 px-3 md:px-4 py-2 rounded-lg border border-white/10 hover:bg-white/20 transition whitespace-nowrap">
+                <span class="hidden sm:inline">Go to</span> Console <i class="ri-arrow-right-up-line"></i>
+            </a>
+            {% else %}
+            <a href="/login" class="hidden sm:block text-[11px] font-black text-white uppercase tracking-widest hover:opacity-70 transition">Sign In</a>
+            <a href="/signup" class="bg-white text-black text-[10px] md:text-[11px] font-black uppercase tracking-widest px-4 md:px-6 py-2 md:py-3 rounded-xl hover:scale-105 active:scale-95 transition-all shadow-xl shadow-white/10 whitespace-nowrap">
+                Join <span class="hidden sm:inline">Network</span>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</header>
+{% endmacro %}
