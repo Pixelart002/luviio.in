@@ -1,14 +1,72 @@
-<!DOCTYPE html>
-<html>
+{% extends "app/base.html" %}
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title></title>
-</head>
+{% block content %}
+{# 1. HERO SECTION (Zomato Style) #}
+{% call s.render_section('hero', 'min-h-[90vh] flex items-center justify-center text-center relative overflow-hidden') %}
+<div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=2070')] bg-cover bg-center opacity-30 scale-110 hero-bg"></div>
+<div class="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-[#050505]"></div>
 
-<body>
+<div class="relative z-10 w-full max-w-4xl px-4">
+  <h1 class="hero-title text-6xl md:text-8xl font-black tracking-tighter mb-6 uppercase">
+    LUVIIO <span class="text-red-600 italic">STORE</span>
+  </h1>
+  <p class="hero-subtitle text-xl text-zinc-300 mb-12 font-medium tracking-wide">
+    Premium taste, delivered with enterprise-grade speed.
+  </p>
   
-</body>
+  {# Search Bar (Zomato Signature) #}
+  <div class="search-container bg-white rounded-xl p-2 flex flex-col md:flex-row gap-2 shadow-2xl">
+    <div class="flex-1 flex items-center px-4 gap-3 border-b md:border-b-0 md:border-r border-zinc-200 py-3">
+      <span class="text-red-500">📍</span>
+      <input type="text" placeholder="Delhi NCR" class="w-full outline-none text-zinc-800 font-medium">
+    </div>
+    <div class="flex-[2] flex items-center px-4 gap-3 py-3">
+      <span class="text-zinc-400">🔍</span>
+      <input type="text" placeholder="Search for restaurant, cuisine or a dish" class="w-full outline-none text-zinc-800">
+    </div>
+  </div>
+</div>
+{% endcall %}
 
-</html>
+{# 2. CATEGORY CARDS (GSAP Stagger) #}
+{% call s.render_section('categories', 'bg-white text-black py-20') %}
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+  {# Card 1 #}
+  <div class="category-card group overflow-hidden rounded-2xl border border-zinc-100 shadow-sm hover:shadow-xl transition-all cursor-pointer">
+    <div class="h-48 bg-[url('https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800')] bg-cover bg-center group-hover:scale-105 transition-transform duration-700"></div>
+    <div class="p-5">
+      <h3 class="text-xl font-bold">Order Online</h3>
+      <p class="text-zinc-500 text-sm">Stay home and order to your doorstep</p>
+    </div>
+  </div>
+  {# Card 2 #}
+  <div class="category-card group overflow-hidden rounded-2xl border border-zinc-100 shadow-sm hover:shadow-xl transition-all cursor-pointer">
+    <div class="h-48 bg-[url('https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800')] bg-cover bg-center group-hover:scale-105 transition-transform duration-700"></div>
+    <div class="p-5">
+      <h3 class="text-xl font-bold">Dining</h3>
+      <p class="text-zinc-500 text-sm">View the city's favourite dining venues</p>
+    </div>
+  </div>
+  {# Card 3 #}
+  <div class="category-card group overflow-hidden rounded-2xl border border-zinc-100 shadow-sm hover:shadow-xl transition-all cursor-pointer">
+    <div class="h-48 bg-[url('https://images.unsplash.com/photo-1493770348161-369560ae357d?w=800')] bg-cover bg-center group-hover:scale-105 transition-transform duration-700"></div>
+    <div class="p-5">
+      <h3 class="text-xl font-bold">Nightlife</h3>
+      <p class="text-zinc-500 text-sm">Explore the city's top nightlife outlets</p>
+    </div>
+  </div>
+</div>
+{% endcall %}
+
+{# 3. DYNAMIC ASIDE CONTENT #}
+{% call ad.render_aside() %}
+<div class="space-y-6">
+  <h4 class="text-white font-bold border-b border-white/10 pb-2">Trending Collections</h4>
+  <ul class="text-xs space-y-4">
+    <li class="hover:text-red-500 cursor-pointer transition-colors">🔥 Top 10 Sushi Places</li>
+    <li class="hover:text-red-500 cursor-pointer transition-colors">🥐 Best Breakfast Spots</li>
+    <li class="hover:text-red-500 cursor-pointer transition-colors">🍷 Romantic Dinners</li>
+  </ul>
+</div>
+{% endcall %}
+{% endblock %}
