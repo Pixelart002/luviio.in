@@ -1,30 +1,28 @@
 {% extends "app/base.html" %}
 {% import "macros/layout/elements.html" as Layout %}
-{# Corrected Path: Pointing to layout folder where files actually exist #}
-{% import "macros/animations/gsap.html" as Motion %}
+{% import "macros/layout/animations/gsap.html" as Motion %}
 
 {% block content %}
-{# Hero Section #}
+{# Responsive Hero #}
 {{ Layout.render_hero(
-        title="Beast Level <span class='text-indigo-600'>Engineering</span>.",
-        subtitle="Fixed the render error. System is now calculating mathematical motion paths.",
+        title="Beast Mode <span class='text-indigo-600'>Responsive</span>.",
+        subtitle="Desktop, Tablet, or Mobile — The system adapts with high-end precision and mathematical scroll triggers.",
         cta_text="/docs"
     ) }}
 
+{# Responsive Section with ScrollReveal #}
 {% call Layout.render_section() %}
 {% set features = [
-            {'title': 'Error Fixed', 'desc': 'Pathing issues resolved via modular directory check.'},
-            {'title': 'Pure Logic', 'desc': 'Using Jinja 3.1 scoping for clean variable passing.'},
-            {'title': 'High Performance', 'desc': 'Optimized for high-end systems and low latency.'}
+            {'title': 'Mobile First', 'desc': 'Adaptive grid layouts designed for every screen size.'},
+            {'title': 'Scroll Trigger', 'desc': 'GSAP powered reveals that react to user interaction.'},
+            {'title': 'Dark Sync', 'desc': 'Themed components that respect your visual preferences.'}
         ] %}
 
-<div class="mb-12">
-    <h2 class="text-3xl font-bold tracking-tight animate-beast">System Capabilities</h2>
-</div>
+<h2 class="text-3xl md:text-5xl font-black tracking-tight text-center dark:text-white">The Luviio Standard</h2>
 
 {{ Layout.render_grid(features) }}
 {% endcall %}
 
-{# Initializing the Motion Engine #}
-{{ Motion.page_entrance(target=".animate-beast") }}
+{# Initializing Advanced Motion #}
+{{ Motion.scroll_animations() }}
 {% endblock %}
