@@ -27,8 +27,6 @@ app = FastAPI(title="LUVIIO Engine", version="4.5.0")
 # ⚠️ NOTE: Agar blank screen aaye, toh is path ko ROOT_DIR / "templates" kar dena
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# --- 🔗 ROUTERS ---
-app.include_router(resend_router, prefix="/api", tags=["Utility"])
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
