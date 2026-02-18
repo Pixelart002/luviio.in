@@ -1,0 +1,30 @@
+{# 
+    Advanced Motion Engine Macro
+    Rules: Delegation of work, clean code, and logical easing.
+#}
+{% macro page_entrance(target=".animate-beast") %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    // Advanced Timeline Logic: Sequential entrance with Power4 easing
+    const tl = gsap.timeline({
+      defaults: { ease: "power4.out", duration: 1.2 }
+    });
+    
+    tl.from("{{ target }}", {
+        y: 40,
+        opacity: 0,
+        stagger: {
+          amount: 0.4, // Mathematical distribution of delay
+          from: "start"
+        },
+        skewY: 2, // Subtle logical shift for premium feel
+        clearProps: "all"
+      })
+      .from("nav", {
+        y: -20,
+        opacity: 0,
+        duration: 0.8
+      }, "-=0.8"); // Overlap for professional flow
+  });
+</script>
+{% endmacro %}

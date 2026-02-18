@@ -1,16 +1,31 @@
 {% extends "app/base.html" %}
-{# Hum yahan macros ko phir se import karenge agar page-specific logic chahiye #}
 {% import "macros/layout/elements.html" as Layout %}
+{% import "macros/animation/gsap.html" as Motion %}
 
 {% block content %}
+{# Beast Level Hero Section #}
+{{ Layout.render_hero(
+        title="Engineering <span class='text-indigo-600'>Pure Logic</span>.",
+        subtitle="Experience high-end system architecture with FastAPI, Jinja 3.1, and GSAP timelines.",
+        cta_text="/docs"
+    ) }}
+
+{# Logical Grid Component #}
 {% call Layout.render_section() %}
-<div class="text-center py-20">
-  <h1 class="text-6xl font-black tracking-tight text-slate-900 mb-6">
-    Beast Mode <span class="text-indigo-600">Activated.</span>
-  </h1>
-  <p class="text-lg text-slate-600 max-w-2xl mx-auto">
-    Clean code, modular macros, and enterprise hierarchy are now in place.
-  </p>
+{% set features = [
+            {'title': 'Modular Macros', 'desc': 'Strict delegation of structural work across semantic files.'},
+            {'title': 'GSAP Timelines', 'desc': 'Advanced mathematical stagger logic for premium motion.'},
+            {'title': 'Unpoly Flow', 'desc': 'Seamless SPA-like fragment updates with clean state management.'}
+        ] %}
+
+<div class="mb-12">
+  <h2 class="text-3xl font-bold tracking-tight animate-beast">System Capabilities</h2>
+  <div class="h-1 w-12 bg-indigo-600 mt-2 animate-beast"></div>
 </div>
+
+{{ Layout.render_grid(features) }}
 {% endcall %}
+
+{# Entrance Animation Trigger #}
+{{ Motion.page_entrance(target=".animate-beast") }}
 {% endblock %}

@@ -61,10 +61,10 @@ async def home_route(request: Request):
         }
 
 # --- Documentation Component ---
-@app.get("/docs")
+@app.get("/docss")
 async def documentation_route(request: Request):
     try:
-        return templates.TemplateResponse("app/pages/docs.html", {"request": request})
+        return templates.TemplateResponse("app/pages/docss.html", {"request": request})
     except Exception as e:
         logger.error(f"Docs fail: {str(e)}")
         return {"error": "Docs not available"}
