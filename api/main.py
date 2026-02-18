@@ -1,38 +1,40 @@
-import sys
 import logging
-from pathlib import Path
 from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, EmailStr
+from fastapi.staticfiles import StaticFiles
+from datetime import datetime
 
-# --- 📂 PATH SETUP ---
-BASE_DIR = Path(__file__).resolve().parent 
-ROOT_DIR = BASE_DIR.parent                  
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
+# Logger Configuration - Enterprise Standard
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# --- 🪵 LOGGING ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
-logger = logging.getLogger("LUVIIO-CORE")
+app = FastAPI(title="Luviio Advanced")
 
-# --- 🚀 APP INIT ---
-app = FastAPI(title="LUVIIO Engine", version="4.5.0")
+# Jinja 3.1 Setup
+templates = Jinja2Templates(directory="api/templates")
 
-# ⚠️ NOTE: Agar blank screen aaye, toh is path ko ROOT_DIR / "templates" kar dena
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+# Injecting global functions (Clean Code)
+templates.env.globals.update(now=datetime.now)
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Performance & Debug Logging"""
+    start_time = datetime.now()
+    response = await call_next(request)
+    duration = datetime.now() - start_time
+    logger.info(f"Path: {request.url.path} | Duration: {duration}")
+    return response
 
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
-
-
-# --- 🌐 PUBLIC ROUTES ---
-
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 async def home(request: Request):
-    return templates.TemplateResponse("app/pages/home.html", {"request": request})
+    try:
+        # Context building
+        context = {
+            "request": request,
+            "status": "online",
+            "features": ["GSAP Animations", "Tailwind 3.4", "Jinja 3.1 Macros"]
+        }
+        return templates.TemplateResponse("app/pages/home.html", context)
+    except Exception as e:
+        logger.error(f"Render Error: {str(e)}")
+        return {"error": "Internal Server Error", "code": 500}

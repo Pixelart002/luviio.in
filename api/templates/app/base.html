@@ -1,46 +1,45 @@
-
+{% import "macros/layout.html" as layout %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title | default('LUVIIO') }}</title>
-    <meta name="csrf-token" content="{{ csrf_token if csrf_token else '' }}">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/unpoly@3.10.1/unpoly.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <title>{% block title %}Luviio | Advanced Dashboard{% endblock %}</title>
     
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://unpkg.com/unpoly@3.0.0-beta.5/unpoly.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/unpoly@3.0.0-beta.5/unpoly.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
 
     <style>
-        body { 
-            background: #050505; 
-            color: white; 
-            font-family: 'Plus Jakarta Sans', sans-serif; 
-            overflow-x: hidden;
-        }
-        /* Grid Background Effect */
-        .bg-grid { 
-            position: fixed; 
-            inset: 0; 
-            background-image: radial-gradient(rgba(255,255,255,0.1) 1px, transparent 0); 
-            background-size: 40px 40px; 
-            opacity: 0.2; 
-            pointer-events: none; 
-            z-index: -1; 
-        }
+        body { font-family: 'Inter', sans-serif; }
+        [up-main] { min-height: 80vh; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col selection:bg-blue-500/30">
-    <div class="bg-grid"></div>
+<body class="bg-slate-50 text-slate-900 antialiased">
 
+    {% call layout.render_header() %}
+        {% set nav_links = [
+            {'url': '/', 'text': 'Home'},
+            {'url': '/features', 'text': 'Features'},
+            {'url': '/docs', 'text': 'Documentation'}
+        ] %}
+        {{ layout.render_nav(nav_links) }}
+    {% endcall %}
 
-    <main id="main-content" class="flex-1 flex flex-col" up-main>
+    <main up-main>
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="py-10 text-center text-[10px] font-black uppercase tracking-[0.4em] text-neutral-700 border-t border-white/5">
-        &copy; 2026 Luviio Technologies &bull; Secure Node
-    </footer>
+    {{ layout.render_footer() }}
+
+    <script>
+        // Global GSAP Entry Animation
+        gsap.from("main", { opacity: 0, y: 20, duration: 0.8, ease: "power2.out" });
+    </script>
 </body>
 </html>
