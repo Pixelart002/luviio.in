@@ -14,7 +14,7 @@ logging.basicConfig(
 logger = logging.getLogger("DATABASE-ENGINE")
 
 # --- 🔑 CONFIGURATION ---
-SB_URL = os.environ.get("SB_URL") or os.environ.get("SUPABASE_URL")
+SB_URL = os.environ.get("SB_URL") or os.environ.get("SB_URL")
 SB_ADMIN_KEY = os.environ.get("SB_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 if not SB_URL or not SB_ADMIN_KEY:
