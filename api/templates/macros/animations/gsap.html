@@ -1,43 +1,18 @@
-{# 
-    Beast Level GSAP & ScrollTrigger Engine 
-    Purpose: Responsive scroll-based animations.
-#}
-
 {% macro scroll_animations() %}
 <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    if (typeof gsap !== 'undefined') {
-      gsap.registerPlugin(ScrollTrigger);
-      
-      // 1. Hero Entrance Timeline
-      const heroTl = gsap.timeline({
-        defaults: { ease: "expo.out", duration: 1.5 }
-      });
-      
-      heroTl.from(".hero-title", { y: 100, opacity: 0, delay: 0.2 })
-        .from(".hero-sub", { y: 30, opacity: 0 }, "-=1.2")
-        .from(".hero-cta", { scale: 0.8, opacity: 0 }, "-=1");
-      
-      // 2. Responsive Scroll Reveal for Grid
-      gsap.utils.toArray('.scroll-reveal').forEach((el, i) => {
-        gsap.from(el, {
-          scrollTrigger: {
-            trigger: el,
-            start: "top 85%",
-            toggleActions: "play none none none"
-          },
-          y: 50,
-          opacity: 0,
-          duration: 1,
-          delay: i * 0.1,
-          ease: "power3.out"
-        });
-      });
-      
-      console.log("GSAP: Scroll animations connected.");
-    } else {
-      console.error("GSAP Error: Library not found in search path.");
-    }
-  });
+    document.addEventListener('DOMContentLoaded', () => {
+        if (typeof gsap !== 'undefined') {
+            gsap.registerPlugin(ScrollTrigger);
+            const tl = gsap.timeline({ defaults: { ease: "expo.out", duration: 1.5 }});
+            tl.from(".animate-beast", { y: 100, opacity: 0, stagger: 0.2 });
+            
+            gsap.utils.toArray('.scroll-reveal').forEach((el) => {
+                gsap.from(el, {
+                    scrollTrigger: { trigger: el, start: "top 90%" },
+                    y: 50, opacity: 0, duration: 1
+                });
+            });
+        }
+    });
 </script>
 {% endmacro %}
