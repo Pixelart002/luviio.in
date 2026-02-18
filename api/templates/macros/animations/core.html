@@ -1,0 +1,35 @@
+{% macro init_gsap() -%}
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    gsap.registerPlugin(ScrollTrigger);
+    
+    const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
+    
+    // Hero Reveal
+    tl.to(".hero-bg", { scale: 1, duration: 3, opacity: 0.5 })
+      .from(".hero-title", { y: 100, opacity: 0, duration: 1.5 }, "-=2.5")
+      .from(".hero-subtitle", { y: 30, opacity: 0, duration: 1 }, "-=1.5")
+      .from(".search-container", { scale: 0.9, opacity: 0, duration: 1 }, "-=1");
+    
+    // Category Cards Stagger
+    gsap.from(".category-card", {
+      scrollTrigger: {
+        trigger: "#categories",
+        start: "top 80%",
+      },
+      y: 60,
+      opacity: 0,
+      duration: 1,
+      stagger: 0.2,
+      ease: "back.out(1.7)"
+    });
+    
+    // Human-like interaction: Header change on scroll
+    ScrollTrigger.create({
+      start: "top -80",
+      onEnter: () => gsap.to("header", { backgroundColor: "rgba(0,0,0,0.9)", borderBottom: "1px solid rgba(255,255,255,0.1)" }),
+      onLeaveBack: () => gsap.to("header", { backgroundColor: "transparent", borderBottom: "1px solid transparent" })
+    });
+  });
+</script>
+{%- endmacro %}
