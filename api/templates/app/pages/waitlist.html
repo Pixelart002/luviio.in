@@ -4,7 +4,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
-    /* --- SCOPED STYLES: LUVIIO DARK THEME --- */
+    /* ... (CSS same as before, no changes needed in style) ... */
     .waitlist-wrapper {
         font-family: 'Inter', sans-serif;
         flex: 1;
@@ -18,12 +18,7 @@
         --text-dim: #a1a1aa;
         --accent: #3b82f6;
         --accent-glow: rgba(59, 130, 246, 0.4);
-        --error: #ef4444;
-        --success: #22c55e;
-        --ease-elastic: cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
-
-    /* Floating Pill UI */
     .pill { 
         border: 1px solid rgba(255,255,255,0.08); 
         background: rgba(255,255,255,0.02); 
@@ -37,8 +32,6 @@
         letter-spacing: 0.05em;
         text-transform: uppercase;
     }
-    
-    /* Hero Typography */
     .hero-title { 
         font-size: clamp(2.5rem, 6vw, 5rem); 
         font-weight: 800; 
@@ -49,7 +42,6 @@
         -webkit-background-clip: text; 
         -webkit-text-fill-color: transparent; 
     }
-    
     .hero-desc { 
         font-size: clamp(1rem, 2vw, 1.2rem); 
         color: var(--text-dim); 
@@ -57,10 +49,7 @@
         line-height: 1.6; 
         margin-bottom: 40px; 
     }
-
-    /* Form UI: Glassmorphism */
     .form-container { width: 100%; max-width: 440px; }
-    
     .input-wrapper { 
         background: rgba(20, 20, 20, 0.6); 
         border: 1px solid rgba(255,255,255,0.08); 
@@ -68,16 +57,14 @@
         padding: 6px; 
         display: flex; 
         gap: 10px;
-        transition: all 0.4s var(--ease-elastic); 
+        transition: all 0.4s; 
         backdrop-filter: blur(20px);
     }
-    
     .input-wrapper:focus-within { 
         border-color: var(--accent); 
         box-shadow: 0 0 40px var(--accent-glow); 
         transform: translateY(-2px);
     }
-    
     .custom-input { 
         flex: 1; 
         background: transparent; 
@@ -88,8 +75,6 @@
         font-size: 1rem;
         font-family: inherit;
     }
-
-    /* Button Styling */
     .submit-btn { 
         background: white; 
         color: black; 
@@ -107,8 +92,6 @@
     }
     .submit-btn:hover:not(:disabled) { transform: scale(1.02); box-shadow: 0 10px 20px rgba(255,255,255,0.1); }
     .submit-btn:disabled { opacity: 0.8; cursor: not-allowed; }
-
-    /* Custom Toast */
     .toast {
         position: fixed; 
         bottom: 40px; 
@@ -121,13 +104,11 @@
         color: #fff; 
         z-index: 999; 
         opacity: 0; 
-        transition: all 0.5s var(--ease-elastic);
+        transition: all 0.5s;
         backdrop-filter: blur(20px);
         box-shadow: 0 20px 40px rgba(0,0,0,0.5);
     }
     .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-    /* Loading Spinner */
     .spinner { 
         width: 20px; 
         height: 20px; 
@@ -138,7 +119,6 @@
         display: none; 
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-
     .fade-in { opacity: 0; transform: translateY(25px); }
 </style>
 
@@ -174,29 +154,20 @@
 </div>
 
 <script>
-    /**
-     * Unpoly Compiler ensures this runs correctly during partial page updates.
-     */
-    up.compiler('.waitlist-wrapper', function(wrapper) {
-        
-        // --- ENTRY ANIMATIONS (GSAP) ---
-        if (window.gsap) {
-            gsap.to(wrapper.querySelectorAll(".fade-in"), { 
-                opacity: 1, 
-                y: 0, 
-                duration: 1.2, 
-                stagger: 0.15, 
-                ease: "power4.out" 
-            });
-        } else {
-            wrapper.querySelectorAll('.fade-in').forEach(el => el.style.opacity = 1);
-        }
+    document.addEventListener("DOMContentLoaded", function() {
+        const wrapper = document.querySelector('.waitlist-wrapper');
 
-        // --- DYNAMIC CONFIGURATION ---
-        const SB_URL = "{{ supabase_url }}";
-        const SB_KEY = "{{ supabase_key }}";
-        const resendEndpoint = "/api/resend-mail";
+        // --- ANIMATIONS ---
+        const fadeEls = wrapper.querySelectorAll('.fade-in');
+        fadeEls.forEach((el, index) => {
+            setTimeout(() => {
+                el.style.transition = "all 0.8s cubic-bezier(0.16, 1, 0.3, 1)";
+                el.style.opacity = 1;
+                el.style.transform = "translateY(0)";
+            }, 100 * index);
+        });
 
+        // --- LOGIC ---
         const ui = {
             form: wrapper.querySelector('#waitlistForm'),
             email: wrapper.querySelector('#email'),
@@ -224,7 +195,6 @@
             e.preventDefault();
             const email = ui.email.value.trim();
             
-            // Simple Validation
             if (!email || !email.includes('@')) {
                 showToast("Please enter a valid email address.", true);
                 return;
@@ -233,31 +203,21 @@
             setSubmitting(true);
 
             try {
-                // 1. Initialize Supabase Client
-                const client = supabase.createClient(SB_URL, SB_KEY);
-
-                // 2. Insert into 'subscribers' Table
-                const { error: sbError } = await client.from('subscribers').insert([{ email }]);
-                
-                if (sbError) {
-                    // Unique constraint error code for Supabase/Postgres
-                    if (sbError.code === '23505') throw new Error("Bhai, you're already on the list! ✨");
-                    throw sbError;
-                }
-
-                // 3. Trigger Professional Welcome Email via our API
-                const emailResponse = await fetch(resendEndpoint, {
+                // ✅ SECURE WAY: Call Backend API instead of Supabase Direct
+                const response = await fetch('/waitlist', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email: email })
                 });
 
-                if (!emailResponse.ok) {
-                    console.error("[Waitlist] DB Saved, but Email Trigger failed.");
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || "Failed to join");
                 }
 
-                // --- SUCCESS UI STATE ---
-                showToast("Welcome to the list. Check your inbox! 🚀");
+                // --- SUCCESS UI ---
+                showToast(result.message || "Welcome to the list! 🚀");
                 ui.email.value = "";
                 ui.email.disabled = true;
                 ui.btn.style.backgroundColor = "#22c55e"; // Success Green
@@ -267,7 +227,12 @@
 
             } catch (err) {
                 console.error("[Waitlist Error]", err);
-                showToast(err.message || "Something went wrong. Try again.", true);
+                // Agar duplicate hai toh bhi success dikhao UX ke liye, backend handle karega
+                if (err.message.includes("already")) {
+                    showToast("You are already on the list! ✨");
+                } else {
+                    showToast("Something went wrong. Try again.", true);
+                }
                 setSubmitting(false);
             }
         });
