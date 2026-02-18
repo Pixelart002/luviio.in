@@ -1,26 +1,27 @@
 {% extends "app/base.html" %}
 {% import "macros/layout/elements.html" as Layout %}
-{% import "macros/animations/gsap.html" as Motion %}
+{# Modular Animation Imports #}
+{% import "macros/animations/entrance.html" as Entrance %}
+{% import "macros/animations/scroll.html" as ScrollMotion %}
 
 {% block content %}
-{# Responsive Hero #}
+{# Fix for render_hero Connectivity #}
 {{ Layout.render_hero(
-        title="Beast Level <span class='text-indigo-600'>Fixed</span>.",
-        subtitle="Connectivity issues resolved. Everything is now responsive, dynamic, and strictly high-end.",
+        title="Beast Level <span class='text-indigo-600'>Modularity</span>.",
+        subtitle="No more connectivity issues. Logic is split, hierarchy is respected, and the UI is strictly dynamic.",
         cta_text="/docs"
     ) }}
 
-{# Grid Section #}
 {% call Layout.render_section() %}
-{% set items = [
-            {'title': 'Dynamic Logic', 'desc': 'Jinja 3.1 macros communicating perfectly across templates.'},
-            {'title': 'Responsive Core', 'desc': 'Mobile-first grid systems with adaptive typography.'},
-            {'title': 'Motion Engine', 'desc': 'GSAP ScrollTrigger paths calculated for smooth UX.'}
+{% set features = [
+            {'title': 'Modular Macros', 'desc': 'Animations are now split into dedicated files like entrance.html and scroll.html.'},
+            {'title': 'Strict Hierarchy', 'desc': 'Work is delegated across semantic layers for professional maintenance.'},
+            {'title': 'Dynamic Core', 'desc': 'FastAPI and Jinja 3.1 working in perfect mathematical sync.'}
         ] %}
-
-<h2 class="text-4xl md:text-6xl font-black text-center dark:text-white mb-12">System Core</h2>
-{{ Layout.render_grid(items) }}
+{{ Layout.render_grid(features) }}
 {% endcall %}
 
-{{ Motion.scroll_animations() }}
+{# Initializing Split Animations #}
+{{ Entrance.init_entrance() }}
+{{ ScrollMotion.init_scroll_reveal() }}
 {% endblock %}

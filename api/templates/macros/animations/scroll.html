@@ -1,0 +1,23 @@
+{% macro init_scroll_reveal(target=".scroll-reveal") %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.gsap && window.ScrollTrigger) {
+      gsap.registerPlugin(ScrollTrigger);
+      gsap.utils.toArray("{{ target }}").forEach((el, i) => {
+        gsap.from(el, {
+          scrollTrigger: {
+            trigger: el,
+            start: "top 88%",
+            toggleActions: "play none none none"
+          },
+          y: 40,
+          opacity: 0,
+          duration: 1.2,
+          delay: (i % 3) * 0.15,
+          ease: "power3.out"
+        });
+      });
+    }
+  });
+</script>
+{% endmacro %}

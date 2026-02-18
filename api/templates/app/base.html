@@ -10,10 +10,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Luviio | Enterprise Foundation{% endblock %}</title>
+    <title>{% block title %}Luviio | Beast Modularity{% endblock %}</title>
     
     <script>
-        // FOUC Prevention & Theme Initializer
         if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
         } else {
@@ -32,10 +31,9 @@
 </head>
 
 {% call Body.render() %}
-    
     {% call Header.render(site_name="Luviio.in") %}
-        <div class="flex items-center gap-8">
-            {{ Nav.render(links=[{'url': '/', 'text': 'Home'}, {'url': '/docss', 'text': 'Documentation'}]) }}
+        <div class="flex items-center gap-6">
+            {{ Nav.render(links=[{'url': '/', 'text': 'Home'}, {'url': '/docs', 'text': 'Docs'}]) }}
             {{ Theme.render() }}
         </div>
     {% endcall %}
@@ -47,19 +45,15 @@
     {{ Footer.render() }}
 
     <script>
-        // Hamburger & Mobile Logic (GSAP Powered)
-        const menuBtn = document.getElementById('mobile-menu-btn');
-        const themeBtn = document.getElementById('theme-toggle');
-
-        themeBtn?.addEventListener('click', () => {
+        // Global Theme Toggle
+        document.getElementById('theme-toggle')?.addEventListener('click', () => {
             const isDark = document.documentElement.classList.toggle('dark');
             localStorage.setItem('theme', isDark ? 'dark' : 'light');
-            gsap.to(themeBtn, { rotate: 360, duration: 0.5 });
         });
 
-        // SPA logic for fragment insertion
+        // SPA fragment animation
         up.on('up:fragment:inserted', (event) => {
-            gsap.from(event.fragment, { opacity: 0, y: 10, duration: 0.6 });
+            gsap.from(event.fragment, { opacity: 0, scale: 0.99, duration: 0.4 });
         });
     </script>
 {% endcall %}
