@@ -51,7 +51,7 @@ async def home_route(request: Request):
             "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         # Render check
-        return templates.TemplateResponse("app/pages/home.html", context)
+        return templates.TemplateResponse("app/pages/index.html", context)
     except Exception as e:
         logger.error(f"Render Fail: {str(e)}", exc_info=True)
         # Detailed error for debugging

@@ -1,0 +1,7 @@
+{% macro render_main() -%}
+<main id="main-content" up-main class="relative pt-24 min-h-screen w-full lg:pr-80 transition-all">
+  <div class="px-4 md:px-12 lg:px-20 max-w-[1400px] mx-auto">
+    {{ caller() }}
+  </div>
+</main>
+{%- endmacro %}

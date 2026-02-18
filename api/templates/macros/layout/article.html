@@ -1,0 +1,9 @@
+{% macro render_article(title, subtitle) -%}
+<article class="max-w-4xl space-y-6">
+  <h2 class="text-5xl md:text-7xl font-black leading-[0.9] tracking-tighter uppercase">{{ title }}</h2>
+  <p class="text-lg text-slate-400 font-medium leading-relaxed max-w-2xl">{{ subtitle }}</p>
+  <div class="pt-8">
+    {{ caller() }}
+  </div>
+</article>
+{%- endmacro %}

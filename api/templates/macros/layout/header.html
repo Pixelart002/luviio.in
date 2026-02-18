@@ -1,0 +1,37 @@
+{# api/templates/macros/layout/header.html #}
+{% macro render_header() -%}
+<header class="fixed top-0 left-0 w-full z-[100] backdrop-blur-xl bg-black/40 border-b border-white/5 px-4 md:px-10 py-5 flex justify-between items-center">
+  <div class="logo-container">
+    <a href="/" class="text-xl md:text-2xl font-black tracking-tighter uppercase italic text-white">Luviio</a>
+  </div>
+  
+  {# Desktop Nav Slot #}
+  <div class="hidden md:block">
+    {{ caller() }}
+  </div>
+  
+  {# Mobile Toggle Button #}
+  <button onclick="toggleMobileMenu()" class="md:hidden flex flex-col gap-1.5 p-2">
+    <span class="w-6 h-0.5 bg-white"></span>
+    <span class="w-6 h-0.5 bg-white"></span>
+  </button>
+</header>
+
+{# Fullscreen Mobile Menu Overlay #}
+<div id="mobile-overlay" class="fixed inset-0 bg-black z-[110] flex flex-col items-center justify-center translate-y-full transition-transform duration-700 md:hidden">
+  <button onclick="toggleMobileMenu()" class="absolute top-10 right-10 text-4xl">&times;</button>
+  <div class="mobile-nav-links flex flex-col gap-8 text-center">
+    {# Links will be injected or hardcoded for mobile #}
+    <a href="/" class="text-4xl font-black italic">INDEX</a>
+    <a href="/sys" class="text-4xl font-black italic">SYSTEM</a>
+    <a href="/logs" class="text-4xl font-black italic">LOGS</a>
+  </div>
+</div>
+
+<script>
+  function toggleMobileMenu() {
+    const overlay = document.getElementById('mobile-overlay');
+    overlay.classList.toggle('translate-y-full');
+  }
+</script>
+{%- endmacro %}

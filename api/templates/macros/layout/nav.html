@@ -1,0 +1,12 @@
+{% macro render_nav(items) -%}
+<nav class="hidden lg:flex items-center gap-x-12">
+  {% for label, link in items.items() %}
+  <a href="{{ link }}" up-follow class="nav-link text-[10px] uppercase font-bold tracking-[0.2em] hover:text-blue-500 transition-colors duration-500">
+    {{ label }}
+  </a>
+  {% endfor %}
+</nav>
+{%- endmacro %}
+</body>
+
+</html>

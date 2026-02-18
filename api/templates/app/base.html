@@ -1,60 +1,47 @@
-{% import "macros/layout/elements.html" as Layout %}
-{% import "macros/layout/theme_toggle.html" as Theme %}
+{% import "macros/layout/header.html" as h %}
+{% import "macros/layout/nav.html" as n %}
+{% import "macros/layout/main.html" as m %}
+{% import "macros/layout/aside.html" as ad %}
+{% import "macros/layout/section.html" as s %}
+{% import "macros/layout/article.html" as a %}
+{% import "macros/layout/footer.html" as f %}
+{% import "macros/animations/core.html" as anim %}
 
 <!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
+<html lang="en" class="bg-black text-white selection:bg-blue-600">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Luviio | Beast Foundation{% endblock %}</title>
-
-    <script>
-        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    </script>
-    
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config = { darkMode: 'class' }</script>
-    <script src="https://unpkg.com/unpoly@3.0.0-beta.5/unpoly.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/unpoly@3.0.0-beta.5/unpoly.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    <script src="https://unpkg.com/unpoly@3.1.0/unpoly.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 </head>
+<body class="antialiased overflow-x-hidden">
 
-<body class="bg-white dark:bg-slate-950 transition-colors duration-500 antialiased selection:bg-indigo-500 selection:text-white">
-
-    {# Connectivity Fix: All semantic tags called from Layout #}
-    {% call Layout.render_header() %}
-        <a href="/" up-follow class="font-black text-2xl tracking-tighter text-slate-900 dark:text-white">Luviio.in</a>
-        
-        <div class="flex items-center gap-8">
-            {{ Layout.render_nav(links=[{'url': '/', 'text': 'Home'}, {'url': '/docs', 'text': 'Docs'}]) }}
-            {{ Theme.render() }}
-        </div>
+    {% call h.render_header() %}
+        {{ n.render_nav({'Core': '/', 'Data': '/data', 'Neural': '/neural'}) }}
     {% endcall %}
 
-    {% call Layout.render_main() %}
-        {% block content %}{% endblock %}
-    {% endcall %}
+    <div class="flex flex-col lg:flex-row">
+        {% call m.render_main() %}
+            {% block content %}
+                {% call s.render_section('hero') %}
+                    {% call a.render_article('DYNAMIC FLOW', 'High-end responsive architecture built for enterprise systems.') %}
+                        <div class="flex gap-4">
+                            <button class="bg-white text-black px-6 py-3 text-xs font-bold uppercase tracking-widest hover:invert transition-all">Launch</button>
+                        </div>
+                    {% endcall %}
+                {% endcall %}
+            {% endblock %}
+        {% endcall %}
 
-    {{ Layout.render_footer() }}
+        {% call ad.render_aside() %}
+            <p class="text-xs text-zinc-500 italic">System is currently running in Beast Mode. All protocols active.</p>
+        {% endcall %}
+    </div>
 
-    <script>
-        // Global Motion Initialization
-        gsap.registerPlugin(ScrollTrigger);
-        
-        document.addEventListener('DOMContentLoaded', () => {
-            gsap.from("#main-content", { opacity: 0, y: 15, duration: 1, ease: "power4.out" });
-        });
+    {{ f.render_footer() }}
 
-        // Theme Toggle Persistence
-        document.getElementById('theme-toggle')?.addEventListener('click', () => {
-            const isDark = document.documentElement.classList.toggle('dark');
-            localStorage.setItem('theme', isDark ? 'dark' : 'light');
-        });
-    </script>
+    {{ anim.init_gsap() }}
 </body>
 </html>

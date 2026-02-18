@@ -1,0 +1,14 @@
+{% macro render_aside() -%}
+<aside class="hidden lg:block fixed right-0 top-0 h-full w-80 bg-zinc-950 border-l border-white/5 pt-32 px-10 z-40">
+  <div class="sticky top-32 space-y-10">
+    <div class="status-card p-6 bg-white/5 rounded-2xl border border-white/5">
+      <h4 class="text-[10px] tracking-widest text-zinc-500 uppercase font-bold mb-4">Core Status</h4>
+      <div class="space-y-2 text-sm">
+        <p class="flex justify-between"><span>Uptime</span><span class="text-green-400">99.9%</span></p>
+        <p class="flex justify-between"><span>Load</span><span class="text-blue-400">0.02ms</span></p>
+      </div>
+    </div>
+    {{ caller() }}
+  </div>
+</aside>
+{%- endmacro %}
