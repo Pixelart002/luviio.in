@@ -37,4 +37,4 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    return templates.TemplateResponse("app/pages/home.html", {"request": request, "active_page": "home"})
+    return templates.TemplateResponse("app/pages/home.html", {"request": request})
