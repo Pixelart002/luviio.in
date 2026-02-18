@@ -3,13 +3,24 @@
     document.addEventListener('DOMContentLoaded', () => {
         if (typeof gsap !== 'undefined') {
             gsap.registerPlugin(ScrollTrigger);
-            const tl = gsap.timeline({ defaults: { ease: "expo.out", duration: 1.5 }});
-            tl.from(".animate-beast", { y: 100, opacity: 0, stagger: 0.2 });
             
-            gsap.utils.toArray('.scroll-reveal').forEach((el) => {
+            // Hero Entrance Timeline
+            const tl = gsap.timeline({ defaults: { ease: "expo.out", duration: 1.5 } });
+            tl.from(".animate-beast", { y: 60, opacity: 0, stagger: 0.2, delay: 0.2 });
+            
+            // Scroll Reveal Logic
+            gsap.utils.toArray('.scroll-reveal').forEach((el, i) => {
                 gsap.from(el, {
-                    scrollTrigger: { trigger: el, start: "top 90%" },
-                    y: 50, opacity: 0, duration: 1
+                    scrollTrigger: {
+                        trigger: el,
+                        start: "top 85%",
+                        toggleActions: "play none none none"
+                    },
+                    y: 40,
+                    opacity: 0,
+                    duration: 1.2,
+                    delay: i % 3 * 0.1, // Reset stagger per row
+                    ease: "power3.out"
                 });
             });
         }

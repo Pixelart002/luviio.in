@@ -5,24 +5,22 @@
 {% block content %}
 {# Responsive Hero #}
 {{ Layout.render_hero(
-        title="Beast Mode <span class='text-indigo-600'>Responsive</span>.",
-        subtitle="Desktop, Tablet, or Mobile — The system adapts with high-end precision and mathematical scroll triggers.",
+        title="Beast Level <span class='text-indigo-600'>Fixed</span>.",
+        subtitle="Connectivity issues resolved. Everything is now responsive, dynamic, and strictly high-end.",
         cta_text="/docs"
     ) }}
 
-{# Responsive Section with ScrollReveal #}
+{# Grid Section #}
 {% call Layout.render_section() %}
-{% set features = [
-            {'title': 'Mobile First', 'desc': 'Adaptive grid layouts designed for every screen size.'},
-            {'title': 'Scroll Trigger', 'desc': 'GSAP powered reveals that react to user interaction.'},
-            {'title': 'Dark Sync', 'desc': 'Themed components that respect your visual preferences.'}
+{% set items = [
+            {'title': 'Dynamic Logic', 'desc': 'Jinja 3.1 macros communicating perfectly across templates.'},
+            {'title': 'Responsive Core', 'desc': 'Mobile-first grid systems with adaptive typography.'},
+            {'title': 'Motion Engine', 'desc': 'GSAP ScrollTrigger paths calculated for smooth UX.'}
         ] %}
 
-<h2 class="text-3xl md:text-5xl font-black tracking-tight text-center dark:text-white">The Luviio Standard</h2>
-
-{{ Layout.render_grid(features) }}
+<h2 class="text-4xl md:text-6xl font-black text-center dark:text-white mb-12">System Core</h2>
+{{ Layout.render_grid(items) }}
 {% endcall %}
 
-{# Initializing Advanced Motion #}
 {{ Motion.scroll_animations() }}
 {% endblock %}
