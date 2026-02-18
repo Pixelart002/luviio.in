@@ -1,30 +1,43 @@
 {# 
-    Advanced Motion Engine Macro
-    Rules: Delegation of work, clean code, and logical easing.
+    Beast Level GSAP & ScrollTrigger Engine 
+    Purpose: Responsive scroll-based animations.
 #}
-{% macro page_entrance(target=".animate-beast") %}
+
+{% macro scroll_animations() %}
 <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // Advanced Timeline Logic: Sequential entrance with Power4 easing
-    const tl = gsap.timeline({
-      defaults: { ease: "power4.out", duration: 1.2 }
-    });
-    
-    tl.from("{{ target }}", {
-        y: 40,
-        opacity: 0,
-        stagger: {
-          amount: 0.4, // Mathematical distribution of delay
-          from: "start"
-        },
-        skewY: 2, // Subtle logical shift for premium feel
-        clearProps: "all"
-      })
-      .from("nav", {
-        y: -20,
-        opacity: 0,
-        duration: 0.8
-      }, "-=0.8"); // Overlap for professional flow
+    if (typeof gsap !== 'undefined') {
+      gsap.registerPlugin(ScrollTrigger);
+      
+      // 1. Hero Entrance Timeline
+      const heroTl = gsap.timeline({
+        defaults: { ease: "expo.out", duration: 1.5 }
+      });
+      
+      heroTl.from(".hero-title", { y: 100, opacity: 0, delay: 0.2 })
+        .from(".hero-sub", { y: 30, opacity: 0 }, "-=1.2")
+        .from(".hero-cta", { scale: 0.8, opacity: 0 }, "-=1");
+      
+      // 2. Responsive Scroll Reveal for Grid
+      gsap.utils.toArray('.scroll-reveal').forEach((el, i) => {
+        gsap.from(el, {
+          scrollTrigger: {
+            trigger: el,
+            start: "top 85%",
+            toggleActions: "play none none none"
+          },
+          y: 50,
+          opacity: 0,
+          duration: 1,
+          delay: i * 0.1,
+          ease: "power3.out"
+        });
+      });
+      
+      console.log("GSAP: Scroll animations connected.");
+    } else {
+      console.error("GSAP Error: Library not found in search path.");
+    }
   });
 </script>
 {% endmacro %}
