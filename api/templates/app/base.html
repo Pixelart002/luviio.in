@@ -1,27 +1,22 @@
-{% import "macros/layout/body.html" as Body %}
-{% import "macros/layout/header.html" as Header %}
-{% import "macros/layout/nav.html" as Nav %}
 {% import "macros/layout/elements.html" as Layout %}
-{% import "macros/layout/footer.html" as Footer %}
 {% import "macros/layout/theme_toggle.html" as Theme %}
 
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Luviio | Beast Modularity{% endblock %}</title>
-    
+    {# Strict Responsive Viewport #}
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <title>{% block title %}Luviio | Advanced System{% endblock %}</title>
+
+    {# Critical CSS & Frameworks #}
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { dark: '#020617' } } }
         }
     </script>
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config = { darkMode: 'class' }</script>
     
     <script src="https://unpkg.com/unpoly@3.0.0-beta.5/unpoly.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/unpoly@3.0.0-beta.5/unpoly.min.css">
@@ -30,10 +25,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
 </head>
 
-{% call Body.render() %}
-    {% call Header.render(site_name="Luviio.in") %}
+<body class="bg-white dark:bg-slate-950 transition-colors duration-500 antialiased selection:bg-indigo-500 selection:text-white">
+
+    {% call Layout.render_header() %}
         <div class="flex items-center gap-6">
-            {{ Nav.render(links=[{'url': '/', 'text': 'Home'}, {'url': '/docs', 'text': 'Docs'}]) }}
+            {{ Layout.render_nav(links=[{'url': '/', 'text': 'Home'}, {'url': '/docs', 'text': 'Docs'}]) }}
             {{ Theme.render() }}
         </div>
     {% endcall %}
@@ -42,19 +38,21 @@
         {% block content %}{% endblock %}
     {% endcall %}
 
-    {{ Footer.render() }}
+    {{ Layout.render_footer() }}
 
     <script>
-        // Global Theme Toggle
-        document.getElementById('theme-toggle')?.addEventListener('click', () => {
-            const isDark = document.documentElement.classList.toggle('dark');
-            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        // Universal Beast Logic
+        gsap.registerPlugin(ScrollTrigger);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initial Entry Animation
+            gsap.from("#main-content", { opacity: 0, y: 20, duration: 1, ease: "power4.out" });
         });
 
-        // SPA fragment animation
+        // Unpoly Fragment Sync
         up.on('up:fragment:inserted', (event) => {
-            gsap.from(event.fragment, { opacity: 0, scale: 0.99, duration: 0.4 });
+            gsap.from(event.fragment, { opacity: 0, scale: 0.99, duration: 0.5 });
         });
     </script>
-{% endcall %}
+</body>
 </html>
