@@ -21,15 +21,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("LUVIIO-CORE")
 
-# --- 🛠️ IMPORTS ---
-try:
-    from api.routes.resend_mail import router as resend_router
-    from api.routes.database import supabase_admin
-except ImportError:
-    # Fallback for local
-    from routes.resend_mail import router as resend_router
-    from routes.database import supabase_admin
-
 # --- 🚀 APP INIT ---
 app = FastAPI(title="LUVIIO Engine", version="4.5.0")
 
@@ -41,47 +32,9 @@ app.include_router(resend_router, prefix="/api", tags=["Utility"])
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
-# --- 📝 SCHEMAS ---
-class WaitlistSchema(BaseModel):
-    email: EmailStr
 
 # --- 🌐 PUBLIC ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     return templates.TemplateResponse("app/pages/home.html", {"request": request, "active_page": "home"})
-
-@app.get("/waitlist", response_class=HTMLResponse)
-async def render_waitlist(request: Request):
-    return templates.TemplateResponse("app/pages/waitlist.html", {"request": request})
-
-# ✅ NEW: Handle Form Submission (Table: subscribers)
-@app.post("/waitlist")
-async def join_waitlist(payload: WaitlistSchema):
-    """
-    Receives email from frontend and saves to Supabase 'subscribers' table.
-    """
-    if not supabase_admin:
-        logger.error("❌ DB Connection missing during waitlist signup")
-        return JSONResponse(status_code=500, content={"error": "Server error: Database not connected"})
-
-    try:
-        email = payload.email.lower()
-        logger.info(f"📝 Adding to waitlist: {email}")
-        
-        # Insert into 'subscribers' table
-        data = {"email": email, "status": "active"}
-        
-        # .insert() call
-        supabase_admin.table("subscribers").insert(data).execute()
-        
-        return JSONResponse(content={"message": "Successfully joined waitlist! 🚀"})
-        
-    except Exception as e:
-        error_msg = str(e).lower()
-        # Handle duplicate emails gracefully
-        if "duplicate" in error_msg or "unique constraint" in error_msg:
-            return JSONResponse(content={"message": "You are already on the list! ✨"})
-            
-        logger.error(f"❌ Waitlist Error: {e}")
-        return JSONResponse(status_code=500, content={"error": "Could not join waitlist. Try again."})

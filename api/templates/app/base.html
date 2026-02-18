@@ -1,4 +1,4 @@
-{% import "macros/nav.html" as nav %}
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -34,7 +34,6 @@
 <body class="min-h-screen flex flex-col selection:bg-blue-500/30">
     <div class="bg-grid"></div>
 
-    {{ nav.render_header(active_page | default('home'), request) }}
 
     <main id="main-content" class="flex-1 flex flex-col" up-main>
         {% block content %}{% endblock %}
