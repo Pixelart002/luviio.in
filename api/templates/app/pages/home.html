@@ -1,27 +1,23 @@
 {% extends "app/base.html" %}
 {% import "macros/layout/elements.html" as Layout %}
-{# Modular Animation Imports #}
-{% import "macros/animations/entrance.html" as Entrance %}
-{% import "macros/animations/scroll.html" as ScrollMotion %}
+{% import "macros/animations/scroll.html" as Motion %}
 
 {% block content %}
-{# Fix for render_hero Connectivity #}
+{# Connectivity Fix: Calling the newly defined render_hero #}
 {{ Layout.render_hero(
-        title="Beast Level <span class='text-indigo-600'>Modularity</span>.",
-        subtitle="No more connectivity issues. Logic is split, hierarchy is respected, and the UI is strictly dynamic.",
+        title="Beast Level <span class='text-indigo-600'>Engineering</span>.",
+        subtitle="Connectivity issues resolved. Everything is now strictly responsive, dynamic, and high-end.",
         cta_text="/docs"
     ) }}
 
 {% call Layout.render_section() %}
 {% set features = [
-            {'title': 'Modular Macros', 'desc': 'Animations are now split into dedicated files like entrance.html and scroll.html.'},
-            {'title': 'Strict Hierarchy', 'desc': 'Work is delegated across semantic layers for professional maintenance.'},
-            {'title': 'Dynamic Core', 'desc': 'FastAPI and Jinja 3.1 working in perfect mathematical sync.'}
+            {'title': 'Modular Design', 'desc': 'Logic is split, hierarchy is respected, and the UI is strictly dynamic.'},
+            {'title': 'Responsive Core', 'desc': 'Mobile-first enterprise architecture with adaptive typography.'},
+            {'title': 'Motion Engine', 'desc': 'GSAP ScrollTriggers running on high-end system level.'}
         ] %}
 {{ Layout.render_grid(features) }}
 {% endcall %}
 
-{# Initializing Split Animations #}
-{{ Entrance.init_entrance() }}
-{{ ScrollMotion.init_scroll_reveal() }}
+{{ Motion.scroll_animations() }}
 {% endblock %}
