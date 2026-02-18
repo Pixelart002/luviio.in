@@ -1,19 +1,6 @@
-{# section.html #}
-{% macro render_section(id) -%}
-<section id="{{ id }}" class="py-12 md:py-24 lg:py-32 w-full border-b border-white/5">
+{# api/templates/macros/layout/section.html #}
+{% macro render_section(id, custom_class="") -%}
+<section id="{{ id }}" class="py-12 md:py-24 lg:py-32 w-full border-b border-white/5 {{ custom_class }}">
   {{ caller() }}
 </section>
-{%- endmacro %}
-
-{# article.html #}
-{% macro render_article(title, desc) -%}
-<article class="group">
-  <h2 class="text-4xl md:text-6xl lg:text-8xl font-black tracking-tighter uppercase leading-none mb-6">
-    {{ title }}
-  </h2>
-  <p class="text-base md:text-lg text-zinc-400 max-w-xl leading-relaxed">
-    {{ desc }}
-  </p>
-  <div class="mt-10">{{ caller() }}</div>
-</article>
 {%- endmacro %}
