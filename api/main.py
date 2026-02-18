@@ -23,12 +23,8 @@ logger = logging.getLogger("LUVIIO-CORE")
 
 # --- 🛠️ IMPORTS ---
 try:
-    # Existing Resend Mail
     from api.routes.resend_mail import router as resend_router
-    
-    # ✅ Database Connection
     from api.routes.database import supabase_admin
-    
 except ImportError:
     # Fallback for local
     from routes.resend_mail import router as resend_router
@@ -37,6 +33,7 @@ except ImportError:
 # --- 🚀 APP INIT ---
 app = FastAPI(title="LUVIIO Engine", version="4.5.0")
 
+# ⚠️ NOTE: Agar blank screen aaye, toh is path ko ROOT_DIR / "templates" kar dena
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # --- 🔗 ROUTERS ---
@@ -58,11 +55,11 @@ async def home(request: Request):
 async def render_waitlist(request: Request):
     return templates.TemplateResponse("app/pages/waitlist.html", {"request": request})
 
-# ✅ NEW: Handle Form Submission
+# ✅ NEW: Handle Form Submission (Table: subscribers)
 @app.post("/waitlist")
 async def join_waitlist(payload: WaitlistSchema):
     """
-    Receives email from frontend and saves to Supabase 'waitlist' table.
+    Receives email from frontend and saves to Supabase 'subscribers' table.
     """
     if not supabase_admin:
         logger.error("❌ DB Connection missing during waitlist signup")
@@ -72,9 +69,11 @@ async def join_waitlist(payload: WaitlistSchema):
         email = payload.email.lower()
         logger.info(f"📝 Adding to waitlist: {email}")
         
-        # Insert into 'waitlist' table
-        data = {"email": email}
-        supabase_admin.table("waitlist").insert(data).execute()
+        # Insert into 'subscribers' table
+        data = {"email": email, "status": "active"}
+        
+        # .insert() call
+        supabase_admin.table("subscribers").insert(data).execute()
         
         return JSONResponse(content={"message": "Successfully joined waitlist! 🚀"})
         
