@@ -135,5 +135,46 @@
             syncThemeIcons();
         });
     </script>
+     <script>
+     
+     //nav.html imported hai 
+     
+        // Mobile Drawer Logic
+const menuBtn = document.getElementById('mobile-menu-btn');
+const closeBtn = document.getElementById('close-drawer');
+const drawer = document.getElementById('mobile-drawer');
+const backdrop = document.getElementById('drawer-backdrop');
+const content = document.getElementById('drawer-content');
+
+// Clone nav links for mobile drawer
+const desktopNav = document.getElementById('main-nav');
+const mobileNavContainer = document.getElementById('mobile-nav-container');
+if (desktopNav && mobileNavContainer) {
+    mobileNavContainer.innerHTML = desktopNav.innerHTML;
+}
+
+const openDrawer = () => {
+    gsap.set(drawer, { visibility: 'visible' });
+    gsap.to(backdrop, { opacity: 1, duration: 0.4 });
+    gsap.to(content, { x: 0, duration: 0.5, ease: "power4.out" });
+};
+
+const closeDrawer = () => {
+    gsap.to(content, { x: '100%', duration: 0.4, ease: "power4.in" });
+    gsap.to(backdrop, { opacity: 0, duration: 0.3, onComplete: () => {
+        gsap.set(drawer, { visibility: 'hidden' });
+    }});
+};
+
+menuBtn.addEventListener('click', openDrawer);
+closeBtn.addEventListener('click', closeDrawer);
+backdrop.addEventListener('click', closeDrawer);
+
+// Close drawer on Unpoly navigation
+up.on('up:link:follow', closeDrawer);
+     </script>
+    
+    
+    
 {% endcall %}
 </html>
