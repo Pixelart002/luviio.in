@@ -139,7 +139,11 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .fade-in { opacity: 0; transform: translateY(25px); }
+    /* --- ANIMATION FIX: Force Opacity 1 by default --- */
+    .fade-in { 
+        opacity: 1; 
+        transform: none; 
+    }
 </style>
 
 <div class="waitlist-wrapper px-6">
@@ -174,29 +178,22 @@
 </div>
 
 <script>
-    /**
-     * Unpoly Compiler ensures this runs correctly during partial page updates.
-     */
-    up.compiler('.waitlist-wrapper', function(wrapper) {
+    document.addEventListener("DOMContentLoaded", function() {
+        const wrapper = document.querySelector('.waitlist-wrapper');
         
-        // --- ENTRY ANIMATIONS (GSAP) ---
+        // Safety Check
+        if (!wrapper) return;
+
+        // --- ANIMATIONS (Optional enhancement) ---
+        // If GSAP exists, we animate. If not, CSS defaults to visible.
         if (window.gsap) {
-            gsap.to(wrapper.querySelectorAll(".fade-in"), { 
-                opacity: 1, 
-                y: 0, 
-                duration: 1.2, 
-                stagger: 0.15, 
-                ease: "power4.out" 
-            });
-        } else {
-            wrapper.querySelectorAll('.fade-in').forEach(el => el.style.opacity = 1);
+            gsap.fromTo(wrapper.querySelectorAll(".fade-in"), 
+                { opacity: 0, y: 20 },
+                { opacity: 1, y: 0, duration: 1, stagger: 0.15, ease: "power4.out" }
+            );
         }
 
-        // --- DYNAMIC CONFIGURATION ---
-        const SB_URL = "{{ supabase_url }}";
-        const SB_KEY = "{{ supabase_key }}";
-        const resendEndpoint = "/api/resend-mail";
-
+        // --- LOGIC ---
         const ui = {
             form: wrapper.querySelector('#waitlistForm'),
             email: wrapper.querySelector('#email'),
@@ -220,57 +217,52 @@
             ui.loader.style.display = state ? 'block' : 'none';
         };
 
-        ui.form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = ui.email.value.trim();
-            
-            // Simple Validation
-            if (!email || !email.includes('@')) {
-                showToast("Please enter a valid email address.", true);
-                return;
-            }
-
-            setSubmitting(true);
-
-            try {
-                // 1. Initialize Supabase Client
-                const client = supabase.createClient(SB_URL, SB_KEY);
-
-                // 2. Insert into 'subscribers' Table
-                const { error: sbError } = await client.from('subscribers').insert([{ email }]);
+        if (ui.form) {
+            ui.form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = ui.email.value.trim();
                 
-                if (sbError) {
-                    // Unique constraint error code for Supabase/Postgres
-                    if (sbError.code === '23505') throw new Error("Bhai, you're already on the list! ✨");
-                    throw sbError;
+                if (!email || !email.includes('@')) {
+                    showToast("Please enter a valid email address.", true);
+                    return;
                 }
 
-                // 3. Trigger Professional Welcome Email via our API
-                const emailResponse = await fetch(resendEndpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email })
-                });
+                setSubmitting(true);
 
-                if (!emailResponse.ok) {
-                    console.error("[Waitlist] DB Saved, but Email Trigger failed.");
+                try {
+                    // ✅ SECURE WAY: Call Backend API instead of Supabase Direct
+                    const response = await fetch('/waitlist', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: email })
+                    });
+
+                    const result = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(result.error || "Failed to join");
+                    }
+
+                    // --- SUCCESS UI ---
+                    showToast(result.message || "Welcome to the list! 🚀");
+                    ui.email.value = "";
+                    ui.email.disabled = true;
+                    ui.btn.style.backgroundColor = "#22c55e"; // Success Green
+                    ui.btn.style.color = "#fff";
+                    ui.btnText.innerText = "Joined";
+                    setSubmitting(false);
+
+                } catch (err) {
+                    console.error("[Waitlist Error]", err);
+                    if (err.message.includes("already") || err.message.includes("list")) {
+                        showToast("You are already on the list! ✨");
+                    } else {
+                        showToast("Something went wrong. Try again.", true);
+                    }
+                    setSubmitting(false);
                 }
-
-                // --- SUCCESS UI STATE ---
-                showToast("Welcome to the list. Check your inbox! 🚀");
-                ui.email.value = "";
-                ui.email.disabled = true;
-                ui.btn.style.backgroundColor = "#22c55e"; // Success Green
-                ui.btn.style.color = "#fff";
-                ui.btnText.innerText = "Joined";
-                setSubmitting(false);
-
-            } catch (err) {
-                console.error("[Waitlist Error]", err);
-                showToast(err.message || "Something went wrong. Try again.", true);
-                setSubmitting(false);
-            }
-        });
+            });
+        }
     });
 </script>
 {% endblock %}
