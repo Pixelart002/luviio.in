@@ -1,12 +1,13 @@
 {# 
    Documentation: Master Base File 
-   Workflow: Imports Macros -> Wraps Body -> Inject Blocks
+   Workflow: Imports Macros -> Prevent FOUC -> Wraps Body -> Inject Blocks
 #}
 {% import "macros/layout/body.html" as Body %}
 {% import "macros/layout/header.html" as Header %}
 {% import "macros/layout/nav.html" as Nav %}
 {% import "macros/layout/elements.html" as Layout %}
 {% import "macros/layout/footer.html" as Footer %}
+{% import "macros/layout/theme_toggle.html" as Theme %}
 
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
@@ -14,8 +15,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Luviio | Advanced System{% endblock %}</title>
+
+    {# Script 1: Prevent Flash of White (FOUC) - Absolute Priority #}
+    <script>
+        if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
     
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Tailwind Configuration for Dark Mode support
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: '#020617',
+                    }
+                }
+            }
+        }
+    </script>
+    
     <script src="https://unpkg.com/unpoly@3.0.0-beta.5/unpoly.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/unpoly@3.0.0-beta.5/unpoly.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
@@ -23,12 +47,17 @@
 
 {% call Body.render() %}
     
-    {# Global Header using Macros #}
+    {# Global Header with Theme Toggle Injection #}
     {% call Header.render(site_name="Luviio.in") %}
-        {{ Nav.render(links=[
-            {'url': '/', 'text': 'Home'},
-            {'url': '/docss', 'text': 'Documentation'}
-        ]) }}
+        <div class="flex items-center gap-6">
+            {{ Nav.render(links=[
+                {'url': '/', 'text': 'Home'},
+                {'url': '/docs', 'text': 'Documentation'}
+            ]) }}
+            
+            {# Theme Toggle Component #}
+            {{ Theme.render() }}
+        </div>
     {% endcall %}
 
     {# Main Content Wrapper with Unpoly Fragment #}
@@ -39,14 +68,57 @@
     {{ Footer.render() }}
 
     <script>
-        // Human-Readable GSAP Logic
+        // --- Theme Management Logic ---
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const darkIcon = document.getElementById('theme-toggle-dark-icon');
+        const lightIcon = document.getElementById('theme-toggle-light-icon');
+
+        function syncThemeIcons() {
+            if (document.documentElement.classList.contains('dark')) {
+                darkIcon.classList.remove('hidden');
+                lightIcon.classList.add('hidden');
+            } else {
+                lightIcon.classList.remove('hidden');
+                darkIcon.classList.add('hidden');
+            }
+        }
+
+        // Initialize icons on load
+        syncThemeIcons();
+
+        themeToggleBtn.addEventListener('click', function() {
+            // Subtle GSAP feedback on click
+            gsap.to(this, { scale: 0.9, duration: 0.1, yoyo: true, repeat: 1 });
+
+            if (localStorage.getItem('color-theme')) {
+                if (localStorage.getItem('color-theme') === 'light') {
+                    document.documentElement.classList.add('dark');
+                    localStorage.setItem('color-theme', 'dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    localStorage.setItem('color-theme', 'light');
+                }
+            } else {
+                if (document.documentElement.classList.contains('dark')) {
+                    document.documentElement.classList.remove('dark');
+                    localStorage.setItem('color-theme', 'light');
+                } else {
+                    document.documentElement.classList.add('dark');
+                    localStorage.setItem('color-theme', 'dark');
+                }
+            }
+            syncThemeIcons();
+        });
+
+        // --- GSAP & Unpoly Core Logic ---
         document.addEventListener('DOMContentLoaded', () => {
             gsap.from("[up-main]", { opacity: 0, y: 10, duration: 1, ease: "power4.out" });
         });
 
-        // Unpoly logic for smooth navigation
         up.on('up:fragment:inserted', (event) => {
             gsap.from(event.fragment, { opacity: 0, scale: 0.98, duration: 0.5 });
+            // Re-sync icons if the header was part of the fragment update
+            syncThemeIcons();
         });
     </script>
 {% endcall %}
