@@ -89,4 +89,4 @@ async def home(request: Request):
         featured_material={"name": "Arctic Matte Stone", "url": "/materials/arctic-stone"},
         footer_sections=[{"title": "Resources", "links": [{"label": "Gallery", "url": "/gallery"}]}]
     )
-    return templates.TemplateResponse("pages/index.html", {"request": request, "state": state.model_dump()})
+    return templates.TemplateResponse("app/pages/index.html", {"request": request, "state": state.model_dump()})
