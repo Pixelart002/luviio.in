@@ -1,14 +1,35 @@
-{% macro render_aside() -%}
-<aside class="hidden lg:block fixed right-0 top-0 h-full w-80 bg-zinc-950 border-l border-white/5 pt-32 px-10 z-40">
-  <div class="sticky top-32 space-y-10">
-    <div class="status-card p-6 bg-white/5 rounded-2xl border border-white/5">
-      <h4 class="text-[10px] tracking-widest text-zinc-500 uppercase font-bold mb-4">Core Status</h4>
-      <div class="space-y-2 text-sm">
-        <p class="flex justify-between"><span>Uptime</span><span class="text-green-400">99.9%</span></p>
-        <p class="flex justify-between"><span>Load</span><span class="text-blue-400">0.02ms</span></p>
+{% macro render_aside(title, stats={}, notifications=[]) %}
+<aside class="sticky top-24 w-full flex flex-col gap-6 z-30">
+  
+  <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">{{ title }}</h3>
+    
+    <div class="grid grid-cols-2 gap-4">
+      {% for key, value in stats.items() %}
+      <div class="text-center p-3 bg-slate-50 rounded-lg">
+        <div class="text-2xl font-black text-slate-900">{{ value }}</div>
+        <div class="text-xs text-slate-500 font-medium">{{ key }}</div>
       </div>
+      {% endfor %}
     </div>
-    {{ caller() }}
+  </div>
+  
+  <div class="bg-slate-900 rounded-xl shadow-lg p-5 text-white overflow-hidden relative">
+    <div class="absolute top-0 right-0 w-16 h-16 bg-white/5 rounded-full -mr-8 -mt-8 blur-2xl"></div>
+    
+    <h3 class="text-sm font-bold mb-4 flex items-center gap-2">
+      <span class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+      Live Alerts
+    </h3>
+    
+    <div class="space-y-3">
+      {% for note in notifications %}
+      <div class="flex gap-3 text-sm text-slate-300 border-l-2 border-slate-700 pl-3">
+        <span class="text-slate-500 text-xs">{{ note.time }}</span>
+        <span>{{ note.msg }}</span>
+      </div>
+      {% endfor %}
+    </div>
   </div>
 </aside>
-{%- endmacro %}
+{% endmacro %}

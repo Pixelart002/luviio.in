@@ -1,12 +1,21 @@
-{% macro render_nav(items) -%}
-<nav class="hidden lg:flex items-center gap-x-12">
-  {% for label, link in items.items() %}
-  <a href="{{ link }}" up-follow class="nav-link text-[10px] uppercase font-bold tracking-[0.2em] hover:text-blue-500 transition-colors duration-500">
-    {{ label }}
-  </a>
-  {% endfor %}
+{% macro render_nav(active_page='home', items=[]) %}
+<nav class="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 space-x-1">
+    {% for item in items %}
+        <a href="{{ item.url }}" 
+           up-target="main"
+           up-transition="cross-fade"
+           class="px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200
+                  {% if active_page == item.id %}
+                      bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-200
+                  {% else %}
+                      text-slate-600 hover:bg-slate-50 hover:text-slate-900
+                  {% endif %}">
+            {{ item.label }}
+        </a>
+    {% endfor %}
 </nav>
-{%- endmacro %}
-</body>
 
-</html>
+<button class="md:hidden p-2 text-slate-600 hover:text-slate-900" aria-label="Menu">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+</button>
+{% endmacro %}
