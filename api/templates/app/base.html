@@ -31,6 +31,14 @@
             transition: none !important;
             transform: none !important;
         }
+        
+        /* Ensure overlay is clickable but doesn't block content until active */
+        up-drawer {
+            pointer-events: none;
+        }
+        up-drawer[up-active] {
+            pointer-events: auto;
+        }
     </style>
 </head>
 
@@ -111,8 +119,10 @@
                 // Animate drawer content
                 const drawerBox = event.layer.element.querySelector('up-drawer-box');
                 if (drawerBox) {
-                    gsap.set(drawerBox, { x: '-100%' });
-                    gsap.to(drawerBox, { x: '0%', duration: 0.5, ease: "power3.out" });
+                    gsap.fromTo(drawerBox, 
+                        { x: '-100%' },
+                        { x: '0%', duration: 0.5, ease: "power3.out" }
+                    );
                 }
                 
                 const overlay = event.layer.element.querySelector('up-modal-viewport');

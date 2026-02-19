@@ -5,3 +5,13 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 INFO:     127.0.0.1:51734 - "GET / HTTP/1.1" 200 OK
 INFO:     127.0.0.1:51734 - "GET /favicon.ico HTTP/1.1" 404 Not Found
 INFO:     127.0.0.1:51746 - "GET / HTTP/1.1" 200 OK
+INFO:     10.96.175.1:54150 - "HEAD / HTTP/1.1" 405 Method Not Allowed
+INFO:     10.96.175.1:54154 - "GET / HTTP/1.1" 200 OK
+INFO:     10.96.175.1:54166 - "GET / HTTP/1.1" 200 OK
+INFO:     10.96.175.1:34794 - "GET / HTTP/1.1" 200 OK
+INFO:     10.96.175.1:34810 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     10.96.175.1:52956 - "GET / HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2908]
