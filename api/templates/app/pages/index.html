@@ -1,84 +1,92 @@
 {% extends "app/base.html" %}
 
-{# --- 1. STRICT IMPORTS (Path: app/macros/index_page/) --- #}
-{% from "app/macros/index_page/header.html"  import render_header %}
-{% from "app/macros/index_page/nav.html"     import render_nav %}
-{% from "app/macros/index_page/main.html"    import render_main_wrapper %}
-{% from "app/macros/index_page/section.html" import render_section %}
-{% from "app/macros/index_page/article.html" import render_article %}
-{% from "app/macros/index_page/aside.html"   import render_aside %}
-{% from "app/macros/index_page/footer.html"  import render_footer %}
+{# --- IMPORT MACROS --- #}
+{% from "app/macros/index_page/header.html" import render_header %}
+{% from "app/macros/index_page/hero.html" import render_hero %}
+{# (Aise hi footer aur baki macros bhi import honge) #}
 
-{# --- 2. PAGE CONFIGURATION --- #}
-{% block title %}Dashboard | Luviio Beast{% endblock %}
+{# --- INJECT INTO HEADER SLOT --- #}
+{% block global_header %}
+    {{ render_header(cart_count=2) }}
+{% endblock %}
 
-{# --- 3. PAGE COMPOSITION --- #}
+{# --- INJECT INTO MAIN WORKSPACE --- #}
 {% block body_content %}
-
-{# A. HEADER (Z-Index 50) #}
-{{ render_header(user=state.user_info) }}
-
-{# B. NAVIGATION (Overlay Z-Index 50) #}
-{{ render_nav(active_page='home', items=state.nav_items) }}
-
-{# C. MAIN WRAPPER (Z-Index 0) #}
-{# Wraps the grid layout #}
-{% call render_main_wrapper() %}
-
-{# LEFT COL: Content Feeds (Span 8) #}
-<div class="lg:col-span-8 flex flex-col gap-8">
-    {% call render_section(title="System Feeds", id="feeds") %}
     
-    {% if state.articles %}
-    {% for article in state.articles %}
-    {{ render_article(
-                            title=article.title,
-                            content=article.content,
-                            badge=article.badge,
-                            date=article.date
-                        ) }}
-    {% endfor %}
-    {% else %}
-    <div class="p-12 text-center text-slate-400 bg-white/50 border border-dashed border-slate-200 rounded-xl">
-        <p>No active feeds available.</p>
-    </div>
-    {% endif %}
-    
-    {% endcall %}
-</div>
+    {# 1. Hero Section #}
+    {{ render_hero() }}
 
-{# RIGHT COL: Sidebar (Span 4) #}
-<div class="lg:col-span-4">
-    {{ render_aside(
-                title="Live Diagnostics", 
-                stats=state.system_stats,
-                notifications=state.alerts
-            ) }}
-</div>
-
-{% endcall %}
-
-{# D. FOOTER #}
-{{ render_footer(version="2.1.0") }}
+    {# 2. Grid Section (GSAP Reveal via Unpoly Compiler) #}
+    <section class="max-w-7xl mx-auto px-6 lg:px-12 py-24">
+        <h2 class="font-['Playfair_Display'] text-4xl mb-12 text-center gsap-reveal">Curated Ceramics</h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div class="group cursor-pointer gsap-reveal" up-target="#spa-workspace" href="/product/1">
+                <div class="aspect-[4/5] bg-slate-200 rounded-2xl overflow-hidden mb-4 relative">
+                    <div class="absolute inset-0 bg-slate-900/10 group-hover:bg-transparent transition-colors z-10"></div>
+                    <div class="w-full h-full bg-gradient-to-tr from-stone-300 to-stone-100 transform group-hover:scale-105 transition-transform duration-700"></div>
+                </div>
+                <h3 class="font-['Outfit'] font-bold text-lg">Onyx Basin</h3>
+                <p class="text-teal-700 font-medium">₹12,499</p>
+            </div>
+            </div>
+    </section>
 
 {% endblock %}
 
-{# --- 4. BEAST ANIMATION TRIGGERS --- #}
+{# --- EXTREME GSAP PHYSICS FOR THIS PAGE --- #}
 {% block page_scripts %}
 <script>
-    // Trigger GSAP animations when this specific page loads
-    document.addEventListener("DOMContentLoaded", () => {
-        if (typeof playPageLoadAnimation === 'function') {
-            playPageLoadAnimation();
-        }
-    });
-    
-    // Re-trigger on Unpoly update (if navigating back to home)
+    // Ye function Unpoly aur Initial Load dono pe chalega
+    function playLandingPhysics() {
+        // Master Timeline (Cinematic ease)
+        const tl = gsap.timeline({ 
+            defaults: { ease: "expo.out" } 
+        });
+
+        // 1. Header Dropdown
+        tl.fromTo("#luxury-header", 
+            { y: -100, opacity: 0 }, 
+            { y: 0, opacity: 1, duration: 1.2 }
+        )
+        // 2. Hero Text Reveal (Staggered like a movie title)
+        .fromTo(".hero-text-line", 
+            { y: 100, opacity: 0, skewY: 5 }, 
+            { y: 0, opacity: 1, skewY: 0, duration: 1.5, stagger: 0.2 },
+            "-=0.8" // Overlap header animation
+        )
+        // 3. Subtext Fade In
+        .fromTo(".hero-subtext", 
+            { y: 20, opacity: 0 }, 
+            { y: 0, opacity: 1, duration: 1 },
+            "-=1"
+        )
+        // 4. Button Pop Up
+        .fromTo(".hero-btn-wrapper", 
+            { y: 30, opacity: 0, scale: 0.9 }, 
+            { y: 0, opacity: 1, scale: 1, duration: 1, ease: "back.out(1.5)" },
+            "-=0.8"
+        );
+
+        // 5. Ambient Blob Physics (Continuous slow floating)
+        gsap.to("#hero-blob", {
+            y: 50,
+            x: -30,
+            scale: 1.1,
+            duration: 8,
+            repeat: -1,
+            yoyo: true,
+            ease: "sine.inOut"
+        });
+    }
+
+    // Run on initial page load
+    document.addEventListener("DOMContentLoaded", playLandingPhysics);
+
+    // Run when Unpoly navigates back to this page via SPA
     up.on('up:fragment:inserted', (event) => {
-        if (event.target.matches('#main-content') || event.target.closest('#main-content')) {
-            if (typeof playPageLoadAnimation === 'function') {
-                playPageLoadAnimation();
-            }
+        if (event.target.querySelector('.hero-text-line')) {
+            playLandingPhysics();
         }
     });
 </script>

@@ -1,0 +1,29 @@
+{% macro render_hero() %}
+<section class="relative w-full min-h-[85vh] flex items-center justify-center overflow-hidden bg-[#FAFAFA] pt-20">
+    
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-teal-100/40 rounded-full blur-[100px] -z-10" id="hero-blob"></div>
+
+    <div class="max-w-7xl mx-auto px-6 lg:px-12 text-center relative z-10 flex flex-col items-center">
+        
+        <div class="overflow-hidden mb-6">
+            <h1 class="font-['Playfair_Display'] text-6xl md:text-8xl font-black tracking-tight text-slate-900 leading-[1.1] hero-text-line">
+                The Art of <br>
+                <span class="italic font-light text-teal-700">Bathing.</span>
+            </h1>
+        </div>
+
+        <div class="overflow-hidden mb-10 max-w-2xl">
+            <p class="font-['Outfit'] text-lg md:text-xl text-slate-500 font-light hero-subtext">
+                Sculpted ceramics, precision water flow, and minimalist architecture. Redefining your personal sanctuary.
+            </p>
+        </div>
+
+        <div class="hero-btn-wrapper opacity-0">
+            <a href="/shop" up-target="#spa-workspace" class="inline-flex items-center gap-3 bg-slate-900 text-white px-8 py-4 rounded-full font-['Outfit'] font-semibold hover:bg-teal-700 transition-all duration-300 hover:shadow-2xl hover:shadow-teal-900/20 transform hover:-translate-y-1">
+                Explore Collection
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+            </a>
+        </div>
+    </div>
+</section>
+{% endmacro %}
