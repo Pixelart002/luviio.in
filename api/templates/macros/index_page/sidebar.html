@@ -1,23 +1,34 @@
 {% macro render_sidebar(state) %}
 {# 
-    STATE-DRIVEN SIDEBAR (BEAST MODE)
-    Logic: Includes safety checks to prevent 'attribute not found' crashes.
+    RESPONSIVE SIDEBAR (BEAST MODE)
+    Desktop: Fixed on left (lg:block)
+    Mobile: Hidden by default, functions as a Drawer content
 #}
-<aside id="main-sidebar" class="fixed top-24 left-6 w-64 hidden lg:block z-40">
-  <div class="flex flex-col gap-8">
+<aside id="main-sidebar" 
+       class="hidden lg:block lg:fixed lg:top-24 lg:left-6 lg:w-64 z-40 mobile-sidebar-content">
+  
+  {# Mobile Wrapper: Desktop par transparent, Mobile drawer mein white background #}
+  <div class="flex flex-col gap-8 p-8 lg:p-0 h-full bg-white lg:bg-transparent shadow-2xl lg:shadow-none overflow-y-auto">
     
+    <div class="flex lg:hidden justify-end mb-4">
+        <button class="p-2 text-slate-400 hover:text-teal-700 transition-colors" up-dismiss>
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M6 18L18 6M6 6l12 12" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
+        </button>
+    </div>
+
     <div class="reveal">
-      <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">Curations</h3>
-      <ul class="space-y-3">
-        {# Safety Check: Loop only if sidebar_categories exists #}
+      <h3 class="text-[10px] font-bold uppercase tracking-widest text-teal-700 lg:text-slate-400 mb-6 lg:mb-4">Curations</h3>
+      <ul class="space-y-5 lg:space-y-3">
         {% if state.sidebar_categories %}
           {% for category in state.sidebar_categories %}
           <li>
             <a href="{{ category.url | default('#') }}" 
                up-target="#content" 
-               class="group flex items-center justify-between text-sm font-medium text-slate-600 hover:text-teal-700 transition-colors">
+               class="group flex items-center justify-between text-lg lg:text-sm font-medium text-slate-600 hover:text-teal-700 transition-colors">
               {{ category.label | default('Untitled Collection') }}
-              <span class="opacity-0 group-hover:opacity-100 transition-opacity text-[10px]">→</span>
+              <span class="opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity text-xs lg:text-[10px]">→</span>
             </a>
           </li>
           {% endfor %}
@@ -27,19 +38,18 @@
       </ul>
     </div>
     
-    {# FIXED: Wrap in an IF block to prevent 'featured_material' missing error #}
     {% if state.featured_material %}
-    <div class="p-6 bg-slate-900 rounded-[2rem] text-white reveal shadow-2xl shadow-slate-300 group overflow-hidden relative">
+    <div class="p-6 bg-slate-900 rounded-[2rem] text-white reveal shadow-2xl shadow-slate-300 group overflow-hidden relative mt-auto lg:mt-0">
       <div class="absolute inset-0 bg-teal-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
       
-      <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-2 relative z-10">Signature</p>
+      <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-2 relative z-10 text-teal-400">Signature</p>
       
-      <p class="font-['Playfair_Display'] text-xl mb-4 italic relative z-10">
+      <p class="font-['Playfair_Display'] text-2xl lg:text-xl mb-4 italic relative z-10">
         {{ state.featured_material.name | default('Signature Craft') }}
       </p>
       
       <a href="{{ state.featured_material.url | default('#') }}" 
-         class="text-xs font-bold text-teal-400 hover:text-white hover:underline transition-all relative z-10">
+         class="text-sm lg:text-xs font-bold text-teal-400 hover:text-white hover:underline transition-all relative z-10">
          View Craft
       </a>
     </div>
