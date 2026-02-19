@@ -83,6 +83,41 @@
                 }
             });
         });
+        
+        
+        
+        
+        
+        // this is.aniamtion btn  of hamburger btn  
+        // --- BEAST MODE BUTTON PHYSICS ---
+up.compiler('.menu-trigger', function(button) {
+    const line2 = button.querySelector('.line-2');
+    
+    // Magnetic Hover Effect
+    button.addEventListener('mousemove', (e) => {
+        const rect = button.getBoundingClientRect();
+        const x = e.clientX - rect.left - rect.width / 2;
+        const y = e.clientY - rect.top - rect.height / 2;
+        
+        gsap.to(button, {
+            x: x * 0.3,
+            y: y * 0.3,
+            duration: 0.5,
+            ease: "power2.out"
+        });
+        
+        gsap.to(line2, {
+            x: x * 0.1,
+            width: "100%",
+            duration: 0.4
+        });
+    });
+    
+    button.addEventListener('mouseleave', () => {
+        gsap.to(button, { x: 0, y: 0, duration: 0.7, ease: "elastic.out(1, 0.3)" });
+        gsap.to(line2, { x: 0, width: "100%", duration: 0.4 });
+    });
+});
     </script>
 
     {% block scripts %}{% endblock %}
