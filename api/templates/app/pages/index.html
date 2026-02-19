@@ -1,25 +1,44 @@
 {% extends "app/base.html" %}
 
-{% from "macros/index_page/header.html" import render_header %}
+{# --- 1. MACRO IMPORTS --- #}
+{% from "macros/index_page/header.html"  import render_header %}
 {% from "macros/index_page/sidebar.html" import render_sidebar %}
-{% from "macros/index_page/nav.html" import render_nav %}
-{% from "macros/index_page/footer.html" import render_footer %}
-{% from "macros/index_page/hero.html" import render_hero %}
+{% from "macros/index_page/footer.html"  import render_footer %}
+{% from "macros/index_page/hero.html"    import render_hero %}
 
+{# --- 2. HEADER BLOCK --- #}
 {% block header %}
 {{ render_header(state) }}
 {% endblock %}
 
-{% block sidebar %}
+{# --- 3. MAIN CONTENT BLOCK --- #}
+{% block content %}
+
+{# 
+       DRAWER SOURCE: 
+       Isse hum block content ke andar rakh rahe hain taaki Unpoly 
+       isse DOM se utha sake, par ye macro khud 'hidden' div render karta hai.
+    #}
 {{ render_sidebar(state) }}
+
+{# CINEMATIC HERO: Full-width experience since aside is removed #}
+<div id="main-content" class="w-full">
+  {{ render_hero() }}
+</div>
+
+{# FOOTER: Proper state-driven footer #}
+{{ render_footer(state) }}
+
 {% endblock %}
 
-{% block nav %} 
-{{ render_nav(state) }}
-{% endblock %} 
-
-{% block content %}
-{{ render_hero() }}
-
-{{ render_footer(state) }}
+{# --- 4. OPTIONAL: GSAP REFRESH --- #}
+{% block scripts %}
+<script>
+  // Ensure GSAP triggers are refreshed when the drawer-style page loads
+  document.addEventListener("DOMContentLoaded", () => {
+    if (typeof ScrollTrigger !== 'undefined') {
+      ScrollTrigger.refresh();
+    }
+  });
+</script>
 {% endblock %}
