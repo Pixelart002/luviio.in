@@ -32,8 +32,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ------------------ Static Files ------------------
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# ------------------ Static Files (Conditional Mount) ------------------
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+else:
+    logger.warning("Static directory not found – skipping mount. If you have static files, ensure the folder exists and is included in deployment.")
 
 # ------------------ Templates ------------------
 templates = Jinja2Templates(directory="templates")
