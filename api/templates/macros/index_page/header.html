@@ -1,30 +1,19 @@
 {% macro render_header(state) %}
 {# 
-    BEAST MODE HEADER (ULTRASONIC RESPONSIVE)
-    - Logo: Perfectly Centered using Absolute Positioning.
-    - Buttons: Grouped next to the Profile icon on the right.
+    BEAST MODE HEADER (UI REFACTORED)
+    - Logo: Back to the Left (Classic Luxury).
+    - Interaction Group: Nav + Profile + Hamburger (Right-aligned).
 #}
 <header class="fixed top-0 w-full h-20 z-[60] bg-white/40 backdrop-blur-2xl border-b border-slate-200/20" id="luxury-header">
-    <div class="relative h-full max-w-7xl mx-auto px-4 lg:px-12 flex items-center justify-between">
+    <div class="h-full max-w-7xl mx-auto px-4 lg:px-12 flex items-center justify-between">
         
-        <div class="flex items-center z-10">
-            <button class="p-2 -ml-2 text-slate-900 hover:text-teal-700 transition-all active:scale-95" 
-                    up-layer="drawer" 
-                    up-target=".mobile-sidebar-content" 
-                    up-position="left">
-                <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-            </button>
-        </div>
-
-        <div class="absolute left-1/2 -translate-x-1/2 flex items-center pointer-events-auto z-10">
+        <div class="flex items-center">
             <a href="/" up-target="#layout" class="font-['Playfair_Display'] text-2xl md:text-3xl font-black tracking-tighter text-slate-900 group">
                 <span class="text-teal-700 transition-transform duration-500 group-hover:-translate-y-1 inline-block">L</span>uviio<span class="text-teal-700">.</span>
             </a>
         </div>
-        
-        <div class="flex items-center gap-2 md:gap-4 z-10">
+
+        <div class="flex items-center gap-2 md:gap-4">
             
             <nav class="flex items-center p-1 bg-white/50 border border-slate-200/50 rounded-full shadow-sm">
                 {% for item in state.nav_items %}
@@ -47,6 +36,18 @@
                     </svg>
                 </div>
             </div>
+
+            <div class="flex items-center lg:hidden">
+                <button class="p-2 text-slate-900 hover:text-teal-700 transition-all active:scale-95 bg-white/50 border border-slate-200/50 rounded-full" 
+                        up-layer="drawer" 
+                        up-target=".mobile-sidebar-content" 
+                        up-position="right"> {# Changed position to right for better flow #}
+                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
+            </div>
+
         </div>
         
     </div>
