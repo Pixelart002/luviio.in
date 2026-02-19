@@ -1,61 +1,52 @@
 {% extends "app/base.html" %}
 
 {% from "macros/index_page/header.html" import render_header %}
-{% from "macros/index_page/drawer.html" import render_drawer %} {# new #}
-{% from "macros/index_page/footer.html" import render_footer %}
-{% from "macros/index_page/hero.html" import render_hero %}
+{% from "macros/index_page/drawer.html" import render_drawer %}
 
 {% block header %}
 {{ render_header(state) }}
 {% endblock %}
 
 {% block content %}
-<!-- Drawer content (hidden) is placed here -->
+<!-- Render the hidden drawer content -->
 {{ render_drawer(state) }}
 
-<!-- Rest of your page content -->
-<div id="main-content" class="w-full">
-  {{ render_hero() }}
+<!-- Your page content (hero, etc.) -->
+<div class="max-w-7xl mx-auto px-4 py-12">
+  <h1 class="text-5xl font-serif font-bold text-gray-900">Welcome to Luviio</h1>
+  <p class="text-lg text-gray-600 mt-4">Click the hamburger menu to open the drawer.</p>
 </div>
-
-{{ render_footer(state) }}
 {% endblock %}
 
 {% block scripts %}
 <script>
   // Optional: GSAP hamburger animation (if you want the icon to animate)
-  document.addEventListener("DOMContentLoaded", () => {
-    if (typeof gsap !== 'undefined') {
-      // Register ScrollTrigger if needed
-      gsap.registerPlugin(ScrollTrigger);
-    }
-  });
-  
-  // Unpoly layer events for hamburger icon animation (if desired)
-  up.on('up:layer:opened', (event) => {
-    if (event.layer.mode === 'drawer') {
+  if (typeof gsap !== 'undefined') {
+    up.on('up:layer:opened', (event) => {
+      if (event.layer.mode === 'drawer') {
+        const btn = document.querySelector('.hamburger-btn');
+        if (btn) {
+          const spans = btn.querySelectorAll('span');
+          if (spans.length === 3) {
+            gsap.to(spans[0], { rotate: 45, y: 9, duration: 0.3 });
+            gsap.to(spans[1], { opacity: 0, x: -10, duration: 0.3 });
+            gsap.to(spans[2], { rotate: -45, y: -9, duration: 0.3 });
+          }
+        }
+      }
+    });
+    
+    up.on('up:layer:dismissed', (event) => {
       const btn = document.querySelector('.hamburger-btn');
       if (btn) {
         const spans = btn.querySelectorAll('span');
         if (spans.length === 3) {
-          gsap.to(spans[0], { rotate: 45, y: 9, duration: 0.3 });
-          gsap.to(spans[1], { opacity: 0, x: -10, duration: 0.3 });
-          gsap.to(spans[2], { rotate: -45, y: -9, duration: 0.3 });
+          gsap.to(spans[0], { rotate: 0, y: 0, duration: 0.3 });
+          gsap.to(spans[1], { opacity: 1, x: 0, duration: 0.3 });
+          gsap.to(spans[2], { rotate: 0, y: 0, duration: 0.3 });
         }
       }
-    }
-  });
-  
-  up.on('up:layer:dismissed', (event) => {
-    const btn = document.querySelector('.hamburger-btn');
-    if (btn) {
-      const spans = btn.querySelectorAll('span');
-      if (spans.length === 3) {
-        gsap.to(spans[0], { rotate: 0, y: 0, duration: 0.3 });
-        gsap.to(spans[1], { opacity: 1, x: 0, duration: 0.3 });
-        gsap.to(spans[2], { rotate: 0, y: 0, duration: 0.3 });
-      }
-    }
-  });
+    });
+  }
 </script>
 {% endblock %}
