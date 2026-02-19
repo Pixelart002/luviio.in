@@ -3,32 +3,48 @@
   document.addEventListener("DOMContentLoaded", () => {
     gsap.registerPlugin(ScrollTrigger);
     
-    const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
+    // 1. Hero Entrance Timeline
+    const tl = gsap.timeline({ defaults: { ease: "power4.out" } });
     
-    // Hero Reveal
-    tl.to(".hero-bg", { scale: 1, duration: 3, opacity: 0.5 })
-      .from(".hero-title", { y: 100, opacity: 0, duration: 1.5 }, "-=2.5")
-      .from(".hero-subtitle", { y: 30, opacity: 0, duration: 1 }, "-=1.5")
-      .from(".search-container", { scale: 0.9, opacity: 0, duration: 1 }, "-=1");
+    tl.to(".hero-parallax", { scale: 1, duration: 3 })
+      .from(".split-text", { y: 150, opacity: 0, duration: 1.8, skewY: 10 }, "-=2.5")
+      .to(".hero-sub", { opacity: 1, y: 0, duration: 1 }, "-=1.5")
+      .to(".hero-cta", { opacity: 1, duration: 1 }, "-=1")
+      .to(".scroll-line", { scaleY: 1, duration: 1, opacity: 1 }, "-=0.5");
     
-    // Category Cards Stagger
-    gsap.from(".category-card", {
+    // 2. Parallax Effect on Scroll
+    gsap.to(".hero-parallax", {
       scrollTrigger: {
-        trigger: "#categories",
-        start: "top 80%",
+        trigger: "#hero",
+        start: "top top",
+        end: "bottom top",
+        scrub: true
       },
-      y: 60,
-      opacity: 0,
-      duration: 1,
-      stagger: 0.2,
-      ease: "back.out(1.7)"
+      y: 200,
+      scale: 1.2
     });
     
-    // Human-like interaction: Header change on scroll
-    ScrollTrigger.create({
-      start: "top -80",
-      onEnter: () => gsap.to("header", { backgroundColor: "rgba(0,0,0,0.9)", borderBottom: "1px solid rgba(255,255,255,0.1)" }),
-      onLeaveBack: () => gsap.to("header", { backgroundColor: "transparent", borderBottom: "1px solid transparent" })
+    // 3. Image Reveal Animation
+    gsap.to(".img-parallax", {
+      scrollTrigger: {
+        trigger: ".reveal-img",
+        start: "top 80%",
+        scrub: 1
+      },
+      scale: 1,
+      y: -50
+    });
+    
+    // 4. Aside & Content Stagger
+    gsap.to(".aside-reveal", {
+      scrollTrigger: {
+        trigger: "#hero",
+        start: "bottom center",
+      },
+      opacity: 1,
+      x: 0,
+      duration: 1.5,
+      ease: "expo.out"
     });
   });
 </script>

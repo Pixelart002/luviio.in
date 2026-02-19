@@ -1,84 +1,75 @@
 {% extends "app/base.html" %}
 
-{# IMPORTANT: Saare layout macros ko yahan import karna zaroori hai #}
+{# Importing your exact file structure from the screenshot #}
+{% import "macros/layout/header.html" as h %}
+{% import "macros/layout/nav.html" as n %}
 {% import "macros/layout/section.html" as s %}
+{% import "macros/layout/article.html" as a %}
 {% import "macros/layout/aside.html" as ad %}
+{% import "macros/layout/footer.html" as f %}
 
 {% block content %}
 
-{# 1. HERO SECTION (Zomato Style) #}
-{# Note: Ab humne isme 'custom_class' support add kar diya hai taaki error na aaye #}
-{% call s.render_section('hero', 'min-h-[90vh] flex items-center justify-center text-center relative overflow-hidden') %}
-<div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=2070')] bg-cover bg-center opacity-30 scale-110 hero-bg"></div>
-<div class="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-[#050505]"></div>
+{# Cinematic Hero Section #}
+{% call s.render_section('hero', 'min-h-screen relative flex items-center justify-center overflow-hidden bg-black') %}
 
-<div class="relative z-10 w-full max-w-4xl px-4">
-  <h1 class="hero-title text-6xl md:text-8xl font-black tracking-tighter mb-6 uppercase">
-    LUVIIO <span class="text-red-600 italic">STORE</span>
+{# Parallax Background #}
+<div class="absolute inset-0 z-0 bg-[url('https://images.unsplash.com/photo-1550966841-3ee3ad359051?q=80&w=2070')] bg-cover bg-center opacity-40 hero-parallax scale-125"></div>
+<div class="absolute inset-0 z-10 bg-gradient-to-b from-black/20 via-black/60 to-black"></div>
+
+<div class="relative z-20 text-center px-6">
+  <h1 class="split-text text-[15vw] md:text-[12vw] font-black leading-none tracking-tighter uppercase italic text-transparent bg-clip-text bg-gradient-to-r from-white via-zinc-400 to-zinc-700">
+    LUVIIO
   </h1>
-  <p class="hero-subtitle text-xl text-zinc-300 mb-12 font-medium tracking-wide">
-    Premium taste, delivered with enterprise-grade speed.
+  <p class="hero-sub opacity-0 translate-y-10 text-xl md:text-2xl text-zinc-400 font-light tracking-[0.5em] mt-4 uppercase">
+    The Art of Discovery
   </p>
   
-  {# Search Bar (Zomato Signature) #}
-  <div class="search-container bg-white rounded-xl p-2 flex flex-col md:flex-row gap-2 shadow-2xl">
-    <div class="flex-1 flex items-center px-4 gap-3 border-b md:border-b-0 md:border-r border-zinc-200 py-3">
-      <span class="text-red-500">📍</span>
-      <input type="text" placeholder="Delhi NCR" class="w-full outline-none text-zinc-800 font-medium">
-    </div>
-    <div class="flex-[2] flex items-center px-4 gap-3 py-3">
-      <span class="text-zinc-400">🔍</span>
-      <input type="text" placeholder="Search for restaurant, cuisine or a dish" class="w-full outline-none text-zinc-800">
-    </div>
+  <div class="mt-12 opacity-0 hero-cta">
+    <button class="px-10 py-4 bg-white text-black text-xs font-bold uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all duration-500 rounded-full shadow-[0_0_30px_rgba(255,255,255,0.2)]">
+      Explore Collection
+    </button>
   </div>
+</div>
+
+{# Scroll Indicator #}
+<div class="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 scroll-indicator opacity-0">
+  <div class="w-[1px] h-20 bg-gradient-to-b from-white to-transparent origin-top scale-y-0 scroll-line"></div>
 </div>
 {% endcall %}
 
-{# 2. CATEGORY CARDS (GSAP Stagger) #}
-{% call s.render_section('categories', 'bg-white text-black py-20') %}
-<div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto px-4">
-  {# Card 1 #}
-  <div class="category-card group overflow-hidden rounded-2xl border border-zinc-100 shadow-sm hover:shadow-xl transition-all cursor-pointer">
-    <div class="h-48 bg-[url('https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800')] bg-cover bg-center group-hover:scale-105 transition-transform duration-700"></div>
-    <div class="p-5">
-      <h3 class="text-xl font-bold">Order Online</h3>
-      <p class="text-zinc-500 text-sm">Stay home and order to your doorstep</p>
-    </div>
-  </div>
-  {# Card 2 #}
-  <div class="category-card group overflow-hidden rounded-2xl border border-zinc-100 shadow-sm hover:shadow-xl transition-all cursor-pointer">
-    <div class="h-48 bg-[url('https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800')] bg-cover bg-center group-hover:scale-105 transition-transform duration-700"></div>
-    <div class="p-5">
-      <h3 class="text-xl font-bold">Dining</h3>
-      <p class="text-zinc-500 text-sm">View the city's favourite dining venues</p>
-    </div>
-  </div>
-  {# Card 3 #}
-  <div class="category-card group overflow-hidden rounded-2xl border border-zinc-100 shadow-sm hover:shadow-xl transition-all cursor-pointer">
-    <div class="h-48 bg-[url('https://images.unsplash.com/photo-1493770348161-369560ae357d?w=800')] bg-cover bg-center group-hover:scale-105 transition-transform duration-700"></div>
-    <div class="p-5">
-      <h3 class="text-xl font-bold">Nightlife</h3>
-      <p class="text-zinc-500 text-sm">Explore the city's top nightlife outlets</p>
-    </div>
-  </div>
-</div>
-{% endcall %}
-
-{# 3. DYNAMIC ASIDE CONTENT #}
+{# Aside Content (Now visible and responsive) #}
 {% call ad.render_aside() %}
-<div class="space-y-6">
-  <h4 class="text-white font-bold border-b border-white/10 pb-2">Trending Collections</h4>
-  <ul class="text-xs space-y-4">
-    <li class="hover:text-red-500 cursor-pointer transition-colors flex items-center gap-2">
-      <span>🔥</span> Top 10 Sushi Places
-    </li>
-    <li class="hover:text-red-500 cursor-pointer transition-colors flex items-center gap-2">
-      <span>🥐</span> Best Breakfast Spots
-    </li>
-    <li class="hover:text-red-500 cursor-pointer transition-colors flex items-center gap-2">
-      <span>🍷</span> Romantic Dinners
-    </li>
-  </ul>
+<div class="aside-reveal opacity-0 space-y-12">
+  <div>
+    <h4 class="text-[10px] text-zinc-500 font-bold tracking-[0.3em] uppercase mb-4 italic">Metadata</h4>
+    <p class="text-xs text-zinc-400 leading-relaxed">System-level UI integration with cinematic GSAP orchestration. Optimized for 120fps display.</p>
+  </div>
+  <div>
+    <h4 class="text-[10px] text-zinc-500 font-bold tracking-[0.3em] uppercase mb-4">Live Feed</h4>
+    <div class="space-y-4">
+      <div class="flex items-center gap-4 text-[10px] border-b border-white/5 pb-2">
+        <span class="text-red-500">●</span> <span>Trending in Delhi</span>
+      </div>
+      <div class="flex items-center gap-4 text-[10px] border-b border-white/5 pb-2">
+        <span class="text-zinc-600">●</span> <span>Mumbai Updates</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endcall %}
+
+{# Content Section #}
+{% call s.render_section('about', 'py-32 bg-black border-t border-white/5') %}
+<div class="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-2 gap-20 items-center">
+  <div class="reveal-img overflow-hidden rounded-2xl aspect-[4/5] bg-zinc-900">
+    <img src="https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&w=1974" class="w-full h-full object-cover scale-150 img-parallax" alt="Gourmet">
+  </div>
+  <div class="space-y-8">
+    {% call a.render_article('REDEFINING TASTE', 'We don\'t just deliver food; we deliver an experience curated for the elite.') %}
+    <p class="text-zinc-500 text-lg">Using high-end system level rules to ensure brevity and precision in every byte.</p>
+    {% endcall %}
+  </div>
 </div>
 {% endcall %}
 
