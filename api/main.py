@@ -5,45 +5,39 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, BackgroundTasks
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
-# ------------------ Logging Configuration ------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+# ------------------ Logging ------------------
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# ------------------ Lifespan (Startup/Shutdown) ------------------
+# ------------------ Lifespan ------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 App starting...")
     yield
     logger.info("🛑 App shutting down...")
 
-app = FastAPI(
-    title="Luviio Enterprise",
-    version="1.0.0",
-    lifespan=lifespan,
-)
+app = FastAPI(title="Luviio Enterprise", version="1.0.0", lifespan=lifespan)
 
-# ------------------ Static Files (Conditional Mount) ------------------
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+# ------------------ Static Files (Conditional) ------------------
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 else:
-    logger.warning("Static directory not found – skipping mount. If you have static files, ensure the folder exists and is included in deployment.")
+    logger.warning("Static folder not found – skipping mount.")
 
 # ------------------ Templates ------------------
 templates = Jinja2Templates(directory="templates")
 templates.env.enable_async = True
 
-# ------------------ Middleware: Request ID & Logging ------------------
+# ------------------ Middleware ------------------
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request_id = str(uuid.uuid4())
@@ -52,10 +46,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         logger.info(f"Req {request_id} completed: {response.status_code}")
         return response
-
 app.add_middleware(RequestLoggingMiddleware)
 
-# ------------------ Security Headers Middleware ------------------
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -63,19 +55,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.tailwindcss.com;"
         return response
-
 app.add_middleware(SecurityHeadersMiddleware)
 
-# ------------------ Global Exception Handler ------------------
+# ------------------ Exception Handler ------------------
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={"error": "Internal server error", "request_id": request.state.request_id}
-    )
+    return JSONResponse(status_code=500, content={"error": "Internal server error", "request_id": request.state.request_id})
 
-# ------------------ Pydantic Model for UI State ------------------
+# ------------------ Pydantic Model ------------------
 class UIState(BaseModel):
     page_title: str
     nav_items: List[Dict[str, Any]]
@@ -98,20 +86,7 @@ async def home(request: Request):
             {"label": "Ceramics", "url": "/ceramics"},
             {"label": "Water Systems", "url": "/water"}
         ],
-        featured_material={
-            "name": "Arctic Matte Stone",
-            "url": "/materials/arctic-stone"
-        },
-        footer_sections=[
-            {
-                "title": "Resources",
-                "links": [{"label": "Gallery", "url": "/gallery"}]
-            }
-        ]
+        featured_material={"name": "Arctic Matte Stone", "url": "/materials/arctic-stone"},
+        footer_sections=[{"title": "Resources", "links": [{"label": "Gallery", "url": "/gallery"}]}]
     )
-    return templates.TemplateResponse(
-        "pages/index.html",
-        {"request": request, "state": state.model_dump()}
-    )
-
-# और भी routes हो सकते हैं...
+    return templates.TemplateResponse("pages/index.html", {"request": request, "state": state.model_dump()})
