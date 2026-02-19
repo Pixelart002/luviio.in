@@ -1,43 +1,60 @@
 {% extends "app/base.html" %}
 
-{# --- 1. MACRO IMPORTS --- #}
-{% from "macros/index_page/header.html"  import render_header %}
-{% from "macros/index_page/sidebar.html" import render_sidebar %}
-{% from "macros/index_page/footer.html"  import render_footer %}
-{% from "macros/index_page/hero.html"    import render_hero %}
+{% from "macros/index_page/header.html" import render_header %}
+{% from "macros/index_page/drawer.html" import render_drawer %} {# new #}
+{% from "macros/index_page/footer.html" import render_footer %}
+{% from "macros/index_page/hero.html" import render_hero %}
 
-{# --- 2. HEADER BLOCK --- #}
 {% block header %}
 {{ render_header(state) }}
 {% endblock %}
 
-{# --- 3. MAIN CONTENT BLOCK --- #}
 {% block content %}
+<!-- Drawer content (hidden) is placed here -->
+{{ render_drawer(state) }}
 
-{# 
-       DRAWER SOURCE: 
-       Isse hum block content ke andar rakh rahe hain taaki Unpoly 
-       isse DOM se utha sake, par ye macro khud 'hidden' div render karta hai.
-    #}
-{{ render_sidebar(state) }}
-
-{# CINEMATIC HERO: Full-width experience since aside is removed #}
+<!-- Rest of your page content -->
 <div id="main-content" class="w-full">
   {{ render_hero() }}
 </div>
 
-{# FOOTER: Proper state-driven footer #}
 {{ render_footer(state) }}
-
 {% endblock %}
 
-{# --- 4. OPTIONAL: GSAP REFRESH --- #}
 {% block scripts %}
 <script>
-  // Ensure GSAP triggers are refreshed when the drawer-style page loads
+  // Optional: GSAP hamburger animation (if you want the icon to animate)
   document.addEventListener("DOMContentLoaded", () => {
-    if (typeof ScrollTrigger !== 'undefined') {
-      ScrollTrigger.refresh();
+    if (typeof gsap !== 'undefined') {
+      // Register ScrollTrigger if needed
+      gsap.registerPlugin(ScrollTrigger);
+    }
+  });
+  
+  // Unpoly layer events for hamburger icon animation (if desired)
+  up.on('up:layer:opened', (event) => {
+    if (event.layer.mode === 'drawer') {
+      const btn = document.querySelector('.hamburger-btn');
+      if (btn) {
+        const spans = btn.querySelectorAll('span');
+        if (spans.length === 3) {
+          gsap.to(spans[0], { rotate: 45, y: 9, duration: 0.3 });
+          gsap.to(spans[1], { opacity: 0, x: -10, duration: 0.3 });
+          gsap.to(spans[2], { rotate: -45, y: -9, duration: 0.3 });
+        }
+      }
+    }
+  });
+  
+  up.on('up:layer:dismissed', (event) => {
+    const btn = document.querySelector('.hamburger-btn');
+    if (btn) {
+      const spans = btn.querySelectorAll('span');
+      if (spans.length === 3) {
+        gsap.to(spans[0], { rotate: 0, y: 0, duration: 0.3 });
+        gsap.to(spans[1], { opacity: 1, x: 0, duration: 0.3 });
+        gsap.to(spans[2], { rotate: 0, y: 0, duration: 0.3 });
+      }
     }
   });
 </script>
