@@ -1,13 +1,7 @@
 {% macro render_header(state) %}
-{# 
-    BEAST MODE HEADER (ULTRASONIC RESPONSIVE)
-    - Logo: Perfectly Centered using Absolute Positioning.
-    - Buttons: Grouped next to the Profile icon on the right.
-#}
 <header class="fixed top-0 w-full h-20 z-[60] bg-white/40 backdrop-blur-2xl border-b border-slate-200/20" id="luxury-header">
     <div class="relative h-full max-w-7xl mx-auto px-4 lg:px-12 flex items-center justify-between">
         
-
         <div class="flex items-center z-10">
             <a href="/" up-target="#layout" class="font-['Playfair_Display'] text-2xl md:text-3xl font-black tracking-tighter text-slate-900 group">
                 <span class="text-teal-700 transition-transform duration-500 group-hover:-translate-y-1 inline-block">L</span>uviio<span class="text-teal-700">.</span>
@@ -38,21 +32,20 @@
                 </div>
             </div>
             
-            
             <div class="flex items-center z-20">
-            <button class="hamburger-btn group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform" 
-                    up-layer="new drawer" 
-                    up-target=".beast-drawer-content" 
-                    up-position="left">
-                <div class="w-6 h-5 relative flex flex-col justify-between">
-                    <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
-                    <span class="w-2/3 h-0.5 bg-current rounded-full transition-all duration-300"></span>
-                    <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
-                </div>
-            </button>
+                <a href="/" 
+                   class="hamburger-btn group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer" 
+                   up-layer="new drawer" 
+                   up-target=".beast-drawer-content" 
+                   up-position="left">
+                    <div class="w-6 h-5 relative flex flex-col justify-between">
+                        <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
+                        <span class="w-2/3 h-0.5 bg-current rounded-full transition-all duration-300"></span>
+                        <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
+                    </div>
+                </a>
+            </div>
         </div>
-        </div>
-        
     </div>
 </header>
 
