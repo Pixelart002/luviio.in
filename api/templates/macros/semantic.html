@@ -1,0 +1,36 @@
+{% macro section(title=None, class="", bg="white") %}
+<section class="py-16 {{ class }}" {% if bg != 'white' %}style="background-color: {{ bg }};" {% endif %}>
+    <div class="max-w-7xl mx-auto px-6">
+        {% if title %}
+        <h2 class="text-3xl md:text-4xl font-serif font-bold mb-10">{{ title }}</h2>
+        {% endif %}
+        {{ caller() }}
+    </div>
+</section>
+{% endmacro %}
+
+{% macro article(heading, author=None, date=None) %}
+<article class="prose lg:prose-xl mb-12">
+    <header class="mb-4">
+        <h3 class="text-2xl font-serif">{{ heading }}</h3>
+        {% if author or date %}
+        <p class="text-sm text-slate-500">
+            {% if author %}By {{ author }}{% endif %}
+            {% if date %} on {{ date }}{% endif %}
+        </p>
+        {% endif %}
+    </header>
+    <div class="content">
+        {{ caller() }}
+    </div>
+</article>
+{% endmacro %}
+
+{% macro aside(title) %}
+<aside class="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+    <h4 class="font-bold uppercase text-xs tracking-widest text-teal-700 mb-4">{{ title }}</h4>
+    <div class="space-y-3 text-slate-600">
+        {{ caller() }}
+    </div>
+</aside>
+{% endmacro %}
