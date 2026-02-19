@@ -1,52 +1,44 @@
 {% extends "app/base.html" %}
 
-{% from "macros/index_page/header.html" import render_header %}
-{% from "macros/index_page/drawer.html" import render_drawer %}
+{# --- 1. MACRO IMPORTS --- #}
+{% from "macros/index_page/header.html"  import render_header %}
+{% from "macros/index_page/sidebar.html" import render_sidebar %}
+{% from "macros/index_page/footer.html"  import render_footer %}
+{% from "macros/index_page/hero.html"    import render_hero %}
 
+{# --- 2. HEADER BLOCK --- #}
 {% block header %}
 {{ render_header(state) }}
 {% endblock %}
 
+{# --- 3. MAIN CONTENT BLOCK --- #}
 {% block content %}
-<!-- Render the hidden drawer content -->
-{{ render_drawer(state) }}
 
-<!-- Your page content (hero, etc.) -->
-<div class="max-w-7xl mx-auto px-4 py-12">
-  <h1 class="text-5xl font-serif font-bold text-gray-900">Welcome to Luviio</h1>
-  <p class="text-lg text-gray-600 mt-4">Click the hamburger menu to open the drawer.</p>
+{# 
+       DRAWER SOURCE: 
+       Isse hum block content ke andar rakh rahe hain taaki Unpoly 
+       isse DOM se utha sake, par ye macro khud 'hidden' div render karta hai.
+    #}
+{{ render_sidebar(state) }}
+
+{# CINEMATIC HERO: Full-width experience since aside is removed #}
+<div id="main-content" class="w-full">
+  {{ render_hero() }}
 </div>
+
+{# FOOTER: Proper state-driven footer #}
+{{ render_footer(state) }}
+
 {% endblock %}
 
+{# --- 4. OPTIONAL: GSAP REFRESH --- #}
 {% block scripts %}
 <script>
-  // Optional: GSAP hamburger animation (if you want the icon to animate)
-  if (typeof gsap !== 'undefined') {
-    up.on('up:layer:opened', (event) => {
-      if (event.layer.mode === 'drawer') {
-        const btn = document.querySelector('.hamburger-btn');
-        if (btn) {
-          const spans = btn.querySelectorAll('span');
-          if (spans.length === 3) {
-            gsap.to(spans[0], { rotate: 45, y: 9, duration: 0.3 });
-            gsap.to(spans[1], { opacity: 0, x: -10, duration: 0.3 });
-            gsap.to(spans[2], { rotate: -45, y: -9, duration: 0.3 });
-          }
-        }
-      }
-    });
-    
-    up.on('up:layer:dismissed', (event) => {
-      const btn = document.querySelector('.hamburger-btn');
-      if (btn) {
-        const spans = btn.querySelectorAll('span');
-        if (spans.length === 3) {
-          gsap.to(spans[0], { rotate: 0, y: 0, duration: 0.3 });
-          gsap.to(spans[1], { opacity: 1, x: 0, duration: 0.3 });
-          gsap.to(spans[2], { rotate: 0, y: 0, duration: 0.3 });
-        }
-      }
-    });
-  }
+  // Ensure GSAP triggers are refreshed when the drawer-style page loads
+  document.addEventListener("DOMContentLoaded", () => {
+    if (typeof ScrollTrigger !== 'undefined') {
+      ScrollTrigger.refresh();
+    }
+  });
 </script>
 {% endblock %}
