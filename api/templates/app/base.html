@@ -19,27 +19,6 @@
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
 
     {% block head %}{% endblock %}
-    <style>
-        /* Hide the original drawer content until it's in a layer */
-        .beast-drawer-content.hidden { display: none; }
-        
-        /* Ensure the layer drawer content is visible */
-        up-drawer .beast-drawer-content.hidden { display: block !important; }
-        
-        /* Disable Unpoly default drawer transitions to let GSAP handle it */
-        up-drawer-box {
-            transition: none !important;
-            transform: none !important;
-        }
-        
-        /* Ensure overlay is clickable but doesn't block content until active */
-        up-drawer {
-            pointer-events: none;
-        }
-        up-drawer[up-active] {
-            pointer-events: auto;
-        }
-    </style>
 </head>
 
 {# 
@@ -91,6 +70,7 @@
         });
 
         // --- Auto-Physics for GSAP Reveal ---
+        // Class 'reveal' kisi bhi element pe daalo, wo automatic animate hoga load pe
         up.compiler('.reveal', (element) => {
             gsap.from(element, {
                 y: 30,
@@ -103,47 +83,71 @@
                 }
             });
         });
-
-        // --- DRAWER GSAP ANIMATION HANDLER ---
-        up.on('up:layer:opened', (event) => {
-            if (event.layer.mode === 'drawer') {
-                const btn = document.querySelector('.hamburger-btn');
-                if (btn) {
-                    const spans = btn.querySelectorAll('span');
-                    // Transform hamburger to X
-                    gsap.to(spans[0], { rotate: 45, y: 9, duration: 0.3 });
-                    gsap.to(spans[1], { opacity: 0, x: -10, duration: 0.3 });
-                    gsap.to(spans[2], { rotate: -45, y: -9, duration: 0.3 });
-                }
-                
-                // Animate drawer content
-                const drawerBox = event.layer.element.querySelector('up-drawer-box');
-                if (drawerBox) {
-                    gsap.fromTo(drawerBox, 
-                        { x: '-100%' },
-                        { x: '0%', duration: 0.5, ease: "power3.out" }
-                    );
-                }
-                
-                const overlay = event.layer.element.querySelector('up-modal-viewport');
-                if (overlay) {
-                    gsap.fromTo(overlay, { opacity: 0 }, { opacity: 1, duration: 0.3 });
-                }
-            }
+        
+        
+        
+        
+        
+        // this is.aniamtion btn  of hamburger btn  
+        // --- BEAST MODE BUTTON PHYSICS ---
+up.compiler('.menu-trigger', function(button) {
+    const line2 = button.querySelector('.line-2');
+    
+    // Magnetic Hover Effect
+    button.addEventListener('mousemove', (e) => {
+        const rect = button.getBoundingClientRect();
+        const x = e.clientX - rect.left - rect.width / 2;
+        const y = e.clientY - rect.top - rect.height / 2;
+        
+        gsap.to(button, {
+            x: x * 0.3,
+            y: y * 0.3,
+            duration: 0.5,
+            ease: "power2.out"
         });
-
-        up.on('up:layer:dismissed', (event) => {
-            if (event.layer.mode === 'drawer') {
-                const btn = document.querySelector('.hamburger-btn');
-                if (btn) {
-                    const spans = btn.querySelectorAll('span');
-                    // Back to Hamburger
-                    gsap.to(spans[0], { rotate: 0, y: 0, duration: 0.3 });
-                    gsap.to(spans[1], { opacity: 1, x: 0, duration: 0.3 });
-                    gsap.to(spans[2], { rotate: 0, y: 0, duration: 0.3 });
-                }
-            }
+        
+        gsap.to(line2, {
+            x: x * 0.1,
+            width: "100%",
+            duration: 0.4
         });
+    });
+    
+    button.addEventListener('mouseleave', () => {
+        gsap.to(button, { x: 0, y: 0, duration: 0.7, ease: "elastic.out(1, 0.3)" });
+        gsap.to(line2, { x: 0, width: "100%", duration: 0.4 });
+    });
+});
+
+
+
+///new btn js 
+<script>
+    // --- Unpoly Layer Events ---
+    // Jab drawer khulega
+    up.on('up:layer:opened', (event) => {
+        if (event.layer.mode === 'drawer') {
+            const btn = document.querySelector('.hamburger-btn');
+            const spans = btn.querySelectorAll('span');
+            
+            // Transform to X
+            gsap.to(spans[0], { rotate: 45, y: 9, duration: 0.3 });
+            gsap.to(spans[1], { opacity: 0, x: -10, duration: 0.3 });
+            gsap.to(spans[2], { rotate: -45, y: -9, duration: 0.3 });
+        }
+    });
+
+    // Jab drawer band hoga
+    up.on('up:layer:dismissed', (event) => {
+        const btn = document.querySelector('.hamburger-btn');
+        const spans = btn.querySelectorAll('span');
+        
+        // Back to Hamburger
+        gsap.to(spans[0], { rotate: 0, y: 0, duration: 0.3 });
+        gsap.to(spans[1], { opacity: 1, x: 0, duration: 0.3 });
+        gsap.to(spans[2], { rotate: 0, y: 0, duration: 0.3 });
+    });
+</script>
     </script>
 
     {% block scripts %}{% endblock %}
