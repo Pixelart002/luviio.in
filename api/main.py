@@ -14,10 +14,7 @@ from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
 # ------------------ Logging ------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # ------------------ Lifespan ------------------
@@ -29,12 +26,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Luviio Enterprise", version="1.0.0", lifespan=lifespan)
 
-# ------------------ Paths ------------------
+# ------------------ Absolute Paths ------------------
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 
-# ------------------ Static Files ------------------
+# ------------------ Static Files (Optional) ------------------
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     logger.info("✅ Static directory mounted")
@@ -72,14 +69,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# ------------------ Exception Handler ------------------
+# ------------------ Global Exception Handler ------------------
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={"error": "Internal server error", "request_id": request.state.request_id}
-    )
+    return JSONResponse(status_code=500, content={"error": "Internal server error", "request_id": request.state.request_id})
 
 # ------------------ UI State Model ------------------
 class UIState(BaseModel):
@@ -94,25 +88,23 @@ class UIState(BaseModel):
 # ------------------ Debug Templates Endpoint ------------------
 @app.get("/debug")
 async def debug_templates():
-    """See all available templates"""
+    """List all template files found"""
     files = []
-    for root, dirs, filenames in os.walk(TEMPLATES_DIR):
+    for root, _, filenames in os.walk(TEMPLATES_DIR):
         for f in filenames:
             if f.endswith('.html'):
                 rel = os.path.relpath(os.path.join(root, f), TEMPLATES_DIR)
                 files.append(rel)
-    
     return {
-        "templates_dir_exists": os.path.exists(TEMPLATES_DIR),
-        "templates_dir": TEMPLATES_DIR,
-        "files": files,
-        "static_dir_exists": os.path.exists(STATIC_DIR)
+        "templates_dir": str(TEMPLATES_DIR),
+        "exists": os.path.exists(TEMPLATES_DIR),
+        "files": files
     }
 
-# ------------------ HOME ROUTE - FULLY AUTOMATIC ------------------
+# ------------------ HOME ROUTE – AUTOMATIC TEMPLATE FINDER ------------------
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    # State data
+    # Prepare state data
     state = UIState(
         page_title="Home | Luviio",
         nav_items=[
@@ -134,62 +126,41 @@ async def home(request: Request):
             }
         ]
     )
-    
-    # FIRST: Try to find ANY index.html file in templates
-    try:
-        for root, dirs, files in os.walk(TEMPLATES_DIR):
-            for file in files:
-                if file == "index.html":
-                    rel_path = os.path.relpath(os.path.join(root, file), TEMPLATES_DIR)
-                    logger.info(f"✅ Found index.html at: {rel_path}")
-                    return templates.TemplateResponse(
-                        rel_path,
-                        {"request": request, "state": state.model_dump()}
-                    )
-    except Exception as e:
-        logger.error(f"Error scanning templates: {e}")
-    
-    # SECOND: Try common paths
-    common_paths = [
-        "index.html",
-        "pages/index.html",
-        "app/pages/index.html",
-        "home.html",
-        "pages/home.html"
-    ]
-    
+
+    # 1️⃣ Scan entire templates folder for any index.html
+    all_html = glob.glob(f"{TEMPLATES_DIR}/**/*.html", recursive=True)
+    for file_path in all_html:
+        if "index.html" in os.path.basename(file_path):
+            rel_path = os.path.relpath(file_path, TEMPLATES_DIR)
+            logger.info(f"✅ Found index.html at: {rel_path}")
+            return templates.TemplateResponse(rel_path, {"request": request, "state": state.model_dump()})
+
+    # 2️⃣ If not found, try common locations (fallback)
+    common_paths = ["index.html", "pages/index.html", "app/pages/index.html", "home.html"]
     for path in common_paths:
         try:
-            return templates.TemplateResponse(
-                path,
-                {"request": request, "state": state.model_dump()}
-            )
+            return templates.TemplateResponse(path, {"request": request, "state": state.model_dump()})
         except:
             continue
-    
-    # LAST: If nothing works, show debug info
+
+    # 3️⃣ If still not found, show helpful error with debug link
     return HTMLResponse(
         content=f"""
         <html>
-            <head><title>Setup Required</title></head>
+            <head><title>Template Missing</title></head>
             <body style="font-family: sans-serif; padding: 2rem;">
-                <h1>🔧 Template Not Found</h1>
-                <p>Please check your template structure.</p>
-                <h2>Debug Info:</h2>
-                <ul>
-                    <li>Templates directory: <code>{TEMPLATES_DIR}</code></li>
-                    <li>Directory exists: <code>{os.path.exists(TEMPLATES_DIR)}</code></li>
-                </ul>
-                <p>👉 Visit <a href="/debug">/debug</a> to see available templates</p>
-                <p>👉 Make sure your templates are in the correct folder:</p>
+                <h1>❌ No index.html Found</h1>
+                <p>Please ensure your template files are deployed correctly.</p>
+                <p>👉 <a href="/debug">Click here to see available templates</a></p>
+                <p>Expected structure:</p>
                 <pre>
 project-root/
 ├── api/
 │   └── main.py
 ├── templates/
 │   ├── base.html
-│   ├── index.html  (or app/pages/index.html)
-│   └── macros/
+│   └── (somewhere) index.html
+└── ...
                 </pre>
             </body>
         </html>
