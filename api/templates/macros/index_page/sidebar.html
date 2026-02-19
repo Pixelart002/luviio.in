@@ -1,10 +1,6 @@
 {% macro render_sidebar(state) %}
-{# 
-   FIXED LOGIC: 
-   The 'hidden' class is moved to a wrapper. 
-   This ensures the '.beast-drawer-content' is visible once Unpoly clones it into the drawer.
-#}
 <div class="hidden"> 
+    
     <div class="beast-drawer-content w-[280px] md:w-[350px] h-full bg-white p-8 flex flex-col gap-10 overflow-y-auto">
         
         <div class="md:hidden">
@@ -46,6 +42,5 @@
         <button class="w-full py-4 text-xs font-bold uppercase tracking-widest text-slate-400 bg-slate-50 rounded-xl" up-dismiss>
             Close
         </button>
-    </div>
-</div>
-{% endmacro %}
+
+    </div> </div> {% endmacro %}
