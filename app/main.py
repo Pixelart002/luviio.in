@@ -1,7 +1,7 @@
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
-from typing import Optional
 
 import httpx
 from fastapi import FastAPI, Request
@@ -13,8 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.core.config import settings
 from app.core.logging import setup_logging
-from app.core.security import add_security_headers
-from app.db.client import supabase_client
+from app.db.client import get_supabase_client
 from app.routes import home, auth
 
 # Setup structured logging
@@ -23,16 +22,19 @@ logger = logging.getLogger("luviio")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: verify Supabase connection
     logger.info("Starting Luviio...")
+    # Test Supabase connection using a thread to avoid blocking
     try:
-        # Simple health check
-        await supabase_client.table("health_check").select("*").limit(1).execute()
+        client = get_supabase_client()
+        # Run the synchronous query in a thread pool
+        await asyncio.to_thread(
+            lambda: client.table("health_check").select("*").limit(1).execute()
+        )
         logger.info("Supabase connection OK")
     except Exception as e:
         logger.error(f"Supabase connection failed: {e}")
+        # App continues but with degraded functionality
     yield
-    # Shutdown
     logger.info("Shutting down Luviio.")
 
 def create_app() -> FastAPI:
@@ -44,7 +46,7 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
 
-    # Middleware
+    # CORS middleware
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
@@ -52,19 +54,41 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
-    app.add_middleware(SessionMiddleware, secret_key=settings.SESSION_SECRET)
-    app.middleware("http")(add_security_headers)
 
-    # Exception handler with AI debugger
+    # Trusted host middleware
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=settings.ALLOWED_HOSTS
+    )
+
+    # Session middleware (requires itsdangerous)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.SESSION_SECRET
+    )
+
+    # Security headers middleware
+    @app.middleware("http")
+    async def security_headers_middleware(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com;"
+        )
+        return response
+
+    # Global exception handler with AI debugger
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
         error_id = uuid.uuid4().hex[:8]
         logger.exception(f"Unhandled exception {error_id}: {exc}")
 
-        # Call AI debugger (async, but don't block response)
         ai_suggestion = ""
-        if settings.ENVIRONMENT == "development":
+        if settings.ENVIRONMENT == "development" and settings.AI_DEBUGGER_URL:
             try:
                 async with httpx.AsyncClient(timeout=2.0) as client:
                     resp = await client.get(
@@ -72,7 +96,7 @@ def create_app() -> FastAPI:
                     )
                     if resp.status_code == 200:
                         ai_suggestion = resp.text[:200]
-            except:
+            except Exception:
                 pass
 
         return JSONResponse(
@@ -84,17 +108,16 @@ def create_app() -> FastAPI:
             },
         )
 
-    # Templates
+    # Jinja2 templates setup
     templates = Jinja2Templates(directory="app/templates")
     templates.env.enable_async = True
-    # Make settings available in templates
     templates.env.globals["settings"] = settings
 
     # Include routers
     app.include_router(home.router, tags=["pages"])
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
 
-    # Inject templates into request state for routes
+    # Middleware to inject templates into request state
     @app.middleware("http")
     async def add_templates_to_request(request: Request, call_next):
         request.state.templates = templates
@@ -102,4 +125,5 @@ def create_app() -> FastAPI:
 
     return app
 
+# Vercel entry point
 app = create_app()
