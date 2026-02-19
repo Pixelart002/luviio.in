@@ -1,39 +1,50 @@
 {% macro render_sidebar(state) %}
-<aside class="hidden lg:block fixed top-24 left-6 w-64 z-40">
-  {{ render_sidebar_content(state) }}
+{# 
+    STATE-DRIVEN SIDEBAR (BEAST MODE)
+    Logic: Includes safety checks to prevent 'attribute not found' crashes.
+#}
+<aside id="main-sidebar" class="fixed top-24 left-6 w-64 hidden lg:block z-40">
+  <div class="flex flex-col gap-8">
+    
+    <div class="reveal">
+      <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">Curations</h3>
+      <ul class="space-y-3">
+        {# Safety Check: Loop only if sidebar_categories exists #}
+        {% if state.sidebar_categories %}
+          {% for category in state.sidebar_categories %}
+          <li>
+            <a href="{{ category.url | default('#') }}" 
+               up-target="#content" 
+               class="group flex items-center justify-between text-sm font-medium text-slate-600 hover:text-teal-700 transition-colors">
+              {{ category.label | default('Untitled Collection') }}
+              <span class="opacity-0 group-hover:opacity-100 transition-opacity text-[10px]">→</span>
+            </a>
+          </li>
+          {% endfor %}
+        {% else %}
+          <li class="text-xs text-slate-300 italic">No curations available</li>
+        {% endif %}
+      </ul>
+    </div>
+    
+    {# FIXED: Wrap in an IF block to prevent 'featured_material' missing error #}
+    {% if state.featured_material %}
+    <div class="p-6 bg-slate-900 rounded-[2rem] text-white reveal shadow-2xl shadow-slate-300 group overflow-hidden relative">
+      <div class="absolute inset-0 bg-teal-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+      
+      <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-2 relative z-10">Signature</p>
+      
+      <p class="font-['Playfair_Display'] text-xl mb-4 italic relative z-10">
+        {{ state.featured_material.name | default('Signature Craft') }}
+      </p>
+      
+      <a href="{{ state.featured_material.url | default('#') }}" 
+         class="text-xs font-bold text-teal-400 hover:text-white hover:underline transition-all relative z-10">
+         View Craft
+      </a>
+    </div>
+    {% endif %}
+
+  </div>
 </aside>
-
-<div class="mobile-sidebar-content hidden">
-  <div class="w-[280px] h-full bg-white p-8 flex flex-col gap-8 shadow-2xl">
-    {{ render_sidebar_content(state) }}
-  </div>
-</div>
-{% endmacro %}
-
-{% macro render_sidebar_content(state) %}
-<div class="flex flex-col gap-8">
-  <div class="reveal">
-    <h3 class="text-[10px] font-bold uppercase tracking-widest text-teal-700 mb-6">Curations</h3>
-    <ul class="space-y-5 lg:space-y-3">
-      {% if state.sidebar_categories %}
-      {% for category in state.sidebar_categories %}
-      <li>
-        <a href="{{ category.url }}" up-target="#content" class="flex items-center justify-between text-lg lg:text-sm font-medium text-slate-600 hover:text-teal-700 transition-colors">
-          {{ category.label }}
-          <span class="text-xs">→</span>
-        </a>
-      </li>
-      {% endfor %}
-      {% endif %}
-    </ul>
-  </div>
-  
-  {% if state.featured_material %}
-  <div class="p-6 bg-slate-900 rounded-[2rem] text-white reveal shadow-xl mt-auto lg:mt-0">
-    <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-2 text-teal-400">Signature</p>
-    <p class="font-['Playfair_Display'] text-xl mb-4 italic leading-tight">{{ state.featured_material.name }}</p>
-    <a href="{{ state.featured_material.url }}" class="text-xs font-bold text-teal-400 hover:underline">View Craft</a>
-  </div>
-  {% endif %}
-</div>
 {% endmacro %}
