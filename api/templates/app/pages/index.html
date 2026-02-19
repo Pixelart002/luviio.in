@@ -1,47 +1,85 @@
-{% import "macros/layout/header.html" as h %}
-{% import "macros/layout/nav.html" as n %}
-{% import "macros/layout/main.html" as m %}
-{% import "macros/layout/aside.html" as ad %}
-{% import "macros/layout/section.html" as s %}
-{% import "macros/layout/article.html" as a %}
-{% import "macros/layout/footer.html" as f %}
-{% import "macros/animations/core.html" as anim %}
+{% extends "app/base.html" %}
 
-<!DOCTYPE html>
-<html lang="en" class="bg-black text-white selection:bg-blue-600">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/unpoly@3.1.0/unpoly.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-</head>
-<body class="antialiased overflow-x-hidden">
+{# --- 1. STRICT IMPORTS (Path: app/macros/index_page/) --- #}
+{% from "app/macros/index_page/header.html"  import render_header %}
+{% from "app/macros/index_page/nav.html"     import render_nav %}
+{% from "app/macros/index_page/main.html"    import render_main_wrapper %}
+{% from "app/macros/index_page/section.html" import render_section %}
+{% from "app/macros/index_page/article.html" import render_article %}
+{% from "app/macros/index_page/aside.html"   import render_aside %}
+{% from "app/macros/index_page/footer.html"  import render_footer %}
 
-    {% call h.render_header() %}
-        {{ n.render_nav({'Core': '/', 'Data': '/data', 'Neural': '/neural'}) }}
-    {% endcall %}
+{# --- 2. PAGE CONFIGURATION --- #}
+{% block title %}Dashboard | Luviio Beast{% endblock %}
 
-    <div class="flex flex-col lg:flex-row">
-        {% call m.render_main() %}
-            {% block content %}
-                {% call s.render_section('hero') %}
-                    {% call a.render_article('DYNAMIC FLOW', 'High-end responsive architecture built for enterprise systems.') %}
-                        <div class="flex gap-4">
-                            <button class="bg-white text-black px-6 py-3 text-xs font-bold uppercase tracking-widest hover:invert transition-all">Launch</button>
-                        </div>
-                    {% endcall %}
-                {% endcall %}
-            {% endblock %}
-        {% endcall %}
+{# --- 3. PAGE COMPOSITION --- #}
+{% block body_content %}
 
-        {% call ad.render_aside() %}
-            <p class="text-xs text-zinc-500 italic">System is currently running in Beast Mode. All protocols active.</p>
-        {% endcall %}
+{# A. HEADER (Z-Index 50) #}
+{{ render_header(user=state.user_info) }}
+
+{# B. NAVIGATION (Overlay Z-Index 50) #}
+{{ render_nav(active_page='home', items=state.nav_items) }}
+
+{# C. MAIN WRAPPER (Z-Index 0) #}
+{# Wraps the grid layout #}
+{% call render_main_wrapper() %}
+
+{# LEFT COL: Content Feeds (Span 8) #}
+<div class="lg:col-span-8 flex flex-col gap-8">
+    {% call render_section(title="System Feeds", id="feeds") %}
+    
+    {% if state.articles %}
+    {% for article in state.articles %}
+    {{ render_article(
+                            title=article.title,
+                            content=article.content,
+                            badge=article.badge,
+                            date=article.date
+                        ) }}
+    {% endfor %}
+    {% else %}
+    <div class="p-12 text-center text-slate-400 bg-white/50 border border-dashed border-slate-200 rounded-xl">
+        <p>No active feeds available.</p>
     </div>
+    {% endif %}
+    
+    {% endcall %}
+</div>
 
-    {{ f.render_footer() }}
+{# RIGHT COL: Sidebar (Span 4) #}
+<div class="lg:col-span-4">
+    {{ render_aside(
+                title="Live Diagnostics", 
+                stats=state.system_stats,
+                notifications=state.alerts
+            ) }}
+</div>
 
-    {{ anim.init_gsap() }}
-</body>
-</html>
+{% endcall %}
+
+{# D. FOOTER #}
+{{ render_footer(version="2.1.0") }}
+
+{% endblock %}
+
+{# --- 4. BEAST ANIMATION TRIGGERS --- #}
+{% block page_scripts %}
+<script>
+    // Trigger GSAP animations when this specific page loads
+    document.addEventListener("DOMContentLoaded", () => {
+        if (typeof playPageLoadAnimation === 'function') {
+            playPageLoadAnimation();
+        }
+    });
+    
+    // Re-trigger on Unpoly update (if navigating back to home)
+    up.on('up:fragment:inserted', (event) => {
+        if (event.target.matches('#main-content') || event.target.closest('#main-content')) {
+            if (typeof playPageLoadAnimation === 'function') {
+                playPageLoadAnimation();
+            }
+        }
+    });
+</script>
+{% endblock %}
