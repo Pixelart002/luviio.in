@@ -1,52 +1,43 @@
 {% macro render_header(state) %}
-{# 
-    BEAST MODE HEADER (RESPONSIVE UPDATE)
-    - Z-Index 60 for master layering.
-    - Mobile: Adds a Drawer trigger for the sidebar.
-    - Desktop: Clean luxury layout.
-#}
-<header class="fixed top-0 w-full h-20 z-[60] bg-white/40 backdrop-blur-2xl border-b border-slate-200/20" id="luxury-header">
-    <div class="h-full max-w-7xl mx-auto px-6 lg:px-12 flex items-center justify-between">
+<header class="fixed top-0 w-full h-16 md:h-20 z-[60] bg-white/60 backdrop-blur-2xl border-b border-slate-200/10" id="luxury-header">
+    <div class="h-full max-w-7xl mx-auto px-4 md:px-12 flex items-center justify-between">
         
         <div class="flex lg:hidden items-center">
-            <button class="p-2 -ml-2 text-slate-900 hover:text-teal-700 transition-all active:scale-95" 
+            <button class="p-2 -ml-2 text-slate-900 active:scale-90 transition-transform" 
                     up-layer="drawer" 
                     up-target=".mobile-sidebar-content" 
                     up-position="left">
-                <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg class="w-6 h-6 md:w-7 md:h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
             </button>
         </div>
 
-        <a href="/" up-target="#layout" class="font-['Playfair_Display'] text-3xl font-black tracking-tighter text-slate-900 group">
-            <span class="text-teal-700 transition-transform duration-500 group-hover:-translate-y-1 inline-block">L</span>uviio<span class="text-teal-700">.</span>
+        <a href="/" up-target="#layout" class="font-['Playfair_Display'] text-2xl md:text-3xl font-black tracking-tighter text-slate-900">
+            <span class="text-teal-700">L</span>uviio<span class="text-teal-700">.</span>
         </a>
         
-        <nav class="hidden md:flex items-center p-1 bg-white/50 border border-slate-200/50 rounded-full shadow-sm">
+        <nav class="hidden lg:flex items-center p-1 bg-white/50 border border-slate-200/50 rounded-full shadow-sm">
             {% for item in state.nav_items %}
-            <a href="{{ item.url }}" 
-               up-target="#content" 
+            <a href="{{ item.url }}" up-target="#content" 
                class="px-5 py-2 text-sm font-medium transition-all rounded-full 
-                      {{ 'text-teal-800 bg-white shadow-sm' if item.active else 'text-slate-600 hover:text-teal-700 hover:bg-white' }}">
+                      {{ 'text-teal-800 bg-white shadow-sm' if item.active else 'text-slate-600 hover:text-teal-700' }}">
                 {{ item.label }}
             </a>
             {% endfor %}
         </nav>
         
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-3">
             <span class="hidden lg:block text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
                 {{ state.user_status | default('Studio Access') }}
             </span>
-            <div class="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-white cursor-pointer hover:bg-teal-700 transition-all shadow-xl shadow-slate-200">
+            <div class="w-8 h-8 md:w-10 md:h-10 rounded-full bg-slate-900 flex items-center justify-center text-white cursor-pointer shadow-lg shadow-slate-200">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
             </div>
         </div>
-        
     </div>
 </header>
-
-<div class="h-20 w-full"></div>
+<div class="h-16 md:h-20 w-full"></div>
 {% endmacro %}

@@ -1,37 +1,19 @@
 {% macro render_hero() %}
-<section class="relative w-full h-screen flex items-center justify-center overflow-hidden">
-    
-    <div class="absolute inset-0 bg-gradient-to-b from-slate-100 to-white -z-10"></div>
-    <div class="absolute top-[20%] right-[10%] w-[500px] h-[500px] bg-teal-200/30 rounded-full blur-[120px] mix-blend-multiply animate-pulse" id="hero-orb"></div>
-
-    <div class="max-w-7xl mx-auto px-6 text-center z-10">
-        <div class="overflow-hidden mb-4">
-            <span class="inline-block font-['Plus_Jakarta_Sans'] text-xs font-bold tracking-[0.3em] uppercase text-teal-700 reveal-line">
-                Bath Architecture Redefined
-            </span>
-        </div>
+<section class="relative w-full min-h-[70vh] md:min-h-[85vh] flex items-center justify-center overflow-hidden bg-[#FAFAFA] px-4">
+    <div class="max-w-4xl mx-auto text-center z-10">
         
-        <h1 class="font-['Playfair_Display'] text-7xl md:text-9xl font-black text-slate-900 leading-none mb-8">
+        <span class="inline-block font-bold text-[10px] tracking-[0.3em] uppercase text-teal-700 mb-4 md:mb-6">
+            Bath Architecture Redefined
+        </span>
+        
+        <h1 class="font-['Playfair_Display'] text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-black text-slate-900 leading-[1.1] mb-6 md:mb-10">
             Fluid <br>
-            <span class="italic font-light">Elegance.</span>
+            <span class="italic font-light text-teal-700">Elegance.</span>
         </h1>
-
-        <p class="font-['Plus_Jakarta_Sans'] text-lg md:text-xl text-slate-500 max-w-2xl mx-auto font-light mb-12 hero-p opacity-0">
-            Crafting the world's finest ceramic surfaces and water systems. Where engineering meets pure art.
+        
+        <p class="text-sm md:text-lg text-slate-500 max-w-xl mx-auto font-light leading-relaxed">
+            Sculpted ceramics and precision water systems. Redefining your personal sanctuary.
         </p>
-
-        <div class="flex flex-col md:flex-row gap-6 justify-center hero-actions opacity-0">
-            <button class="bg-slate-900 text-white px-10 py-5 rounded-full font-bold shadow-2xl hover:bg-teal-700 transition-all transform hover:-translate-y-1">
-                The Experience Center
-            </button>
-            <button class="border border-slate-200 px-10 py-5 rounded-full font-bold hover:bg-slate-50 transition-all">
-                Watch the Craft
-            </button>
-        </div>
-    </div>
-
-    <div class="absolute bottom-10 left-1/2 -translate-x-1/2 text-slate-300 animate-bounce">
-        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
     </div>
 </section>
 {% endmacro %}
