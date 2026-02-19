@@ -1,104 +1,13 @@
-{% extends "app/base.html" %}
+{% extends "base.html" %}
 
-{% from "macros/index_page/header.html" import render_header %}
-{% from "macros/index_page/drawer.html" import render_drawer %}
-{% from "macros/index_page/footer.html" import render_footer %}
-{% from "macros/index_page/hero.html" import render_hero %}
-
-{% block header %}
-{{ render_header(state) }}
-{% endblock %}
+{% block title %}Home | Luviio Luxury Architecture{% endblock %}
 
 {% block content %}
-<!-- Render the drawer (hidden by default) -->
-{{ render_drawer(state) }}
-
-<!-- Your main content -->
-<div id="main-content" class="w-full">
-  {{ render_hero() }}
-</div>
-
-{{ render_footer(state) }}
+<!-- Hero section -->
+{% include "macros/hero.html" %}
+<!-- यहाँ और content हो सकता है – articles, sections, etc. -->
 {% endblock %}
 
 {% block scripts %}
-<!-- VANILLA JS for drawer toggling - NO Unpoly drawer dependency -->
-<script>
-  document.addEventListener('DOMContentLoaded', function() {
-    // Get elements
-    const hamburgerBtn = document.getElementById('hamburgerBtn');
-    const drawer = document.getElementById('drawer');
-    const overlay = document.getElementById('drawerOverlay');
-    const closeBtn = document.getElementById('closeDrawerBtn');
-    const drawerLinks = drawer ? drawer.querySelectorAll('a[up-target="#content"]') : [];
-    
-    // Function to open drawer
-    function openDrawer() {
-      if (drawer) {
-        drawer.classList.remove('-translate-x-full');
-        overlay.classList.remove('hidden');
-        document.body.style.overflow = 'hidden'; // Prevent background scrolling
-        
-        // Animate hamburger to X (optional - keep your GSAP if you want)
-        const spans = hamburgerBtn?.querySelectorAll('span');
-        if (spans && spans.length === 3) {
-          spans[0].style.transform = 'rotate(45deg) translateY(9px)';
-          spans[1].style.opacity = '0';
-          spans[2].style.transform = 'rotate(-45deg) translateY(-9px)';
-        }
-      }
-    }
-    
-    // Function to close drawer
-    function closeDrawer() {
-      if (drawer) {
-        drawer.classList.add('-translate-x-full');
-        overlay.classList.add('hidden');
-        document.body.style.overflow = '';
-        
-        // Animate hamburger back to lines
-        const spans = hamburgerBtn?.querySelectorAll('span');
-        if (spans && spans.length === 3) {
-          spans[0].style.transform = 'rotate(0) translateY(0)';
-          spans[1].style.opacity = '1';
-          spans[2].style.transform = 'rotate(0) translateY(0)';
-        }
-      }
-    }
-    
-    // Event listeners
-    if (hamburgerBtn) {
-      hamburgerBtn.addEventListener('click', openDrawer);
-    }
-    
-    if (closeBtn) {
-      closeBtn.addEventListener('click', closeDrawer);
-    }
-    
-    if (overlay) {
-      overlay.addEventListener('click', closeDrawer);
-    }
-    
-    // Close drawer when clicking any link inside it (for navigation)
-    drawerLinks.forEach(link => {
-      link.addEventListener('click', closeDrawer);
-    });
-    
-    // Handle escape key to close drawer
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape' && drawer && !drawer.classList.contains('-translate-x-full')) {
-        closeDrawer();
-      }
-    });
-  });
-</script>
-
-<!-- Keep your existing GSAP/Unpoly scripts - they won't interfere -->
-<script>
-  // Your existing GSAP and Unpoly code (for other animations) can stay
-  if (typeof gsap !== 'undefined') {
-    gsap.registerPlugin(ScrollTrigger);
-    // ... rest of your GSAP code
-  }
-</script>
+<!-- Page-specific scripts (agar kuch ho) -->
 {% endblock %}
