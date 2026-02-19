@@ -39,16 +39,16 @@
             </div>
             
             
-            
-            
-     <div class="flex items-center z-10">
-            <button class="p-2 -ml-2 text-slate-900 hover:text-teal-700 active:scale-90 transition-all" 
+            <div class="flex items-center z-20">
+            <button class="hamburger-btn group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform" 
                     up-layer="new drawer" 
                     up-target=".beast-drawer-content" 
                     up-position="left">
-                <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
+                <div class="w-6 h-5 relative flex flex-col justify-between">
+                    <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
+                    <span class="w-2/3 h-0.5 bg-current rounded-full transition-all duration-300"></span>
+                    <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
+                </div>
             </button>
         </div>
         </div>

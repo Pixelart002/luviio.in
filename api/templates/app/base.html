@@ -118,6 +118,36 @@ up.compiler('.menu-trigger', function(button) {
         gsap.to(line2, { x: 0, width: "100%", duration: 0.4 });
     });
 });
+
+
+
+///new btn js 
+<script>
+    // --- Unpoly Layer Events ---
+    // Jab drawer khulega
+    up.on('up:layer:opened', (event) => {
+        if (event.layer.mode === 'drawer') {
+            const btn = document.querySelector('.hamburger-btn');
+            const spans = btn.querySelectorAll('span');
+            
+            // Transform to X
+            gsap.to(spans[0], { rotate: 45, y: 9, duration: 0.3 });
+            gsap.to(spans[1], { opacity: 0, x: -10, duration: 0.3 });
+            gsap.to(spans[2], { rotate: -45, y: -9, duration: 0.3 });
+        }
+    });
+
+    // Jab drawer band hoga
+    up.on('up:layer:dismissed', (event) => {
+        const btn = document.querySelector('.hamburger-btn');
+        const spans = btn.querySelectorAll('span');
+        
+        // Back to Hamburger
+        gsap.to(spans[0], { rotate: 0, y: 0, duration: 0.3 });
+        gsap.to(spans[1], { opacity: 1, x: 0, duration: 0.3 });
+        gsap.to(spans[2], { rotate: 0, y: 0, duration: 0.3 });
+    });
+</script>
     </script>
 
     {% block scripts %}{% endblock %}
