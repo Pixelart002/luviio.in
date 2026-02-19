@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
+import glob
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -12,41 +13,40 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
-# ------------------ Logging Configuration ------------------
+# ------------------ Logging ------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# ------------------ Lifespan (Startup/Shutdown) ------------------
+# ------------------ Lifespan ------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 App starting...")
     yield
     logger.info("🛑 App shutting down...")
 
-app = FastAPI(
-    title="Luviio Enterprise",
-    version="1.0.0",
-    lifespan=lifespan,
-)
+app = FastAPI(title="Luviio Enterprise", version="1.0.0", lifespan=lifespan)
 
-# ------------------ Static Files (Conditional Mount) ------------------
+# ------------------ Paths ------------------
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 
+# ------------------ Static Files ------------------
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    logger.info("✅ Static directory mounted")
 else:
-    logger.warning("Static directory not found – skipping mount.")
+    logger.warning("⚠️ Static directory not found – skipping mount.")
 
-# ------------------ Templates with Absolute Path ------------------
+# ------------------ Templates ------------------
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 templates.env.enable_async = True
+logger.info(f"📁 Templates directory: {TEMPLATES_DIR}")
 
-# ------------------ Middleware: Request ID & Logging ------------------
+# ------------------ Middleware ------------------
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request_id = str(uuid.uuid4())
@@ -58,7 +58,6 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestLoggingMiddleware)
 
-# ------------------ Security Headers Middleware ------------------
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -73,7 +72,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# ------------------ Global Exception Handler ------------------
+# ------------------ Exception Handler ------------------
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error: {exc}", exc_info=True)
@@ -82,7 +81,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"error": "Internal server error", "request_id": request.state.request_id}
     )
 
-# ------------------ Pydantic Model for UI State ------------------
+# ------------------ UI State Model ------------------
 class UIState(BaseModel):
     page_title: str
     nav_items: List[Dict[str, Any]]
@@ -92,24 +91,28 @@ class UIState(BaseModel):
     server_time: str = datetime.now().strftime("%H:%M:%S")
     footer_sections: List[Dict[str, Any]] = []
 
-# ------------------ Debug Endpoint (Temporary) ------------------
-@app.get("/debug-templates")
+# ------------------ Debug Templates Endpoint ------------------
+@app.get("/debug")
 async def debug_templates():
-    """Check which template files are actually deployed"""
-    file_list = []
-    for root, dirs, files in os.walk(TEMPLATES_DIR):
-        for file in files:
-            rel_path = os.path.relpath(os.path.join(root, file), TEMPLATES_DIR)
-            file_list.append(rel_path)
+    """See all available templates"""
+    files = []
+    for root, dirs, filenames in os.walk(TEMPLATES_DIR):
+        for f in filenames:
+            if f.endswith('.html'):
+                rel = os.path.relpath(os.path.join(root, f), TEMPLATES_DIR)
+                files.append(rel)
+    
     return {
-        "templates_root": TEMPLATES_DIR,
-        "files": file_list,
-        "exists": os.path.exists(TEMPLATES_DIR)
+        "templates_dir_exists": os.path.exists(TEMPLATES_DIR),
+        "templates_dir": TEMPLATES_DIR,
+        "files": files,
+        "static_dir_exists": os.path.exists(STATIC_DIR)
     }
 
-# ------------------ Home Route ------------------
+# ------------------ HOME ROUTE - FULLY AUTOMATIC ------------------
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
+    # State data
     state = UIState(
         page_title="Home | Luviio",
         nav_items=[
@@ -132,28 +135,64 @@ async def home(request: Request):
         ]
     )
     
-    # Try multiple possible template paths
-    possible_paths = [
+    # FIRST: Try to find ANY index.html file in templates
+    try:
+        for root, dirs, files in os.walk(TEMPLATES_DIR):
+            for file in files:
+                if file == "index.html":
+                    rel_path = os.path.relpath(os.path.join(root, file), TEMPLATES_DIR)
+                    logger.info(f"✅ Found index.html at: {rel_path}")
+                    return templates.TemplateResponse(
+                        rel_path,
+                        {"request": request, "state": state.model_dump()}
+                    )
+    except Exception as e:
+        logger.error(f"Error scanning templates: {e}")
+    
+    # SECOND: Try common paths
+    common_paths = [
+        "index.html",
+        "pages/index.html",
         "app/pages/index.html",
-        "pages/index.html", 
-        "index.html"
+        "home.html",
+        "pages/home.html"
     ]
     
-    for template_path in possible_paths:
+    for path in common_paths:
         try:
             return templates.TemplateResponse(
-                template_path, 
+                path,
                 {"request": request, "state": state.model_dump()}
             )
         except:
             continue
     
-    # Agar koi bhi path kaam na kare to error do
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Template not found",
-            "tried_paths": possible_paths,
-            "debug_endpoint": "/debug-templates"
-        }
+    # LAST: If nothing works, show debug info
+    return HTMLResponse(
+        content=f"""
+        <html>
+            <head><title>Setup Required</title></head>
+            <body style="font-family: sans-serif; padding: 2rem;">
+                <h1>🔧 Template Not Found</h1>
+                <p>Please check your template structure.</p>
+                <h2>Debug Info:</h2>
+                <ul>
+                    <li>Templates directory: <code>{TEMPLATES_DIR}</code></li>
+                    <li>Directory exists: <code>{os.path.exists(TEMPLATES_DIR)}</code></li>
+                </ul>
+                <p>👉 Visit <a href="/debug">/debug</a> to see available templates</p>
+                <p>👉 Make sure your templates are in the correct folder:</p>
+                <pre>
+project-root/
+├── api/
+│   └── main.py
+├── templates/
+│   ├── base.html
+│   ├── index.html  (or app/pages/index.html)
+│   └── macros/
+                </pre>
+            </body>
+        </html>
+        """,
+        status_code=200
     )
