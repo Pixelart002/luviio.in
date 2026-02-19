@@ -1,8 +1,0 @@
-{% macro render_aside(title=None, id=None, class="") %}
-<aside {% if id %}id="{{ id }}" {% endif %} class="p-8 rounded-3xl {{ class }}">
-  {% if title %}
-  <h3 class="text-xl font-bold mb-4">{{ title }}</h3>
-  {% endif %}
-  {{ caller() }}
-</aside>
-{% endmacro %}

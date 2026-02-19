@@ -1,8 +1,0 @@
-{% macro render_article(title=None, id=None, class="") %}
-<article {% if id %}id="{{ id }}" {% endif %} class="prose prose-lg max-w-none {{ class }}">
-  {% if title %}
-  <h2 class="font-['Playfair_Display'] text-3xl md:text-4xl mb-6">{{ title }}</h2>
-  {% endif %}
-  {{ caller() }}
-</article>
-{% endmacro %}
