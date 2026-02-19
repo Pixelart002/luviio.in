@@ -1,11 +1,6 @@
-{# 
-    STRICTLY TYPED INDEX PAGE 
-    Extends: Base Layout
-    Logic: Composition Root (Calls Macros)
-#}
 {% extends "app/base.html" %}
 
-{# --- 1. IMPORTING BEAST MACROS (From your repo structure) --- #}
+{# --- IMPORT MACROS --- #}
 {% from "macros/layout/header.html"  import render_header %}
 {% from "macros/layout/nav.html"     import render_nav %}
 {% from "macros/layout/main.html"    import render_main_wrapper %}
@@ -14,31 +9,24 @@
 {% from "macros/layout/aside.html"   import render_aside %}
 {% from "macros/layout/footer.html"  import render_footer %}
 
-{# --- 2. PAGE CONFIGURATION --- #}
+{# --- PAGE CONFIG --- #}
 {% block title %}Dashboard | Luviio Beast{% endblock %}
 
-{# --- 3. PAGE COMPOSITION (The Semantic Flow) --- #}
+{# --- PAGE LOGIC --- #}
 {% block body_content %}
 
-{# A. HEADER #}
-{# Passing 'state' object from FastAPI Backend #}
+{# 1. HEADER (Use Expression Syntax {{ }}, NOT Call Block) #}
 {{ render_header(user=state.user_info) }}
 
-{# B. NAVIGATION #}
+{# 2. NAVIGATION (Z-Index handled inside macro) #}
 {{ render_nav(active_page='home', items=state.nav_items) }}
 
-{# C. MAIN CONTENT AREA (Wrapper Macro) #}
-{# 'render_main_wrapper' creates the <main> tag and grid layout #}
+{# 3. MAIN LAYOUT WRAPPER (This uses call block because it wraps content) #}
 {% call render_main_wrapper() %}
 
-{# C-1. PRIMARY CONTENT (Sections & Articles) #}
-{# This div usually takes col-span-8 in Tailwind #}
-<div class="layout-primary-col flex flex-col gap-8">
-  
-  {# Section: Latest Updates #}
+{# LEFT COLUMN: Content Feeds #}
+<div class="lg:col-span-8 flex flex-col gap-8">
   {% call render_section(title="System Feeds", id="feeds") %}
-  
-  {# Loop through dynamic articles from State #}
   {% if state.articles %}
   {% for article in state.articles %}
   {{ render_article(
@@ -49,18 +37,17 @@
                         ) }}
   {% endfor %}
   {% else %}
-  <p class="text-gray-500 italic p-4">No active feeds available.</p>
+  <div class="p-8 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+    No active feeds available via Beast API.
+  </div>
   {% endif %}
-  
   {% endcall %}
-  
 </div>
 
-{# C-2. SECONDARY SIDEBAR (Aside) #}
-{# This div usually takes col-span-4 in Tailwind #}
-<div class="layout-secondary-col">
+{# RIGHT COLUMN: Sidebar #}
+<div class="lg:col-span-4">
   {{ render_aside(
-                title="Quick Diagnostics", 
+                title="Live Diagnostics", 
                 stats=state.system_stats,
                 notifications=state.alerts
             ) }}
@@ -68,21 +55,7 @@
 
 {% endcall %}
 
-{# D. FOOTER #}
-{{ render_footer(version="2.0.0 (Beast Mode)") }}
+{# 4. FOOTER #}
+{{ render_footer(version="2.1.0") }}
 
-{% endblock %}
-
-{# --- 4. PAGE SPECIFIC SCRIPTS --- #}
-{# Hooks for Unpoly/GSAP specific to Index #}
-{% block page_scripts %}
-<script>
-  // Beast Mode: Index Specific Animation Triggers
-  document.addEventListener("DOMContentLoaded", () => {
-    // Checking if GSAP Core is loaded via base.html
-    if (typeof playPageLoadAnimation === 'function') {
-      playPageLoadAnimation();
-    }
-  });
-</script>
 {% endblock %}
