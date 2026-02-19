@@ -1,7 +1,9 @@
 {% extends "app/base.html" %}
 
-{% from "app/macros/index_page/header.html" import render_header %}
-{% from "app/macros/index_page/hero.html" import render_hero %}
+{# --- FIXING THE PATHS BASED ON YOUR MOVE --- #}
+{% from "app/macros/index_page/header.html"  import render_header %}
+{% from "app/macros/index_page/hero.html"    import render_hero %}
+{% from "app/macros/index_page/footer.html"  import render_footer %}
 
 {% block header %}
 {{ render_header() }}
@@ -12,66 +14,55 @@
 
 <section class="py-32 bg-white">
     <div class="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
-        <div class="reveal">
-            <span class="text-teal-700 font-bold uppercase text-xs tracking-widest">01 / The Material</span>
-            <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl mt-4 mb-8">Raw Ceramic. <br> Refined Soul.</h2>
+        <div class="reveal-content">
+            <span class="text-teal-700 font-bold uppercase text-[10px] tracking-[0.4em]">Section 01</span>
+            <h2 class="font-['Playfair_Display'] text-5xl md:text-7xl mt-6 mb-8">Earth. Water. <br> <span class="italic font-light">Elegance.</span></h2>
             <p class="text-slate-500 text-lg font-light leading-relaxed">
-                Every piece starts from Earth. Our proprietary ceramic blends are fired at 1200°C to create a surface that is not just durable, but touchable.
+                Our studio doesn't just make accessories; we architect water. Using precision ceramics fired at extreme temperatures to create the ultimate bath sanctuary.
             </p>
-            <div class="mt-10 h-px w-20 bg-teal-600"></div>
+            <div class="mt-12 h-px w-24 bg-teal-600"></div>
         </div>
         
-        <div class="relative reveal h-[600px] bg-slate-100 rounded-[2rem] overflow-hidden group">
-            <div class="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent"></div>
-            <div class="w-full h-full bg-[url('https://images.unsplash.com/photo-1615529328331-f8917597711f?auto=format&fit=crop&q=80')] bg-cover bg-center transition-transform duration-1000 group-hover:scale-110"></div>
-            
-            <div class="absolute bottom-10 left-10 text-white">
-                <p class="text-xs font-bold uppercase tracking-widest opacity-70">Texture</p>
-                <p class="text-2xl font-['Playfair_Display']">Matte Bone Finish</p>
+        <div class="relative h-[650px] bg-slate-100 rounded-[3rem] overflow-hidden group shadow-2xl reveal-image">
+            <div class="w-full h-full bg-[url('https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80')] bg-cover bg-center transition-transform duration-1000 group-hover:scale-110"></div>
+            <div class="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent"></div>
+            <div class="absolute bottom-12 left-12 text-white">
+                <p class="text-xs font-bold uppercase tracking-widest opacity-60">Finish</p>
+                <p class="text-3xl font-['Playfair_Display']">Obsidian Matte</p>
             </div>
         </div>
     </div>
 </section>
+{% endblock %}
 
-<section class="py-40 bg-slate-900 text-center overflow-hidden relative">
-    <div class="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/water.png')]"></div>
-    <div class="max-w-4xl mx-auto px-6 relative z-10">
-        <h3 class="font-['Playfair_Display'] text-white text-4xl md:text-6xl italic reveal">
-            "Water does not just flow; it creates a symphony in silence."
-        </h3>
-    </div>
-</section>
+{% block footer %}
+{{ render_footer() }}
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // BEAST TIMELINE: Strictly Cinematic
-    function playIndexPhysics() {
+    function playBeastPhysics() {
         const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
         
-        // Hero Sequence
-        tl.fromTo(".reveal-line", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 1 })
-            .fromTo("h1", { y: 100, opacity: 0, skewY: 10 }, { y: 0, opacity: 1, skewY: 0, duration: 1.8 }, "-=0.5")
-            .fromTo(".hero-p", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 1 }, "-=1")
-            .fromTo(".hero-actions", { y: 30, opacity: 0, scale: 0.9 }, { y: 0, opacity: 1, scale: 1, duration: 1, ease: "back.out(1.4)" }, "-=0.8");
+        // 1. Cinematic Hero Entry
+        tl.from("h1", { y: 150, opacity: 0, skewY: 7, duration: 2 })
+            .from(".hero-p", { y: 30, opacity: 0, duration: 1.2 }, "-=1.2")
+            .from(".reveal-image", { scale: 0.9, opacity: 0, duration: 1.5 }, "-=1");
         
-        // Subtle Orb Floating
-        gsap.to("#hero-orb", {
-            x: 100,
-            y: -50,
-            duration: 15,
-            repeat: -1,
-            yoyo: true,
-            ease: "sine.inOut"
+        // 2. Scroll Triggers for Content
+        gsap.utils.toArray('.reveal-content').forEach(el => {
+            gsap.from(el, {
+                scrollTrigger: { trigger: el, start: "top 80%" },
+                x: -50,
+                opacity: 0,
+                duration: 1.2
+            });
         });
     }
     
-    // Initial Trigger
-    document.addEventListener("DOMContentLoaded", playIndexPhysics);
-    
-    // Unpoly SPA Hook: Re-play when navigating back
+    document.addEventListener("DOMContentLoaded", playBeastPhysics);
     up.on('up:fragment:inserted', (event) => {
-        if (event.target.querySelector('h1')) playIndexPhysics();
+        if (event.target.querySelector('h1')) playBeastPhysics();
     });
 </script>
 {% endblock %}
