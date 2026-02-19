@@ -1,0 +1,47 @@
+{% import "macros/layout/header.html" as h %}
+{% import "macros/layout/nav.html" as n %}
+{% import "macros/layout/main.html" as m %}
+{% import "macros/layout/aside.html" as ad %}
+{% import "macros/layout/section.html" as s %}
+{% import "macros/layout/article.html" as a %}
+{% import "macros/layout/footer.html" as f %}
+{% import "macros/animations/core.html" as anim %}
+
+<!DOCTYPE html>
+<html lang="en" class="bg-black text-white selection:bg-blue-600">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/unpoly@3.1.0/unpoly.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+</head>
+<body class="antialiased overflow-x-hidden">
+
+    {% call h.render_header() %}
+        {{ n.render_nav({'Core': '/', 'Data': '/data', 'Neural': '/neural'}) }}
+    {% endcall %}
+
+    <div class="flex flex-col lg:flex-row">
+        {% call m.render_main() %}
+            {% block content %}
+                {% call s.render_section('hero') %}
+                    {% call a.render_article('DYNAMIC FLOW', 'High-end responsive architecture built for enterprise systems.') %}
+                        <div class="flex gap-4">
+                            <button class="bg-white text-black px-6 py-3 text-xs font-bold uppercase tracking-widest hover:invert transition-all">Launch</button>
+                        </div>
+                    {% endcall %}
+                {% endcall %}
+            {% endblock %}
+        {% endcall %}
+
+        {% call ad.render_aside() %}
+            <p class="text-xs text-zinc-500 italic">System is currently running in Beast Mode. All protocols active.</p>
+        {% endcall %}
+    </div>
+
+    {{ f.render_footer() }}
+
+    {{ anim.init_gsap() }}
+</body>
+</html>
