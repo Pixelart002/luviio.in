@@ -1,76 +1,88 @@
+{# 
+    STRICTLY TYPED INDEX PAGE 
+    Extends: Base Layout
+    Logic: Composition Root (Calls Macros)
+#}
 {% extends "app/base.html" %}
 
-{# Importing your exact file structure from the screenshot #}
-{% import "macros/layout/header.html" as h %}
-{% import "macros/layout/nav.html" as n %}
-{% import "macros/layout/section.html" as s %}
-{% import "macros/layout/article.html" as a %}
-{% import "macros/layout/aside.html" as ad %}
-{% import "macros/layout/footer.html" as f %}
+{# --- 1. IMPORTING BEAST MACROS (From your repo structure) --- #}
+{% from "macros/layout/header.html"  import render_header %}
+{% from "macros/layout/nav.html"     import render_nav %}
+{% from "macros/layout/main.html"    import render_main_wrapper %}
+{% from "macros/layout/section.html" import render_section %}
+{% from "macros/layout/article.html" import render_article %}
+{% from "macros/layout/aside.html"   import render_aside %}
+{% from "macros/layout/footer.html"  import render_footer %}
 
-{% block content %}
+{# --- 2. PAGE CONFIGURATION --- #}
+{% block title %}Dashboard | Luviio Beast{% endblock %}
 
-{# Cinematic Hero Section #}
-{% call s.render_section('hero', 'min-h-screen relative flex items-center justify-center overflow-hidden bg-black') %}
+{# --- 3. PAGE COMPOSITION (The Semantic Flow) --- #}
+{% block body_content %}
 
-{# Parallax Background #}
-<div class="absolute inset-0 z-0 bg-[url('https://images.unsplash.com/photo-1550966841-3ee3ad359051?q=80&w=2070')] bg-cover bg-center opacity-40 hero-parallax scale-125"></div>
-<div class="absolute inset-0 z-10 bg-gradient-to-b from-black/20 via-black/60 to-black"></div>
+{# A. HEADER #}
+{# Passing 'state' object from FastAPI Backend #}
+{{ render_header(user=state.user_info) }}
 
-<div class="relative z-20 text-center px-6">
-  <h1 class="split-text text-[15vw] md:text-[12vw] font-black leading-none tracking-tighter uppercase italic text-transparent bg-clip-text bg-gradient-to-r from-white via-zinc-400 to-zinc-700">
-    LUVIIO
-  </h1>
-  <p class="hero-sub opacity-0 translate-y-10 text-xl md:text-2xl text-zinc-400 font-light tracking-[0.5em] mt-4 uppercase">
-    The Art of Discovery
-  </p>
+{# B. NAVIGATION #}
+{{ render_nav(active_page='home', items=state.nav_items) }}
+
+{# C. MAIN CONTENT AREA (Wrapper Macro) #}
+{# 'render_main_wrapper' creates the <main> tag and grid layout #}
+{% call render_main_wrapper() %}
+
+{# C-1. PRIMARY CONTENT (Sections & Articles) #}
+{# This div usually takes col-span-8 in Tailwind #}
+<div class="layout-primary-col flex flex-col gap-8">
   
-  <div class="mt-12 opacity-0 hero-cta">
-    <button class="px-10 py-4 bg-white text-black text-xs font-bold uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all duration-500 rounded-full shadow-[0_0_30px_rgba(255,255,255,0.2)]">
-      Explore Collection
-    </button>
-  </div>
+  {# Section: Latest Updates #}
+  {% call render_section(title="System Feeds", id="feeds") %}
+  
+  {# Loop through dynamic articles from State #}
+  {% if state.articles %}
+  {% for article in state.articles %}
+  {{ render_article(
+                            title=article.title,
+                            content=article.content,
+                            badge=article.badge,
+                            date=article.date
+                        ) }}
+  {% endfor %}
+  {% else %}
+  <p class="text-gray-500 italic p-4">No active feeds available.</p>
+  {% endif %}
+  
+  {% endcall %}
+  
 </div>
 
-{# Scroll Indicator #}
-<div class="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 scroll-indicator opacity-0">
-  <div class="w-[1px] h-20 bg-gradient-to-b from-white to-transparent origin-top scale-y-0 scroll-line"></div>
+{# C-2. SECONDARY SIDEBAR (Aside) #}
+{# This div usually takes col-span-4 in Tailwind #}
+<div class="layout-secondary-col">
+  {{ render_aside(
+                title="Quick Diagnostics", 
+                stats=state.system_stats,
+                notifications=state.alerts
+            ) }}
 </div>
+
 {% endcall %}
 
-{# Aside Content (Now visible and responsive) #}
-{% call ad.render_aside() %}
-<div class="aside-reveal opacity-0 space-y-12">
-  <div>
-    <h4 class="text-[10px] text-zinc-500 font-bold tracking-[0.3em] uppercase mb-4 italic">Metadata</h4>
-    <p class="text-xs text-zinc-400 leading-relaxed">System-level UI integration with cinematic GSAP orchestration. Optimized for 120fps display.</p>
-  </div>
-  <div>
-    <h4 class="text-[10px] text-zinc-500 font-bold tracking-[0.3em] uppercase mb-4">Live Feed</h4>
-    <div class="space-y-4">
-      <div class="flex items-center gap-4 text-[10px] border-b border-white/5 pb-2">
-        <span class="text-red-500">●</span> <span>Trending in Delhi</span>
-      </div>
-      <div class="flex items-center gap-4 text-[10px] border-b border-white/5 pb-2">
-        <span class="text-zinc-600">●</span> <span>Mumbai Updates</span>
-      </div>
-    </div>
-  </div>
-</div>
-{% endcall %}
+{# D. FOOTER #}
+{{ render_footer(version="2.0.0 (Beast Mode)") }}
 
-{# Content Section #}
-{% call s.render_section('about', 'py-32 bg-black border-t border-white/5') %}
-<div class="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-2 gap-20 items-center">
-  <div class="reveal-img overflow-hidden rounded-2xl aspect-[4/5] bg-zinc-900">
-    <img src="https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&w=1974" class="w-full h-full object-cover scale-150 img-parallax" alt="Gourmet">
-  </div>
-  <div class="space-y-8">
-    {% call a.render_article('REDEFINING TASTE', 'We don\'t just deliver food; we deliver an experience curated for the elite.') %}
-    <p class="text-zinc-500 text-lg">Using high-end system level rules to ensure brevity and precision in every byte.</p>
-    {% endcall %}
-  </div>
-</div>
-{% endcall %}
+{% endblock %}
 
+{# --- 4. PAGE SPECIFIC SCRIPTS --- #}
+{# Hooks for Unpoly/GSAP specific to Index #}
+{% block page_scripts %}
+<script>
+  // Beast Mode: Index Specific Animation Triggers
+  document.addEventListener("DOMContentLoaded", () => {
+    // Checking if GSAP Core is loaded via base.html
+    if (typeof playPageLoadAnimation === 'function') {
+      playPageLoadAnimation();
+    }
+  });
+</script>
 {% endblock %}
