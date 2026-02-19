@@ -1,5 +1,6 @@
 import logging
 import os
+import httpx # Beast Mode: Async HTTP client
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
@@ -16,126 +17,84 @@ logging.basicConfig(
 )
 logger = logging.getLogger("LuviioSystem")
 
-app = FastAPI(
-    title="Luviio.in | Cinematic Bath Architecture",
-    version="3.1.2", # Jinja 3.1.2 / SPA Optimized
-)
+app = FastAPI(title="Luviio.in | AI Powered SPA")
 
-# --- STEP 2: STRICT PATH ARCHITECTURE ---
-# BASE_DIR should point to the 'api' folder
+# --- STEP 2: PATHS & TEMPLATES ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 
-# BEAST CHECK: Startup Diagnostic for SPA Assets
-# Ensures /api/static/css/main.css is reachable
-css_diagnostic_path = os.path.join(STATIC_DIR, "css", "main.css")
-if os.path.exists(css_diagnostic_path):
-    logger.info(f">>> [CONNECTED] SPA Core Asset Found: {css_diagnostic_path}")
-else:
-    logger.warning(f">>> [WARNING] SPA Core Asset Missing at: {css_diagnostic_path}")
-
-# Jinja2 Setup with Async support
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 templates.env.enable_async = True 
 
-# --- STEP 3: STATE MODELS (Strictly Typed) ---
-class NavItem(BaseModel):
-    label: str
-    url: str
-    active: bool = False
-
-class SidebarCategory(BaseModel):
-    label: str
-    url: str
-
-class FooterSection(BaseModel):
-    title: str
-    links: List[Dict[str, str]]
-
+# --- STEP 3: MODELS ---
 class UIState(BaseModel):
-    """The complete State-Driven UI Schema for SPA"""
     page_title: str
+    nav_items: List[Dict[str, Any]]
     user_status: str = "Studio Access"
-    nav_items: List[NavItem]
-    sidebar_categories: List[SidebarCategory]
-    footer_sections: List[FooterSection]
-    featured_material: Optional[Dict[str, str]] = None
-    server_time: str = datetime.now().strftime("%H:%M:%S")
 
-# --- STEP 4: GLOBAL ASSET MOUNTING ---
-# Naming it 'static' allows url_for('static', filename='css/main.css')
+# --- STEP 4: ASSET MOUNTING ---
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# --- STEP 5: JINJA GLOBALS ---
-templates.env.globals.update(now=datetime.now)
+# --- STEP 5: AI AUTO-DEBUGGER LOGIC ---
+async def get_ai_solution(error_msg: str):
+    """
+    Mistral AI integration to fetch fixes directly into the console.
+    """
+    user_id = "Luviio_Beast_Mode"
+    # Constructing the URL as requested
+    mistral_url = f"https://mistral-ai-three.vercel.app/?id={user_id}&question=Fix this FastAPI/Jinja error: {error_msg}"
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(mistral_url)
+            if res.status_code == 200:
+                solution = res.text
+                print("\n" + "="*50)
+                print("🤖 AI DEBUGGER SUGGESTION:")
+                print(solution)
+                print("="*50 + "\n")
+                return solution
+    except Exception as e:
+        logger.error(f"AI Debugger Failed: {str(e)}")
+    return "No AI suggestion available."
 
-# --- STEP 6: ADVANCED EXCEPTION HANDLING ---
+# --- STEP 6: ADVANCED EXCEPTION HANDLING (WITH AI) ---
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"SPA Glitch: {str(exc)}", exc_info=True)
+    error_detail = str(exc)
+    logger.error(f"SPA Glitch: {error_detail}", exc_info=True)
+    
+    # Triggering AI Auto-Fix in Background
+    ai_fix = await get_ai_solution(error_detail)
+    
     return JSONResponse(
         status_code=500,
         content={
             "error": "Connectivity Issue",
-            "detail": str(exc),
-            "path_searched": TEMPLATE_DIR,
-            "hint": "Ensure macro imports in index.html match the new directory structure."
+            "detail": error_detail,
+            "ai_suggestion": "Check server console for a code snippet fix!",
+            "path_searched": TEMPLATE_DIR
         }
     )
 
-# --- STEP 7: SPA ROUTE HANDLING (STATE-DRIVEN) ---
+# --- STEP 7: STATE-DRIVEN ROUTE ---
 @app.get("/", response_class=HTMLResponse)
 async def home_route(request: Request):
-    """
-    Landing Page: High-End SPA Experience.
-    Notice: Returning full state for dynamic UI components.
-    """
     try:
-        # Constructing the State Object
         state = UIState(
             page_title="Home | Luviio Luxury Bath",
             nav_items=[
-                NavItem(label="The Studio", url="/studio", active=True),
-                NavItem(label="Materials", url="/materials"),
-                NavItem(label="Bespoke", url="/bespoke"),
-            ],
-            sidebar_categories=[
-                SidebarCategory(label="Ceramics", url="/collections/ceramics"),
-                SidebarCategory(label="Water Systems", url="/collections/water"),
-            ],
-            footer_sections=[
-                {
-                    "title": "Experience",
-                    "links": [{"label": "Gallery", "url": "/gallery"}, {"label": "Process", "url": "/process"}]
-                }
-            ],
-            featured_material={"name": "Arctic Matte Stone", "url": "/materials/arctic-stone"}
+                {"label": "The Studio", "url": "/studio", "active": True},
+                {"label": "Materials", "url": "/materials", "active": False}
+            ]
         )
-
-        logger.info(f">>> Serving Index via SPA Engine: {state.page_title}")
         
-        # Support for both Pydantic v1 (dict) and v2 (model_dump)
         state_data = state.model_dump() if hasattr(state, 'model_dump') else state.dict()
-
-        return templates.TemplateResponse(
-            "app/pages/index.html", 
-            {
-                "request": request,
-                "state": state_data
-            }
-        )
+        return templates.TemplateResponse("app/pages/index.html", {"request": request, "state": state_data})
     except Exception as e:
         raise e
 
-@app.get("/docs", response_class=HTMLResponse)
-async def documentation_route(request: Request):
-    try:
-        return templates.TemplateResponse("app/pages/docss.html", {"request": request})
-    except Exception:
-        raise HTTPException(status_code=404, detail="SPA Documentation not found.")
-
-# --- STEP 10: SERVING ---
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
