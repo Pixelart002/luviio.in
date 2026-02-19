@@ -1,15 +1,28 @@
-<!-- Drawer content – hidden, Unpoly will clone it -->
-<div id="drawer-content" class="hidden">
-    <aside class="w-[280px] md:w-[350px] h-full bg-white p-8 flex flex-col gap-10 overflow-y-auto">
+{% macro render_drawer(state) %}
+<!-- Drawer / Sidebar (hidden by default with -translate-x-full) -->
+<div id="drawer" class="fixed top-0 left-0 h-full w-[280px] md:w-[350px] bg-white shadow-2xl transform -translate-x-full transition-transform duration-300 ease-in-out z-50 overflow-y-auto">
+    <div class="p-8 flex flex-col gap-8">
+        <!-- Mobile menu links (visible in drawer) -->
+        <div class="md:hidden">
+            <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-6">Menu</h3>
+            <div class="flex flex-col gap-4">
+                {% for item in state.nav_items %}
+                <a href="{{ item.url }}" up-target="#content"
+                   class="text-2xl font-['Playfair_Display'] font-bold {{ 'text-teal-700' if item.active else 'text-slate-900' }}">
+                    {{ item.label }}
+                </a>
+                {% endfor %}
+            </div>
+            <hr class="my-8 border-slate-100">
+        </div>
+
         <!-- Curations section -->
-        <section>
-            <h3 class="text-[10px] font-bold uppercase tracking-widest text-teal-700 mb-6">CURATIONS</h3>
+        <div>
+            <h3 class="text-[10px] font-bold uppercase tracking-widest text-teal-700 mb-6">Curations</h3>
             <ul class="space-y-5">
                 {% for category in state.sidebar_categories %}
                 <li>
-                    <a href="{{ category.url }}" 
-                       up-target="#content" 
-                       up-dismiss="close"
+                    <a href="{{ category.url }}" up-target="#content"
                        class="flex items-center justify-between text-lg font-medium text-slate-600 hover:text-teal-700 transition-colors">
                         {{ category.label }}
                         <span class="text-xs">→</span>
@@ -17,25 +30,24 @@
                 </li>
                 {% endfor %}
             </ul>
-        </section>
+        </div>
         
-        <!-- Featured Material (Signature) -->
+        <!-- Featured material -->
         {% if state.featured_material %}
-        <article class="p-6 bg-slate-900 rounded-[2rem] text-white shadow-2xl">
-            <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-2 text-teal-400">SIGNATURE</p>
+        <div class="p-6 bg-slate-900 rounded-[2rem] text-white shadow-2xl mt-auto">
+            <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-2 text-teal-400">Signature</p>
             <p class="font-['Playfair_Display'] text-xl mb-4 italic leading-tight">{{ state.featured_material.name }}</p>
-            <a href="{{ state.featured_material.url }}" 
-               up-target="#content" 
-               up-dismiss="close"
-               class="text-xs font-bold text-teal-400 underline">
-                View Craft →
-            </a>
-        </article>
+            <a href="{{ state.featured_material.url }}" class="text-xs font-bold text-teal-400 underline">View Craft</a>
+        </div>
         {% endif %}
 
-        <!-- Close button (inside drawer) -->
-        <button class="w-full py-4 text-xs font-bold uppercase tracking-widest text-slate-400 bg-slate-50 rounded-xl" up-dismiss="close">
-            CLOSE
+        <!-- Close button inside drawer -->
+        <button id="closeDrawerBtn" class="w-full py-4 text-xs font-bold uppercase tracking-widest text-slate-400 bg-slate-50 rounded-xl">
+            Close
         </button>
-    </aside>
+    </div>
 </div>
+
+<!-- Overlay (covers rest of page when drawer is open) -->
+<div id="drawerOverlay" class="fixed inset-0 bg-black bg-opacity-50 hidden z-40"></div>
+{% endmacro %}

@@ -1,64 +1,68 @@
 <!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
+<html lang="en" class="antialiased scroll-smooth">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <!-- Security headers (meta) -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.tailwindcss.com;">
-    <meta http-equiv="X-Content-Type-Options" content="nosniff">
-    
-    <title>{% block title %}Luviio | Luxury Architecture{% endblock %}</title>
-    
-    <!-- Preconnect -->
+    {# Optimization: Prevents mobile layout shifting during SPA navigation #}
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>{% block title %}Bathscape | Luxury Architecture{% endblock %}</title>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    
-    <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700;900&display=swap" rel="stylesheet">
-    
-    <!-- Unpoly (SRI for security) -->
-    <link rel="stylesheet" href="https://unpkg.com/unpoly@3.8.0/dist/unpoly.min.css" crossorigin="anonymous">
-    <script src="https://unpkg.com/unpoly@3.8.0/dist/unpoly.min.js" crossorigin="anonymous" defer></script>
-    
-    <!-- Tailwind (CDN – production me compiled version use karein) -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
+
+     <link rel="stylesheet" href="https://unpkg.com/unpoly@3.8.0/dist/unpoly.min.css">
+    <script src="https://unpkg.com/unpoly@3.8.0/dist/unpoly.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- GSAP -->
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js" crossorigin="anonymous" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js" crossorigin="anonymous" defer></script>
-    
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/main.css">
-    
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+
     {% block head %}{% endblock %}
 </head>
-<body up-main="#layout" class="bg-[#FAFAFA] font-['Plus_Jakarta_Sans'] text-slate-900 antialiased">
-    
-    <!-- Loading bar for Unpoly -->
-    <div id="loading-bar" class="fixed top-0 left-0 h-1 bg-teal-600 z-[100] origin-left scale-x-0 transition-transform duration-300"></div>
-    
-    <div id="layout" class="flex flex-col min-h-screen">
-        <!-- Header (macro) -->
-        {% include "macros/header.html" %}
-        
-        <!-- Main content area -->
-        <main id="content" class="flex-grow pt-20">
+
+{# 
+    BEAST CONFIG: 
+    1. up-main="#layout" ensures SPA behavior.
+    2. up-preload tells Unpoly to preload links on hover (Zomato speed).
+#}
+<body up-main="#layout" up-preload class="bg-[#FAFAFA] font-['Plus_Jakarta_Sans'] text-slate-900 overflow-x-hidden">
+
+    <div id="loading-bar" class="fixed top-0 left-0 h-1 bg-teal-600 z-[100] origin-left scale-x-0 pointer-events-none opacity-0"></div>
+
+    <div id="layout" class="flex flex-col min-h-screen relative">
+
+        <header id="header" class="fixed top-0 w-full z-50">
+            {% block header %}{% endblock %}
+        </header>
+
+        {# Sidebar often needs a drawer-like behavior on mobile #}
+        <aside id="sidebar" class="relative z-40">
+            {% block sidebar %}{% endblock %}
+        </aside>
+
+        <main id="content" class="flex-grow pt-20" up-main>
             {% block content %}{% endblock %}
         </main>
-        
-        <!-- Footer (macro) -->
-        {% include "macros/footer.html" %}
+
+        <footer id="footer" class="relative z-10">
+            {% block footer %}{% endblock %}
+        </footer>
+
     </div>
-    
-    <!-- Drawer (macro) – hidden initially, will be used by Unpoly -->
-    {% include "macros/drawer.html" %}
-    
-    <!-- JavaScript modules -->
-    <script src="/static/js/modules/animations.js" defer></script>
-    <script src="/static/js/modules/unpoly-events.js" defer></script>
-    <script src="/static/js/main.js" defer></script>
-    
+
+   
     {% block scripts %}{% endblock %}
+
+
+
+
+
+
+
+
+
+
+
 </body>
 </html>
