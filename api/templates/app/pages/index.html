@@ -1,44 +1,104 @@
 {% extends "app/base.html" %}
 
-{# --- 1. MACRO IMPORTS --- #}
-{% from "macros/index_page/header.html"  import render_header %}
-{% from "macros/index_page/sidebar.html" import render_sidebar %}
-{% from "macros/index_page/footer.html"  import render_footer %}
-{% from "macros/index_page/hero.html"    import render_hero %}
+{% from "macros/index_page/header.html" import render_header %}
+{% from "macros/index_page/drawer.html" import render_drawer %}
+{% from "macros/index_page/footer.html" import render_footer %}
+{% from "macros/index_page/hero.html" import render_hero %}
 
-{# --- 2. HEADER BLOCK --- #}
 {% block header %}
 {{ render_header(state) }}
 {% endblock %}
 
-{# --- 3. MAIN CONTENT BLOCK --- #}
 {% block content %}
+<!-- Render the drawer (hidden by default) -->
+{{ render_drawer(state) }}
 
-{# 
-       DRAWER SOURCE: 
-       Isse hum block content ke andar rakh rahe hain taaki Unpoly 
-       isse DOM se utha sake, par ye macro khud 'hidden' div render karta hai.
-    #}
-{{ render_sidebar(state) }}
-
-{# CINEMATIC HERO: Full-width experience since aside is removed #}
+<!-- Your main content -->
 <div id="main-content" class="w-full">
   {{ render_hero() }}
 </div>
 
-{# FOOTER: Proper state-driven footer #}
 {{ render_footer(state) }}
-
 {% endblock %}
 
-{# --- 4. OPTIONAL: GSAP REFRESH --- #}
 {% block scripts %}
+<!-- VANILLA JS for drawer toggling - NO Unpoly drawer dependency -->
 <script>
-  // Ensure GSAP triggers are refreshed when the drawer-style page loads
-  document.addEventListener("DOMContentLoaded", () => {
-    if (typeof ScrollTrigger !== 'undefined') {
-      ScrollTrigger.refresh();
+  document.addEventListener('DOMContentLoaded', function() {
+    // Get elements
+    const hamburgerBtn = document.getElementById('hamburgerBtn');
+    const drawer = document.getElementById('drawer');
+    const overlay = document.getElementById('drawerOverlay');
+    const closeBtn = document.getElementById('closeDrawerBtn');
+    const drawerLinks = drawer ? drawer.querySelectorAll('a[up-target="#content"]') : [];
+    
+    // Function to open drawer
+    function openDrawer() {
+      if (drawer) {
+        drawer.classList.remove('-translate-x-full');
+        overlay.classList.remove('hidden');
+        document.body.style.overflow = 'hidden'; // Prevent background scrolling
+        
+        // Animate hamburger to X (optional - keep your GSAP if you want)
+        const spans = hamburgerBtn?.querySelectorAll('span');
+        if (spans && spans.length === 3) {
+          spans[0].style.transform = 'rotate(45deg) translateY(9px)';
+          spans[1].style.opacity = '0';
+          spans[2].style.transform = 'rotate(-45deg) translateY(-9px)';
+        }
+      }
     }
+    
+    // Function to close drawer
+    function closeDrawer() {
+      if (drawer) {
+        drawer.classList.add('-translate-x-full');
+        overlay.classList.add('hidden');
+        document.body.style.overflow = '';
+        
+        // Animate hamburger back to lines
+        const spans = hamburgerBtn?.querySelectorAll('span');
+        if (spans && spans.length === 3) {
+          spans[0].style.transform = 'rotate(0) translateY(0)';
+          spans[1].style.opacity = '1';
+          spans[2].style.transform = 'rotate(0) translateY(0)';
+        }
+      }
+    }
+    
+    // Event listeners
+    if (hamburgerBtn) {
+      hamburgerBtn.addEventListener('click', openDrawer);
+    }
+    
+    if (closeBtn) {
+      closeBtn.addEventListener('click', closeDrawer);
+    }
+    
+    if (overlay) {
+      overlay.addEventListener('click', closeDrawer);
+    }
+    
+    // Close drawer when clicking any link inside it (for navigation)
+    drawerLinks.forEach(link => {
+      link.addEventListener('click', closeDrawer);
+    });
+    
+    // Handle escape key to close drawer
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && drawer && !drawer.classList.contains('-translate-x-full')) {
+        closeDrawer();
+      }
+    });
   });
+</script>
+
+<!-- Keep your existing GSAP/Unpoly scripts - they won't interfere -->
+<script>
+  // Your existing GSAP and Unpoly code (for other animations) can stay
+  if (typeof gsap !== 'undefined') {
+    gsap.registerPlugin(ScrollTrigger);
+    // ... rest of your GSAP code
+  }
 </script>
 {% endblock %}
