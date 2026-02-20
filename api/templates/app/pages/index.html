@@ -1,18 +1,36 @@
 {% extends "app/base.html" %}
 
 {% from "macros/index_page/header.html" import render_header %}
-{% from "macros/index_page/drawer_items.html" import render_drawer_items %}
-{% from "macros/index_page/hero.html" import render_hero %}
+{% from "macros/index_page/drawer.html" import render_drawer %}
 {% from "macros/index_page/footer.html" import render_footer %}
+{% from "macros/index_page/hero.html" import render_hero %}
 
 {% block header %}
 {{ render_header(state) }}
 {% endblock %}
 
 {% block content %}
-{{ render_hero() }}
-{{ render_footer(state) }}
+<div class="hidden">
+  {{ render_drawer(state) }}
+</div>
 
-<!-- ✅ CRITICAL: Drawer widget must be rendered -->
-{{ render_drawer_items(state) }}
+<div id="main-content" class="w-full">
+  {{ render_hero() }}
+</div>
+
+{{ render_footer(state) }}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // GSAP animations logic
+  if (typeof gsap !== 'undefined') {
+    gsap.registerPlugin(ScrollTrigger);
+    
+    // Unpoly renders ke baad animations refresh karne ke liye helper
+    up.on('up:fragment:inserted', function(event) {
+      ScrollTrigger.refresh();
+    });
+  }
+</script>
 {% endblock %}

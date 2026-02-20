@@ -1,38 +1,65 @@
 {% macro render_header(state) %}
-<header class="fixed top-0 w-full h-20 z-[60] bg-white/40 backdrop-blur-2xl border-b border-slate-200/20">
-    <div class="h-full max-w-7xl mx-auto px-4 flex items-center justify-between">
+{# 
+    REFACTORED HEADER (UNPOLY OPTIMIZED)
+    - Hamburger: Now uses up-layer="new drawer" to trigger the side menu.
+    - Consistency: Navigation uses up-target="#content" for SPA-like transitions.
+#}
+<header class="fixed top-0 w-full h-20 z-[60] bg-white/40 backdrop-blur-2xl border-b border-slate-200/20" id="luxury-header">
+    <div class="relative h-full max-w-7xl mx-auto px-4 lg:px-12 flex items-center justify-between">
         
-        <a href="/" up-target="#layout" class="font-['Playfair_Display'] text-3xl font-black">
-            Luviio<span class="text-teal-700">.</span>
-        </a>
+        <div class="flex items-center z-10">
+            <a href="/" up-target="#layout" class="font-['Playfair_Display'] text-2xl md:text-3xl font-black tracking-tighter text-slate-900 group">
+                <span class="text-teal-700 transition-transform duration-500 group-hover:-translate-y-1 inline-block">L</span>uviio<span class="text-teal-700">.</span>
+            </a>
+        </div>
         
-        <div class="flex items-center gap-4">
-            <nav class="hidden md:flex gap-2">
+        <div class="flex items-center gap-2 md:gap-4 z-10">
+            
+            <nav class="hidden md:flex items-center p-1 bg-white/50 border border-slate-200/50 rounded-full shadow-sm">
                 {% for item in state.nav_items %}
-                <a href="{{ item.url }}" up-target="#content" 
-                   class="px-4 py-2 rounded-full {{ 'bg-teal-700 text-white' if item.active }}">
+                <a href="{{ item.url }}" 
+                   up-target="#content" 
+                   class="px-3 md:px-5 py-1.5 md:py-2 text-[10px] md:text-sm font-medium transition-all rounded-full 
+                          {{ 'text-teal-800 bg-white shadow-sm' if item.active else 'text-slate-600 hover:text-teal-700 hover:bg-white' }}">
                     {{ item.label }}
                 </a>
                 {% endfor %}
             </nav>
 
-            <!-- ✅ Updated hamburger button using up-fragment -->
-<button id="hamburgerBtn"
-        up-layer="new drawer"
-        up-fragment="#drawer-fragment .drawer-inner"
-        up-position="left"
-        up-size="medium"
-        up-background="true"
-        up-transition="slide-left"
-        class="p-2">
-    <div class="w-6 h-5 flex flex-col justify-between">
-        <span class="w-full h-0.5 bg-current"></span>
-        <span class="w-2/3 h-0.5 bg-current"></span>
-        <span class="w-full h-0.5 bg-current"></span>
-    </div>
-</button>
+            <div class="flex items-center gap-3">
+                <span class="hidden lg:block text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                    {{ state.user_status | default('Studio Access') }}
+                </span>
+                <div class="w-9 h-9 md:w-10 md:h-10 rounded-full bg-slate-900 flex items-center justify-center text-white cursor-pointer hover:bg-teal-700 transition-all shadow-xl shadow-slate-200">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                </div>
+            </div>
+            
+            <div class="flex items-center z-20">
+                {# 
+                   up-layer="new drawer": Nayi window drawer ke roop mein khole.
+                   up-target="#drawer-content": Drawer ke andar sirf ye element render kare.
+                   up-position="left": Drawer baayi taraf se nikle.
+                #}
+                <a href="#drawer-content" 
+                   up-layer="new drawer" 
+                   up-position="left"
+                   up-class="luxury-drawer"
+                   class="hamburger-btn group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer block">
+                    <div class="w-6 h-5 relative flex flex-col justify-between">
+                        <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
+                        <span class="w-2/3 h-0.5 bg-current rounded-full transition-all duration-300"></span>
+                        <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
+                    </div>
+                </a>
+            </div>
+
         </div>
+        
     </div>
 </header>
-<div class="h-20"></div>
+
+<div class="h-20 w-full"></div>
 {% endmacro %}
