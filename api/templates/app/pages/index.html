@@ -1,13 +1,10 @@
 {% extends "app/base.html" %}
-
 {% from "macros/index_page/header.html" import render_header %}
 {% from "macros/index_page/drawer.html" import render_drawer %}
 {% from "macros/index_page/footer.html" import render_footer %}
 {% from "macros/index_page/hero.html" import render_hero %}
 
-{% block header %}
-{{ render_header(state) }}
-{% endblock %}
+{% block header %}{{ render_header(state) }}{% endblock %}
 
 {% block content %}
 <div class="hidden">
@@ -23,14 +20,10 @@
 
 {% block scripts %}
 <script>
-  // GSAP animations logic
   if (typeof gsap !== 'undefined') {
     gsap.registerPlugin(ScrollTrigger);
-    
-    // Unpoly renders ke baad animations refresh karne ke liye helper
-    up.on('up:fragment:inserted', function(event) {
-      ScrollTrigger.refresh();
-    });
+    // Refresh animations on Unpoly navigation
+    up.on('up:fragment:inserted', () => ScrollTrigger.refresh());
   }
 </script>
 {% endblock %}

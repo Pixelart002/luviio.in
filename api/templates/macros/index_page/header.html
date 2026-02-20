@@ -37,25 +37,30 @@
                 </div>
             </div>
             
+            
+            
+            
+            
+            
+            
+            
             <div class="flex items-center z-20">
-                {# 
-                   up-layer="new drawer": Nayi window drawer ke roop mein khole.
-                   up-target="#drawer-content": Drawer ke andar sirf ye element render kare.
-                   up-position="left": Drawer baayi taraf se nikle.
-                #}
-                <a href="#drawer-content" 
-                   up-layer="new drawer" 
-                   up-position="left"
-                   up-class="luxury-drawer"
-                   class="hamburger-btn group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer block">
-                    <div class="w-6 h-5 relative flex flex-col justify-between">
-                        <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
-                        <span class="w-2/3 h-0.5 bg-current rounded-full transition-all duration-300"></span>
-                        <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
-                    </div>
-                </a>
-            </div>
-
+    <a href="#drawer-content" 
+       up-layer="new drawer" 
+       up-position="left"
+       up-size="300px"
+       class="group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer">
+        <div class="w-6 h-5 relative flex flex-col justify-between">
+            <span class="w-full h-0.5 bg-current rounded-full transition-all"></span>
+            <span class="w-2/3 h-0.5 bg-current rounded-full transition-all"></span>
+            <span class="w-full h-0.5 bg-current rounded-full transition-all"></span>
+        </div>
+    </a>
+</div>
+            
+            
+            
+           
         </div>
         
     </div>
