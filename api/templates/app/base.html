@@ -6,17 +6,19 @@
 
     <title>{% block title %}Bathscape | Luxury Architecture{% endblock %}</title>
 
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
 
-    <!-- Unpoly CSS with drawer styles -->
+    <!-- Unpoly -->
     <link rel="stylesheet" href="https://unpkg.com/unpoly@3.8.0/dist/unpoly.min.css">
+    <script src="https://unpkg.com/unpoly@3.8.0/dist/unpoly.min.js"></script>
     
-    <!-- Tailwind CSS -->
+    <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- GSAP for animations -->
+    <!-- GSAP -->
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
 
@@ -28,133 +30,79 @@
       up-progress-bar="#loading-bar"
       class="bg-[#FAFAFA] font-['Plus_Jakarta_Sans'] text-slate-900 overflow-x-hidden">
 
-    <!-- Unpoly loading progress bar -->
-    <div id="loading-bar" class="fixed top-0 left-0 h-1 bg-teal-600 z-[100] origin-left scale-x-0 pointer-events-none opacity-0"></div>
+    <!-- Loading Progress Bar -->
+    <div id="loading-bar" class="fixed top-0 left-0 h-1 bg-teal-600 z-[100] origin-left scale-x-0 pointer-events-none opacity-0 transition-opacity duration-300"></div>
 
-    <!-- Main layout container -->
+    <!-- Main Layout -->
     <div id="layout" class="flex flex-col min-h-screen relative">
-
-        <!-- Fixed header -->
         <header id="header" class="fixed top-0 w-full z-50">
             {% block header %}{% endblock %}
         </header>
 
-        <!-- Sidebar (drawer) - will be rendered here but hidden initially -->
         <aside id="sidebar" class="relative z-40">
             {% block sidebar %}{% endblock %}
         </aside>
 
-        <!-- Main content area - gets updated by Unpoly -->
         <main id="content" class="flex-grow pt-20" up-main>
             {% block content %}{% endblock %}
         </main>
 
-        <!-- Footer -->
         <footer id="footer" class="relative z-10">
             {% block footer %}{% endblock %}
         </footer>
-
     </div>
 
-    <!-- Unpoly drawer overlay styles -->
-    <style>
-        /* Custom Unpoly drawer animations */
-        [up-layer="drawer"] {
-            box-shadow: -5px 0 30px rgba(0, 0, 0, 0.1);
-        }
-        
-        /* Smooth slide transitions */
-        [up-transition="slide-left"] {
-            transition: transform 0.3s ease-in-out;
-        }
-        
-        /* Ensure main content is visible when drawer is closed */
-        [up-layer="new"][up-mode="overlay"] + #layout {
-            filter: none;
-        }
-        
-        /* Fix for body scroll when drawer is open */
-        body.up-drawer-open {
-            overflow: hidden;
-        }
-        
-        /* Drawer background overlay */
-        [up-background] {
-            backdrop-filter: blur(4px);
-        }
-    </style>
-
-    <!-- Unpoly configuration and custom handlers -->
+    <!-- Unpoly Configuration -->
     <script>
         (function() {
             // Wait for Unpoly to load
-            document.addEventListener('up:framework:boot', function() {
-                console.log('✅ Unpoly framework booted');
-                
-                // Configure Unpoly
-                up.layer.config.backdrop = {
-                    background: '#000000cc',
-                    closeOnClick: true,
-                    duration: 300
-                };
-                
-                up.layer.config.drawer = {
-                    width: 320,
-                    maxWidth: '90vw'
-                };
-            });
-
-            // Handle drawer open
-            document.addEventListener('up:layer:open', function(event) {
-                const layer = event.detail.layer;
-                if (layer.mode === 'overlay' || layer.mode === 'drawer') {
-                    document.body.classList.add('up-drawer-open');
+            if (typeof up !== 'undefined') {
+                document.addEventListener('up:framework:boot', function() {
+                    console.log('✅ Unpoly ready');
                     
-                    // GSAP animation for drawer content (optional)
-                    if (typeof gsap !== 'undefined') {
-                        gsap.from(layer.element, {
-                            opacity: 0,
-                            x: layer.position === 'left' ? -50 : 50,
-                            duration: 0.3,
-                            ease: 'power2.out'
-                        });
-                    }
+                    // Configure layers
+                    up.layer.config.backdrop = {
+                        background: 'rgba(0, 0, 0, 0.8)',
+                        closeOnClick: true,
+                        duration: 300
+                    };
+                });
+            }
+
+            // Handle drawer open/close
+            document.addEventListener('up:layer:open', function(e) {
+                if (e.detail.layer.mode === 'drawer') {
+                    document.body.style.overflow = 'hidden';
                 }
             });
 
-            // Handle drawer close
-            document.addEventListener('up:layer:close', function(event) {
-                document.body.classList.remove('up-drawer-open');
-            });
-
-            // Fallback: Ensure main content is visible
-            document.addEventListener('up:layer:afterClose', function() {
-                const layout = document.getElementById('layout');
-                if (layout) {
-                    layout.style.display = 'flex';
-                }
+            document.addEventListener('up:layer:close', function() {
                 document.body.style.overflow = '';
             });
 
-            // Debug: Log any Unpoly errors
-            document.addEventListener('up:error', function(event) {
-                console.error('❌ Unpoly error:', event.detail);
+            // Error handling
+            document.addEventListener('up:error', function(e) {
+                console.warn('⚠️ Unpoly warning:', e.detail);
             });
         })();
     </script>
 
-    <!-- Custom scripts block for page-specific JS -->
+    <!-- Custom Styles for Drawer -->
+    <style>
+        [up-layer="drawer"] {
+            background: white;
+            box-shadow: 0 0 30px rgba(0,0,0,0.2);
+        }
+        
+        [up-background] {
+            backdrop-filter: blur(4px);
+        }
+        
+        .up-drawer-open {
+            overflow: hidden;
+        }
+    </style>
+
     {% block scripts %}{% endblock %}
-
-    <!-- Initialize GSAP ScrollTrigger after everything -->
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
-                gsap.registerPlugin(ScrollTrigger);
-                console.log('✅ GSAP ScrollTrigger registered');
-            }
-        });
-    </script>
-
 </body>
 </html>

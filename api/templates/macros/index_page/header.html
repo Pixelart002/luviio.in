@@ -1,10 +1,12 @@
 {% macro render_header(state) %}
-{# 
-    BEAST MODE HEADER (ULTRASONIC RESPONSIVE)
-    - Logo: Perfectly Centered using Absolute Positioning.
-    - Buttons: Grouped next to the Profile icon on the right.
-#}
-<header class="fixed top-0 w-full h-20 z-[60] bg-white/40 backdrop-blur-2xl border-b border-slate-200/20" id="luxury-header">
+{% set state = state or {} %}
+{% set nav_items = state.nav_items if state.nav_items else [
+    {"label": "The Studio", "url": "/studio", "active": true},
+    {"label": "Materials", "url": "/materials", "active": false},
+    {"label": "Projects", "url": "/projects", "active": false}
+] %}
+
+<header class="fixed top-0 w-full h-20 z-[60] bg-white/40 backdrop-blur-2xl border-b border-slate-200/20">
     <div class="relative h-full max-w-7xl mx-auto px-4 lg:px-12 flex items-center justify-between">
         
         <!-- Logo -->
@@ -14,11 +16,12 @@
             </a>
         </div>
         
+        <!-- Right Section -->
         <div class="flex items-center gap-2 md:gap-4 z-10">
             
             <!-- Desktop Navigation -->
             <nav class="hidden md:flex items-center p-1 bg-white/50 border border-slate-200/50 rounded-full shadow-sm">
-                {% for item in state.nav_items %}
+                {% for item in nav_items %}
                 <a href="{{ item.url }}" 
                    up-target="#content" 
                    class="px-3 md:px-5 py-1.5 md:py-2 text-[10px] md:text-sm font-medium transition-all rounded-full 
@@ -28,10 +31,10 @@
                 {% endfor %}
             </nav>
 
-            <!-- Profile section -->
+            <!-- Profile -->
             <div class="flex items-center gap-3">
                 <span class="hidden lg:block text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                    {{ state.user_status | default('Studio Access') }}
+                    {{ state.user_status if state.user_status else 'Studio Access' }}
                 </span>
                 <div class="w-9 h-9 md:w-10 md:h-10 rounded-full bg-slate-900 flex items-center justify-center text-white cursor-pointer hover:bg-teal-700 transition-all shadow-xl shadow-slate-200">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -40,25 +43,22 @@
                 </div>
             </div>
             
-        <!-- header.html mein hamburger button -->
-<button id="hamburgerBtn" 
-        up-layer="new overlay"
-        up-target="#drawer"
-        up-position="left"
-        up-size="medium"
-        up-background="true"
-        up-transition="slide-left"
-        class="hamburger-btn group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer block">
-    <div class="w-6 h-5 relative flex flex-col justify-between">
-        <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
-        <span class="w-2/3 h-0.5 bg-current rounded-full transition-all duration-300"></span>
-        <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
-    </div>
-</button>
-            </div>
-
+            <!-- Hamburger Button - Unpoly Drawer Trigger -->
+            <button id="hamburgerBtn" 
+                    up-layer="new drawer"
+                    up-target="#drawer"
+                    up-position="left"
+                    up-size="medium"
+                    up-background="true"
+                    up-transition="slide-left"
+                    class="group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer block focus:outline-none">
+                <div class="w-6 h-5 relative flex flex-col justify-between">
+                    <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
+                    <span class="w-2/3 h-0.5 bg-current rounded-full transition-all duration-300"></span>
+                    <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
+                </div>
+            </button>
         </div>
-        
     </div>
 </header>
 

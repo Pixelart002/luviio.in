@@ -1,15 +1,22 @@
-<!-- drawer.html - Updated Unpoly drawer -->
+{% macro render_drawer(state) %}
+{% set state = state or {} %}
+{% set sidebar_categories = state.sidebar_categories if state.sidebar_categories else [
+    {"label": "Ceramics", "url": "/ceramics"},
+    {"label": "Water Systems", "url": "/water"}
+] %}
+
+<!-- Drawer Container -->
 <div id="drawer" 
-     up-layer="new"
-     up-mode="overlay"
+     class="fixed top-0 left-0 h-full w-[280px] md:w-[350px] bg-white shadow-2xl z-50 overflow-y-auto"
+     up-layer="new drawer"
      up-position="left"
      up-size="medium"
      up-background="true"
      up-transition="slide-left"
-     class="fixed top-0 left-0 h-full w-[280px] md:w-[350px] bg-white shadow-2xl z-50 overflow-y-auto">
+     up-history="false">
     
     <div class="p-8 flex flex-col gap-8" up-main>
-        <!-- Mobile menu -->
+        <!-- Mobile Menu -->
         <div class="md:hidden">
             <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-6">Menu</h3>
             <div class="flex flex-col gap-4">
@@ -17,7 +24,7 @@
                 <a href="{{ item.url }}" 
                    up-target="#content"
                    up-layer="close"
-                   class="text-2xl font-['Playfair_Display'] font-bold {{ 'text-teal-700' if item.active else 'text-slate-900' }}">
+                   class="text-2xl font-['Playfair_Display'] font-bold {{ 'text-teal-700' if item.active else 'text-slate-900 hover:text-teal-700' }} transition-colors">
                     {{ item.label }}
                 </a>
                 {% endfor %}
@@ -25,11 +32,11 @@
             <hr class="my-8 border-slate-100">
         </div>
 
-        <!-- Curations section -->
+        <!-- Curations -->
         <div>
             <h3 class="text-[10px] font-bold uppercase tracking-widest text-teal-700 mb-6">Curations</h3>
             <ul class="space-y-5">
-                {% for category in state.sidebar_categories %}
+                {% for category in sidebar_categories %}
                 <li>
                     <a href="{{ category.url }}" 
                        up-target="#content"
@@ -43,7 +50,7 @@
             </ul>
         </div>
         
-        <!-- Featured material -->
+        <!-- Featured Material -->
         {% if state.featured_material %}
         <div class="p-6 bg-slate-900 rounded-[2rem] text-white shadow-2xl mt-auto">
             <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-2 text-teal-400">Signature</p>
@@ -51,14 +58,17 @@
             <a href="{{ state.featured_material.url }}" 
                up-target="#content"
                up-layer="close"
-               class="text-xs font-bold text-teal-400 underline">View Craft</a>
+               class="text-xs font-bold text-teal-400 underline hover:text-teal-300 transition-colors">
+                View Craft →
+            </a>
         </div>
         {% endif %}
 
-        <!-- Close button -->
+        <!-- Close Button -->
         <button up-layer="close"
-                class="w-full py-4 text-xs font-bold uppercase tracking-widest text-slate-400 bg-slate-50 rounded-xl">
+                class="w-full py-4 text-xs font-bold uppercase tracking-widest text-slate-400 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors">
             CLOSE
         </button>
     </div>
 </div>
+{% endmacro %}
