@@ -41,21 +41,20 @@
     </div>
   </section>
 
-  <!-- SECTION 3: DITHER SHADER (ACETERNITY ASCII STYLE) -->
-  <section class="relative w-full min-h-screen bg-black py-24 overflow-hidden">
+  <!-- SECTION 3: DITHER SHADER (OPTIMISED) -->
+  <section id="dither-section" class="relative w-full min-h-screen bg-black py-24 overflow-hidden">
     <div class="max-w-7xl mx-auto px-6 text-center mb-12 relative z-10">
       <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl text-white mb-4">
         Dither <span class="text-teal-400">Shader</span>
       </h2>
-      <p class="text-slate-300 text-lg">Move mouse to interact | Configurable modes & colors</p>
+      <p class="text-slate-300 text-lg">Move mouse | Configurable modes</p>
     </div>
 
-    <!-- Container for dither shader canvas + controls (optional) -->
-    <div class="relative w-full max-w-5xl mx-auto px-6">
+    <div class="relative w-full max-w-4xl mx-auto px-6">
       <div class="relative overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
         <canvas id="dither-canvas" class="w-full h-auto aspect-[16/9]"></canvas>
       </div>
-      <!-- Simple controls (you can remove or expand) -->
+      <!-- Simple controls (lightweight) -->
       <div class="mt-6 flex flex-wrap gap-4 justify-center text-white text-sm">
         <label><input type="radio" name="ditherMode" value="bayer" checked> Bayer</label>
         <label><input type="radio" name="ditherMode" value="halftone"> Halftone</label>
@@ -71,17 +70,118 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- Vanilla JS for drawer toggling (unchanged) -->
+<!-- Vanilla JS for drawer toggling -->
 <script>
-  // ... (your existing drawer script) ...
+  document.addEventListener('DOMContentLoaded', function() {
+    const hamburgerBtn = document.getElementById('hamburgerBtn');
+    const drawer = document.getElementById('drawer');
+    const overlay = document.getElementById('drawerOverlay');
+    const closeBtn = document.getElementById('closeDrawerBtn');
+    const drawerLinks = drawer ? drawer.querySelectorAll('a') : [];
+    
+    function openDrawer() {
+      if (drawer) {
+        drawer.classList.remove('-translate-x-full');
+        overlay.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        
+        const spans = hamburgerBtn?.querySelectorAll('span');
+        if (spans && spans.length === 3) {
+          spans[0].style.transform = 'rotate(45deg) translateY(9px)';
+          spans[1].style.opacity = '0';
+          spans[2].style.transform = 'rotate(-45deg) translateY(-9px)';
+        }
+      }
+    }
+    
+    function closeDrawer() {
+      if (drawer) {
+        drawer.classList.add('-translate-x-full');
+        overlay.classList.add('hidden');
+        document.body.style.overflow = '';
+        
+        const spans = hamburgerBtn?.querySelectorAll('span');
+        if (spans && spans.length === 3) {
+          spans[0].style.transform = 'rotate(0) translateY(0)';
+          spans[1].style.opacity = '1';
+          spans[2].style.transform = 'rotate(0) translateY(0)';
+        }
+      }
+    }
+    
+    if (hamburgerBtn) hamburgerBtn.addEventListener('click', openDrawer);
+    if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+    if (overlay) overlay.addEventListener('click', closeDrawer);
+    
+    drawerLinks.forEach(link => link.addEventListener('click', closeDrawer));
+    
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && drawer && !drawer.classList.contains('-translate-x-full')) {
+        closeDrawer();
+      }
+    });
+  });
 </script>
 
-<!-- Active Navigation Script (unchanged) -->
+<!-- Active Navigation Script -->
 <script>
-  // ... (your existing nav script) ...
+  document.addEventListener('DOMContentLoaded', function() {
+    const navLinks = document.querySelectorAll('.nav-link');
+    
+    function setActiveLink(clickedLink) {
+      navLinks.forEach(link => {
+        link.classList.remove('text-teal-800', 'bg-white', 'shadow-sm');
+        if (link.closest('nav')) {
+          link.classList.add('text-slate-600', 'hover:text-teal-700', 'hover:bg-white');
+        } else {
+          link.classList.remove('text-teal-700');
+        }
+      });
+      
+      if (clickedLink.closest('nav')) {
+        clickedLink.classList.remove('text-slate-600', 'hover:text-teal-700', 'hover:bg-white');
+        clickedLink.classList.add('text-teal-800', 'bg-white', 'shadow-sm');
+      } else {
+        clickedLink.classList.add('text-teal-700');
+      }
+    }
+    
+    navLinks.forEach(link => {
+      link.addEventListener('click', function(e) {
+        e.preventDefault();
+        setActiveLink(this);
+        
+        const drawer = document.getElementById('drawer');
+        if (drawer && !drawer.classList.contains('-translate-x-full')) {
+          document.getElementById('closeDrawerBtn')?.click();
+        }
+        
+        const href = this.getAttribute('href');
+        if (href && href !== '#') {
+          const targetId = href.replace('/', '');
+          const targetSection = document.getElementById(targetId);
+          if (targetSection) {
+            targetSection.scrollIntoView({ behavior: 'smooth' });
+          }
+        }
+      });
+    });
+    
+    const path = window.location.pathname;
+    let activeFound = false;
+    navLinks.forEach(link => {
+      if (link.getAttribute('href') === path) {
+        setActiveLink(link);
+        activeFound = true;
+      }
+    });
+    if (!activeFound && navLinks.length > 0) {
+      setActiveLink(navLinks[0]);
+    }
+  });
 </script>
 
-<!-- GSAP + Dither Shader -->
+<!-- GSAP + Dither Shader (optimised) -->
 <script>
   (function() {
     if (typeof gsap === 'undefined') return;
@@ -89,23 +189,160 @@
 
     const isMobile = window.innerWidth < 768;
 
-    // --- GSAP STAGGER GRID (same as before, with responsive timing) ---
-    // ... (your existing stagger grid code) ...
+    // --- 1. GSAP STAGGER GRID (responsive) ---
+    const staggerGrid = document.getElementById('stagger-grid');
+    if (staggerGrid) {
+      staggerGrid.innerHTML = '';
 
-    // --- GSAP HORIZONTAL SCROLL GALLERY (same as before) ---
-    // ... (your existing horizontal scroll code) ...
+      const images = [
+        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=600&q=90',
+        'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=600&q=90',
+        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&q=90',
+        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=600&q=90',
+        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=600&q=90',
+        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=600&q=90',
+        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=600&q=90',
+        'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=600&q=90',
+        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=600&q=90'
+      ];
 
-    // --- 3. DITHER SHADER (standalone JS version) ---
+      images.forEach((src, i) => {
+        const card = document.createElement('div');
+        card.className = 'stagger-card aspect-square rounded-2xl overflow-hidden shadow-2xl relative group';
+        card.style.background = `url(${src}) center/cover`;
+        card.style.transformStyle = 'preserve-3d';
+        card.style.border = '2px solid rgba(255,255,255,0.1)';
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4';
+        overlay.innerHTML = `<span class="text-white text-xl font-bold">${String(i + 1).padStart(2, '0')}</span>`;
+        card.appendChild(overlay);
+        
+        staggerGrid.appendChild(card);
+      });
+
+      gsap.from('.stagger-card', {
+        scrollTrigger: {
+          trigger: '#stagger-grid',
+          start: 'top 70%',
+          end: 'bottom 30%',
+          scrub: isMobile ? 0.8 : 1.2,
+          toggleActions: 'play none none reverse'
+        },
+        rotationY: (i) => (i % 3 === 0 ? 180 : i % 3 === 1 ? 90 : -90),
+        rotationX: (i) => (i % 2 === 0 ? 30 : -30),
+        opacity: 0,
+        scale: isMobile ? 0.6 : 0.5,
+        stagger: {
+          amount: isMobile ? 1 : 1.5,
+          from: "center",
+          grid: isMobile ? [2, 4] : [3, 3],
+          ease: "power2.inOut"
+        },
+        ease: "power2.out"
+      });
+
+      ScrollTrigger.refresh();
+    }
+
+    // --- 2. GSAP HORIZONTAL SCROLL GALLERY ---
+    const track = document.getElementById('horizontal-track');
+    if (track) {
+      track.innerHTML = '';
+
+      const images = [
+        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=800&q=90',
+        'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=800&q=90',
+        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=90',
+        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=800&q=90',
+        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=800&q=90',
+        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800&q=90',
+        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=800&q=90',
+        'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=800&q=90'
+      ];
+
+      images.forEach((src, index) => {
+        const card = document.createElement('div');
+        const widthClass = isMobile ? 'w-[200px]' : 'w-[350px]';
+        const heightClass = isMobile ? 'h-[300px]' : 'h-[450px]';
+        card.className = `horizontal-card ${widthClass} ${heightClass} flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl relative group`;
+        card.style.background = `url(${src}) center/cover`;
+        card.style.border = '2px solid rgba(255,255,255,0.2)';
+
+        const overlay = document.createElement('div');
+        overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500';
+        card.appendChild(overlay);
+
+        const text = document.createElement('div');
+        text.className = 'absolute bottom-0 left-0 p-4 text-white translate-y-5 group-hover:translate-y-0 transition-transform duration-500';
+        text.innerHTML = `<span class="text-xl md:text-2xl font-bold">${String(index + 1).padStart(2, '0')}</span>`;
+        card.appendChild(text);
+
+        track.appendChild(card);
+      });
+
+      setTimeout(() => {
+        const trackWidth = track.scrollWidth;
+        const viewportWidth = window.innerWidth;
+        const maxScroll = trackWidth - viewportWidth + (isMobile ? 16 : 32);
+
+        if (maxScroll <= 0) return;
+
+        ScrollTrigger.getAll().forEach(st => {
+          if (st.vars.trigger === '#horizontal-scroll-section' || st.trigger === '#horizontal-scroll-section') {
+            st.kill();
+          }
+        });
+
+        gsap.to(track, {
+          x: -maxScroll,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: '#horizontal-scroll-section',
+            start: 'top top',
+            end: () => `+=${maxScroll + window.innerHeight}`,
+            pin: true,
+            scrub: isMobile ? 1 : 1.5,
+            anticipatePin: 1,
+            invalidateOnRefresh: true,
+            onRefresh: (self) => {
+              const newTrackWidth = track.scrollWidth;
+              const newViewportWidth = window.innerWidth;
+              const newMaxScroll = newTrackWidth - newViewportWidth + (isMobile ? 16 : 32);
+              self.vars.end = `+=${newMaxScroll + window.innerHeight}`;
+              gsap.set(track, { x: -newMaxScroll * self.progress });
+            }
+          }
+        });
+
+        gsap.from('.horizontal-card', {
+          scrollTrigger: {
+            trigger: '#horizontal-scroll-section',
+            start: 'top 80%',
+            toggleActions: 'play none none none'
+          },
+          opacity: 0,
+          scale: 0.8,
+          duration: isMobile ? 0.8 : 1,
+          stagger: 0.1,
+          ease: 'power2.out'
+        });
+
+        ScrollTrigger.refresh();
+      }, 500);
+    }
+
+    // --- 3. DITHER SHADER (optimised) ---
     (function initDither() {
       const canvas = document.getElementById('dither-canvas');
       if (!canvas) return;
 
-      // --- Configuration (matching React component props) ---
+      // Configuration
       const config = {
         src: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?q=80&w=2670&auto=format&fit=crop',
         gridSize: 4,
-        ditherMode: 'bayer',      // 'bayer', 'halftone', 'noise', 'crosshatch'
-        colorMode: 'grayscale',    // 'original', 'grayscale', 'duotone', 'custom'
+        ditherMode: 'bayer',
+        colorMode: 'grayscale',
         invert: false,
         pixelRatio: 1,
         primaryColor: '#000000',
@@ -120,14 +357,9 @@
         animationSpeed: 0.02,
       };
 
-      // --- Helper functions (same as React component) ---
-      const BAYER_MATRIX_4x4 = [
-        [0,8,2,10],
-        [12,4,14,6],
-        [3,11,1,9],
-        [15,7,13,5]
-      ];
-      const BAYER_MATRIX_8x8 = [
+      // Bayer matrices
+      const BAYER_4x4 = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+      const BAYER_8x8 = [
         [0,32,8,40,2,34,10,42],
         [48,16,56,24,50,18,58,26],
         [12,44,4,36,14,46,6,38],
@@ -138,62 +370,56 @@
         [63,31,55,23,61,29,53,21]
       ];
 
-      function parseColor(color) {
-        if (color.startsWith('#')) {
-          const hex = color.slice(1);
-          if (hex.length === 3) return [
-            parseInt(hex[0]+hex[0],16),
-            parseInt(hex[1]+hex[1],16),
-            parseInt(hex[2]+hex[2],16)
-          ];
-          return [
-            parseInt(hex.slice(0,2),16),
-            parseInt(hex.slice(2,4),16),
-            parseInt(hex.slice(4,6),16)
-          ];
+      function parseColor(c) {
+        if (c.startsWith('#')) {
+          const h = c.slice(1);
+          if (h.length===3) return [parseInt(h[0]+h[0],16), parseInt(h[1]+h[1],16), parseInt(h[2]+h[2],16)];
+          return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
         }
-        const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/i);
-        if (match) return [parseInt(match[1]),parseInt(match[2]),parseInt(match[3])];
         return [0,0,0];
       }
+      const prim = parseColor(config.primaryColor);
+      const seco = parseColor(config.secondaryColor);
+      const custom = config.customPalette.map(parseColor);
 
-      function getLuminance(r,g,b) { return 0.299*r + 0.587*g + 0.114*b; }
-      function clamp(v,min,max) { return Math.max(min,Math.min(max,v)); }
+      function luminance(r,g,b) { return 0.299*r + 0.587*g + 0.114*b; }
+      function clamp(v,mi,ma) { return Math.max(mi,Math.min(ma,v)); }
 
-      const parsedPrimary = parseColor(config.primaryColor);
-      const parsedSecondary = parseColor(config.secondaryColor);
-      const parsedCustom = config.customPalette.map(parseColor);
-
-      // --- Setup canvas ---
       const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
       let img = new Image();
       img.crossOrigin = 'anonymous';
       img.src = config.src;
 
-      let imageDataCache = null;
-      let imgWidth = 0, imgHeight = 0;
-      let animationFrame = null;
-      let time = 0;
+      let imgData = null, imgW = 0, imgH = 0, animFrame = null, time = 0;
+      let isVisible = true;
+
+      // Visibility detection – stop animating when out of view
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          isVisible = entry.isIntersecting;
+        });
+      }, { threshold: 0.1 });
+      observer.observe(document.getElementById('dither-section'));
 
       function resizeCanvas() {
         const container = canvas.parentElement;
         const rect = container.getBoundingClientRect();
-        canvas.width = rect.width;
-        canvas.height = rect.height;
+        // Limit max width to 800px for performance
+        const maxWidth = 800;
+        let w = rect.width;
+        if (w > maxWidth) w = maxWidth;
+        canvas.width = w;
+        canvas.height = w * 9/16;
       }
 
       window.addEventListener('resize', () => {
         resizeCanvas();
-        if (imageDataCache) renderFrame(time);
+        if (imgData) renderFrame(time);
       });
 
       function renderFrame(t) {
-        if (!imageDataCache || canvas.width === 0 || canvas.height === 0) return;
-
-        const w = canvas.width;
-        const h = canvas.height;
+        if (!imgData || canvas.width===0) return;
+        const w = canvas.width, h = canvas.height;
 
         ctx.clearRect(0,0,w,h);
         if (config.backgroundColor !== 'transparent') {
@@ -201,155 +427,135 @@
           ctx.fillRect(0,0,w,h);
         }
 
-        const sourceData = imageDataCache.data;
-        const sw = imgWidth, sh = imgHeight;
+        const src = imgData.data;
+        const sw = imgW, sh = imgH;
 
-        const effectivePixelSize = Math.max(1, Math.floor(config.gridSize * config.pixelRatio));
-        const matrixSize = config.gridSize <= 4 ? 4 : 8;
-        const bayerMatrix = matrixSize === 4 ? BAYER_MATRIX_4x4 : BAYER_MATRIX_8x8;
-        const matrixScale = matrixSize === 4 ? 16 : 64;
+        const cell = Math.max(1, Math.floor(config.gridSize * config.pixelRatio));
+        const matSize = config.gridSize <=4 ? 4 : 8;
+        const bayer = matSize===4 ? BAYER_4x4 : BAYER_8x8;
+        const matScale = matSize===4 ? 16 : 64;
 
-        for (let y = 0; y < h; y += effectivePixelSize) {
-          for (let x = 0; x < w; x += effectivePixelSize) {
-            const srcX = Math.floor((x / w) * sw);
-            const srcY = Math.floor((y / h) * sh);
-            const srcIdx = (srcY * sw + srcX) * 4;
+        for (let y=0; y<h; y+=cell) {
+          for (let x=0; x<w; x+=cell) {
+            const sx = Math.floor((x/w)*sw);
+            const sy = Math.floor((y/h)*sh);
+            const idx = (sy*sw + sx)*4;
 
-            let r = sourceData[srcIdx] || 0;
-            let g = sourceData[srcIdx+1] || 0;
-            let b = sourceData[srcIdx+2] || 0;
-            const a = sourceData[srcIdx+3] || 0;
-            if (a < 10) continue;
+            let r = src[idx]||0, g = src[idx+1]||0, b = src[idx+2]||0, a = src[idx+3]||0;
+            if (a<10) continue;
 
             r = clamp((r-128)*config.contrast + 128 + config.brightness*255, 0, 255);
             g = clamp((g-128)*config.contrast + 128 + config.brightness*255, 0, 255);
             b = clamp((b-128)*config.contrast + 128 + config.brightness*255, 0, 255);
 
-            const lum = getLuminance(r,g,b) / 255;
+            const lum = luminance(r,g,b)/255;
 
-            // dither threshold
-            let thresh;
-            const mx = Math.floor(x / config.gridSize) % matrixSize;
-            const my = Math.floor(y / config.gridSize) % matrixSize;
+            // threshold
+            let th;
+            const mx = Math.floor(x/config.gridSize) % matSize;
+            const my = Math.floor(y/config.gridSize) % matSize;
             switch (config.ditherMode) {
-              case 'bayer':
-                thresh = bayerMatrix[my][mx] / matrixScale;
-                break;
+              case 'bayer': th = bayer[my][mx] / matScale; break;
               case 'halftone': {
-                const angle = Math.PI/4;
-                const scale = config.gridSize * 2;
-                const rotX = x*Math.cos(angle) + y*Math.sin(angle);
-                const rotY = -x*Math.sin(angle) + y*Math.cos(angle);
-                thresh = (Math.sin(rotX/scale) + Math.sin(rotY/scale) + 2) / 4;
+                const ang = Math.PI/4;
+                const sc = config.gridSize*2;
+                const rx = x*Math.cos(ang) + y*Math.sin(ang);
+                const ry = -x*Math.sin(ang) + y*Math.cos(ang);
+                th = (Math.sin(rx/sc) + Math.sin(ry/sc) + 2)/4;
                 break;
               }
               case 'noise': {
-                const noiseVal = Math.sin(x*12.9898 + y*78.233 + t*100) * 43758.5453;
-                thresh = noiseVal - Math.floor(noiseVal);
+                const n = Math.sin(x*12.9898 + y*78.233 + t*100) * 43758.5453;
+                th = n - Math.floor(n);
                 break;
               }
               case 'crosshatch': {
-                const line1 = (x + y) % (config.gridSize*2) < config.gridSize ? 1 : 0;
-                const line2 = (x - y + config.gridSize*4) % (config.gridSize*2) < config.gridSize ? 1 : 0;
-                thresh = (line1 + line2) / 2;
+                const l1 = (x+y) % (config.gridSize*2) < config.gridSize ? 1 : 0;
+                const l2 = (x-y+config.gridSize*4) % (config.gridSize*2) < config.gridSize ? 1 : 0;
+                th = (l1+l2)/2;
                 break;
               }
-              default: thresh = bayerMatrix[my][mx] / matrixScale;
+              default: th = bayer[my][mx] / matScale;
             }
-            thresh = thresh * (1 - config.threshold) + config.threshold * 0.5;
+            th = th * (1-config.threshold) + config.threshold*0.5;
 
-            // determine output color
+            // output color
             let outR, outG, outB;
             switch (config.colorMode) {
-              case 'grayscale':
-                if (lum < thresh) { outR=0; outG=0; outB=0; }
-                else { outR=255; outG=255; outB=255; }
-                break;
+              case 'grayscale': outR=outG=outB = lum < th ? 0 : 255; break;
               case 'duotone':
-                if (lum < thresh) { outR=parsedPrimary[0]; outG=parsedPrimary[1]; outB=parsedPrimary[2]; }
-                else { outR=parsedSecondary[0]; outG=parsedSecondary[1]; outB=parsedSecondary[2]; }
+                if (lum < th) { outR=prim[0]; outG=prim[1]; outB=prim[2]; }
+                else { outR=seco[0]; outG=seco[1]; outB=seco[2]; }
                 break;
               case 'custom':
-                if (parsedCustom.length === 2) {
-                  if (lum < thresh) { outR=parsedCustom[0][0]; outG=parsedCustom[0][1]; outB=parsedCustom[0][2]; }
-                  else { outR=parsedCustom[1][0]; outG=parsedCustom[1][1]; outB=parsedCustom[1][2]; }
+                if (custom.length===2) {
+                  if (lum < th) { outR=custom[0][0]; outG=custom[0][1]; outB=custom[0][2]; }
+                  else { outR=custom[1][0]; outG=custom[1][1]; outB=custom[1][2]; }
                 } else {
-                  const adjLum = lum + (thresh - 0.5) * 0.5;
-                  const idx = Math.floor(clamp(adjLum,0,1) * (parsedCustom.length-1));
-                  outR = parsedCustom[idx][0];
-                  outG = parsedCustom[idx][1];
-                  outB = parsedCustom[idx][2];
+                  const adj = lum + (th-0.5)*0.5;
+                  const idx = Math.floor(clamp(adj,0,1)*(custom.length-1));
+                  outR = custom[idx][0]; outG = custom[idx][1]; outB = custom[idx][2];
                 }
                 break;
-              case 'original':
-              default: {
-                const ditherAmt = thresh - 0.5;
-                const adjR = clamp(r + ditherAmt*64, 0, 255);
-                const adjG = clamp(g + ditherAmt*64, 0, 255);
-                const adjB = clamp(b + ditherAmt*64, 0, 255);
-                const levels = 4;
-                outR = Math.round(adjR / (255/levels)) * (255/levels);
-                outG = Math.round(adjG / (255/levels)) * (255/levels);
-                outB = Math.round(adjB / (255/levels)) * (255/levels);
-                break;
-              }
+              default: // original
+                const amt = th-0.5;
+                const ar = clamp(r + amt*64, 0, 255);
+                const ag = clamp(g + amt*64, 0, 255);
+                const ab = clamp(b + amt*64, 0, 255);
+                const lv = 4;
+                outR = Math.round(ar/(255/lv))*(255/lv);
+                outG = Math.round(ag/(255/lv))*(255/lv);
+                outB = Math.round(ab/(255/lv))*(255/lv);
             }
 
             if (config.invert) {
-              outR = 255 - outR;
-              outG = 255 - outG;
-              outB = 255 - outB;
+              outR = 255-outR; outG = 255-outG; outB = 255-outB;
             }
 
             ctx.fillStyle = `rgb(${outR},${outG},${outB})`;
-            ctx.fillRect(x, y, effectivePixelSize, effectivePixelSize);
+            ctx.fillRect(x, y, cell, cell);
           }
         }
       }
 
       img.onload = () => {
-        imgWidth = img.naturalWidth;
-        imgHeight = img.naturalHeight;
+        imgW = img.naturalWidth;
+        imgH = img.naturalHeight;
 
-        // draw image to offscreen canvas to get pixel data
-        const offCanvas = document.createElement('canvas');
-        offCanvas.width = imgWidth;
-        offCanvas.height = imgHeight;
-        const offCtx = offCanvas.getContext('2d');
-        offCtx.drawImage(img, 0, 0, imgWidth, imgHeight);
+        const off = document.createElement('canvas');
+        off.width = imgW;
+        off.height = imgH;
+        const octx = off.getContext('2d');
+        octx.drawImage(img, 0, 0, imgW, imgH);
         try {
-          imageDataCache = offCtx.getImageData(0, 0, imgWidth, imgHeight);
+          imgData = octx.getImageData(0,0,imgW,imgH);
         } catch(e) {
-          console.error('CORS error?');
+          console.error('CORS error');
           return;
         }
 
         resizeCanvas();
-        const animate = () => {
-          if (config.animated) {
-            time += config.animationSpeed;
+
+        function animate() {
+          if (!isVisible) {
+            // Skip rendering if not visible, but keep the loop alive
+            animFrame = requestAnimationFrame(animate);
+            return;
           }
+          if (config.animated) time += config.animationSpeed;
           renderFrame(time);
-          animationFrame = requestAnimationFrame(animate);
-        };
+          animFrame = requestAnimationFrame(animate);
+        }
         animate();
       };
 
-      img.onerror = () => console.error('Failed to load image');
+      img.onerror = () => console.error('Image load failed');
 
-      // Connect radio buttons for demo (optional)
-      const modeRadios = document.querySelectorAll('input[name="ditherMode"]');
-      modeRadios.forEach(radio => {
-        radio.addEventListener('change', (e) => {
-          config.ditherMode = e.target.value;
-        });
-      });
-      const animCheck = document.getElementById('animatedCheck');
-      if (animCheck) {
-        animCheck.addEventListener('change', (e) => {
-          config.animated = e.target.checked;
-        });
-      }
+      // Connect controls
+      const radios = document.querySelectorAll('input[name="ditherMode"]');
+      radios.forEach(r => r.addEventListener('change', e => config.ditherMode = e.target.value));
+      const animChk = document.getElementById('animatedCheck');
+      if (animChk) animChk.addEventListener('change', e => config.animated = e.target.checked);
     })();
   })();
 </script>
