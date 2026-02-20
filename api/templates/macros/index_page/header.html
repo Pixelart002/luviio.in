@@ -3,7 +3,8 @@
 {% set nav_items = state.nav_items if state.nav_items else [
     {"label": "The Studio", "url": "/studio", "active": true},
     {"label": "Materials", "url": "/materials", "active": false},
-    {"label": "Projects", "url": "/projects", "active": false}
+    {"label": "Projects", "url": "/projects", "active": false},
+    {"label": "Journal", "url": "/journal", "active": false}
 ] %}
 
 <header class="fixed top-0 w-full h-20 z-[60] bg-white/40 backdrop-blur-2xl border-b border-slate-200/20">
@@ -43,21 +44,21 @@
                 </div>
             </div>
             
-            <!-- Hamburger Button - Unpoly Drawer Trigger -->
-            <button id="hamburgerBtn" 
-                    up-layer="new drawer"
-                    up-target="#drawer"
-                    up-position="left"
-                    up-size="medium"
-                    up-background="true"
-                    up-transition="slide-left"
-                    class="group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer block focus:outline-none">
+            <!-- HAMBURGER BUTTON - Unpoly Layer Trigger -->
+            <a href="/drawer-content" 
+               id="hamburgerBtn"
+               up-layer="new drawer"
+               up-position="left"
+               up-size="medium"
+               up-background="true"
+               up-transition="slide-left"
+               class="block p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer focus:outline-none">
                 <div class="w-6 h-5 relative flex flex-col justify-between">
                     <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
                     <span class="w-2/3 h-0.5 bg-current rounded-full transition-all duration-300"></span>
                     <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
                 </div>
-            </button>
+            </a>
         </div>
     </div>
 </header>

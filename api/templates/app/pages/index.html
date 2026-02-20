@@ -1,7 +1,6 @@
 {% extends "app/base.html" %}
 
 {% from "macros/index_page/header.html" import render_header %}
-{% from "macros/index_page/drawer.html" import render_drawer %}
 {% from "macros/index_page/footer.html" import render_footer %}
 {% from "macros/index_page/hero.html" import render_hero %}
 
@@ -10,19 +9,11 @@
 {% endblock %}
 
 {% block content %}
-<!-- Drawer Component -->
-{{ render_drawer(state) }}
-
-<!-- Main Content -->
-<div id="main-content" class="w-full">
-  {{ render_hero() }}
-</div>
-
+{{ render_hero() }}
 {{ render_footer(state) }}
 {% endblock %}
 
 {% block scripts %}
-<!-- GSAP Animations -->
 <script>
   document.addEventListener('DOMContentLoaded', function() {
     if (typeof gsap !== 'undefined') {

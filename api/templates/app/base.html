@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-    <title>{% block title %}Bathscape | Luxury Architecture{% endblock %}</title>
+    <title>{% block title %}Luviio | Luxury Architecture{% endblock %}</title>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -30,7 +30,7 @@
       up-progress-bar="#loading-bar"
       class="bg-[#FAFAFA] font-['Plus_Jakarta_Sans'] text-slate-900 overflow-x-hidden">
 
-    <!-- Loading Progress Bar -->
+    <!-- Loading Bar -->
     <div id="loading-bar" class="fixed top-0 left-0 h-1 bg-teal-600 z-[100] origin-left scale-x-0 pointer-events-none opacity-0 transition-opacity duration-300"></div>
 
     <!-- Main Layout -->
@@ -38,10 +38,6 @@
         <header id="header" class="fixed top-0 w-full z-50">
             {% block header %}{% endblock %}
         </header>
-
-        <aside id="sidebar" class="relative z-40">
-            {% block sidebar %}{% endblock %}
-        </aside>
 
         <main id="content" class="flex-grow pt-20" up-main>
             {% block content %}{% endblock %}
@@ -52,56 +48,33 @@
         </footer>
     </div>
 
+    <!-- IMPORTANT: Unpoly Layer Container -->
+    <div id="up-layer-container" up-layer="root" class="z-[100]"></div>
+
     <!-- Unpoly Configuration -->
     <script>
-        (function() {
-            // Wait for Unpoly to load
-            if (typeof up !== 'undefined') {
-                document.addEventListener('up:framework:boot', function() {
-                    console.log('✅ Unpoly ready');
-                    
-                    // Configure layers
-                    up.layer.config.backdrop = {
-                        background: 'rgba(0, 0, 0, 0.8)',
-                        closeOnClick: true,
-                        duration: 300
-                    };
+        document.addEventListener('up:framework:boot', function() {
+            console.log('✅ Unpoly ready');
+            
+            up.layer.config.backdrop = {
+                background: 'rgba(0, 0, 0, 0.5)',
+                closeOnClick: true,
+                duration: 300
+            };
+        });
+
+        // GSAP animations for layers
+        document.addEventListener('up:layer:open', function(e) {
+            if (e.detail.layer.mode === 'drawer' && typeof gsap !== 'undefined') {
+                gsap.from(e.detail.layer.element, {
+                    x: -100,
+                    opacity: 0,
+                    duration: 0.4,
+                    ease: 'power2.out'
                 });
             }
-
-            // Handle drawer open/close
-            document.addEventListener('up:layer:open', function(e) {
-                if (e.detail.layer.mode === 'drawer') {
-                    document.body.style.overflow = 'hidden';
-                }
-            });
-
-            document.addEventListener('up:layer:close', function() {
-                document.body.style.overflow = '';
-            });
-
-            // Error handling
-            document.addEventListener('up:error', function(e) {
-                console.warn('⚠️ Unpoly warning:', e.detail);
-            });
-        })();
+        });
     </script>
-
-    <!-- Custom Styles for Drawer -->
-    <style>
-        [up-layer="drawer"] {
-            background: white;
-            box-shadow: 0 0 30px rgba(0,0,0,0.2);
-        }
-        
-        [up-background] {
-            backdrop-filter: blur(4px);
-        }
-        
-        .up-drawer-open {
-            overflow: hidden;
-        }
-    </style>
 
     {% block scripts %}{% endblock %}
 </body>
