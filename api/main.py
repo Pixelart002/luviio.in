@@ -20,7 +20,6 @@ class UIState(BaseModel):
     featured_material: Optional[Dict[str, Any]] = None
     user_status: str = "Studio Access"
 
-# Helper function to get state
 def get_ui_state():
     return UIState(
         page_title="Home | Luviio Luxury Studio",
@@ -38,16 +37,24 @@ def get_ui_state():
 
 @app.get("/", response_class=HTMLResponse)
 async def home_route(request: Request):
-    # Main page render
+    state = get_ui_state()
+
+    # FastAPI headers are case-insensitive, so we use 'x-up-target'
+    target = request.headers.get("x-up-target")
+
+    # UNPOLY 3.0 LOGIC: Catch exact target requested by the frontend
+    if target == "#drawer-content":
+        response = templates.TemplateResponse(
+            "macros/index_page/drawer.html", 
+            {"request": request, "state": state.model_dump()}
+        )
+        # CRITICAL FIX FOR UNPOLY 3.0 CACHING
+        # This tells the browser NOT to cache the drawer as the full page
+        response.headers["Vary"] = "X-Up-Target"
+        return response
+    
+    # Default: Return the full page
     return templates.TemplateResponse(
         "app/pages/index.html", 
-        {"request": request, "state": get_ui_state().model_dump()}
-    )
-
-# NEW: Dedicated Drawer Route
-@app.get("/drawer", response_class=HTMLResponse)
-async def drawer_route(request: Request):
-    return templates.TemplateResponse(
-        "app/macros/index_page/drawer.html", 
-        {"request": request, "state": get_ui_state().model_dump()}
+        {"request": request, "state": state.model_dump()}
     )
