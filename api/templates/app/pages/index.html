@@ -11,56 +11,46 @@
 
 {% block content %}
 <style>
-  html.lenis, html.lenis body {
-    height: auto;
-    width: 100vw;
-    overflow-x: hidden;
-  }
-  .lenis.lenis-smooth {
-    scroll-behavior: auto !important;
-  }
-  .lenis.lenis-smooth [data-lenis-prevent] {
-    overscroll-behavior: contain;
-  }
-  .lenis.lenis-stopped {
-    overflow: hidden;
-  }
-  .lenis.lenis-scrolling iframe {
-    pointer-events: none;
-  }
+  /* Lenis smooth scroll base */
+  html.lenis, html.lenis body { height: auto; width: 100vw; overflow-x: hidden; }
+  .lenis.lenis-smooth { scroll-behavior: auto !important; }
+  .lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+  .lenis.lenis-stopped { overflow: hidden; }
+  .lenis.lenis-scrolling iframe { pointer-events: none; }
   
-  /* Aceternity UI Vibe Utilities */
+  /* Aceternity UI glass card utility */
   .glass-card {
     background: rgba(255, 255, 255, 0.03);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.05);
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+    will-change: transform, opacity; /* hint for browser */
   }
   
   .text-glow {
     text-shadow: 0 0 40px rgba(45, 212, 191, 0.4);
   }
 
-  /* Fix hero background – keep it light as original */
-  .hero-fix {
-    background: #fafafa !important;
-  }
-  .hero-fix * {
-    color: #1e293b; /* slate-900 */
-  }
-  /* Override the hero section's background if it's inside a dark container */
+  /* Hero background fix – only affects the first child of main-content */
   #main-content > section:first-of-type {
     background: #fafafa !important;
+  }
+  #main-content > section:first-of-type * {
+    color: #1e293b; /* slate-900 for text inside hero */
+  }
+  /* Ensure hero's own gradient still works */
+  #main-content > section:first-of-type .absolute.bg-gradient-to-b {
+    background: linear-gradient(to bottom, #f1f5f9, #ffffff) !important;
   }
 </style>
 
 {{ render_drawer() }}
 
 <div id="main-content" class="w-full bg-[#050507] text-slate-200">
-  <!-- The hero macro will be inserted here; we force its background via the above rule -->
   {{ render_hero() }}
 
+  <!-- GSAP Stagger Grid – step‑by‑step 3D flip -->
   <section class="relative w-full min-h-screen py-32 perspective-1000 overflow-hidden" style="perspective: 1200px;">
     <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-teal-900/20 rounded-full blur-[120px] pointer-events-none"></div>
 
@@ -78,6 +68,7 @@
     </div>
   </section>
 
+  <!-- GSAP Horizontal Scroll – smooth & reliable -->
   <section id="horizontal-scroll-section" class="relative w-full h-screen bg-[#020203] overflow-hidden border-y border-white/5">
     <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20 pointer-events-none"></div>
     
@@ -93,6 +84,7 @@
     </div>
   </section>
 
+  <!-- Dither Shader – optimised, only runs when visible -->
   <section id="dither-section" class="relative w-full min-h-screen py-32 overflow-hidden bg-[#050507]">
     <div class="max-w-7xl mx-auto px-6 text-center mb-16 relative z-10">
       <h2 class="font-['Playfair_Display'] text-5xl md:text-7xl text-white mb-6">
@@ -142,6 +134,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.4/ScrollTrigger.min.js"></script>
 
 <script>
+  // ----- DRAWER TOGGLING (unchanged, but kept clean) -----
   document.addEventListener('DOMContentLoaded', function() {
     const hamburgerBtn = document.getElementById('hamburgerBtn');
     const drawer = document.getElementById('drawer');
@@ -154,7 +147,6 @@
         drawer.classList.remove('-translate-x-full');
         overlay.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
-        
         const spans = hamburgerBtn?.querySelectorAll('span');
         if (spans && spans.length === 3) {
           spans[0].style.transform = 'rotate(45deg) translateY(9px) translateX(9px)';
@@ -163,13 +155,11 @@
         }
       }
     }
-    
     function closeDrawer() {
       if (drawer) {
         drawer.classList.add('-translate-x-full');
         overlay.classList.add('hidden');
         document.body.style.overflow = '';
-        
         const spans = hamburgerBtn?.querySelectorAll('span');
         if (spans && spans.length === 3) {
           spans[0].style.transform = 'none';
@@ -178,53 +168,38 @@
         }
       }
     }
-    
     if (hamburgerBtn) hamburgerBtn.addEventListener('click', openDrawer);
     if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
     if (overlay) overlay.addEventListener('click', closeDrawer);
     drawerLinks.forEach(link => link.addEventListener('click', closeDrawer));
-    
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape' && drawer && !drawer.classList.contains('-translate-x-full')) {
-        closeDrawer();
-      }
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && drawer && !drawer.classList.contains('-translate-x-full')) closeDrawer();
     });
   });
-</script>
 
-<script>
+  // ----- MAIN ANIMATIONS (optimised) -----
   (function() {
-    if (typeof gsap === 'undefined' || typeof Lenis === 'undefined') {
-        console.error("Dependencies missing.");
-        return;
-    }
-    
+    if (typeof gsap === 'undefined' || typeof Lenis === 'undefined') return;
+
     gsap.registerPlugin(ScrollTrigger);
 
-    // --- 0. LENIS SMOOTH SCROLL INITIALIZATION ---
+    // LENIS (smooth scroll) – minimal config
     const lenis = new Lenis({
-        duration: 1.2,
-        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-        direction: 'vertical',
-        gestureDirection: 'vertical',
-        smooth: true,
-        mouseMultiplier: 1,
-        smoothTouch: false,
-        touchMultiplier: 2,
-        infinite: false,
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      smooth: true,
+      smoothTouch: false,
     });
-
     lenis.on('scroll', ScrollTrigger.update);
     gsap.ticker.add((time) => lenis.raf(time * 1000));
     gsap.ticker.lagSmoothing(0);
 
     const isMobile = window.innerWidth < 768;
 
-    // --- 1. GSAP STAGGER GRID (step‑by‑step reveal) ---
+    // ----- STAGGER GRID (step‑by‑step reveal) -----
     const staggerGrid = document.getElementById('stagger-grid');
     if (staggerGrid) {
       staggerGrid.innerHTML = '';
-
       const images = [
         'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=90',
         'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=800&q=90',
@@ -240,10 +215,10 @@
       images.forEach((src, i) => {
         const cardContainer = document.createElement('div');
         cardContainer.style.perspective = "1500px";
-
         const card = document.createElement('div');
         card.className = 'stagger-card aspect-[4/5] rounded-2xl overflow-hidden relative group glass-card cursor-pointer';
         card.style.transformStyle = 'preserve-3d';
+        card.style.willChange = 'transform, opacity'; // performance hint
         
         const imgBg = document.createElement('div');
         imgBg.className = 'absolute inset-0 bg-cover bg-center transition-transform duration-1000 group-hover:scale-110 opacity-70 group-hover:opacity-100';
@@ -259,36 +234,35 @@
           </div>
         `;
         card.appendChild(overlay);
-        
         cardContainer.appendChild(card);
         staggerGrid.appendChild(cardContainer);
       });
 
-      // Step‑by‑step stagger (each card appears sequentially)
+      // Step‑by‑step stagger: each card appears sequentially
       gsap.from('.stagger-card', {
         scrollTrigger: {
           trigger: '#stagger-grid',
           start: 'top 85%',
           end: 'bottom 15%',
           scrub: 1.5,
+          // invalidateOnRefresh: true ensures recalc on resize
+          invalidateOnRefresh: true,
         },
         rotationY: isMobile ? 45 : (i) => (i % 3 === 0 ? 60 : i % 3 === 1 ? 0 : -60),
         rotationX: 30,
         z: -500,
         opacity: 0,
         scale: 0.8,
-        stagger: 0.15, // 0.15s delay between each card – clear step‑by‑step
+        stagger: 0.15, // clear step‑by‑step
         ease: "power2.out"
       });
     }
 
-    // --- 2. GSAP HORIZONTAL SCROLL (smooth & reliable) ---
+    // ----- HORIZONTAL SCROLL (bulletproof & smooth) -----
     const track = document.getElementById('horizontal-track');
     const scrollSection = document.getElementById('horizontal-scroll-section');
-    
     if (track && scrollSection) {
       track.innerHTML = '';
-
       const images = [
         'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=1000&q=90',
         'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=1000&q=90',
@@ -303,6 +277,7 @@
         const widthClass = isMobile ? 'w-[280px]' : 'w-[500px]';
         const heightClass = isMobile ? 'h-[400px]' : 'h-[650px]';
         card.className = `horizontal-card ${widthClass} ${heightClass} flex-shrink-0 rounded-3xl overflow-hidden relative group glass-card`;
+        card.style.willChange = 'transform'; // performance
         
         const img = document.createElement('div');
         img.className = 'absolute inset-0 bg-cover bg-center transition-transform duration-[1.5s] ease-out group-hover:scale-105 filter grayscale hover:grayscale-0';
@@ -322,43 +297,42 @@
           </div>
         `;
         card.appendChild(text);
-
         track.appendChild(card);
       });
 
+      let scrollTriggerInstance;
       function setupHorizontalScroll() {
-        ScrollTrigger.getAll().forEach(st => {
-          if (st.trigger === scrollSection) st.kill();
-        });
-
+        if (scrollTriggerInstance) scrollTriggerInstance.kill();
         const trackWidth = track.scrollWidth;
         const viewportWidth = window.innerWidth;
         const amountToScroll = trackWidth - viewportWidth + (isMobile ? 48 : 128);
+        if (amountToScroll <= 0) return;
 
-        gsap.to(track, {
+        scrollTriggerInstance = gsap.to(track, {
           x: -amountToScroll,
           ease: 'none',
           scrollTrigger: {
             trigger: scrollSection,
             start: 'top top',
-            end: () => `+=${amountToScroll}`,
+            end: `+=${amountToScroll}`,
             pin: true,
-            scrub: 1.2, // Smooth scrub
+            scrub: 1.2,
             anticipatePin: 1,
-            invalidateOnRefresh: true
+            invalidateOnRefresh: true,
           }
         });
       }
 
-      setTimeout(setupHorizontalScroll, 100);
-      let resizeTimeout;
+      // Initial setup after images loaded
+      setTimeout(setupHorizontalScroll, 150);
+      let resizeTimer;
       window.addEventListener('resize', () => {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(setupHorizontalScroll, 200);
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(setupHorizontalScroll, 150);
       });
     }
 
-    // --- 3. DITHER SHADER (performance optimised) ---
+    // ----- DITHER SHADER (fully optimised) -----
     (function initDither() {
       const canvas = document.getElementById('dither-canvas');
       if (!canvas) return;
@@ -367,9 +341,6 @@
         src: 'https://images.unsplash.com/photo-1527239441953-caffd968d952?q=80&w=2000&auto=format&fit=crop',
         gridSize: 3,
         ditherMode: 'bayer',
-        colorMode: 'custom',
-        invert: false,
-        pixelRatio: 1,
         customPalette: ['#050507', '#1A1B20', '#2DD4BF', '#F8FAFC'],
         brightness: 0.1,
         contrast: 1.2,
@@ -395,8 +366,7 @@
         return [0,0,0];
       }
       const custom = config.customPalette.map(parseColor);
-
-      function clamp(v,mi,ma) { return Math.max(mi,Math.min(ma,v)); }
+      const clamp = (v,mi,ma) => Math.max(mi,Math.min(ma,v));
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       let img = new Image();
       img.crossOrigin = 'anonymous';
@@ -413,17 +383,14 @@
       function resizeCanvas() {
         const container = canvas.parentElement;
         const rect = container.getBoundingClientRect();
-        const maxWidth = 1200;
+        const maxWidth = 1000; // reduced for speed
         let w = rect.width;
         if (w > maxWidth) w = maxWidth;
         canvas.width = w;
         canvas.height = w * 9/16;
       }
 
-      window.addEventListener('resize', () => {
-        resizeCanvas();
-        if (imgData) renderFrame(time);
-      });
+      window.addEventListener('resize', () => { resizeCanvas(); if (imgData) renderFrame(time); });
 
       function renderFrame(t) {
         if (!imgData || canvas.width===0) return;
@@ -434,19 +401,16 @@
 
         const src = imgData.data;
         const sw = imgW, sh = imgH;
-        const cell = Math.max(1, Math.floor(config.gridSize * config.pixelRatio));
+        const cell = Math.max(1, config.gridSize);
         const matScale = 64;
 
         for (let y=0; y<h; y+=cell) {
           for (let x=0; x<w; x+=cell) {
-            const waveX = config.animated ? Math.sin(y*0.05 + t*2) * 10 : 0;
-            const waveY = config.animated ? Math.cos(x*0.05 + t*2) * 10 : 0;
-            
+            const waveX = config.animated ? Math.sin(y*0.05 + t*2) * 8 : 0;
+            const waveY = config.animated ? Math.cos(x*0.05 + t*2) * 8 : 0;
             let sx = Math.floor(((x+waveX)/w)*sw);
             let sy = Math.floor(((y+waveY)/h)*sh);
-            sx = clamp(sx, 0, sw-1);
-            sy = clamp(sy, 0, sh-1);
-
+            sx = clamp(sx,0,sw-1); sy = clamp(sy,0,sh-1);
             const idx = (sy*sw + sx)*4;
             let r = src[idx]||0, g = src[idx+1]||0, b = src[idx+2]||0, a = src[idx+3]||0;
             if (a<10) continue;
@@ -455,35 +419,15 @@
             g = clamp((g-128)*config.contrast + 128 + config.brightness*255, 0, 255);
             b = clamp((b-128)*config.contrast + 128 + config.brightness*255, 0, 255);
 
-            let th;
             const mx = Math.floor(x/config.gridSize) % 8;
             const my = Math.floor(y/config.gridSize) % 8;
-            
-            switch (config.ditherMode) {
-              case 'halftone':
-                const ang = Math.PI/4;
-                const sc = config.gridSize*1.5;
-                const rx = x*Math.cos(ang) + y*Math.sin(ang);
-                const ry = -x*Math.sin(ang) + y*Math.cos(ang);
-                th = (Math.sin(rx/sc) + Math.sin(ry/sc) + 2)/4;
-                break;
-              case 'noise':
-                const n = Math.sin(x*12.9898 + y*78.233 + t*50) * 43758.5453;
-                th = n - Math.floor(n);
-                break;
-              default:
-                th = BAYER_8x8[my][mx] / matScale;
-            }
+            let th = BAYER_8x8[my][mx] / matScale;
             th = th * (1-config.threshold) + config.threshold*0.5;
 
             const lum = (0.299*r + 0.587*g + 0.114*b)/255;
             const adj = lum + (th-0.5)*0.8;
             const cIdx = Math.floor(clamp(adj,0,0.99)*custom.length);
-            const outR = custom[cIdx][0];
-            const outG = custom[cIdx][1];
-            const outB = custom[cIdx][2];
-
-            ctx.fillStyle = `rgb(${outR},${outG},${outB})`;
+            ctx.fillStyle = `rgb(${custom[cIdx][0]},${custom[cIdx][1]},${custom[cIdx][2]})`;
             ctx.fillRect(x, y, cell, cell);
           }
         }
@@ -497,19 +441,10 @@
         off.height = imgH;
         const octx = off.getContext('2d');
         octx.drawImage(img, 0, 0, imgW, imgH);
-        try {
-          imgData = octx.getImageData(0,0,imgW,imgH);
-        } catch(e) {
-          console.error('CORS error');
-          return;
-        }
-
+        try { imgData = octx.getImageData(0,0,imgW,imgH); } catch(e) { return; }
         resizeCanvas();
         function animate() {
-          if (!isVisible) {
-            animFrame = requestAnimationFrame(animate);
-            return;
-          }
+          if (!isVisible) { animFrame = requestAnimationFrame(animate); return; }
           if (config.animated) time += config.animationSpeed;
           renderFrame(time);
           animFrame = requestAnimationFrame(animate);
