@@ -17,9 +17,8 @@
 <div id="main-content" class="w-full">
   {{ render_hero() }}
 
-  <!-- SECTION 1: INFINITE MARQUEE (Aceternity style - with moving border effect) -->
-  <section class="py-16 bg-slate-900 overflow-hidden relative">
-    <div class="absolute inset-0 bg-gradient-to-r from-teal-500/20 via-transparent to-purple-500/20 animate-pulse"></div>
+  <!-- SECTION 1: INFINITE MARQUEE (Aceternity style) -->
+  <section class="py-16 bg-slate-900 overflow-hidden">
     <div class="marquee-container relative">
       <div class="marquee-track flex whitespace-nowrap will-change-transform">
         <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8 border border-white/10 rounded-2xl px-12 py-4 backdrop-blur-sm">✦ ALBUM FLICKER ✦</span>
@@ -30,9 +29,9 @@
     </div>
   </section>
 
-  <!-- SECTION 2: ACETERNITY BENTO GRID (replaces old flicker grid) -->
+  <!-- SECTION 2: BENTO GRID (Aceternity) with Background Beams -->
   <section class="relative w-full min-h-screen bg-slate-800 py-24 perspective overflow-hidden">
-    <!-- Background Beams (Aceternity style) -->
+    <!-- Background Beams -->
     <div class="absolute inset-0 overflow-hidden">
       <div class="absolute -top-40 -right-40 w-80 h-80 bg-teal-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
       <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
@@ -43,9 +42,10 @@
       <p class="text-slate-300 text-lg mt-4">Luxury redefined through modular elegance.</p>
     </div>
 
-    <!-- Bento Grid - Aceternity style -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-6xl mx-auto px-6 relative z-10">
-      <!-- Large card (span 2 rows, 2 cols on desktop) -->
+    <!-- Bento Grid -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-6xl mx-auto px-6 relative z-10" id="bento-grid">
+      <!-- Cards will be populated by JS (but we keep HTML structure for clarity) -->
+      <!-- Large card -->
       <div class="group relative col-span-2 row-span-2 rounded-3xl overflow-hidden cursor-pointer">
         <div class="absolute inset-0 bg-gradient-to-br from-teal-500 to-slate-700 opacity-80 group-hover:opacity-100 transition-all duration-700"></div>
         <img src="https://images.unsplash.com/photo-1618220179428-22790b461013?w=800" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay group-hover:scale-110 transition-transform duration-700" alt="Luxury Bath">
@@ -54,7 +54,6 @@
           <p class="opacity-0 group-hover:opacity-100 transition-opacity duration-500">Immersive ceramic art</p>
         </div>
       </div>
-
       <!-- Small cards -->
       <div class="group relative rounded-3xl overflow-hidden cursor-pointer">
         <div class="absolute inset-0 bg-gradient-to-tr from-purple-500 to-pink-500 opacity-80 group-hover:opacity-100 transition-all duration-700"></div>
@@ -63,7 +62,6 @@
           <h3 class="text-xl font-bold">Ceramics</h3>
         </div>
       </div>
-
       <div class="group relative rounded-3xl overflow-hidden cursor-pointer">
         <div class="absolute inset-0 bg-gradient-to-bl from-amber-500 to-orange-500 opacity-80 group-hover:opacity-100 transition-all duration-700"></div>
         <img src="https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=400" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay group-hover:scale-110 transition-transform duration-700" alt="Water Systems">
@@ -71,7 +69,6 @@
           <h3 class="text-xl font-bold">Water Systems</h3>
         </div>
       </div>
-
       <div class="group relative rounded-3xl overflow-hidden cursor-pointer">
         <div class="absolute inset-0 bg-gradient-to-r from-emerald-500 to-cyan-500 opacity-80 group-hover:opacity-100 transition-all duration-700"></div>
         <img src="https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=400" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay group-hover:scale-110 transition-transform duration-700" alt="Modern Design">
@@ -79,8 +76,6 @@
           <h3 class="text-xl font-bold">Design</h3>
         </div>
       </div>
-
-      <!-- Another small card -->
       <div class="group relative rounded-3xl overflow-hidden cursor-pointer">
         <div class="absolute inset-0 bg-gradient-to-t from-indigo-500 to-purple-500 opacity-80 group-hover:opacity-100 transition-all duration-700"></div>
         <img src="https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=400" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay group-hover:scale-110 transition-transform duration-700" alt="Signature Stone">
@@ -91,7 +86,7 @@
     </div>
   </section>
 
-  <!-- SPOTLIGHT CARD (Aceternity style) -->
+  <!-- SPOTLIGHT CARD -->
   <section class="py-16 bg-slate-900 flex justify-center">
     <div class="group relative max-w-md w-full">
       <div class="absolute -inset-1 bg-gradient-to-r from-teal-600 to-slate-600 rounded-2xl blur opacity-40 group-hover:opacity-80 transition duration-1000 group-hover:duration-200"></div>
@@ -114,12 +109,12 @@
   <section id="horizontal-scroll-section" class="relative w-full h-screen bg-slate-900 overflow-hidden">
     <div class="sticky top-0 h-screen flex items-center overflow-hidden">
       <div id="horizontal-track" class="flex gap-8 px-16 will-change-transform">
-        <!-- Cards will be inserted by JS (but we can pre-populate with Aceternity styled cards) -->
+        <!-- Cards will be inserted by JS -->
       </div>
     </div>
   </section>
 
-  <!-- 3D FLIP CARDS SECTION (Aceternity style) -->
+  <!-- 3D FLIP CARDS SECTION -->
   <section class="py-24 bg-slate-800">
     <div class="max-w-7xl mx-auto px-6 text-center mb-16">
       <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl text-white">Signature <span class="text-teal-400">Materials</span></h2>
@@ -128,14 +123,12 @@
       <!-- Flip Card 1 -->
       <div class="group h-96 w-80 [perspective:1000px] mx-auto">
         <div class="relative h-full w-full rounded-2xl shadow-xl transition-all duration-500 [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)]">
-          <!-- Front -->
           <div class="absolute inset-0 h-full w-full rounded-2xl bg-gradient-to-br from-teal-400 to-slate-700 [backface-visibility:hidden]">
             <img src="https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=400" class="h-full w-full object-cover rounded-2xl opacity-80">
             <div class="absolute bottom-0 left-0 p-6 text-white">
               <h3 class="text-2xl font-bold">Arctic Matte</h3>
             </div>
           </div>
-          <!-- Back -->
           <div class="absolute inset-0 h-full w-full rounded-2xl bg-slate-900 text-white [transform:rotateY(180deg)] [backface-visibility:hidden] flex flex-col items-center justify-center p-6">
             <h3 class="text-2xl font-bold mb-4">Arctic Matte Stone</h3>
             <p class="text-center">A premium surface that combines durability with ethereal beauty.</p>
@@ -143,18 +136,15 @@
           </div>
         </div>
       </div>
-
       <!-- Flip Card 2 -->
       <div class="group h-96 w-80 [perspective:1000px] mx-auto">
         <div class="relative h-full w-full rounded-2xl shadow-xl transition-all duration-500 [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)]">
-          <!-- Front -->
           <div class="absolute inset-0 h-full w-full rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 [backface-visibility:hidden]">
             <img src="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=400" class="h-full w-full object-cover rounded-2xl opacity-80">
             <div class="absolute bottom-0 left-0 p-6 text-white">
               <h3 class="text-2xl font-bold">Onyx Gold</h3>
             </div>
           </div>
-          <!-- Back -->
           <div class="absolute inset-0 h-full w-full rounded-2xl bg-slate-900 text-white [transform:rotateY(180deg)] [backface-visibility:hidden] flex flex-col items-center justify-center p-6">
             <h3 class="text-2xl font-bold mb-4">Onyx Gold</h3>
             <p class="text-center">Warm, luminous, and rare – the ultimate expression of luxury.</p>
@@ -172,7 +162,6 @@
 {% block scripts %}
 <!-- Vanilla JS for drawer toggling (unchanged) -->
 <script>
-  // (Your existing drawer script – keep as is)
   document.addEventListener('DOMContentLoaded', function() {
     const hamburgerBtn = document.getElementById('hamburgerBtn');
     const drawer = document.getElementById('drawer');
@@ -282,13 +271,13 @@
   });
 </script>
 
-<!-- GSAP + Aceternity Enhancements -->
+<!-- GSAP + Aceternity Animations with Stagger Fix -->
 <script>
   (function() {
     if (typeof gsap === 'undefined') return;
     gsap.registerPlugin(ScrollTrigger);
     
-    // --- 1. INFINITE MARQUEE (unchanged but with new class) ---
+    // --- 1. INFINITE MARQUEE ---
     const marqueeTrack = document.querySelector('.marquee-track');
     if (marqueeTrack) {
       const marqueeContent = marqueeTrack.innerHTML;
@@ -303,25 +292,28 @@
       });
     }
     
-    // --- 2. Bento Grid entrance animation ---
-    gsap.from('.grid > div', {
-      scrollTrigger: {
-        trigger: '.grid',
-        start: 'top 80%',
-        toggleActions: 'play none none none'
-      },
-      opacity: 0,
-      y: 50,
-      duration: 0.8,
-      stagger: 0.1,
-      ease: 'power2.out'
-    });
+    // --- 2. BENTO GRID entrance animation (stagger) ---
+    const bentoCards = document.querySelectorAll('#bento-grid > div');
+    if (bentoCards.length) {
+      gsap.from(bentoCards, {
+        scrollTrigger: {
+          trigger: '#bento-grid',
+          start: 'top 80%',
+          toggleActions: 'play none none none'
+        },
+        opacity: 0,
+        y: 50,
+        duration: 0.8,
+        stagger: 0.1,
+        ease: 'power2.out'
+      });
+    }
     
-    // --- 3. Horizontal Scroll Gallery (using your existing code with new cards) ---
+    // --- 3. HORIZONTAL SCROLL GALLERY with Aceternity cards ---
     const track = document.getElementById('horizontal-track');
     if (track) {
-      track.innerHTML = '';
-      // Use higher quality images with Aceternity card styling
+      track.innerHTML = ''; // clear existing
+
       const images = [
         'https://images.unsplash.com/photo-1618220179428-22790b461013?w=800&q=90',
         'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=800&q=90',
@@ -332,32 +324,38 @@
         'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=800&q=90',
         'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=800&q=90'
       ];
-      
+
       images.forEach((src, index) => {
         const card = document.createElement('div');
         card.className = 'horizontal-card w-[350px] h-[450px] flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl relative group';
         card.style.background = `url(${src}) center/cover`;
         card.style.border = '2px solid rgba(255,255,255,0.2)';
-        
+
         // Aceternity style overlay
         const overlay = document.createElement('div');
         overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500';
         card.appendChild(overlay);
-        
+
         const text = document.createElement('div');
         text.className = 'absolute bottom-0 left-0 p-6 text-white translate-y-5 group-hover:translate-y-0 transition-transform duration-500';
         text.innerHTML = `<span class="text-2xl font-bold">Collection ${String(index + 1).padStart(2, '0')}</span>`;
         card.appendChild(text);
-        
+
         track.appendChild(card);
       });
 
+      // Force reflow then calculate
       setTimeout(() => {
         const trackWidth = track.scrollWidth;
         const viewportWidth = window.innerWidth;
-        const maxScroll = trackWidth - viewportWidth + 32;
-        if (maxScroll <= 0) return;
+        const maxScroll = trackWidth - viewportWidth + 32; // padding adjustment
 
+        if (maxScroll <= 0) {
+          console.warn('Track not wider than viewport; horizontal scroll disabled.');
+          return;
+        }
+
+        // Kill existing ScrollTriggers on this section
         ScrollTrigger.getAll().forEach(st => {
           if (st.vars.trigger === '#horizontal-scroll-section' || st.trigger === '#horizontal-scroll-section') {
             st.kill();
@@ -385,6 +383,7 @@
           }
         });
 
+        // Fade-in on enter (optional)
         gsap.from('.horizontal-card', {
           scrollTrigger: {
             trigger: '#horizontal-scroll-section',
@@ -397,10 +396,12 @@
           stagger: 0.1,
           ease: 'power2.out'
         });
+
+        ScrollTrigger.refresh(); // important after dynamic content
       }, 500);
     }
     
-    // --- 4. Flip Cards entrance ---
+    // --- 4. Flip Cards entrance animation ---
     gsap.from('.group.h-96', {
       scrollTrigger: {
         trigger: '.group.h-96',
