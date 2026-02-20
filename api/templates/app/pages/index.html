@@ -16,20 +16,8 @@
 <!-- Main content -->
 <div id="main-content" class="w-full">
   {{ render_hero() }}
-
-  <!-- SECTION 1: INFINITE MARQUEE (Aceternity style) -->
-  <section class="py-16 bg-slate-900 overflow-hidden">
-    <div class="marquee-container relative">
-      <div class="marquee-track flex whitespace-nowrap will-change-transform">
-        <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8 border border-white/10 rounded-2xl px-12 py-4 backdrop-blur-sm">✦ ALBUM FLICKER ✦</span>
-        <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8 border border-white/10 rounded-2xl px-12 py-4 backdrop-blur-sm">✦ 3D MOTION ✦</span>
-        <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8 border border-white/10 rounded-2xl px-12 py-4 backdrop-blur-sm">✦ SCROLL MAGIC ✦</span>
-        <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8 border border-white/10 rounded-2xl px-12 py-4 backdrop-blur-sm">✦ GSAP PRO ✦</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- SECTION 2: GSAP STAGGER GRID (3D CARD FLIP) -->
+  
+  <!-- SECTION 1: GSAP STAGGER SHOWCASE (3D CARD FLIP) -->
   <section class="relative w-full min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 py-24 perspective overflow-hidden">
     <div class="max-w-7xl mx-auto px-6 text-center mb-20">
       <h2 class="font-['Playfair_Display'] text-6xl md:text-7xl text-white mb-4">
@@ -37,75 +25,33 @@
       </h2>
       <p class="text-slate-300 text-xl">Advanced 3D flip with custom stagger patterns</p>
     </div>
-
-    <!-- Stagger Grid - 3x3 Cards (desktop), 2x? on mobile -->
+    
+    <!-- Stagger Grid - 3x3 Cards -->
     <div class="grid grid-cols-2 md:grid-cols-3 gap-6 max-w-6xl mx-auto px-6" id="stagger-grid">
-      <!-- Cards populated by JS -->
+      <!-- Cards will be populated by JS -->
     </div>
   </section>
-
-  <!-- SECTION 3: LOTTIE INTERACTIVE ICONS (formerly Rive) - now with luxury bath theme -->
-  <section class="relative w-full py-32 bg-slate-800">
-    <div class="absolute inset-0 overflow-hidden">
-      <div class="absolute -top-40 -right-40 w-80 h-80 bg-teal-400/20 rounded-full blur-3xl"></div>
-      <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-400/20 rounded-full blur-3xl"></div>
-    </div>
-    <div class="max-w-7xl mx-auto px-6 text-center mb-16 relative z-10">
+  
+  <!-- SECTION 2: SWIPER 11 HORIZONTAL GALLERY -->
+  <section class="relative w-full py-32 bg-slate-900">
+    <div class="max-w-7xl mx-auto px-6 text-center mb-16">
       <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl text-white mb-4">
-        Fluid <span class="text-teal-400">Elements</span>
+        Swiper <span class="text-teal-400">11</span>
       </h2>
-      <p class="text-slate-300 text-lg">Interactive icons that respond to your touch</p>
+      <p class="text-slate-300 text-lg">Touch-enabled horizontal gallery</p>
     </div>
-
-    <div class="flex flex-col md:flex-row justify-center items-center gap-8 md:gap-12 px-6 relative z-10">
-      <!-- Icon 1: Water Drop -->
-      <div class="group w-64 text-center">
-        <div class="relative mb-6">
-          <div class="absolute inset-0 bg-gradient-to-r from-teal-400 to-cyan-400 rounded-3xl blur-xl opacity-50 group-hover:opacity-80 transition-opacity duration-500"></div>
-          <div class="relative w-40 h-40 md:w-48 md:h-48 mx-auto bg-white/5 backdrop-blur-xl rounded-3xl p-4 border border-white/10 shadow-2xl">
-            <div id="lottie-drop" class="w-full h-full"></div>
-          </div>
-        </div>
-        <h3 class="text-2xl font-bold text-white mb-2">Water</h3>
-        <p class="text-slate-400 text-sm">Pure & refreshing</p>
+    
+    <div class="swiper mySwiper w-full h-[500px]">
+      <div class="swiper-wrapper">
+        <!-- Slides will be added by JS -->
       </div>
-
-      <!-- Icon 2: Bubble -->
-      <div class="group w-64 text-center">
-        <div class="relative mb-6">
-          <div class="absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-3xl blur-xl opacity-50 group-hover:opacity-80 transition-opacity duration-500"></div>
-          <div class="relative w-40 h-40 md:w-48 md:h-48 mx-auto bg-white/5 backdrop-blur-xl rounded-3xl p-4 border border-white/10 shadow-2xl">
-            <div id="lottie-bubble" class="w-full h-full"></div>
-          </div>
-        </div>
-        <h3 class="text-2xl font-bold text-white mb-2">Bubbles</h3>
-        <p class="text-slate-400 text-sm">Playful & light</p>
-      </div>
-
-      <!-- Icon 3: Wave -->
-      <div class="group w-64 text-center">
-        <div class="relative mb-6">
-          <div class="absolute inset-0 bg-gradient-to-r from-teal-500 to-emerald-400 rounded-3xl blur-xl opacity-50 group-hover:opacity-80 transition-opacity duration-500"></div>
-          <div class="relative w-40 h-40 md:w-48 md:h-48 mx-auto bg-white/5 backdrop-blur-xl rounded-3xl p-4 border border-white/10 shadow-2xl">
-            <div id="lottie-wave" class="w-full h-full"></div>
-          </div>
-        </div>
-        <h3 class="text-2xl font-bold text-white mb-2">Wave</h3>
-        <p class="text-slate-400 text-sm">Fluid motion</p>
-      </div>
+      <div class="swiper-pagination"></div>
+      <div class="swiper-button-next text-teal-400"></div>
+      <div class="swiper-button-prev text-teal-400"></div>
     </div>
   </section>
-
-  <!-- SECTION 4: HORIZONTAL SCROLL GALLERY (GSAP PINNED) -->
-  <section id="horizontal-scroll-section" class="relative w-full h-screen bg-slate-900 overflow-hidden">
-    <div class="sticky top-0 h-screen flex items-center overflow-hidden">
-      <div id="horizontal-track" class="flex gap-8 px-16 will-change-transform">
-        <!-- Cards inserted by JS -->
-      </div>
-    </div>
-  </section>
-
-  <!-- SECTION 5: ACETERNITY SPOTLIGHT CARD -->
+  
+  <!-- SECTION 3: ACETERNITY SPOTLIGHT CARD -->
   <section class="py-24 bg-slate-800 flex justify-center">
     <div class="group relative max-w-lg w-full">
       <div class="absolute -inset-1 bg-gradient-to-r from-teal-600 to-purple-600 rounded-2xl blur opacity-40 group-hover:opacity-80 transition duration-1000"></div>
@@ -124,7 +70,7 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- Vanilla JS for drawer toggling (unchanged) -->
+<!-- Vanilla JS for drawer toggling (same) -->
 <script>
   document.addEventListener('DOMContentLoaded', function() {
     const hamburgerBtn = document.getElementById('hamburgerBtn');
@@ -177,7 +123,7 @@
   });
 </script>
 
-<!-- Active Navigation Script (unchanged) -->
+<!-- Active Navigation Script (same) -->
 <script>
   document.addEventListener('DOMContentLoaded', function() {
     const navLinks = document.querySelectorAll('.nav-link');
@@ -235,35 +181,17 @@
   });
 </script>
 
-<!-- Lottie Library -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
-
-<!-- GSAP, Lottie, Swiper combined script -->
+<!-- GSAP + SWIPER (Rive hata diya) -->
 <script>
   (function() {
     if (typeof gsap === 'undefined') return;
     gsap.registerPlugin(ScrollTrigger);
-
-    // --- 1. INFINITE MARQUEE ---
-    const marqueeTrack = document.querySelector('.marquee-track');
-    if (marqueeTrack) {
-      const marqueeContent = marqueeTrack.innerHTML;
-      marqueeTrack.innerHTML += marqueeContent;
-      const trackWidth = marqueeTrack.scrollWidth / 2;
-      gsap.to(marqueeTrack, {
-        x: -trackWidth,
-        duration: 20,
-        ease: "none",
-        repeat: -1,
-        modifiers: { x: (x) => parseFloat(x) % trackWidth + 'px' }
-      });
-    }
-
-    // --- 2. GSAP STAGGER GRID (with mobile adjustments) ---
+    
+    // --- 1. GSAP STAGGER GRID ---
     const staggerGrid = document.getElementById('stagger-grid');
     if (staggerGrid) {
-      staggerGrid.innerHTML = ''; // clear
-
+      staggerGrid.innerHTML = '';
+      
       const images = [
         'https://images.unsplash.com/photo-1618220179428-22790b461013?w=600&q=90',
         'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=600&q=90',
@@ -275,7 +203,7 @@
         'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=600&q=90',
         'https://images.unsplash.com/photo-1618220179428-22790b461013?w=600&q=90'
       ];
-
+      
       images.forEach((src, i) => {
         const card = document.createElement('div');
         card.className = 'stagger-card aspect-square rounded-2xl overflow-hidden shadow-2xl relative group';
@@ -290,149 +218,69 @@
         
         staggerGrid.appendChild(card);
       });
-
-      // Different stagger for mobile vs desktop
-      const isMobile = window.innerWidth < 768;
+      
       gsap.from('.stagger-card', {
         scrollTrigger: {
           trigger: '#stagger-grid',
           start: 'top 70%',
           end: 'bottom 30%',
-          scrub: isMobile ? 0.8 : 1.2,
+          scrub: 1.2,
           toggleActions: 'play none none reverse'
         },
         rotationY: (i) => (i % 3 === 0 ? 180 : i % 3 === 1 ? 90 : -90),
         rotationX: (i) => (i % 2 === 0 ? 30 : -30),
         opacity: 0,
-        scale: isMobile ? 0.7 : 0.5,
+        scale: 0.5,
         stagger: {
-          amount: isMobile ? 1 : 1.5,
+          amount: 1.5,
           from: "center",
-          grid: isMobile ? [2, 4] : [3, 3], // mobile: 2 cols, 4 rows
+          grid: [3, 3],
           ease: "power2.inOut"
         },
         ease: "power2.out"
       });
-
+      
       ScrollTrigger.refresh();
     }
-
-    // --- 3. LOTTIE ANIMATIONS (luxury bath theme) ---
-    if (typeof lottie !== 'undefined') {
-      // Water drop animation
-      lottie.loadAnimation({
-        container: document.getElementById('lottie-drop'),
-        renderer: 'svg',
-        loop: true,
-        autoplay: true,
-        path: 'https://assets2.lottiefiles.com/packages/lf20_p1zrqqyo.json' // water drop
-      });
-
-      // Bubble animation
-      lottie.loadAnimation({
-        container: document.getElementById('lottie-bubble'),
-        renderer: 'svg',
-        loop: true,
-        autoplay: true,
-        path: 'https://assets9.lottiefiles.com/packages/lf20_qwyjxnmr.json' // bubbles
-      });
-
-      // Wave animation
-      lottie.loadAnimation({
-        container: document.getElementById('lottie-wave'),
-        renderer: 'svg',
-        loop: true,
-        autoplay: true,
-        path: 'https://assets7.lottiefiles.com/packages/lf20_yyvyzskh.json' // wave
-      });
-    }
-
-    // --- 4. HORIZONTAL SCROLL GALLERY (restored) ---
-    const track = document.getElementById('horizontal-track');
-    if (track) {
-      track.innerHTML = '';
-
-      const images = [
-        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=800&q=90',
-        'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=800&q=90',
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=90',
-        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=800&q=90',
-        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=800&q=90',
-        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800&q=90',
-        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=800&q=90',
-        'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=800&q=90'
-      ];
-
-      images.forEach((src, index) => {
-        const card = document.createElement('div');
-        card.className = 'horizontal-card w-[250px] md:w-[350px] h-[350px] md:h-[450px] flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl relative group';
-        card.style.background = `url(${src}) center/cover`;
-        card.style.border = '2px solid rgba(255,255,255,0.2)';
-
-        const overlay = document.createElement('div');
-        overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500';
-        card.appendChild(overlay);
-
-        const text = document.createElement('div');
-        text.className = 'absolute bottom-0 left-0 p-4 md:p-6 text-white translate-y-5 group-hover:translate-y-0 transition-transform duration-500';
-        text.innerHTML = `<span class="text-xl md:text-2xl font-bold">${String(index + 1).padStart(2, '0')}</span>`;
-        card.appendChild(text);
-
-        track.appendChild(card);
-      });
-
-      setTimeout(() => {
-        const trackWidth = track.scrollWidth;
-        const viewportWidth = window.innerWidth;
-        const maxScroll = trackWidth - viewportWidth + 32;
-
-        if (maxScroll <= 0) return;
-
-        ScrollTrigger.getAll().forEach(st => {
-          if (st.vars.trigger === '#horizontal-scroll-section' || st.trigger === '#horizontal-scroll-section') {
-            st.kill();
-          }
+    
+    // --- 2. SWIPER 11 ---
+    if (typeof Swiper !== 'undefined') {
+      const swiperWrapper = document.querySelector('.swiper-wrapper');
+      if (swiperWrapper) {
+        const slideImages = [
+          'https://images.unsplash.com/photo-1618220179428-22790b461013?w=1200&q=90',
+          'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=1200&q=90',
+          'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=1200&q=90',
+          'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=1200&q=90',
+          'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=1200&q=90'
+        ];
+        
+        slideImages.forEach(src => {
+          const slide = document.createElement('div');
+          slide.className = 'swiper-slide';
+          slide.innerHTML = `<div class="w-full h-full rounded-3xl overflow-hidden shadow-2xl"><img src="${src}" class="w-full h-full object-cover"></div>`;
+          swiperWrapper.appendChild(slide);
         });
-
-        gsap.to(track, {
-          x: -maxScroll,
-          ease: 'none',
-          scrollTrigger: {
-            trigger: '#horizontal-scroll-section',
-            start: 'top top',
-            end: () => `+=${maxScroll + window.innerHeight}`,
-            pin: true,
-            scrub: 1.5,
-            anticipatePin: 1,
-            invalidateOnRefresh: true,
-            onRefresh: (self) => {
-              const newTrackWidth = track.scrollWidth;
-              const newViewportWidth = window.innerWidth;
-              const newMaxScroll = newTrackWidth - newViewportWidth + 32;
-              self.vars.end = `+=${newMaxScroll + window.innerHeight}`;
-              gsap.set(track, { x: -newMaxScroll * self.progress });
-            }
-          }
-        });
-
-        gsap.from('.horizontal-card', {
-          scrollTrigger: {
-            trigger: '#horizontal-scroll-section',
-            start: 'top 80%',
-            toggleActions: 'play none none none'
+        
+        new Swiper('.mySwiper', {
+          slidesPerView: 1,
+          spaceBetween: 30,
+          centeredSlides: true,
+          loop: true,
+          pagination: { el: '.swiper-pagination', clickable: true },
+          navigation: {
+            nextEl: '.swiper-button-next',
+            prevEl: '.swiper-button-prev',
           },
-          opacity: 0,
-          scale: 0.8,
-          duration: 1,
-          stagger: 0.1,
-          ease: 'power2.out'
+          breakpoints: {
+            768: { slidesPerView: 2 },
+            1024: { slidesPerView: 3 }
+          }
         });
-
-        ScrollTrigger.refresh();
-      }, 500);
+      }
     }
-
-    // --- 5. Spotlight card entrance ---
+    
+    // --- 3. SPOTLIGHT CARD ENTRANCE ---
     gsap.from('.group.relative.max-w-lg', {
       scrollTrigger: {
         trigger: '.group.relative.max-w-lg',
@@ -444,6 +292,7 @@
       duration: 1,
       ease: 'power2.out'
     });
+    
   })();
 </script>
 {% endblock %}
