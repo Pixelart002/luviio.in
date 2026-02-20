@@ -38,7 +38,7 @@
     text-shadow: 0 0 40px rgba(45, 212, 191, 0.4);
   }
 
-  /* Optimized Canvas Rendering - Crucial for Dither Performance */
+  /* Optimized Canvas Rendering */
   #dither-canvas {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
@@ -81,7 +81,7 @@
           <p class="text-slate-500 mt-2 uppercase tracking-widest text-sm">Scroll to explore the gallery</p>
         </div>
 
-        <div id="horizontal-track" class="flex gap-8 md:gap-12 px-6 md:px-16 pt-20 items-center flex-nowrap w-max hw-accel">
+        <div id="horizontal-track" class="flex gap-8 md:gap-16 pl-12 md:pl-[30vw] pr-12 md:pr-32 pt-20 items-center flex-nowrap w-max hw-accel">
           </div>
       </div>
     </section>
@@ -136,40 +136,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.4/ScrollTrigger.min.js"></script>
 
 <script>
-  // ----- DRAWER TOGGLING -----
-  document.addEventListener('DOMContentLoaded', function() {
-    const hamburgerBtn = document.getElementById('hamburgerBtn');
-    const drawer = document.getElementById('drawer');
-    const overlay = document.getElementById('drawerOverlay');
-    const closeBtn = document.getElementById('closeDrawerBtn');
-    
-    function toggleDrawer(isOpen) {
-      if (!drawer) return;
-      drawer.classList.toggle('-translate-x-full', !isOpen);
-      overlay?.classList.toggle('hidden', !isOpen);
-      document.body.style.overflow = isOpen ? 'hidden' : '';
-      
-      const spans = hamburgerBtn?.querySelectorAll('span');
-      if (spans?.length === 3) {
-        spans[0].style.transform = isOpen ? 'rotate(45deg) translateY(9px) translateX(9px)' : 'none';
-        spans[1].style.opacity = isOpen ? '0' : '1';
-        spans[2].style.transform = isOpen ? 'rotate(-45deg) translateY(-9px) translateX(9px)' : 'none';
-      }
-    }
-
-    hamburgerBtn?.addEventListener('click', () => toggleDrawer(true));
-    closeBtn?.addEventListener('click', () => toggleDrawer(false));
-    overlay?.addEventListener('click', () => toggleDrawer(false));
-  });
-
   // ----- MAIN ANIMATIONS -----
   (function() {
     if (typeof gsap === 'undefined' || typeof Lenis === 'undefined') return;
     gsap.registerPlugin(ScrollTrigger);
 
-    // 0. LENIS
+    // 0. LENIS (Silky Smooth)
     const lenis = new Lenis({
-      duration: 1.2,
+      duration: 1.5, // Increased slightly for a heavier, more luxurious feel
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       smooth: true,
       smoothTouch: false,
@@ -180,7 +154,7 @@
 
     const isMobile = window.innerWidth < 768;
 
-    // 1. STAGGER GRID
+    // 1. STAGGER GRID (Fixed: Now properly revealing step-by-step and smoothed out)
     const staggerGrid = document.getElementById('stagger-grid');
     if (staggerGrid) {
       const images = [
@@ -197,8 +171,8 @@
         container.style.perspective = '1500px';
         container.innerHTML = `
           <div class="stagger-card hw-accel aspect-[4/5] rounded-2xl overflow-hidden relative group glass-card cursor-pointer" style="transform-style: preserve-3d;">
-            <div class="absolute inset-0 bg-cover bg-center transition-transform duration-1000 group-hover:scale-110 opacity-70 group-hover:opacity-100" style="background-image: url(${src})"></div>
-            <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-6">
+            <div class="absolute inset-0 bg-cover bg-center transition-transform duration-1000 group-hover:scale-110 opacity-80 group-hover:opacity-100" style="background-image: url(${src})"></div>
+            <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-6">
               <span class="text-teal-400 font-mono text-xs uppercase tracking-widest block mb-1">Edition 0${i + 1}</span>
             </div>
           </div>
@@ -206,26 +180,39 @@
         staggerGrid.appendChild(container);
       });
 
-      gsap.from('.stagger-card', {
-        scrollTrigger: {
-          trigger: '#stagger-grid',
-          start: 'top 85%',
-          end: 'bottom 20%',
-          scrub: 1.2,
+      // Proper fromTo for absolute control over the start and end states
+      gsap.fromTo('.stagger-card', 
+        {
+          y: 100,
+          opacity: 0,
+          rotationY: isMobile ? 20 : (i) => (i % 3 === 0 ? 30 : i % 3 === 1 ? 0 : -30),
+          rotationX: 15,
+          scale: 0.9,
+          z: -100
         },
-        rotationY: isMobile ? 30 : (i) => (i % 3 === 0 ? 45 : i % 3 === 1 ? 0 : -45),
-        rotationX: 20,
-        z: -300,
-        opacity: 0,
-        scale: 0.85,
-        stagger: 0.1,
-        ease: 'power2.out',
-      });
+        {
+          y: 0,
+          opacity: 1,
+          rotationY: 0,
+          rotationX: 0,
+          scale: 1,
+          z: 0,
+          stagger: 0.15, // Cascading effect
+          ease: 'power3.out',
+          scrollTrigger: {
+            trigger: '#stagger-grid',
+            start: 'top 80%',
+            end: 'bottom 40%',
+            scrub: 1.5, // Eased scrubbing
+          }
+        }
+      );
     }
 
-    // 2. HORIZONTAL SCROLL (MatchMedia Fixed)
+    // 2. HORIZONTAL SCROLL (Fixed: Scroll path + Image Reveal Animations)
     const track = document.getElementById('horizontal-track');
     const scrollSection = document.getElementById('horizontal-scroll-section');
+    
     if (track && scrollSection) {
       const images = [
         'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=1000&q=90',
@@ -236,51 +223,80 @@
       ];
 
       images.forEach((src, index) => {
-        const widthClass = isMobile ? 'w-[85vw]' : 'w-[500px]';
+        const widthClass = isMobile ? 'w-[80vw]' : 'w-[500px]';
         const heightClass = isMobile ? 'h-[400px]' : 'h-[650px]';
         
         const card = document.createElement('div');
         card.className = `horizontal-card hw-accel ${widthClass} ${heightClass} flex-shrink-0 rounded-3xl overflow-hidden relative group glass-card`;
         card.innerHTML = `
-          <div class="absolute inset-0 bg-cover bg-center transition-transform duration-[1.5s] ease-out group-hover:scale-105 filter grayscale hover:grayscale-0" style="background-image: url(${src})"></div>
+          <div class="h-card-inner absolute inset-0 bg-cover bg-center transition-transform duration-[1.5s] ease-out group-hover:scale-105 filter grayscale hover:grayscale-0" style="background-image: url(${src})"></div>
           <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
-          <div class="absolute bottom-0 left-0 p-8 w-full border-b border-white/10">
+          <div class="h-card-text absolute bottom-0 left-0 p-8 w-full border-b border-white/10">
             <span class="text-3xl md:text-5xl font-['Playfair_Display'] text-white">0${index + 1}</span>
           </div>
         `;
         track.appendChild(card);
       });
 
-      // Bulletproof Resize Handling via GSAP MatchMedia
       let mm = gsap.matchMedia();
       mm.add("(min-width: 320px)", () => {
-        const trackWidth = track.scrollWidth;
-        const amount = trackWidth - window.innerWidth + (isMobile ? 48 : 128);
         
-        let tween = gsap.to(track, {
-          x: -amount,
+        // 1. First, create the timeline that moves the track horizontally
+        const trackWidth = track.scrollWidth;
+        // The distance we need to scroll to see the end of the track
+        const scrollDistance = trackWidth - window.innerWidth;
+        
+        let scrollTween = gsap.to(track, {
+          x: -scrollDistance,
           ease: 'none',
           scrollTrigger: {
             trigger: scrollSection,
             start: 'top top',
-            end: () => `+=${amount}`,
+            end: () => `+=${trackWidth}`, // Makes the scroll distance proportional to the content
             pin: true,
-            scrub: 1,
-            invalidateOnRefresh: true, // Fixes glitching on resize
+            scrub: 1.2,
+            invalidateOnRefresh: true,
           }
         });
-        return () => tween.kill(); 
+
+        // 2. NOW: Animate individual cards *AS* they enter the view horizontally!
+        // This is the "containerAnimation" feature that makes the images reveal properly.
+        const cards = gsap.utils.toArray('.horizontal-card');
+        
+        cards.forEach((card) => {
+          gsap.fromTo(card, 
+            { 
+              opacity: 0, 
+              scale: 0.8, 
+              rotateY: 15 
+            },
+            {
+              opacity: 1, 
+              scale: 1, 
+              rotateY: 0,
+              ease: "power2.out",
+              scrollTrigger: {
+                trigger: card,
+                containerAnimation: scrollTween, // Ties this trigger to the horizontal movement!
+                start: "left 90%", // Start revealing when the left edge of the card hits 90% of the screen
+                end: "left 40%",   // Finish revealing by the time it reaches 40%
+                scrub: true,
+              }
+            }
+          );
+        });
+
+        return () => scrollTween.kill(); 
       });
     }
 
-    // 3. DITHER SHADER (Rewritten for High Performance)
+    // 3. DITHER SHADER (Kept exactly the same for maximum performance)
     (function initDither() {
       const canvas = document.getElementById('dither-canvas');
       if (!canvas) return;
 
       const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: false });
       
-      // Lock resolution to vastly improve performance. CSS scales it up smoothly.
       const INTERNAL_W = 320;
       const INTERNAL_H = 180;
       canvas.width = INTERNAL_W;
@@ -300,7 +316,6 @@
         [15,47,7,39,13,45,5,37], [63,31,55,23,61,29,53,21]
       ];
 
-      // Pre-parsed palette (Deep Void, Slate, Teal, Frost)
       const palette = [ [5,5,7], [26,27,32], [45,212,191], [248,250,252] ];
 
       let img = new Image();
@@ -317,23 +332,17 @@
 
       function renderFrame() {
         if (!sourceData) return;
-        
-        // Use direct array manipulation instead of heavy Canvas API calls
         const output = ctx.createImageData(INTERNAL_W, INTERNAL_H);
         const outData = output.data;
         const srcData = sourceData.data;
 
         for (let y = 0; y < INTERNAL_H; y++) {
           for (let x = 0; x < INTERNAL_W; x++) {
-            
-            // Subtle wave distortion
             const waveX = config.animated ? Math.sin(y*0.05 + config.time) * 4 : 0;
             const waveY = config.animated ? Math.cos(x*0.05 + config.time) * 4 : 0;
-            
             let sx = Math.floor(((x+waveX)/INTERNAL_W)*imgW);
             let sy = Math.floor(((y+waveY)/INTERNAL_H)*imgH);
             
-            // Clamp
             sx = Math.max(0, Math.min(sx, imgW - 1));
             sy = Math.max(0, Math.min(sy, imgH - 1));
 
@@ -357,10 +366,10 @@
             const cIdx = Math.floor(Math.max(0, Math.min(adj, 0.99)) * palette.length);
             
             const outIdx = (y * INTERNAL_W + x) * 4;
-            outData[outIdx] = palette[cIdx][0];     // R
-            outData[outIdx+1] = palette[cIdx][1];   // G
-            outData[outIdx+2] = palette[cIdx][2];   // B
-            outData[outIdx+3] = 255;                // A
+            outData[outIdx] = palette[cIdx][0];     
+            outData[outIdx+1] = palette[cIdx][1];   
+            outData[outIdx+2] = palette[cIdx][2];   
+            outData[outIdx+3] = 255;                
           }
         }
         ctx.putImageData(output, 0, 0);
