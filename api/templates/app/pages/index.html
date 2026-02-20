@@ -17,7 +17,7 @@
 <div id="main-content" class="w-full">
   {{ render_hero() }}
 
-  <!-- SECTION 1: GSAP STAGGER SHOWCASE (3D CARD FLIP) -->
+  <!-- SECTION 1: GSAP STAGGER GRID (3D CARD FLIP) -->
   <section class="relative w-full min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 py-24 perspective overflow-hidden">
     <div class="max-w-7xl mx-auto px-6 text-center mb-20">
       <h2 class="font-['Playfair_Display'] text-6xl md:text-7xl text-white mb-4">
@@ -26,51 +26,33 @@
       <p class="text-slate-300 text-xl">Advanced 3D flip with custom stagger patterns</p>
     </div>
 
-    <!-- Stagger Grid - 3x3 Cards -->
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-6 max-w-6xl mx-auto px-6" id="stagger-grid">
-      <!-- Cards will be populated by JS -->
+    <!-- Stagger Grid - 3x3 Cards (responsive grid) -->
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 max-w-6xl mx-auto px-6" id="stagger-grid">
+      <!-- Cards populated by JS -->
     </div>
   </section>
 
-  <!-- SECTION 2: SWIPER 11 HORIZONTAL GALLERY -->
-  <section class="relative w-full py-32 bg-slate-900">
-    <div class="max-w-7xl mx-auto px-6 text-center mb-16">
-      <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl text-white mb-4">
-        Swiper <span class="text-teal-400">11</span>
-      </h2>
-      <p class="text-slate-300 text-lg">Touch-enabled horizontal gallery</p>
-    </div>
-
-    <div class="swiper mySwiper w-full h-[500px]">
-      <div class="swiper-wrapper">
-        <!-- Slides will be added by JS -->
-      </div>
-      <div class="swiper-pagination"></div>
-      <div class="swiper-button-next text-teal-400"></div>
-      <div class="swiper-button-prev text-teal-400"></div>
-    </div>
-  </section>
-
-  <!-- SECTION 3: GSAP HORIZONTAL SCROLL GALLERY (restored) -->
+  <!-- SECTION 2: GSAP HORIZONTAL SCROLL GALLERY (with responsive card sizing) -->
   <section id="horizontal-scroll-section" class="relative w-full h-screen bg-slate-900 overflow-hidden">
     <div class="sticky top-0 h-screen flex items-center overflow-hidden">
-      <div id="horizontal-track" class="flex gap-8 px-16 will-change-transform">
-        <!-- Cards will be inserted by JS -->
+      <div id="horizontal-track" class="flex gap-4 md:gap-8 px-4 md:px-16 will-change-transform">
+        <!-- Cards inserted by JS -->
       </div>
     </div>
   </section>
 
-  <!-- SECTION 4: ACETERNITY SPOTLIGHT CARD -->
-  <section class="py-24 bg-slate-800 flex justify-center">
-    <div class="group relative max-w-lg w-full">
-      <div class="absolute -inset-1 bg-gradient-to-r from-teal-600 to-purple-600 rounded-2xl blur opacity-40 group-hover:opacity-80 transition duration-1000"></div>
-      <div class="relative px-10 py-12 bg-white rounded-2xl text-center">
-        <h3 class="text-3xl font-bold text-slate-900 mb-3">The Experience Center</h3>
-        <p class="text-slate-600 mb-6">Book a private tour of our flagship studio.</p>
-        <button class="px-8 py-3 bg-teal-600 text-white rounded-full font-medium hover:bg-teal-700 transition-all transform hover:scale-105">
-          Reserve Now
-        </button>
-      </div>
+  <!-- SECTION 3: ACETERNITY DITHER SHADER (ASCII ART) -->
+  <section class="relative w-full min-h-screen bg-black py-24 overflow-hidden">
+    <div class="max-w-7xl mx-auto px-6 text-center mb-12 relative z-10">
+      <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl text-white mb-4">
+        ASCII <span class="text-teal-400">DITHER</span>
+      </h2>
+      <p class="text-slate-300 text-lg">Real‑time shader effect – move your mouse</p>
+    </div>
+
+    <!-- Canvas for dither shader -->
+    <div class="relative w-full h-[500px] md:h-[600px] flex items-center justify-center">
+      <canvas id="dither-canvas" class="w-full h-full max-w-5xl mx-auto rounded-3xl shadow-2xl"></canvas>
     </div>
   </section>
 </div>
@@ -79,7 +61,7 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- Vanilla JS for drawer toggling (same) -->
+<!-- Vanilla JS for drawer toggling (unchanged) -->
 <script>
   document.addEventListener('DOMContentLoaded', function() {
     const hamburgerBtn = document.getElementById('hamburgerBtn');
@@ -132,7 +114,7 @@
   });
 </script>
 
-<!-- Active Navigation Script (same) -->
+<!-- Active Navigation Script (unchanged) -->
 <script>
   document.addEventListener('DOMContentLoaded', function() {
     const navLinks = document.querySelectorAll('.nav-link');
@@ -190,13 +172,16 @@
   });
 </script>
 
-<!-- GSAP + Swiper + Horizontal Scroll -->
+<!-- GSAP + Dither Shader -->
 <script>
   (function() {
     if (typeof gsap === 'undefined') return;
     gsap.registerPlugin(ScrollTrigger);
 
-    // --- 1. GSAP STAGGER GRID ---
+    // --- Helper: detect mobile ---
+    const isMobile = window.innerWidth < 768;
+
+    // --- 1. GSAP STAGGER GRID (responsive timing) ---
     const staggerGrid = document.getElementById('stagger-grid');
     if (staggerGrid) {
       staggerGrid.innerHTML = '';
@@ -233,17 +218,17 @@
           trigger: '#stagger-grid',
           start: 'top 70%',
           end: 'bottom 30%',
-          scrub: 1.2,
+          scrub: isMobile ? 0.8 : 1.2,         // faster on mobile
           toggleActions: 'play none none reverse'
         },
         rotationY: (i) => (i % 3 === 0 ? 180 : i % 3 === 1 ? 90 : -90),
         rotationX: (i) => (i % 2 === 0 ? 30 : -30),
         opacity: 0,
-        scale: 0.5,
+        scale: isMobile ? 0.6 : 0.5,
         stagger: {
-          amount: 1.5,
+          amount: isMobile ? 1 : 1.5,
           from: "center",
-          grid: [3, 3],
+          grid: isMobile ? [2, 4] : [3, 3],   // mobile: 2 cols, 4 rows
           ease: "power2.inOut"
         },
         ease: "power2.out"
@@ -252,44 +237,7 @@
       ScrollTrigger.refresh();
     }
 
-    // --- 2. SWIPER 11 ---
-    if (typeof Swiper !== 'undefined') {
-      const swiperWrapper = document.querySelector('.swiper-wrapper');
-      if (swiperWrapper) {
-        const slideImages = [
-          'https://images.unsplash.com/photo-1618220179428-22790b461013?w=1200&q=90',
-          'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=1200&q=90',
-          'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=1200&q=90',
-          'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=1200&q=90',
-          'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=1200&q=90'
-        ];
-
-        slideImages.forEach(src => {
-          const slide = document.createElement('div');
-          slide.className = 'swiper-slide';
-          slide.innerHTML = `<div class="w-full h-full rounded-3xl overflow-hidden shadow-2xl"><img src="${src}" class="w-full h-full object-cover"></div>`;
-          swiperWrapper.appendChild(slide);
-        });
-
-        new Swiper('.mySwiper', {
-          slidesPerView: 1,
-          spaceBetween: 30,
-          centeredSlides: true,
-          loop: true,
-          pagination: { el: '.swiper-pagination', clickable: true },
-          navigation: {
-            nextEl: '.swiper-button-next',
-            prevEl: '.swiper-button-prev',
-          },
-          breakpoints: {
-            768: { slidesPerView: 2 },
-            1024: { slidesPerView: 3 }
-          }
-        });
-      }
-    }
-
-    // --- 3. GSAP HORIZONTAL SCROLL GALLERY (restored) ---
+    // --- 2. GSAP HORIZONTAL SCROLL GALLERY (responsive cards & scrub) ---
     const track = document.getElementById('horizontal-track');
     if (track) {
       track.innerHTML = '';
@@ -307,7 +255,10 @@
 
       images.forEach((src, index) => {
         const card = document.createElement('div');
-        card.className = 'horizontal-card w-[250px] md:w-[350px] h-[350px] md:h-[450px] flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl relative group';
+        // Smaller cards on mobile
+        const widthClass = isMobile ? 'w-[200px]' : 'w-[350px]';
+        const heightClass = isMobile ? 'h-[300px]' : 'h-[450px]';
+        card.className = `horizontal-card ${widthClass} ${heightClass} flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl relative group`;
         card.style.background = `url(${src}) center/cover`;
         card.style.border = '2px solid rgba(255,255,255,0.2)';
 
@@ -316,7 +267,7 @@
         card.appendChild(overlay);
 
         const text = document.createElement('div');
-        text.className = 'absolute bottom-0 left-0 p-4 md:p-6 text-white translate-y-5 group-hover:translate-y-0 transition-transform duration-500';
+        text.className = 'absolute bottom-0 left-0 p-4 text-white translate-y-5 group-hover:translate-y-0 transition-transform duration-500';
         text.innerHTML = `<span class="text-xl md:text-2xl font-bold">${String(index + 1).padStart(2, '0')}</span>`;
         card.appendChild(text);
 
@@ -326,7 +277,7 @@
       setTimeout(() => {
         const trackWidth = track.scrollWidth;
         const viewportWidth = window.innerWidth;
-        const maxScroll = trackWidth - viewportWidth + 32;
+        const maxScroll = trackWidth - viewportWidth + (isMobile ? 16 : 32);
 
         if (maxScroll <= 0) return;
 
@@ -344,13 +295,13 @@
             start: 'top top',
             end: () => `+=${maxScroll + window.innerHeight}`,
             pin: true,
-            scrub: 1.5,
+            scrub: isMobile ? 1 : 1.5,        // smoother on mobile? actually 1 is fine
             anticipatePin: 1,
             invalidateOnRefresh: true,
             onRefresh: (self) => {
               const newTrackWidth = track.scrollWidth;
               const newViewportWidth = window.innerWidth;
-              const newMaxScroll = newTrackWidth - newViewportWidth + 32;
+              const newMaxScroll = newTrackWidth - newViewportWidth + (isMobile ? 16 : 32);
               self.vars.end = `+=${newMaxScroll + window.innerHeight}`;
               gsap.set(track, { x: -newMaxScroll * self.progress });
             }
@@ -365,7 +316,7 @@
           },
           opacity: 0,
           scale: 0.8,
-          duration: 1,
+          duration: isMobile ? 0.8 : 1,
           stagger: 0.1,
           ease: 'power2.out'
         });
@@ -374,18 +325,114 @@
       }, 500);
     }
 
-    // --- 4. SPOTLIGHT CARD ENTRANCE ---
-    gsap.from('.group.relative.max-w-lg', {
-      scrollTrigger: {
-        trigger: '.group.relative.max-w-lg',
-        start: 'top 80%',
-        toggleActions: 'play none none none'
-      },
-      scale: 0.9,
-      opacity: 0,
-      duration: 1,
-      ease: 'power2.out'
-    });
+    // --- 3. ACETERNITY DITHER SHADER (ASCII ART) ---
+    (function initDither() {
+      const canvas = document.getElementById('dither-canvas');
+      if (!canvas || typeof THREE === 'undefined') return;
+
+      // Simple Three.js scene with a rotating cube and a dithering shader
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x111111);
+
+      const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+      camera.position.z = 3;
+
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: false }); // no antialiasing for dither effect
+      renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+      renderer.setPixelRatio(1);
+
+      // Custom shader material with dither effect (simple black/white dither)
+      const geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          time: { value: 0 },
+          mouse: { value: new THREE.Vector2(0.5, 0.5) }
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          varying vec3 vPosition;
+          void main() {
+            vUv = uv;
+            vPosition = position;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float time;
+          uniform vec2 mouse;
+          varying vec2 vUv;
+          varying vec3 vPosition;
+
+          // Simple dither function (Bayer matrix 4x4)
+          float bayer4x4(vec2 p) {
+            int x = int(mod(p.x, 4.0));
+            int y = int(mod(p.y, 4.0));
+            int index = x + y * 4;
+            int bayer[16] = int[](
+              0, 8, 2, 10,
+              12, 4, 14, 6,
+              3, 11, 1, 9,
+              15, 7, 13, 5
+            );
+            return float(bayer[index]) / 16.0;
+          }
+
+          void main() {
+            // Fake lighting based on position and mouse
+            float brightness = abs(sin(vPosition.x * 2.0 + time) * cos(vPosition.y * 2.0 + time) * sin(vPosition.z * 2.0 + time));
+            brightness = brightness * 0.8 + 0.2; // range 0.2-1.0
+
+            // Add mouse influence
+            brightness += (mouse.x - 0.5) * 0.5;
+
+            // Quantize to 8 levels for dithering
+            float levels = 8.0;
+            float quant = floor(brightness * levels) / levels;
+
+            // Dither threshold
+            float threshold = bayer4x4(gl_FragCoord.xy);
+            float dither = step(threshold, fract(brightness * levels));
+
+            // Final color: either black or white (ASCII art feel)
+            float final = step(0.5, quant + dither * 0.1);
+            gl_FragColor = vec4(vec3(final), 1.0);
+          }
+        `,
+        side: THREE.DoubleSide
+      });
+
+      const cube = new THREE.Mesh(geometry, material);
+      scene.add(cube);
+
+      // Mouse move interaction
+      const mouse = new THREE.Vector2(0.5, 0.5);
+      canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = (e.clientX - rect.left) / rect.width;
+        mouse.y = 1.0 - (e.clientY - rect.top) / rect.height; // flip Y
+      });
+
+      // Animation loop
+      function animate() {
+        requestAnimationFrame(animate);
+
+        cube.rotation.x += 0.005;
+        cube.rotation.y += 0.01;
+
+        material.uniforms.time.value += 0.05;
+        material.uniforms.mouse.value.set(mouse.x, mouse.y);
+
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      // Resize handler
+      window.addEventListener('resize', () => {
+        camera.aspect = canvas.clientWidth / canvas.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+      });
+    })();
 
   })();
 </script>
