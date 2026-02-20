@@ -45,20 +45,14 @@
             </div>
             
             <!-- HAMBURGER BUTTON – Unpoly drawer trigger -->
-            <button id="hamburgerBtn"
-                    up-layer="new drawer"
-                    up-target=".drawer-content"   <!-- targets the hidden widget -->
-                    up-position="left"
-                    up-size="medium"
-                    up-background="true"
-                    up-transition="slide-left"
-                    class="block p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer focus:outline-none">
-                <div class="w-6 h-5 relative flex flex-col justify-between">
-                    <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
-                    <span class="w-2/3 h-0.5 bg-current rounded-full transition-all duration-300"></span>
-                    <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
-                </div>
-            </button>
+            <button up-layer="new drawer"
+        up-target=".drawer-content"   <!-- ✅ hidden element ko target -->
+        up-position="left"
+        up-size="medium"
+        up-background="true"           <!-- ✅ backdrop + click to close -->
+        up-transition="slide-left">
+    ☰
+</button>
         </div>
     </div>
 </header>

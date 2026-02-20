@@ -45,34 +45,51 @@
         </footer>
     </div>
 
-    <!-- Layer container – all Unpoly layers go here -->
+    <!-- Layer container – all Unpoly layers go here (must be outside #layout) -->
     <div id="up-layer-container" up-layer="root" class="z-[100]"></div>
 
     <!-- Unpoly config & events -->
     <script>
-        up.on('up:framework:boot', function() {
-            up.layer.config.backdrop = {
-                background: 'rgba(0, 0, 0, 0.5)',
-                closeOnClick: true,
-                duration: 300
-            };
-        });
-
-        // GSAP drawer open animation
-        up.on('up:layer:open', function(e) {
-            if (e.layer.mode === 'drawer' && typeof gsap !== 'undefined') {
-                gsap.from(e.layer.element, {
-                    x: e.layer.position === 'left' ? -100 : 100,
-                    opacity: 0,
-                    duration: 0.4,
-                    ease: 'power2.out'
-                });
+        (function() {
+            // Fallback if Unpoly not loaded (rare)
+            if (typeof up === 'undefined') {
+                console.error('Unpoly not loaded!');
+                return;
             }
-        });
 
-        // Prevent body scroll when drawer is open
-        up.on('up:layer:open', function() { document.body.style.overflow = 'hidden'; });
-        up.on('up:layer:close', function() { document.body.style.overflow = ''; });
+            up.on('up:framework:boot', function() {
+                console.log('✅ Unpoly ready');
+                up.layer.config.backdrop = {
+                    background: 'rgba(0, 0, 0, 0.5)',
+                    closeOnClick: true,
+                    duration: 300
+                };
+            });
+
+            // GSAP drawer open animation
+            up.on('up:layer:open', function(e) {
+                if (e.layer.mode === 'drawer' && typeof gsap !== 'undefined') {
+                    gsap.from(e.layer.element, {
+                        x: e.layer.position === 'left' ? -100 : 100,
+                        opacity: 0,
+                        duration: 0.4,
+                        ease: 'power2.out'
+                    });
+                }
+            });
+
+            // Prevent body scroll when drawer is open
+            up.on('up:layer:open', function() { document.body.style.overflow = 'hidden'; });
+            up.on('up:layer:close', function() { document.body.style.overflow = ''; });
+
+            // Optional: debug close button registration
+            up.on('up:layer:afterOpen', function(e) {
+                const closeBtn = e.layer.element.querySelector('[up-close]');
+                if (!closeBtn) {
+                    console.warn('⚠️ No [up-close] button found inside drawer – close may not work');
+                }
+            });
+        })();
     </script>
 
     {% block scripts %}{% endblock %}
