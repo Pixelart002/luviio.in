@@ -6,20 +6,72 @@
 
     <title>{% block title %}Bathscape | Luxury Architecture{% endblock %}</title>
 
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
 
+    <!-- === FINAL 7 LIBRARIES - ULTIMATE STACK === -->
+    
+    <!-- 1. Tailwind CSS (Base) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
-    <!-- Three.js for WebGL -->
+    
+    <!-- 2. GSAP + ScrollTrigger (Already have) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    
+    <!-- 3. Lenis 2.0 (Smooth Scroll - NEW) -->
+    <script src="https://unpkg.com/@studio-freight/lenis@1.0.42/dist/lenis.min.js"></script>
+    
+    <!-- 4. Motion (Framer's New Library - NEW) -->
+    <script src="https://cdn.jsdelivr.net/npm/motion@10.16.4/dist/motion.js"></script>
+    
+    <!-- 5. Swiper 11 (Horizontal Gallery - NEW) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+    
+    <!-- 6. Rive (Interactive Icons - NEW) -->
+    <script src="https://unpkg.com/@rive-app/canvas@2.5.0"></script>
+    
+    <!-- 7. Three.js (WebGL - Already have) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Optional: Typed.js (Text Animation) -->
+    <script src="https://unpkg.com/typed.js@2.1.0/dist/typed.umd.js"></script>
 
     {% block head %}{% endblock %}
+    
+    <style>
+        /* Hide scrollbar - Lenis handle karega */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+        html {
+            scrollbar-width: none;
+        }
+    </style>
 </head>
 
 <body class="bg-[#FAFAFA] font-['Plus_Jakarta_Sans'] text-slate-900 overflow-x-hidden">
+
+    <!-- Lenis Smooth Scroll Initialization -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const lenis = new Lenis({
+                duration: 1.2,
+                easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+                smooth: true,
+                smoothTouch: false,
+            });
+            
+            function raf(time) {
+                lenis.raf(time);
+                requestAnimationFrame(raf);
+                ScrollTrigger.update();
+            }
+            requestAnimationFrame(raf);
+        });
+    </script>
 
     <div id="layout" class="flex flex-col min-h-screen relative">
 
