@@ -41,14 +41,21 @@
             </div>
             
             <!-- HAMBURGER BUTTON - Now with ID for JS targeting -->
-            <div class="flex items-center z-20">
-                <button id="hamburgerBtn" class="hamburger-btn group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer block">
-                    <div class="w-6 h-5 relative flex flex-col justify-between">
-                        <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
-                        <span class="w-2/3 h-0.5 bg-current rounded-full transition-all duration-300"></span>
-                        <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
-                    </div>
-                </button>
+       <!-- header.html mein hamburger button ko update karo -->
+<button id="hamburgerBtn" 
+        up-layer="new drawer"
+        up-target="#drawer"
+        up-position="left"
+        up-size="medium"
+        up-background="#000000cc"
+        up-transition="slide-left"
+        class="hamburger-btn group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer block">
+    <div class="w-6 h-5 relative flex flex-col justify-between">
+        <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
+        <span class="w-2/3 h-0.5 bg-current rounded-full transition-all duration-300"></span>
+        <span class="w-full h-0.5 bg-current rounded-full transition-all duration-300 origin-left"></span>
+    </div>
+</button>
             </div>
 
         </div>
