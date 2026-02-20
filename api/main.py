@@ -36,13 +36,8 @@ async def home_route(request: Request):
         footer_sections=[{"title": "Resources", "links": [{"label": "Gallery", "url": "/gallery"}]}]
     )
 
-    # UNPOLY FRAGMENT LOGIC: Serve only what is requested
-    if request.headers.get("X-Up-Target") == "#drawer-content":
-        return templates.TemplateResponse(
-            "app/macros/index_page/drawer.html", 
-            {"request": request, "state": state.model_dump(), "is_fragment": True}
-        )
-    
+    # Simplified Backend: Unpoly will automatically extract #drawer-content
+    # from the full HTML response. No need for custom header checks here.
     return templates.TemplateResponse(
         "app/pages/index.html", 
         {"request": request, "state": state.model_dump()}

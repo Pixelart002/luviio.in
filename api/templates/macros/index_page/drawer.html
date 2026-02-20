@@ -4,7 +4,10 @@
         <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-6">Menu</h3>
         <div class="flex flex-col gap-4">
             {% for item in state.nav_items %}
-            <a href="{{ item.url }}" up-follow up-target="#content" up-dismiss
+            <a href="{{ item.url }}" 
+               up-target="#content" 
+               up-layer="root" 
+               up-dismiss
                class="text-2xl font-['Playfair_Display'] font-bold {{ 'text-teal-700' if item.active else 'text-slate-900' }}">
                 {{ item.label }}
             </a>
@@ -12,12 +15,15 @@
         </div>
     </div>
 
-    <div>
+    <div class="mt-8">
         <h3 class="text-[10px] font-bold uppercase tracking-widest text-teal-700 mb-6">Curations</h3>
         <ul class="space-y-5">
             {% for category in state.sidebar_categories %}
             <li>
-                <a href="{{ category.url }}" up-follow up-target="#content" up-dismiss
+                <a href="{{ category.url }}" 
+                   up-target="#content" 
+                   up-layer="root" 
+                   up-dismiss
                    class="flex items-center justify-between text-lg font-medium text-slate-600 hover:text-teal-700 transition-colors">
                     {{ category.label }} <span>→</span>
                 </a>
@@ -25,14 +31,9 @@
             {% endfor %}
         </ul>
     </div>
-    
-    <button up-dismiss class="mt-auto w-full py-4 text-xs font-bold uppercase tracking-widest text-slate-400 bg-slate-50 rounded-xl">
-        Close
+
+    <button up-dismiss class="mt-auto w-full py-4 text-xs font-bold uppercase tracking-widest text-slate-400 bg-slate-50 rounded-xl hover:bg-slate-200 transition-colors">
+        Close Menu
     </button>
 </div>
 {% endmacro %}
-
-{# Backend direct call support #}
-{% if is_fragment %}
-    {{ render_drawer(state) }}
-{% endif %}
