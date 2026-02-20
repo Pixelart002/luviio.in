@@ -32,73 +32,8 @@
     const closeBtn = document.getElementById('closeDrawerBtn');
     const drawerLinks = drawer ? drawer.querySelectorAll('a[up-target="#content"]') : [];
     
-    // Function to open drawer
-    function openDrawer() {
-      if (drawer) {
-        drawer.classList.remove('-translate-x-full');
-        overlay.classList.remove('hidden');
-        document.body.style.overflow = 'hidden'; // Prevent background scrolling
-        
-        // Animate hamburger to X (optional - keep your GSAP if you want)
-        const spans = hamburgerBtn?.querySelectorAll('span');
-        if (spans && spans.length === 3) {
-          spans[0].style.transform = 'rotate(45deg) translateY(9px)';
-          spans[1].style.opacity = '0';
-          spans[2].style.transform = 'rotate(-45deg) translateY(-9px)';
-        }
-      }
-    }
-    
-    // Function to close drawer
-    function closeDrawer() {
-      if (drawer) {
-        drawer.classList.add('-translate-x-full');
-        overlay.classList.add('hidden');
-        document.body.style.overflow = '';
-        
-        // Animate hamburger back to lines
-        const spans = hamburgerBtn?.querySelectorAll('span');
-        if (spans && spans.length === 3) {
-          spans[0].style.transform = 'rotate(0) translateY(0)';
-          spans[1].style.opacity = '1';
-          spans[2].style.transform = 'rotate(0) translateY(0)';
-        }
-      }
-    }
-    
-    // Event listeners
-    if (hamburgerBtn) {
-      hamburgerBtn.addEventListener('click', openDrawer);
-    }
-    
-    if (closeBtn) {
-      closeBtn.addEventListener('click', closeDrawer);
-    }
-    
-    if (overlay) {
-      overlay.addEventListener('click', closeDrawer);
-    }
-    
-    // Close drawer when clicking any link inside it (for navigation)
-    drawerLinks.forEach(link => {
-      link.addEventListener('click', closeDrawer);
-    });
-    
-    // Handle escape key to close drawer
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape' && drawer && !drawer.classList.contains('-translate-x-full')) {
-        closeDrawer();
-      }
-    });
-  });
+  
 </script>
 
-<!-- Keep your existing GSAP/Unpoly scripts - they won't interfere -->
-<script>
-  // Your existing GSAP and Unpoly code (for other animations) can stay
-  if (typeof gsap !== 'undefined') {
-    gsap.registerPlugin(ScrollTrigger);
-    // ... rest of your GSAP code
-  }
-</script>
+
 {% endblock %}
