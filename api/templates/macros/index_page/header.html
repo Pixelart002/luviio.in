@@ -1,9 +1,4 @@
 {% macro render_header(state) %}
-{# 
-    REFACTORED HEADER (UNPOLY OPTIMIZED)
-    - Hamburger: Now uses up-layer="new drawer" to trigger the side menu.
-    - Consistency: Navigation uses up-target="#content" for SPA-like transitions.
-#}
 <header class="fixed top-0 w-full h-20 z-[60] bg-white/40 backdrop-blur-2xl border-b border-slate-200/20" id="luxury-header">
     <div class="relative h-full max-w-7xl mx-auto px-4 lg:px-12 flex items-center justify-between">
         
@@ -37,34 +32,22 @@
                 </div>
             </div>
             
+            <div class="flex items-center z-20">
+                <a href="/drawer" 
+                   up-layer="new drawer" 
+                   up-position="left"
+                   up-size="300px"
+                   class="group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer block">
+                    <div class="w-6 h-5 relative flex flex-col justify-between">
+                        <span class="w-full h-0.5 bg-current rounded-full transition-all"></span>
+                        <span class="w-2/3 h-0.5 bg-current rounded-full transition-all"></span>
+                        <span class="w-full h-0.5 bg-current rounded-full transition-all"></span>
+                    </div>
+                </a>
+            </div>
             
-            
-            
-            
-            
-            
-            
-        <div class="flex items-center z-20">
-    <a href="/" 
-       up-target="#drawer-content" 
-       up-layer="new drawer" 
-       up-position="left"
-       up-size="300px"
-       class="group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer block">
-        <div class="w-6 h-5 relative flex flex-col justify-between">
-            <span class="w-full h-0.5 bg-current rounded-full transition-all"></span>
-            <span class="w-2/3 h-0.5 bg-current rounded-full transition-all"></span>
-            <span class="w-full h-0.5 bg-current rounded-full transition-all"></span>
         </div>
-    </a>
-</div>    
-            
-            
-           
-        </div>
-        
     </div>
 </header>
-
 <div class="h-20 w-full"></div>
 {% endmacro %}

@@ -20,9 +20,9 @@ class UIState(BaseModel):
     featured_material: Optional[Dict[str, Any]] = None
     user_status: str = "Studio Access"
 
-@app.get("/", response_class=HTMLResponse)
-async def home_route(request: Request):
-    state = UIState(
+# Helper function to get state
+def get_ui_state():
+    return UIState(
         page_title="Home | Luviio Luxury Studio",
         nav_items=[
             {"label": "The Studio", "url": "/studio", "active": True},
@@ -36,9 +36,18 @@ async def home_route(request: Request):
         footer_sections=[{"title": "Resources", "links": [{"label": "Gallery", "url": "/gallery"}]}]
     )
 
-    # Simplified Backend: Unpoly will automatically extract #drawer-content
-    # from the full HTML response. No need for custom header checks here.
+@app.get("/", response_class=HTMLResponse)
+async def home_route(request: Request):
+    # Main page render
     return templates.TemplateResponse(
         "app/pages/index.html", 
-        {"request": request, "state": state.model_dump()}
+        {"request": request, "state": get_ui_state().model_dump()}
+    )
+
+# NEW: Dedicated Drawer Route
+@app.get("/drawer", response_class=HTMLResponse)
+async def drawer_route(request: Request):
+    return templates.TemplateResponse(
+        "app/macros/index_page/drawer.html", 
+        {"request": request, "state": get_ui_state().model_dump()}
     )
