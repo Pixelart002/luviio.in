@@ -1,15 +1,10 @@
-{% macro render_header(state) %}
-{# 
-    BEAST MODE HEADER (ULTRASONIC RESPONSIVE)
-    - Logo: Perfectly Centered using Absolute Positioning.
-    - Buttons: Grouped next to the Profile icon on the right.
-#}
+{% macro render_header() %}
 <header class="fixed top-0 w-full h-20 z-[60] bg-white/40 backdrop-blur-2xl border-b border-slate-200/20" id="luxury-header">
     <div class="relative h-full max-w-7xl mx-auto px-4 lg:px-12 flex items-center justify-between">
         
         <!-- Logo -->
         <div class="flex items-center z-10">
-            <a href="/" up-target="#layout" class="font-['Playfair_Display'] text-2xl md:text-3xl font-black tracking-tighter text-slate-900 group">
+            <a href="/" class="font-['Playfair_Display'] text-2xl md:text-3xl font-black tracking-tighter text-slate-900 group">
                 <span class="text-teal-700 transition-transform duration-500 group-hover:-translate-y-1 inline-block">L</span>uviio<span class="text-teal-700">.</span>
             </a>
         </div>
@@ -18,9 +13,12 @@
             
             <!-- Desktop Navigation -->
             <nav class="hidden md:flex items-center p-1 bg-white/50 border border-slate-200/50 rounded-full shadow-sm">
-                {% for item in state.nav_items %}
+                {% set nav_items = [
+                    {"label": "The Studio", "url": "/studio", "active": true},
+                    {"label": "Materials", "url": "/materials", "active": false}
+                ] %}
+                {% for item in nav_items %}
                 <a href="{{ item.url }}" 
-                   up-target="#content" 
                    class="px-3 md:px-5 py-1.5 md:py-2 text-[10px] md:text-sm font-medium transition-all rounded-full 
                           {{ 'text-teal-800 bg-white shadow-sm' if item.active else 'text-slate-600 hover:text-teal-700 hover:bg-white' }}">
                     {{ item.label }}
@@ -31,7 +29,7 @@
             <!-- Profile section -->
             <div class="flex items-center gap-3">
                 <span class="hidden lg:block text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                    {{ state.user_status | default('Studio Access') }}
+                    Studio Access
                 </span>
                 <div class="w-9 h-9 md:w-10 md:h-10 rounded-full bg-slate-900 flex items-center justify-center text-white cursor-pointer hover:bg-teal-700 transition-all shadow-xl shadow-slate-200">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -40,7 +38,7 @@
                 </div>
             </div>
             
-            <!-- HAMBURGER BUTTON - Now with ID for JS targeting -->
+            <!-- HAMBURGER BUTTON -->
             <div class="flex items-center z-20">
                 <button id="hamburgerBtn" class="hamburger-btn group p-2 -ml-2 text-slate-900 active:scale-90 transition-transform cursor-pointer block">
                     <div class="w-6 h-5 relative flex flex-col justify-between">

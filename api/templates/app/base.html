@@ -2,7 +2,6 @@
 <html lang="en" class="antialiased scroll-smooth">
 <head>
     <meta charset="UTF-8">
-    {# Optimization: Prevents mobile layout shifting during SPA navigation #}
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
     <title>{% block title %}Bathscape | Luxury Architecture{% endblock %}</title>
@@ -11,24 +10,16 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
 
-     <link rel="stylesheet" href="https://unpkg.com/unpoly@3.8.0/dist/unpoly.min.css">
-    <script src="https://unpkg.com/unpoly@3.8.0/dist/unpoly.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+    <!-- Three.js for WebGL -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
     {% block head %}{% endblock %}
 </head>
 
-{# 
-    BEAST CONFIG: 
-    1. up-main="#layout" ensures SPA behavior.
-    2. up-preload tells Unpoly to preload links on hover (Zomato speed).
-#}
-<body up-main="#layout" up-preload class="bg-[#FAFAFA] font-['Plus_Jakarta_Sans'] text-slate-900 overflow-x-hidden">
-
-    <div id="loading-bar" class="fixed top-0 left-0 h-1 bg-teal-600 z-[100] origin-left scale-x-0 pointer-events-none opacity-0"></div>
+<body class="bg-[#FAFAFA] font-['Plus_Jakarta_Sans'] text-slate-900 overflow-x-hidden">
 
     <div id="layout" class="flex flex-col min-h-screen relative">
 
@@ -36,12 +27,11 @@
             {% block header %}{% endblock %}
         </header>
 
-        {# Sidebar often needs a drawer-like behavior on mobile #}
         <aside id="sidebar" class="relative z-40">
             {% block sidebar %}{% endblock %}
         </aside>
 
-        <main id="content" class="flex-grow pt-20" up-main>
+        <main id="content" class="flex-grow pt-20">
             {% block content %}{% endblock %}
         </main>
 
@@ -51,18 +41,6 @@
 
     </div>
 
-   
     {% block scripts %}{% endblock %}
-
-
-
-
-
-
-
-
-
-
-
 </body>
 </html>
