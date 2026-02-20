@@ -16,21 +16,21 @@
                 {% endfor %}
             </nav>
 
-            <!-- ✅ HAMBURGER – Unpoly drawer trigger -->
-            <button id="hamburgerBtn"
-                    up-layer="new drawer"
-                    up-target=".drawer-content"
-                    up-position="left"
-                    up-size="medium"
-                    up-background="true"
-                    up-transition="slide-left"
-                    class="p-2">
-                <div class="w-6 h-5 flex flex-col justify-between">
-                    <span class="w-full h-0.5 bg-current"></span>
-                    <span class="w-2/3 h-0.5 bg-current"></span>
-                    <span class="w-full h-0.5 bg-current"></span>
-                </div>
-            </button>
+            <!-- ✅ Updated hamburger button using up-fragment -->
+<button id="hamburgerBtn"
+        up-layer="new drawer"
+        up-fragment="#drawer-fragment .drawer-inner"
+        up-position="left"
+        up-size="medium"
+        up-background="true"
+        up-transition="slide-left"
+        class="p-2">
+    <div class="w-6 h-5 flex flex-col justify-between">
+        <span class="w-full h-0.5 bg-current"></span>
+        <span class="w-2/3 h-0.5 bg-current"></span>
+        <span class="w-full h-0.5 bg-current"></span>
+    </div>
+</button>
         </div>
     </div>
 </header>

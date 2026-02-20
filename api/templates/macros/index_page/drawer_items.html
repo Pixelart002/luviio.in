@@ -7,9 +7,9 @@
     {"label": "Bath Fixtures", "url": "/fixtures"}
 ] %}
 
-<!-- ✅ Hidden wrapper – Unpoly clones from inside -->
-<div style="display: none;">
-    <div class="drawer-content p-8 flex flex-col gap-8 h-full bg-white w-80">
+<!-- ✅ Hidden fragment that Unpoly will pull into the drawer -->
+<div id="drawer-fragment" style="display: none;">
+    <div class="drawer-inner p-8 flex flex-col gap-8 h-full bg-white w-80">
         <!-- Mobile Menu -->
         <div class="md:hidden">
             <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-6">Menu</h3>
@@ -58,7 +58,7 @@
         </div>
         {% endif %}
 
-        <!-- CLOSE BUTTON – CRITICAL -->
+        <!-- Close Button -->
         <button up-close
                 class="w-full py-4 text-xs font-bold uppercase tracking-widest text-slate-400 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer">
             CLOSE
