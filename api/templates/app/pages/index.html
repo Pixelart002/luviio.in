@@ -18,116 +18,143 @@
   .lenis.lenis-stopped { overflow: hidden; }
   .lenis.lenis-scrolling iframe { pointer-events: none; }
   
-  /* Hardware Acceleration Class for GSAP */
-  .hw-accel {
-    will-change: transform, opacity;
-    transform: translateZ(0);
-    backface-visibility: hidden;
-  }
-  
-  /* Aceternity UI glass card */
+  /* Aceternity UI glass card utility */
   .glass-card {
     background: rgba(255, 255, 255, 0.03);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.05);
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+    will-change: transform, opacity;
   }
   
   .text-glow {
     text-shadow: 0 0 40px rgba(45, 212, 191, 0.4);
   }
 
-  /* Optimized Canvas Rendering */
-  #dither-canvas {
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+  /* Hero background fix */
+  #main-content > section:first-of-type {
+    background: #fafafa !important;
+  }
+  #main-content > section:first-of-type * {
+    color: #1e293b;
+  }
+  #main-content > section:first-of-type .absolute.bg-gradient-to-b {
+    background: linear-gradient(to bottom, #f1f5f9, #ffffff) !important;
   }
 </style>
 
 {{ render_drawer() }}
 
-<div id="main-content" class="w-full">
-  
-  {{ render_hero() }}
-
-  <div id="luviio-content" class="w-full bg-[#050507] text-slate-200 relative z-10">
-
-    <section class="relative w-full min-h-screen py-32 perspective-1000 overflow-hidden" style="perspective: 1200px;">
-      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-teal-900/20 rounded-full blur-[120px] pointer-events-none"></div>
-
-      <div class="max-w-7xl mx-auto px-6 text-center mb-24 relative z-10 hw-accel">
-        <h2 class="font-['Playfair_Display'] text-6xl md:text-8xl text-white mb-6 tracking-tight">
-          The <span class="text-teal-400 text-glow font-italic">Obsidian</span> Line
-        </h2>
-        <p class="text-slate-400 text-xl md:text-2xl font-light max-w-2xl mx-auto">
-          Brutalist geometry meets the fluidity of water. Masterpieces forged in matte black titanium.
-        </p>
+<div id="main-content" class="w-full bg-[#050507] text-slate-200">
+  <!-- Hero Section (with image, slide-in logo, "We are start producing") -->
+  <section class="relative w-full min-h-screen flex items-center justify-center overflow-hidden px-4 py-20 md:py-0">
+    <div class="absolute inset-0 bg-gradient-to-b from-slate-900 to-black -z-10"></div>
+    <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1618220179428-22790b461013?w=1400&q=90')] bg-cover bg-center opacity-30 mix-blend-overlay"></div>
+    
+    <div class="relative z-10 text-center max-w-4xl mx-auto">
+      <!-- Slide-in logo (animated via GSAP) -->
+      <div id="slide-logo" class="mb-6 opacity-0 translate-y-10">
+        <span class="font-['Playfair_Display'] text-7xl md:text-9xl font-black text-white">LUV100</span>
       </div>
-
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto px-6 relative z-10" id="stagger-grid">
-        </div>
-    </section>
-
-    <section id="horizontal-scroll-section" class="relative w-full h-screen bg-[#020203] overflow-hidden border-y border-white/5">
-      <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20 pointer-events-none"></div>
-      
-      <div class="sticky top-0 h-screen flex flex-col justify-center overflow-hidden">
-        <div class="absolute top-16 left-6 md:left-16 z-20 hw-accel">
-          <h3 class="font-['Playfair_Display'] text-4xl text-white">Spatial <span class="text-teal-400 italic">Harmony</span></h3>
-          <p class="text-slate-500 mt-2 uppercase tracking-widest text-sm">Scroll to explore the gallery</p>
-        </div>
-
-        <div id="horizontal-track" class="flex gap-8 md:gap-16 pl-12 md:pl-[30vw] pr-12 md:pr-32 pt-20 items-center flex-nowrap w-max hw-accel">
-          </div>
+      <p id="hero-tagline" class="text-xl md:text-3xl text-slate-300 mb-8 opacity-0 translate-y-10">We are start producing</p>
+      <div id="hero-timeline" class="flex justify-center gap-4 text-sm text-teal-400 opacity-0 translate-y-10">
+        <span>✦ 2026 ✦</span>
+        <span>✦ EDITION ✦</span>
+        <span>✦ LIMITED ✦</span>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <section id="dither-section" class="relative w-full min-h-screen py-32 overflow-hidden bg-[#050507]">
-      <div class="max-w-7xl mx-auto px-6 text-center mb-16 relative z-10 hw-accel">
-        <h2 class="font-['Playfair_Display'] text-5xl md:text-7xl text-white mb-6">
-          Textural <span class="text-teal-400 font-italic">Purity</span>
-        </h2>
-        <p class="text-slate-400 text-lg md:text-xl font-light">
-          Simulating the tactile nature of stone and water through mathematical noise.
-        </p>
-      </div>
-
-      <div class="relative w-full max-w-5xl mx-auto px-6 hw-accel">
-        <div class="relative overflow-hidden rounded-3xl p-2 glass-card">
-          <div class="rounded-2xl overflow-hidden bg-black relative aspect-[16/9]">
-            <canvas id="dither-canvas" class="block"></canvas>
-            <div class="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,0.8)] pointer-events-none"></div>
-          </div>
-        </div>
-        
-        <div class="mt-10 flex flex-wrap gap-4 justify-center text-slate-300 text-sm font-medium">
-          <div class="glass-card px-6 py-3 rounded-full flex gap-6 items-center">
-            <label class="cursor-pointer hover:text-white transition-colors flex items-center gap-2">
-              <input type="radio" name="ditherMode" value="bayer" checked class="accent-teal-400"> Bayer
-            </label>
-            <label class="cursor-pointer hover:text-white transition-colors flex items-center gap-2">
-              <input type="radio" name="ditherMode" value="halftone" class="accent-teal-400"> Halftone
-            </label>
-            <label class="cursor-pointer hover:text-white transition-colors flex items-center gap-2">
-              <input type="radio" name="ditherMode" value="noise" class="accent-teal-400"> Noise
-            </label>
-          </div>
-          <div class="glass-card px-6 py-3 rounded-full flex items-center">
-            <label class="cursor-pointer hover:text-white transition-colors flex items-center gap-2">
-              <input type="checkbox" id="animatedCheck" checked class="accent-teal-400"> Flow Dynamics
-            </label>
-          </div>
+  <!-- Profile Section -->
+  <section class="relative w-full py-24 bg-[#050507]">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="glass-card rounded-3xl p-8 md:p-12 max-w-md mx-auto">
+        <h2 class="font-['Playfair_Display'] text-3xl md:text-4xl text-white mb-6">Profile</h2>
+        <div class="space-y-4 text-slate-300">
+          <div><span class="text-teal-400">Account:</span> @luviio_user</div>
+          <div><span class="text-teal-400">Username:</span> luviio_official</div>
+          <div><span class="text-teal-400">Name:</span> Luviio Studio</div>
+          <div><span class="text-teal-400">Email:</span> contact@luviio.in</div>
         </div>
       </div>
-    </section>
+    </div>
+  </section>
 
-  </div> </div>
+  <!-- Our Partners -->
+  <section class="relative w-full py-24 bg-[#050507]">
+    <div class="max-w-7xl mx-auto px-6 text-center">
+      <h2 class="font-['Playfair_Display'] text-4xl md:text-5xl text-white mb-12">Our Partners</h2>
+      <div class="glass-card rounded-3xl p-10 inline-block">
+        <span class="text-2xl text-teal-400 font-light">Small‑run</span>
+      </div>
+    </div>
+  </section>
 
-{{ render_footer() }}
+  <!-- Reviews -->
+  <section class="relative w-full py-24 bg-[#050507]">
+    <div class="max-w-7xl mx-auto px-6">
+      <h2 class="font-['Playfair_Display'] text-4xl md:text-5xl text-white mb-12 text-center">Reviews</h2>
+      <div class="glass-card rounded-3xl p-8 max-w-lg mx-auto">
+        <div class="flex justify-between items-center mb-4">
+          <span class="text-teal-400 font-bold">UserName: 8</span>
+          <span class="text-slate-400 text-sm">Date day year</span>
+        </div>
+        <p class="text-slate-300">"Absolutely stunning craftsmanship. The Obsidian line is a masterpiece."</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Team (step by step faded) -->
+  <section class="relative w-full py-24 bg-[#050507]">
+    <div class="max-w-7xl mx-auto px-6">
+      <h2 class="font-['Playfair_Display'] text-4xl md:text-5xl text-white mb-12 text-center">Team</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8" id="team-grid">
+        <!-- Team member 1 -->
+        <div class="team-card glass-card rounded-2xl p-6 text-center opacity-0">
+          <div class="w-32 h-32 mx-auto rounded-full bg-cover bg-center mb-4" style="background-image: url('https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=200&q=80')"></div>
+          <h3 class="text-xl font-bold text-white">Alex Rivera</h3>
+          <p class="text-teal-400">Lead Designer</p>
+        </div>
+        <!-- Team member 2 -->
+        <div class="team-card glass-card rounded-2xl p-6 text-center opacity-0">
+          <div class="w-32 h-32 mx-auto rounded-full bg-cover bg-center mb-4" style="background-image: url('https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=200&q=80')"></div>
+          <h3 class="text-xl font-bold text-white">Maya Chen</h3>
+          <p class="text-teal-400">Head of Materials</p>
+        </div>
+        <!-- Team member 3 -->
+        <div class="team-card glass-card rounded-2xl p-6 text-center opacity-0">
+          <div class="w-32 h-32 mx-auto rounded-full bg-cover bg-center mb-4" style="background-image: url('https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=200&q=80')"></div>
+          <h3 class="text-xl font-bold text-white">Kai Tanaka</h3>
+          <p class="text-teal-400">Craftsmanship Lead</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GET IN TOUCH -->
+  <section class="relative w-full py-24 bg-[#050507]">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="glass-card rounded-3xl p-10 max-w-lg mx-auto">
+        <h2 class="font-['Playfair_Display'] text-3xl md:text-4xl text-white mb-8">GET IN TOUCH</h2>
+        <div class="space-y-6">
+          <div>
+            <label class="block text-sm text-slate-400 mb-2">Email</label>
+            <input type="email" placeholder="your@email.com" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white">
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-2">Custom</label>
+            <textarea rows="3" placeholder="Your message..." class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white"></textarea>
+          </div>
+          <button class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl transition-all">Send</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer (reusing macro, but we can also add extra content if needed) -->
+  {{ render_footer() }}
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -136,268 +163,78 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.4/ScrollTrigger.min.js"></script>
 
 <script>
-  // ----- MAIN ANIMATIONS -----
+  // ----- DRAWER TOGGLING (unchanged) -----
+  document.addEventListener('DOMContentLoaded', function() {
+    const hamburgerBtn = document.getElementById('hamburgerBtn');
+    const drawer = document.getElementById('drawer');
+    const overlay = document.getElementById('drawerOverlay');
+    const closeBtn = document.getElementById('closeDrawerBtn');
+    const drawerLinks = drawer ? drawer.querySelectorAll('a') : [];
+    
+    function openDrawer() {
+      if (drawer) {
+        drawer.classList.remove('-translate-x-full');
+        overlay.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        const spans = hamburgerBtn?.querySelectorAll('span');
+        if (spans && spans.length === 3) {
+          spans[0].style.transform = 'rotate(45deg) translateY(9px) translateX(9px)';
+          spans[1].style.opacity = '0';
+          spans[2].style.transform = 'rotate(-45deg) translateY(-9px) translateX(9px)';
+        }
+      }
+    }
+    function closeDrawer() {
+      if (drawer) {
+        drawer.classList.add('-translate-x-full');
+        overlay.classList.add('hidden');
+        document.body.style.overflow = '';
+        const spans = hamburgerBtn?.querySelectorAll('span');
+        if (spans && spans.length === 3) {
+          spans[0].style.transform = 'none';
+          spans[1].style.opacity = '1';
+          spans[2].style.transform = 'none';
+        }
+      }
+    }
+    if (hamburgerBtn) hamburgerBtn.addEventListener('click', openDrawer);
+    if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+    if (overlay) overlay.addEventListener('click', closeDrawer);
+    drawerLinks.forEach(link => link.addEventListener('click', closeDrawer));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && drawer && !drawer.classList.contains('-translate-x-full')) closeDrawer();
+    });
+  });
+
+  // ----- GSAP ANIMATIONS -----
   (function() {
     if (typeof gsap === 'undefined' || typeof Lenis === 'undefined') return;
     gsap.registerPlugin(ScrollTrigger);
 
-    // 0. LENIS (Silky Smooth)
-    const lenis = new Lenis({
-      duration: 1.5, // Increased slightly for a heavier, more luxurious feel
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smooth: true,
-      smoothTouch: false,
-    });
+    const lenis = new Lenis({ duration: 1.2, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smooth: true, smoothTouch: false });
     lenis.on('scroll', ScrollTrigger.update);
     gsap.ticker.add((time) => lenis.raf(time * 1000));
     gsap.ticker.lagSmoothing(0);
 
-    const isMobile = window.innerWidth < 768;
+    // Hero animations: slide-in logo, tagline, timeline
+    const tl = gsap.timeline({ defaults: { duration: 1, ease: 'power3.out' } });
+    tl.to('#slide-logo', { opacity: 1, y: 0 })
+      .to('#hero-tagline', { opacity: 1, y: 0 }, '-=0.6')
+      .to('#hero-timeline', { opacity: 1, y: 0 }, '-=0.6');
 
-    // 1. STAGGER GRID (Fixed: Now properly revealing step-by-step and smoothed out)
-    const staggerGrid = document.getElementById('stagger-grid');
-    if (staggerGrid) {
-      const images = [
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=90',
-        'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=800&q=90',
-        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=800&q=90',
-        'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=90',
-        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=800&q=90',
-        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=800&q=90'
-      ];
-
-      images.forEach((src, i) => {
-        const container = document.createElement('div');
-        container.style.perspective = '1500px';
-        container.innerHTML = `
-          <div class="stagger-card hw-accel aspect-[4/5] rounded-2xl overflow-hidden relative group glass-card cursor-pointer" style="transform-style: preserve-3d;">
-            <div class="absolute inset-0 bg-cover bg-center transition-transform duration-1000 group-hover:scale-110 opacity-80 group-hover:opacity-100" style="background-image: url(${src})"></div>
-            <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-6">
-              <span class="text-teal-400 font-mono text-xs uppercase tracking-widest block mb-1">Edition 0${i + 1}</span>
-            </div>
-          </div>
-        `;
-        staggerGrid.appendChild(container);
-      });
-
-      // Proper fromTo for absolute control over the start and end states
-      gsap.fromTo('.stagger-card', 
-        {
-          y: 100,
-          opacity: 0,
-          rotationY: isMobile ? 20 : (i) => (i % 3 === 0 ? 30 : i % 3 === 1 ? 0 : -30),
-          rotationX: 15,
-          scale: 0.9,
-          z: -100
-        },
-        {
-          y: 0,
-          opacity: 1,
-          rotationY: 0,
-          rotationX: 0,
-          scale: 1,
-          z: 0,
-          stagger: 0.15, // Cascading effect
-          ease: 'power3.out',
-          scrollTrigger: {
-            trigger: '#stagger-grid',
-            start: 'top 80%',
-            end: 'bottom 40%',
-            scrub: 1.5, // Eased scrubbing
-          }
-        }
-      );
-    }
-
-    // 2. HORIZONTAL SCROLL (Fixed: Scroll path + Image Reveal Animations)
-    const track = document.getElementById('horizontal-track');
-    const scrollSection = document.getElementById('horizontal-scroll-section');
-    
-    if (track && scrollSection) {
-      const images = [
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=1000&q=90',
-        'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=1000&q=90',
-        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=1000&q=90',
-        'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=1000&q=90',
-        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=1000&q=90'
-      ];
-
-      images.forEach((src, index) => {
-        const widthClass = isMobile ? 'w-[80vw]' : 'w-[500px]';
-        const heightClass = isMobile ? 'h-[400px]' : 'h-[650px]';
-        
-        const card = document.createElement('div');
-        card.className = `horizontal-card hw-accel ${widthClass} ${heightClass} flex-shrink-0 rounded-3xl overflow-hidden relative group glass-card`;
-        card.innerHTML = `
-          <div class="h-card-inner absolute inset-0 bg-cover bg-center transition-transform duration-[1.5s] ease-out group-hover:scale-105 filter grayscale hover:grayscale-0" style="background-image: url(${src})"></div>
-          <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
-          <div class="h-card-text absolute bottom-0 left-0 p-8 w-full border-b border-white/10">
-            <span class="text-3xl md:text-5xl font-['Playfair_Display'] text-white">0${index + 1}</span>
-          </div>
-        `;
-        track.appendChild(card);
-      });
-
-      let mm = gsap.matchMedia();
-      mm.add("(min-width: 320px)", () => {
-        
-        // 1. First, create the timeline that moves the track horizontally
-        const trackWidth = track.scrollWidth;
-        // The distance we need to scroll to see the end of the track
-        const scrollDistance = trackWidth - window.innerWidth;
-        
-        let scrollTween = gsap.to(track, {
-          x: -scrollDistance,
-          ease: 'none',
-          scrollTrigger: {
-            trigger: scrollSection,
-            start: 'top top',
-            end: () => `+=${trackWidth}`, // Makes the scroll distance proportional to the content
-            pin: true,
-            scrub: 1.2,
-            invalidateOnRefresh: true,
-          }
-        });
-
-        // 2. NOW: Animate individual cards *AS* they enter the view horizontally!
-        // This is the "containerAnimation" feature that makes the images reveal properly.
-        const cards = gsap.utils.toArray('.horizontal-card');
-        
-        cards.forEach((card) => {
-          gsap.fromTo(card, 
-            { 
-              opacity: 0, 
-              scale: 0.8, 
-              rotateY: 15 
-            },
-            {
-              opacity: 1, 
-              scale: 1, 
-              rotateY: 0,
-              ease: "power2.out",
-              scrollTrigger: {
-                trigger: card,
-                containerAnimation: scrollTween, // Ties this trigger to the horizontal movement!
-                start: "left 90%", // Start revealing when the left edge of the card hits 90% of the screen
-                end: "left 40%",   // Finish revealing by the time it reaches 40%
-                scrub: true,
-              }
-            }
-          );
-        });
-
-        return () => scrollTween.kill(); 
-      });
-    }
-
-    // 3. DITHER SHADER (Kept exactly the same for maximum performance)
-    (function initDither() {
-      const canvas = document.getElementById('dither-canvas');
-      if (!canvas) return;
-
-      const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: false });
-      
-      const INTERNAL_W = 320;
-      const INTERNAL_H = 180;
-      canvas.width = INTERNAL_W;
-      canvas.height = INTERNAL_H;
-
-      const config = {
-        src: 'https://images.unsplash.com/photo-1527239441953-caffd968d952?q=50&w=800&auto=format&fit=crop',
-        ditherMode: 'bayer',
-        animated: true,
-        time: 0
-      };
-
-      const BAYER_8x8 = [
-        [0,32,8,40,2,34,10,42], [48,16,56,24,50,18,58,26],
-        [12,44,4,36,14,46,6,38], [60,28,52,20,62,30,54,22],
-        [3,35,11,43,1,33,9,41], [51,19,59,27,49,17,57,25],
-        [15,47,7,39,13,45,5,37], [63,31,55,23,61,29,53,21]
-      ];
-
-      const palette = [ [5,5,7], [26,27,32], [45,212,191], [248,250,252] ];
-
-      let img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = config.src;
-
-      let sourceData = null, imgW = 0, imgH = 0;
-      let isVisible = true;
-
-      const observer = new IntersectionObserver(entries => {
-        isVisible = entries[0].isIntersecting;
-      }, { threshold: 0 });
-      observer.observe(document.getElementById('dither-section'));
-
-      function renderFrame() {
-        if (!sourceData) return;
-        const output = ctx.createImageData(INTERNAL_W, INTERNAL_H);
-        const outData = output.data;
-        const srcData = sourceData.data;
-
-        for (let y = 0; y < INTERNAL_H; y++) {
-          for (let x = 0; x < INTERNAL_W; x++) {
-            const waveX = config.animated ? Math.sin(y*0.05 + config.time) * 4 : 0;
-            const waveY = config.animated ? Math.cos(x*0.05 + config.time) * 4 : 0;
-            let sx = Math.floor(((x+waveX)/INTERNAL_W)*imgW);
-            let sy = Math.floor(((y+waveY)/INTERNAL_H)*imgH);
-            
-            sx = Math.max(0, Math.min(sx, imgW - 1));
-            sy = Math.max(0, Math.min(sy, imgH - 1));
-
-            const srcIdx = (sy * imgW + sx) * 4;
-            const lum = (0.299*srcData[srcIdx] + 0.587*srcData[srcIdx+1] + 0.114*srcData[srcIdx+2]) / 255;
-
-            let th;
-            if (config.ditherMode === 'noise') {
-              th = (Math.sin(x*12.9898 + y*78.233 + config.time*20) * 43758.5453) % 1;
-              if(th < 0) th += 1;
-            } else if (config.ditherMode === 'halftone') {
-               const rx = x*0.707 + y*0.707;
-               const ry = -x*0.707 + y*0.707;
-               th = (Math.sin(rx/3) + Math.sin(ry/3) + 2)/4;
-            } else {
-               th = BAYER_8x8[y%8][x%8] / 64;
-            }
-
-            th = th * 0.5 + 0.25; 
-            const adj = lum + (th - 0.5) * 0.8;
-            const cIdx = Math.floor(Math.max(0, Math.min(adj, 0.99)) * palette.length);
-            
-            const outIdx = (y * INTERNAL_W + x) * 4;
-            outData[outIdx] = palette[cIdx][0];     
-            outData[outIdx+1] = palette[cIdx][1];   
-            outData[outIdx+2] = palette[cIdx][2];   
-            outData[outIdx+3] = 255;                
-          }
-        }
-        ctx.putImageData(output, 0, 0);
-      }
-
-      img.onload = () => {
-        imgW = img.naturalWidth;
-        imgH = img.naturalHeight;
-        const offCanvas = document.createElement('canvas');
-        offCanvas.width = imgW;
-        offCanvas.height = imgH;
-        const offCtx = offCanvas.getContext('2d');
-        offCtx.drawImage(img, 0, 0);
-        try { sourceData = offCtx.getImageData(0,0,imgW,imgH); } catch(e) { return; }
-
-        function animate() {
-          if (isVisible) {
-            if (config.animated) config.time += 0.05;
-            renderFrame();
-          }
-          requestAnimationFrame(animate);
-        }
-        animate();
-      };
-
-      document.querySelectorAll('input[name="ditherMode"]').forEach(r => r.addEventListener('change', e => config.ditherMode = e.target.value));
-      document.getElementById('animatedCheck')?.addEventListener('change', e => config.animated = e.target.checked);
-    })();
+    // Team step-by-step fade (scroll-triggered)
+    gsap.from('.team-card', {
+      scrollTrigger: {
+        trigger: '#team-grid',
+        start: 'top 80%',
+        end: 'bottom 20%',
+        scrub: 1,
+      },
+      opacity: 0,
+      y: 50,
+      stagger: 0.3,
+      duration: 1,
+    });
   })();
 </script>
 {% endblock %}
