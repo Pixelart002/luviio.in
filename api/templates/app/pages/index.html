@@ -10,57 +10,79 @@
 {% endblock %}
 
 {% block content %}
-<!-- Drawer -->
 {{ render_drawer() }}
 
-<!-- Main content -->
-<div id="main-content" class="w-full">
+<div id="custom-cursor" class="fixed top-0 left-0 w-6 h-6 border border-amber-500 rounded-full pointer-events-none z-[9999] mix-blend-difference transition-transform duration-100 ease-out hidden md:block flex items-center justify-center">
+  <div class="w-1 h-1 bg-amber-500 rounded-full"></div>
+</div>
+
+<div id="main-content" class="w-full bg-[#050505] text-[#e8e8e8] selection:bg-amber-600 selection:text-white">
   {{ render_hero() }}
 
-  <!-- SECTION 1: GSAP STAGGER GRID (3D CARD FLIP) -->
-  <section class="relative w-full min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 py-24 perspective overflow-hidden">
-    <div class="max-w-7xl mx-auto px-6 text-center mb-20">
-      <h2 class="font-['Playfair_Display'] text-6xl md:text-7xl text-white mb-4">
-        GSAP <span class="text-teal-400">STAGGER</span>
-      </h2>
-      <p class="text-slate-300 text-xl">Advanced 3D flip with custom stagger patterns</p>
+  <section class="relative w-full min-h-screen py-32 perspective overflow-hidden border-b border-white/5">
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(197,160,89,0.05)_0%,rgba(5,5,5,1)_70%)]"></div>
+    
+    <div class="max-w-7xl mx-auto px-6 mb-24 relative z-10 flex flex-col md:flex-row items-end justify-between">
+      <div class="max-w-2xl">
+        <p class="text-amber-500 font-['Inter'] tracking-[0.2em] text-sm uppercase mb-6">The Collection</p>
+        <h2 class="font-['Playfair_Display'] text-5xl md:text-8xl text-white leading-none tracking-tight stagger-title">
+          Architectural<br>
+          <span class="text-neutral-500 italic font-light">Fluidity.</span>
+        </h2>
+      </div>
+      <p class="text-neutral-400 font-['Inter'] text-sm md:text-base max-w-sm mt-8 md:mt-0 text-right stagger-title">
+        Discover bathware engineered with the precision of brutalist architecture and the elegance of natural water forms.
+      </p>
     </div>
 
-    <!-- Stagger Grid - 3x3 Cards -->
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 max-w-6xl mx-auto px-6" id="stagger-grid">
-      <!-- Cards populated by JS -->
-    </div>
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4 max-w-7xl mx-auto px-6" id="stagger-grid">
+      </div>
   </section>
 
-  <!-- SECTION 2: GSAP HORIZONTAL SCROLL GALLERY -->
-  <section id="horizontal-scroll-section" class="relative w-full h-screen bg-slate-900 overflow-hidden">
+  <section id="horizontal-scroll-section" class="relative w-full h-screen bg-[#020202] overflow-hidden border-b border-white/5">
+    <div class="absolute top-12 left-6 md:left-16 z-20">
+      <h2 class="font-['Playfair_Display'] text-4xl md:text-6xl text-white">The Promenade</h2>
+      <p class="text-amber-500 font-['Inter'] tracking-[0.1em] text-xs uppercase mt-2">Flagship Series</p>
+    </div>
+
     <div class="sticky top-0 h-screen flex items-center overflow-hidden">
-      <div id="horizontal-track" class="flex gap-4 md:gap-8 px-4 md:px-16 will-change-transform">
-        <!-- Cards inserted by JS -->
-      </div>
+      <div id="horizontal-track" class="flex gap-8 md:gap-16 px-6 md:px-[20vw] will-change-transform items-center">
+        </div>
     </div>
   </section>
 
-  <!-- SECTION 3: DITHER SHADER (OPTIMISED) -->
-  <section id="dither-section" class="relative w-full min-h-screen bg-black py-24 overflow-hidden">
-    <div class="max-w-7xl mx-auto px-6 text-center mb-12 relative z-10">
-      <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl text-white mb-4">
-        Dither <span class="text-teal-400">Shader</span>
-      </h2>
-      <p class="text-slate-300 text-lg">Move mouse | Configurable modes</p>
+  <section id="dither-section" class="relative w-full min-h-screen bg-[#050505] py-32 overflow-hidden">
+    <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-amber-600/10 blur-[120px] rounded-full pointer-events-none"></div>
+
+    <div class="max-w-7xl mx-auto px-6 mb-16 relative z-10 flex flex-col md:flex-row items-center justify-between">
+      <div>
+        <h2 class="font-['Playfair_Display'] text-5xl md:text-7xl text-white mb-2">
+          Material <span class="italic text-neutral-500">State</span>
+        </h2>
+        <p class="text-neutral-400 font-['Inter'] text-sm tracking-wide">Simulating physical textures through WebGL computation.</p>
+      </div>
+      
+      <div class="mt-8 md:mt-0 flex flex-wrap gap-6 text-neutral-300 font-['Inter'] text-xs uppercase tracking-widest bg-white/5 p-6 rounded-none border border-white/10 backdrop-blur-md">
+        <label class="cursor-pointer hover:text-amber-500 transition-colors flex items-center gap-2">
+          <input type="radio" name="ditherMode" value="bayer" checked class="accent-amber-500"> Ceramic Grid
+        </label>
+        <label class="cursor-pointer hover:text-amber-500 transition-colors flex items-center gap-2">
+          <input type="radio" name="ditherMode" value="noise"> Steam Noise
+        </label>
+        <label class="cursor-pointer hover:text-amber-500 transition-colors flex items-center gap-2">
+          <input type="radio" name="ditherMode" value="crosshatch"> Brushed Brass
+        </label>
+        <div class="w-px h-4 bg-white/20 mx-2 hidden md:block"></div>
+        <label class="cursor-pointer text-amber-500 flex items-center gap-2">
+          <input type="checkbox" id="animatedCheck" checked class="accent-amber-500"> Fluid Dynamics
+        </label>
+      </div>
     </div>
 
-    <div class="relative w-full max-w-4xl mx-auto px-6">
-      <div class="relative overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
-        <canvas id="dither-canvas" class="w-full h-auto aspect-[16/9]"></canvas>
-      </div>
-      <!-- Simple controls (lightweight) -->
-      <div class="mt-6 flex flex-wrap gap-4 justify-center text-white text-sm">
-        <label><input type="radio" name="ditherMode" value="bayer" checked> Bayer</label>
-        <label><input type="radio" name="ditherMode" value="halftone"> Halftone</label>
-        <label><input type="radio" name="ditherMode" value="noise"> Noise</label>
-        <label><input type="radio" name="ditherMode" value="crosshatch"> Crosshatch</label>
-        <label class="ml-4"><input type="checkbox" id="animatedCheck" checked> Animate</label>
+    <div class="relative w-full max-w-7xl mx-auto px-6 z-10">
+      <div class="relative overflow-hidden border border-white/10 bg-[#0a0a0a] group cursor-none">
+        <canvas id="dither-canvas" class="w-full h-auto aspect-[16/7] md:aspect-[21/9] object-cover transition-transform duration-700 group-hover:scale-105"></canvas>
+        <div class="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent opacity-80 pointer-events-none"></div>
       </div>
     </div>
   </section>
@@ -70,8 +92,63 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- Vanilla JS for drawer toggling -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/@studio-freight/lenis@1.0.34/dist/lenis.min.js"></script>
+
 <script>
+  // 1. Initialize Smooth Scrolling (Lenis)
+  const lenis = new Lenis({
+    duration: 1.2,
+    easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+    direction: 'vertical',
+    gestureDirection: 'vertical',
+    smooth: true,
+    mouseMultiplier: 1,
+    smoothTouch: false,
+    touchMultiplier: 2,
+    infinite: false,
+  });
+
+  function raf(time) {
+    lenis.raf(time);
+    requestAnimationFrame(raf);
+  }
+  requestAnimationFrame(raf);
+
+  // Sync GSAP with Lenis
+  gsap.registerPlugin(ScrollTrigger);
+  lenis.on('scroll', ScrollTrigger.update);
+  gsap.ticker.add((time)=>{
+    lenis.raf(time * 1000);
+  });
+  gsap.ticker.lagSmoothing(0);
+
+  // 2. Custom Cursor Logic
+  const cursor = document.getElementById('custom-cursor');
+  if (window.matchMedia("(pointer: fine)").matches) {
+    let mouseX = 0, mouseY = 0, cursorX = 0, cursorY = 0;
+    
+    document.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+
+    gsap.ticker.add(() => {
+      cursorX += (mouseX - cursorX) * 0.15;
+      cursorY += (mouseY - cursorY) * 0.15;
+      gsap.set(cursor, { x: cursorX - 12, y: cursorY - 12 });
+    });
+
+    // Cursor hover effects
+    const interactiveElements = document.querySelectorAll('a, button, input, label, .horizontal-card, canvas');
+    interactiveElements.forEach(el => {
+      el.addEventListener('mouseenter', () => gsap.to(cursor, { scale: 2.5, backgroundColor: 'rgba(245, 158, 11, 0.1)', duration: 0.3 }));
+      el.addEventListener('mouseleave', () => gsap.to(cursor, { scale: 1, backgroundColor: 'transparent', duration: 0.3 }));
+    });
+  }
+
+  // 3. Drawer Navigation Logic
   document.addEventListener('DOMContentLoaded', function() {
     const hamburgerBtn = document.getElementById('hamburgerBtn');
     const drawer = document.getElementById('drawer');
@@ -82,14 +159,14 @@
     function openDrawer() {
       if (drawer) {
         drawer.classList.remove('-translate-x-full');
-        overlay.classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
+        if(overlay) overlay.classList.remove('hidden');
+        lenis.stop(); // Pause smooth scrolling
         
         const spans = hamburgerBtn?.querySelectorAll('span');
         if (spans && spans.length === 3) {
-          spans[0].style.transform = 'rotate(45deg) translateY(9px)';
-          spans[1].style.opacity = '0';
-          spans[2].style.transform = 'rotate(-45deg) translateY(-9px)';
+          gsap.to(spans[0], {y: 9, rotation: 45, duration: 0.4, ease: "power2.inOut"});
+          gsap.to(spans[1], {opacity: 0, duration: 0.2});
+          gsap.to(spans[2], {y: -9, rotation: -45, duration: 0.4, ease: "power2.inOut"});
         }
       }
     }
@@ -97,14 +174,14 @@
     function closeDrawer() {
       if (drawer) {
         drawer.classList.add('-translate-x-full');
-        overlay.classList.add('hidden');
-        document.body.style.overflow = '';
+        if(overlay) overlay.classList.add('hidden');
+        lenis.start(); // Resume scrolling
         
         const spans = hamburgerBtn?.querySelectorAll('span');
         if (spans && spans.length === 3) {
-          spans[0].style.transform = 'rotate(0) translateY(0)';
-          spans[1].style.opacity = '1';
-          spans[2].style.transform = 'rotate(0) translateY(0)';
+          gsap.to(spans[0], {y: 0, rotation: 0, duration: 0.4, ease: "power2.inOut"});
+          gsap.to(spans[1], {opacity: 1, duration: 0.4});
+          gsap.to(spans[2], {y: 0, rotation: 0, duration: 0.4, ease: "power2.inOut"});
         }
       }
     }
@@ -112,110 +189,60 @@
     if (hamburgerBtn) hamburgerBtn.addEventListener('click', openDrawer);
     if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
     if (overlay) overlay.addEventListener('click', closeDrawer);
-    
     drawerLinks.forEach(link => link.addEventListener('click', closeDrawer));
-    
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape' && drawer && !drawer.classList.contains('-translate-x-full')) {
-        closeDrawer();
-      }
-    });
   });
 </script>
 
-<!-- Active Navigation Script -->
-<script>
-  document.addEventListener('DOMContentLoaded', function() {
-    const navLinks = document.querySelectorAll('.nav-link');
-    
-    function setActiveLink(clickedLink) {
-      navLinks.forEach(link => {
-        link.classList.remove('text-teal-800', 'bg-white', 'shadow-sm');
-        if (link.closest('nav')) {
-          link.classList.add('text-slate-600', 'hover:text-teal-700', 'hover:bg-white');
-        } else {
-          link.classList.remove('text-teal-700');
-        }
-      });
-      
-      if (clickedLink.closest('nav')) {
-        clickedLink.classList.remove('text-slate-600', 'hover:text-teal-700', 'hover:bg-white');
-        clickedLink.classList.add('text-teal-800', 'bg-white', 'shadow-sm');
-      } else {
-        clickedLink.classList.add('text-teal-700');
-      }
-    }
-    
-    navLinks.forEach(link => {
-      link.addEventListener('click', function(e) {
-        e.preventDefault();
-        setActiveLink(this);
-        
-        const drawer = document.getElementById('drawer');
-        if (drawer && !drawer.classList.contains('-translate-x-full')) {
-          document.getElementById('closeDrawerBtn')?.click();
-        }
-        
-        const href = this.getAttribute('href');
-        if (href && href !== '#') {
-          const targetId = href.replace('/', '');
-          const targetSection = document.getElementById(targetId);
-          if (targetSection) {
-            targetSection.scrollIntoView({ behavior: 'smooth' });
-          }
-        }
-      });
-    });
-    
-    const path = window.location.pathname;
-    let activeFound = false;
-    navLinks.forEach(link => {
-      if (link.getAttribute('href') === path) {
-        setActiveLink(link);
-        activeFound = true;
-      }
-    });
-    if (!activeFound && navLinks.length > 0) {
-      setActiveLink(navLinks[0]);
-    }
-  });
-</script>
-
-<!-- GSAP + Dither Shader (optimised) -->
 <script>
   (function() {
-    if (typeof gsap === 'undefined') return;
-    gsap.registerPlugin(ScrollTrigger);
-
     const isMobile = window.innerWidth < 768;
 
-    // --- 1. GSAP STAGGER GRID (responsive) ---
+    // --- Title Reveal Animation ---
+    gsap.from(".stagger-title", {
+      scrollTrigger: {
+        trigger: ".stagger-title",
+        start: "top 85%",
+      },
+      y: 50,
+      opacity: 0,
+      duration: 1.2,
+      stagger: 0.2,
+      ease: "power4.out"
+    });
+
+    // --- 1. GSAP STAGGER GRID (3D Matrix) ---
     const staggerGrid = document.getElementById('stagger-grid');
     if (staggerGrid) {
-      staggerGrid.innerHTML = '';
-
+      // Premium dark aesthetic imagery
       const images = [
-        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=600&q=90',
-        'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=600&q=90',
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&q=90',
-        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=600&q=90',
-        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=600&q=90',
-        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=600&q=90',
-        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=600&q=90',
-        'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=600&q=90',
-        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=600&q=90'
+        'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=800&q=90',
+        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=90',
+        'https://images.unsplash.com/photo-1600566752355-35792bedcfea?w=800&q=90',
+        'https://images.unsplash.com/photo-1507652313519-d4e9174296fc?w=800&q=90',
+        'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=90',
+        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=800&q=90',
+        'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=800&q=90',
+        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=90',
+        'https://images.unsplash.com/photo-1600566752355-35792bedcfea?w=800&q=90'
       ];
 
       images.forEach((src, i) => {
         const card = document.createElement('div');
-        card.className = 'stagger-card aspect-square rounded-2xl overflow-hidden shadow-2xl relative group';
-        card.style.background = `url(${src}) center/cover`;
+        card.className = 'stagger-card aspect-[4/5] overflow-hidden relative group bg-[#111]';
         card.style.transformStyle = 'preserve-3d';
-        card.style.border = '2px solid rgba(255,255,255,0.1)';
+        
+        const img = document.createElement('div');
+        img.className = 'absolute inset-0 transition-transform duration-1000 group-hover:scale-110';
+        img.style.background = `url(${src}) center/cover`;
+        img.style.filter = 'grayscale(80%) contrast(1.2)';
+        card.appendChild(img);
         
         const overlay = document.createElement('div');
-        overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4';
-        overlay.innerHTML = `<span class="text-white text-xl font-bold">${String(i + 1).padStart(2, '0')}</span>`;
+        overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex flex-col justify-end p-6 border border-white/0 group-hover:border-white/10';
+        overlay.innerHTML = `
+          <span class="text-amber-500 font-['Inter'] text-xs tracking-widest uppercase mb-1">Series 0${i + 1}</span>
+          <span class="text-white font-['Playfair_Display'] text-2xl">Matte Stone</span>
+        `;
         card.appendChild(overlay);
         
         staggerGrid.appendChild(card);
@@ -224,58 +251,58 @@
       gsap.from('.stagger-card', {
         scrollTrigger: {
           trigger: '#stagger-grid',
-          start: 'top 70%',
-          end: 'bottom 30%',
-          scrub: isMobile ? 0.8 : 1.2,
-          toggleActions: 'play none none reverse'
+          start: 'top 75%',
+          end: 'bottom 25%',
+          scrub: isMobile ? 1 : 1.5,
         },
-        rotationY: (i) => (i % 3 === 0 ? 180 : i % 3 === 1 ? 90 : -90),
-        rotationX: (i) => (i % 2 === 0 ? 30 : -30),
+        y: 100,
+        z: -300,
+        rotationX: 20,
+        rotationY: (i) => (i % 3 === 0 ? 15 : i % 3 === 1 ? 0 : -15),
         opacity: 0,
-        scale: isMobile ? 0.6 : 0.5,
         stagger: {
-          amount: isMobile ? 1 : 1.5,
+          amount: 1.2,
           from: "center",
           grid: isMobile ? [2, 4] : [3, 3],
           ease: "power2.inOut"
         },
-        ease: "power2.out"
+        ease: "power3.out"
       });
-
-      ScrollTrigger.refresh();
     }
 
-    // --- 2. GSAP HORIZONTAL SCROLL GALLERY ---
+    // --- 2. GSAP HORIZONTAL SCROLL (Inertia Skewing) ---
     const track = document.getElementById('horizontal-track');
     if (track) {
-      track.innerHTML = '';
-
-      const images = [
-        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=800&q=90',
-        'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=800&q=90',
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=90',
-        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=800&q=90',
-        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=800&q=90',
-        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800&q=90',
-        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=800&q=90',
-        'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=800&q=90'
+      const horizontalImages = [
+        'https://images.unsplash.com/photo-1595515106969-1ce29566ff1c?w=900&q=90',
+        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=900&q=90',
+        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=900&q=90',
+        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=900&q=90',
+        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=900&q=90',
       ];
 
-      images.forEach((src, index) => {
+      horizontalImages.forEach((src, index) => {
         const card = document.createElement('div');
-        const widthClass = isMobile ? 'w-[200px]' : 'w-[350px]';
-        const heightClass = isMobile ? 'h-[300px]' : 'h-[450px]';
-        card.className = `horizontal-card ${widthClass} ${heightClass} flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl relative group`;
-        card.style.background = `url(${src}) center/cover`;
-        card.style.border = '2px solid rgba(255,255,255,0.2)';
+        const widthClass = isMobile ? 'w-[280px]' : 'w-[500px]';
+        const heightClass = isMobile ? 'h-[400px]' : 'h-[700px]';
+        card.className = `horizontal-card ${widthClass} ${heightClass} flex-shrink-0 overflow-hidden relative group`;
+        
+        const imgInner = document.createElement('div');
+        imgInner.className = 'w-full h-full bg-center bg-cover transition-transform duration-[1.5s] ease-[cubic-bezier(0.19,1,0.22,1)] group-hover:scale-105';
+        imgInner.style.backgroundImage = `url(${src})`;
+        imgInner.style.filter = 'grayscale(30%)';
+        card.appendChild(imgInner);
 
         const overlay = document.createElement('div');
-        overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500';
+        overlay.className = 'absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors duration-700';
         card.appendChild(overlay);
 
         const text = document.createElement('div');
-        text.className = 'absolute bottom-0 left-0 p-4 text-white translate-y-5 group-hover:translate-y-0 transition-transform duration-500';
-        text.innerHTML = `<span class="text-xl md:text-2xl font-bold">${String(index + 1).padStart(2, '0')}</span>`;
+        text.className = 'absolute bottom-8 left-8 text-white overflow-hidden';
+        text.innerHTML = `
+          <div class="translate-y-[120%] group-hover:translate-y-0 transition-transform duration-700 ease-[cubic-bezier(0.19,1,0.22,1)] font-['Playfair_Display'] text-3xl md:text-4xl">Freestanding</div>
+          <div class="translate-y-[120%] group-hover:translate-y-0 transition-transform duration-700 delay-75 ease-[cubic-bezier(0.19,1,0.22,1)] font-['Inter'] text-sm tracking-widest text-amber-500 mt-2 uppercase">View Detail</div>
+        `;
         card.appendChild(text);
 
         track.appendChild(card);
@@ -284,279 +311,193 @@
       setTimeout(() => {
         const trackWidth = track.scrollWidth;
         const viewportWidth = window.innerWidth;
-        const maxScroll = trackWidth - viewportWidth + (isMobile ? 16 : 32);
+        const maxScroll = trackWidth - viewportWidth;
 
         if (maxScroll <= 0) return;
 
-        ScrollTrigger.getAll().forEach(st => {
-          if (st.vars.trigger === '#horizontal-scroll-section' || st.trigger === '#horizontal-scroll-section') {
-            st.kill();
-          }
-        });
-
-        gsap.to(track, {
+        // The Scroll Animation
+        let scrollTween = gsap.to(track, {
           x: -maxScroll,
           ease: 'none',
           scrollTrigger: {
             trigger: '#horizontal-scroll-section',
             start: 'top top',
-            end: () => `+=${maxScroll + window.innerHeight}`,
+            end: () => `+=${maxScroll * 1.5}`, // Extend scroll duration for smoothness
             pin: true,
-            scrub: isMobile ? 1 : 1.5,
-            anticipatePin: 1,
+            scrub: 1, // Smooth scrubbing
             invalidateOnRefresh: true,
-            onRefresh: (self) => {
-              const newTrackWidth = track.scrollWidth;
-              const newViewportWidth = window.innerWidth;
-              const newMaxScroll = newTrackWidth - newViewportWidth + (isMobile ? 16 : 32);
-              self.vars.end = `+=${newMaxScroll + window.innerHeight}`;
-              gsap.set(track, { x: -newMaxScroll * self.progress });
-            }
           }
         });
 
-        gsap.from('.horizontal-card', {
-          scrollTrigger: {
-            trigger: '#horizontal-scroll-section',
-            start: 'top 80%',
-            toggleActions: 'play none none none'
-          },
-          opacity: 0,
-          scale: 0.8,
-          duration: isMobile ? 0.8 : 1,
-          stagger: 0.1,
-          ease: 'power2.out'
+        // Advanced: Inertia Skew Effect during horizontal scroll
+        let proxy = { skew: 0 }, skewSetter = gsap.quickSetter(".horizontal-card", "skewX", "deg"), clamp = gsap.utils.clamp(-15, 15);
+        ScrollTrigger.create({
+          onUpdate: (self) => {
+            let skew = clamp(self.getVelocity() / -300);
+            if (Math.abs(skew) > Math.abs(proxy.skew)) {
+              proxy.skew = skew;
+              gsap.to(proxy, {skew: 0, duration: 0.8, ease: "power3", overwrite: true, onUpdate: () => skewSetter(proxy.skew)});
+            }
+          }
         });
-
-        ScrollTrigger.refresh();
       }, 500);
     }
+  })();
+</script>
 
-    // --- 3. DITHER SHADER (optimised) ---
-    (function initDither() {
-      const canvas = document.getElementById('dither-canvas');
-      if (!canvas) return;
+<script>
+  (function initDither() {
+    const canvas = document.getElementById('dither-canvas');
+    if (!canvas) return;
 
-      // Configuration
-      const config = {
-        src: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?q=80&w=2670&auto=format&fit=crop',
-        gridSize: 4,
-        ditherMode: 'bayer',
-        colorMode: 'grayscale',
-        invert: false,
-        pixelRatio: 1,
-        primaryColor: '#000000',
-        secondaryColor: '#f5f5f5',
-        customPalette: ['#000000', '#ffffff'],
-        brightness: 0,
-        contrast: 1,
-        backgroundColor: 'transparent',
-        objectFit: 'cover',
-        threshold: 0.5,
-        animated: true,
-        animationSpeed: 0.02,
-      };
+    // Premium dark mode configuration
+    const config = {
+      src: 'https://images.unsplash.com/photo-1507652313519-d4e9174296fc?q=80&w=2000&auto=format&fit=crop', // Water ripples / dark texture
+      gridSize: 3,
+      ditherMode: 'bayer',
+      colorMode: 'custom',
+      invert: false,
+      pixelRatio: window.devicePixelRatio || 1,
+      customPalette: ['#050505', '#1a1a1a', '#C5A059', '#e8e8e8'], // Obsidian to Brass to Alabaster
+      brightness: -0.1,
+      contrast: 1.3,
+      threshold: 0.5,
+      animated: true,
+      animationSpeed: 0.015,
+    };
 
-      // Bayer matrices
-      const BAYER_4x4 = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
-      const BAYER_8x8 = [
-        [0,32,8,40,2,34,10,42],
-        [48,16,56,24,50,18,58,26],
-        [12,44,4,36,14,46,6,38],
-        [60,28,52,20,62,30,54,22],
-        [3,35,11,43,1,33,9,41],
-        [51,19,59,27,49,17,57,25],
-        [15,47,7,39,13,45,5,37],
-        [63,31,55,23,61,29,53,21]
-      ];
+    const BAYER_8x8 = [
+      [0,32,8,40,2,34,10,42],
+      [48,16,56,24,50,18,58,26],
+      [12,44,4,36,14,46,6,38],
+      [60,28,52,20,62,30,54,22],
+      [3,35,11,43,1,33,9,41],
+      [51,19,59,27,49,17,57,25],
+      [15,47,7,39,13,45,5,37],
+      [63,31,55,23,61,29,53,21]
+    ];
 
-      function parseColor(c) {
-        if (c.startsWith('#')) {
-          const h = c.slice(1);
-          if (h.length===3) return [parseInt(h[0]+h[0],16), parseInt(h[1]+h[1],16), parseInt(h[2]+h[2],16)];
-          return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
-        }
-        return [0,0,0];
+    function parseColor(c) {
+      if (c.startsWith('#')) {
+        const h = c.slice(1);
+        if (h.length===3) return [parseInt(h[0]+h[0],16), parseInt(h[1]+h[1],16), parseInt(h[2]+h[2],16)];
+        return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
       }
-      const prim = parseColor(config.primaryColor);
-      const seco = parseColor(config.secondaryColor);
-      const custom = config.customPalette.map(parseColor);
+      return [0,0,0];
+    }
+    
+    const custom = config.customPalette.map(parseColor);
+    function luminance(r,g,b) { return 0.299*r + 0.587*g + 0.114*b; }
+    function clamp(v,mi,ma) { return Math.max(mi,Math.min(ma,v)); }
 
-      function luminance(r,g,b) { return 0.299*r + 0.587*g + 0.114*b; }
-      function clamp(v,mi,ma) { return Math.max(mi,Math.min(ma,v)); }
+    const ctx = canvas.getContext('2d', { alpha: false });
+    let img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = config.src;
 
-      const ctx = canvas.getContext('2d');
-      let img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = config.src;
+    let imgData = null, imgW = 0, imgH = 0, animFrame = null, time = 0, isVisible = false;
 
-      let imgData = null, imgW = 0, imgH = 0, animFrame = null, time = 0;
-      let isVisible = true;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => isVisible = entry.isIntersecting);
+    }, { threshold: 0.05 });
+    observer.observe(document.getElementById('dither-section'));
 
-      // Visibility detection – stop animating when out of view
-      const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-          isVisible = entry.isIntersecting;
-        });
-      }, { threshold: 0.1 });
-      observer.observe(document.getElementById('dither-section'));
+    function resizeCanvas() {
+      const container = canvas.parentElement;
+      const rect = container.getBoundingClientRect();
+      const maxWidth = 1200; 
+      let w = rect.width;
+      if (w > maxWidth) w = maxWidth;
+      canvas.width = w;
+      canvas.height = w * (window.innerWidth < 768 ? 7/16 : 9/21); // match aspect ratio classes
+    }
 
-      function resizeCanvas() {
-        const container = canvas.parentElement;
-        const rect = container.getBoundingClientRect();
-        // Limit max width to 800px for performance
-        const maxWidth = 800;
-        let w = rect.width;
-        if (w > maxWidth) w = maxWidth;
-        canvas.width = w;
-        canvas.height = w * 9/16;
-      }
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      if (imgData) renderFrame(time);
+    });
 
-      window.addEventListener('resize', () => {
-        resizeCanvas();
-        if (imgData) renderFrame(time);
-      });
+    function renderFrame(t) {
+      if (!imgData || canvas.width===0) return;
+      const w = canvas.width, h = canvas.height;
+      const src = imgData.data;
+      const sw = imgW, sh = imgH;
+      const cell = Math.max(1, Math.floor(config.gridSize));
 
-      function renderFrame(t) {
-        if (!imgData || canvas.width===0) return;
-        const w = canvas.width, h = canvas.height;
+      ctx.fillStyle = '#050505';
+      ctx.fillRect(0,0,w,h);
 
-        ctx.clearRect(0,0,w,h);
-        if (config.backgroundColor !== 'transparent') {
-          ctx.fillStyle = config.backgroundColor;
-          ctx.fillRect(0,0,w,h);
-        }
+      for (let y=0; y<h; y+=cell) {
+        for (let x=0; x<w; x+=cell) {
+          const sx = Math.floor((x/w)*sw);
+          const sy = Math.floor((y/h)*sh);
+          const idx = (sy*sw + sx)*4;
 
-        const src = imgData.data;
-        const sw = imgW, sh = imgH;
+          let r = src[idx], g = src[idx+1], b = src[idx+2];
+          
+          r = clamp((r-128)*config.contrast + 128 + config.brightness*255, 0, 255);
+          g = clamp((g-128)*config.contrast + 128 + config.brightness*255, 0, 255);
+          b = clamp((b-128)*config.contrast + 128 + config.brightness*255, 0, 255);
 
-        const cell = Math.max(1, Math.floor(config.gridSize * config.pixelRatio));
-        const matSize = config.gridSize <=4 ? 4 : 8;
-        const bayer = matSize===4 ? BAYER_4x4 : BAYER_8x8;
-        const matScale = matSize===4 ? 16 : 64;
+          const lum = luminance(r,g,b)/255;
+          let th;
+          const mx = Math.floor(x/config.gridSize) % 8;
+          const my = Math.floor(y/config.gridSize) % 8;
 
-        for (let y=0; y<h; y+=cell) {
-          for (let x=0; x<w; x+=cell) {
-            const sx = Math.floor((x/w)*sw);
-            const sy = Math.floor((y/h)*sh);
-            const idx = (sy*sw + sx)*4;
-
-            let r = src[idx]||0, g = src[idx+1]||0, b = src[idx+2]||0, a = src[idx+3]||0;
-            if (a<10) continue;
-
-            r = clamp((r-128)*config.contrast + 128 + config.brightness*255, 0, 255);
-            g = clamp((g-128)*config.contrast + 128 + config.brightness*255, 0, 255);
-            b = clamp((b-128)*config.contrast + 128 + config.brightness*255, 0, 255);
-
-            const lum = luminance(r,g,b)/255;
-
-            // threshold
-            let th;
-            const mx = Math.floor(x/config.gridSize) % matSize;
-            const my = Math.floor(y/config.gridSize) % matSize;
-            switch (config.ditherMode) {
-              case 'bayer': th = bayer[my][mx] / matScale; break;
-              case 'halftone': {
-                const ang = Math.PI/4;
-                const sc = config.gridSize*2;
-                const rx = x*Math.cos(ang) + y*Math.sin(ang);
-                const ry = -x*Math.sin(ang) + y*Math.cos(ang);
-                th = (Math.sin(rx/sc) + Math.sin(ry/sc) + 2)/4;
-                break;
-              }
-              case 'noise': {
-                const n = Math.sin(x*12.9898 + y*78.233 + t*100) * 43758.5453;
-                th = n - Math.floor(n);
-                break;
-              }
-              case 'crosshatch': {
-                const l1 = (x+y) % (config.gridSize*2) < config.gridSize ? 1 : 0;
-                const l2 = (x-y+config.gridSize*4) % (config.gridSize*2) < config.gridSize ? 1 : 0;
-                th = (l1+l2)/2;
-                break;
-              }
-              default: th = bayer[my][mx] / matScale;
-            }
-            th = th * (1-config.threshold) + config.threshold*0.5;
-
-            // output color
-            let outR, outG, outB;
-            switch (config.colorMode) {
-              case 'grayscale': outR=outG=outB = lum < th ? 0 : 255; break;
-              case 'duotone':
-                if (lum < th) { outR=prim[0]; outG=prim[1]; outB=prim[2]; }
-                else { outR=seco[0]; outG=seco[1]; outB=seco[2]; }
-                break;
-              case 'custom':
-                if (custom.length===2) {
-                  if (lum < th) { outR=custom[0][0]; outG=custom[0][1]; outB=custom[0][2]; }
-                  else { outR=custom[1][0]; outG=custom[1][1]; outB=custom[1][2]; }
-                } else {
-                  const adj = lum + (th-0.5)*0.5;
-                  const idx = Math.floor(clamp(adj,0,1)*(custom.length-1));
-                  outR = custom[idx][0]; outG = custom[idx][1]; outB = custom[idx][2];
-                }
-                break;
-              default: // original
-                const amt = th-0.5;
-                const ar = clamp(r + amt*64, 0, 255);
-                const ag = clamp(g + amt*64, 0, 255);
-                const ab = clamp(b + amt*64, 0, 255);
-                const lv = 4;
-                outR = Math.round(ar/(255/lv))*(255/lv);
-                outG = Math.round(ag/(255/lv))*(255/lv);
-                outB = Math.round(ab/(255/lv))*(255/lv);
-            }
-
-            if (config.invert) {
-              outR = 255-outR; outG = 255-outG; outB = 255-outB;
-            }
-
-            ctx.fillStyle = `rgb(${outR},${outG},${outB})`;
-            ctx.fillRect(x, y, cell, cell);
+          switch (config.ditherMode) {
+            case 'noise':
+              const n = Math.sin(x*12.9898 + y*78.233 + t*50) * 43758.5453;
+              th = n - Math.floor(n);
+              break;
+            case 'crosshatch':
+              const l1 = (x+y) % (config.gridSize*3) < config.gridSize ? 1 : 0;
+              const l2 = (x-y+100) % (config.gridSize*3) < config.gridSize ? 1 : 0;
+              th = (l1+l2)/2;
+              break;
+            case 'bayer':
+            default:
+              th = BAYER_8x8[my][mx] / 64;
           }
+
+          th = th * (1-config.threshold) + config.threshold*0.5;
+
+          // Multi-color palette mapping
+          const adj = lum + (th-0.5)*0.6;
+          const pIdx = Math.floor(clamp(adj, 0, 0.99) * custom.length);
+          const cOut = custom[pIdx];
+
+          ctx.fillStyle = `rgb(${cOut[0]},${cOut[1]},${cOut[2]})`;
+          ctx.fillRect(x, y, cell, cell);
         }
       }
+    }
 
-      img.onload = () => {
-        imgW = img.naturalWidth;
-        imgH = img.naturalHeight;
-
-        const off = document.createElement('canvas');
-        off.width = imgW;
-        off.height = imgH;
-        const octx = off.getContext('2d');
-        octx.drawImage(img, 0, 0, imgW, imgH);
-        try {
-          imgData = octx.getImageData(0,0,imgW,imgH);
-        } catch(e) {
-          console.error('CORS error');
-          return;
-        }
-
-        resizeCanvas();
-
-        function animate() {
-          if (!isVisible) {
-            // Skip rendering if not visible, but keep the loop alive
-            animFrame = requestAnimationFrame(animate);
-            return;
-          }
+    img.onload = () => {
+      imgW = img.naturalWidth;
+      imgH = img.naturalHeight;
+      const off = document.createElement('canvas');
+      off.width = imgW; off.height = imgH;
+      const octx = off.getContext('2d');
+      octx.drawImage(img, 0, 0, imgW, imgH);
+      imgData = octx.getImageData(0,0,imgW,imgH);
+      
+      resizeCanvas();
+      
+      function animate() {
+        if (isVisible) {
           if (config.animated) time += config.animationSpeed;
           renderFrame(time);
-          animFrame = requestAnimationFrame(animate);
         }
-        animate();
-      };
+        animFrame = requestAnimationFrame(animate);
+      }
+      animate();
+    };
 
-      img.onerror = () => console.error('Image load failed');
-
-      // Connect controls
-      const radios = document.querySelectorAll('input[name="ditherMode"]');
-      radios.forEach(r => r.addEventListener('change', e => config.ditherMode = e.target.value));
-      const animChk = document.getElementById('animatedCheck');
-      if (animChk) animChk.addEventListener('change', e => config.animated = e.target.checked);
-    })();
+    // Controls
+    const radios = document.querySelectorAll('input[name="ditherMode"]');
+    radios.forEach(r => r.addEventListener('change', e => config.ditherMode = e.target.value));
+    const animChk = document.getElementById('animatedCheck');
+    if (animChk) animChk.addEventListener('change', e => config.animated = e.target.checked);
   })();
 </script>
 {% endblock %}
