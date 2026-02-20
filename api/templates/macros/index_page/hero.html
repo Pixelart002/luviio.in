@@ -1,44 +1,15 @@
 {% macro render_hero() %}
-<section class="relative w-full min-h-[600px] sm:min-h-[700px] md:min-h-screen flex items-center justify-center overflow-hidden px-4 py-20 md:py-0">
-    
-    <div class="absolute inset-0 bg-gradient-to-b from-slate-100 to-white -z-10"></div>
-    <div class="absolute top-[10%] sm:top-[15%] md:top-[20%] right-[5%] sm:right-[8%] md:right-[10%] w-[250px] sm:w-[350px] md:w-[500px] h-[250px] sm:h-[350px] md:h-[500px] bg-teal-200/30 rounded-full blur-[80px] sm:blur-[100px] md:blur-[120px] mix-blend-multiply animate-pulse"></div>
-    
-    <div class="w-full max-w-7xl mx-auto px-4 sm:px-6 text-center z-10">
-        <div class="overflow-hidden mb-3 sm:mb-4">
-            <span class="inline-block font-['Plus_Jakarta_Sans'] text-[10px] sm:text-xs font-bold tracking-[0.2em] sm:tracking-[0.3em] uppercase text-teal-700 reveal-line">
-                BATH ARCHITECTURE REDEFINED
-            </span>
-        </div>
-        
-        <h1 class="font-['Playfair_Display'] text-5xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl font-black text-slate-900 leading-[1.1] sm:leading-none mb-4 sm:mb-6 md:mb-8">
-            Fluid <br class="hidden xs:block">
-            <span class="italic font-light">Elegance.</span>
-        </h1>
-        
-        <p class="font-['Plus_Jakarta_Sans'] text-base sm:text-lg md:text-xl text-slate-500 max-w-xs sm:max-w-lg md:max-w-2xl mx-auto font-light mb-8 sm:mb-10 md:mb-12 px-2 sm:px-4">
-            Crafting the world's finest ceramic surfaces and water systems. Where engineering meets pure art.
-        </p>
-        
-        <!-- Buttons with proper Unpoly navigation -->
-        <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 md:gap-6 justify-center items-center">
-            <a href="/experience" 
-               up-target="#content"
-               class="inline-block w-full sm:w-auto bg-slate-900 text-white px-6 sm:px-8 md:px-10 py-3 sm:py-4 md:py-5 rounded-full font-bold text-sm sm:text-base shadow-2xl hover:bg-teal-700 transition-all transform hover:-translate-y-1 text-center cursor-pointer">
-                The Experience Center
-            </a>
-            <a href="/craft" 
-               up-target="#content"
-               class="inline-block w-full sm:w-auto border border-slate-200 px-6 sm:px-8 md:px-10 py-3 sm:py-4 md:py-5 rounded-full font-bold text-sm sm:text-base hover:bg-slate-50 transition-all text-center cursor-pointer">
-                Watch the Craft
-            </a>
-        </div>
+<section class="text-center py-20">
+    <h1 class="text-5xl font-bold">Fluid Elegance</h1>
+    <div class="mt-8 flex gap-4 justify-center">
+        <a href="/experience" up-target="#content" 
+           class="bg-slate-900 text-white px-6 py-3 rounded-full">
+            The Experience Center
+        </a>
+        <a href="/craft" up-target="#content" 
+           class="border px-6 py-3 rounded-full">
+            Watch the Craft
+        </a>
     </div>
-    
-    <a href="#next-section" class="absolute bottom-4 sm:bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 text-slate-300 animate-bounce z-10">
-        <svg class="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-        </svg>
-    </a>
 </section>
 {% endmacro %}

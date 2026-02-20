@@ -11,7 +11,6 @@ app = FastAPI(title="Luviio.in")
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
 def get_base_state():
-    """Centralised state – all data for the whole site"""
     return {
         "nav_items": [
             {"label": "The Studio", "url": "/studio", "active": True},
@@ -61,13 +60,7 @@ def get_base_state():
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    state = get_base_state()
     return templates.TemplateResponse(
         "app/pages/index.html",
-        {"request": request, "state": state}
+        {"request": request, "state": get_base_state()}
     )
-
-# Optional health check (for Vercel)
-@app.get("/health")
-async def health():
-    return {"status": "ok", "time": datetime.now().isoformat()}
