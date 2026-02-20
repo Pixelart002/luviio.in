@@ -7,33 +7,34 @@
     {"label": "Bath Fixtures", "url": "/fixtures"}
 ] %}
 
-<div class="p-8 flex flex-col gap-8 h-full bg-white">
+<!-- ✅ This is just the drawer content - no HTML wrapper -->
+<div class="drawer-content p-8 flex flex-col gap-8 h-full bg-white">
+    <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Menu</h3>
+    
     <!-- Mobile Menu -->
-    <div class="md:hidden">
-        <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-6">Menu</h3>
-        <div class="flex flex-col gap-4">
-            {% for item in state.nav_items %}
-            <a href="{{ item.url }}" 
-               up-target="#content"
-               up-layer="close"
-               class="text-2xl font-['Playfair_Display'] font-bold {{ 'text-teal-700' if item.active else 'text-slate-900 hover:text-teal-700' }} transition-colors">
-                {{ item.label }}
-            </a>
-            {% endfor %}
-        </div>
-        <hr class="my-8 border-slate-100">
+    <div class="flex flex-col gap-4">
+        {% for item in state.nav_items %}
+        <a href="{{ item.url }}" 
+           up-target="#content"
+           up-layer="close"
+           class="text-2xl font-['Playfair_Display'] font-bold {{ 'text-teal-700' if item.active else 'text-slate-900 hover:text-teal-700' }}">
+            {{ item.label }}
+        </a>
+        {% endfor %}
     </div>
+    
+    <hr class="border-slate-100">
 
-    <!-- Curations -->
+    <!-- CURATIONS -->
     <div>
-        <h3 class="text-[10px] font-bold uppercase tracking-widest text-teal-700 mb-6">CURATIONS</h3>
-        <ul class="space-y-5">
+        <h3 class="text-[10px] font-bold uppercase tracking-widest text-teal-700 mb-4">CURATIONS</h3>
+        <ul class="space-y-4">
             {% for category in sidebar_categories %}
             <li>
                 <a href="{{ category.url }}" 
                    up-target="#content"
                    up-layer="close"
-                   class="flex items-center justify-between text-lg font-medium text-slate-600 hover:text-teal-700 transition-colors">
+                   class="flex items-center justify-between text-lg text-slate-600 hover:text-teal-700">
                     {{ category.label }}
                     <span class="text-xs">→</span>
                 </a>
@@ -42,23 +43,23 @@
         </ul>
     </div>
     
-    <!-- Featured Material -->
+    <!-- SIGNATURE -->
     {% if state.featured_material %}
-    <div class="p-6 bg-slate-900 rounded-[2rem] text-white shadow-2xl mt-auto">
-        <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-2 text-teal-400">SIGNATURE</p>
-        <p class="font-['Playfair_Display'] text-xl mb-4 italic leading-tight">{{ state.featured_material.name }}</p>
+    <div class="p-6 bg-slate-900 rounded-[2rem] text-white mt-auto">
+        <p class="text-[10px] opacity-50 uppercase mb-2 text-teal-400">SIGNATURE</p>
+        <p class="font-['Playfair_Display'] text-xl mb-4">{{ state.featured_material.name }}</p>
         <a href="{{ state.featured_material.url }}" 
            up-target="#content"
            up-layer="close"
-           class="text-xs font-bold text-teal-400 underline hover:text-teal-300 transition-colors">
+           class="text-xs text-teal-400 underline">
             View Craft →
         </a>
     </div>
     {% endif %}
 
-    <!-- Close Button -->
+    <!-- CLOSE Button -->
     <button up-close
-            class="w-full py-4 text-xs font-bold uppercase tracking-widest text-slate-400 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer">
+            class="w-full py-4 text-xs font-bold uppercase bg-slate-50 hover:bg-slate-100 rounded-xl">
         CLOSE
     </button>
 </div>

@@ -89,15 +89,6 @@ async def home_route(request: Request):
             {"request": request, "state": fallback_state}
         )
 
-@app.get("/drawer-content", response_class=HTMLResponse)
-async def drawer_content(request: Request):
-    """Drawer content for Unpoly layer"""
-    state = get_base_state()
-    return templates.TemplateResponse(
-        "app/partials/drawer_content.html",
-        {"request": request, "state": state}
-    )
-
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}

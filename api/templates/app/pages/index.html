@@ -3,6 +3,7 @@
 {% from "macros/index_page/header.html" import render_header %}
 {% from "macros/index_page/footer.html" import render_footer %}
 {% from "macros/index_page/hero.html" import render_hero %}
+{% from "macros/index_page/drawer_items.html" import render_drawer_items %} <!-- ✅ Imported but hidden -->
 
 {% block header %}
 {{ render_header(state) }}
@@ -11,30 +12,6 @@
 {% block content %}
 {{ render_hero() }}
 {{ render_footer(state) }}
-{% endblock %}
 
-{% block scripts %}
-<script>
-  document.addEventListener('DOMContentLoaded', function() {
-    if (typeof gsap !== 'undefined') {
-      gsap.registerPlugin(ScrollTrigger);
-      
-      // Hero animations
-      gsap.from('.reveal-line', {
-        y: 20,
-        opacity: 0,
-        duration: 0.8,
-        ease: 'power2.out'
-      });
-      
-      gsap.from('h1 span', {
-        y: 50,
-        opacity: 0,
-        duration: 1,
-        stagger: 0.2,
-        ease: 'power3.out'
-      });
-    }
-  });
-</script>
+<!-- ✅ Drawer widget is defined here but NOT rendered -->
 {% endblock %}
