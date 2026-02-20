@@ -1,5 +1,5 @@
 {% macro render_drawer(state) %}
-<div id="drawer-content" class="p-8 flex flex-col gap-8 bg-white h-full min-h-screen">
+<div class="p-8 flex flex-col gap-8 bg-white h-full min-h-screen">
     
     <div class="md:hidden">
         <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-6">Menu</h3>
@@ -33,11 +33,8 @@
         </ul>
     </div>
 
-    <button up-dismiss class="mt-auto w-full py-4 text-xs font-bold uppercase tracking-widest text-slate-400 bg-slate-50 rounded-xl hover:bg-slate-200 transition-colors">
+    <button type="button" up-dismiss class="mt-auto w-full py-4 text-xs font-bold uppercase tracking-widest text-slate-400 bg-slate-50 rounded-xl hover:bg-slate-200 transition-colors">
         Close Menu
     </button>
 </div>
 {% endmacro %}
-
-{# IMPORTANT: This line makes sure the macro actually prints HTML when the file is requested directly #}
-{{ render_drawer(state) }}

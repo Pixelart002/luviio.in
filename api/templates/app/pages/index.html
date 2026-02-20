@@ -1,11 +1,17 @@
 {% extends "app/base.html" %}
 {% from "macros/index_page/header.html" import render_header %}
+{% from "macros/index_page/drawer.html" import render_drawer %}
 {% from "macros/index_page/footer.html" import render_footer %}
 {% from "macros/index_page/hero.html" import render_hero %}
 
 {% block header %}{{ render_header(state) }}{% endblock %}
 
 {% block content %}
+
+<template id="drawer-template">
+  {{ render_drawer(state) }}
+</template>
+
 <div id="main-content" class="w-full">
   {{ render_hero() }}
 </div>
@@ -17,7 +23,6 @@
 <script>
   if (typeof gsap !== 'undefined') {
     gsap.registerPlugin(ScrollTrigger);
-    // Refresh animations on Unpoly navigation
     up.on('up:fragment:inserted', () => ScrollTrigger.refresh());
   }
 </script>
