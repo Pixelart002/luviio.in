@@ -26,13 +26,13 @@
       <p class="text-slate-300 text-xl">Advanced 3D flip with custom stagger patterns</p>
     </div>
 
-    <!-- Stagger Grid - 3x3 Cards (responsive grid) -->
+    <!-- Stagger Grid - 3x3 Cards -->
     <div class="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 max-w-6xl mx-auto px-6" id="stagger-grid">
       <!-- Cards populated by JS -->
     </div>
   </section>
 
-  <!-- SECTION 2: GSAP HORIZONTAL SCROLL GALLERY (with responsive card sizing) -->
+  <!-- SECTION 2: GSAP HORIZONTAL SCROLL GALLERY -->
   <section id="horizontal-scroll-section" class="relative w-full h-screen bg-slate-900 overflow-hidden">
     <div class="sticky top-0 h-screen flex items-center overflow-hidden">
       <div id="horizontal-track" class="flex gap-4 md:gap-8 px-4 md:px-16 will-change-transform">
@@ -41,18 +41,28 @@
     </div>
   </section>
 
-  <!-- SECTION 3: ACETERNITY DITHER SHADER (ASCII ART) -->
+  <!-- SECTION 3: DITHER SHADER (ACETERNITY ASCII STYLE) -->
   <section class="relative w-full min-h-screen bg-black py-24 overflow-hidden">
     <div class="max-w-7xl mx-auto px-6 text-center mb-12 relative z-10">
       <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl text-white mb-4">
-        ASCII <span class="text-teal-400">DITHER</span>
+        Dither <span class="text-teal-400">Shader</span>
       </h2>
-      <p class="text-slate-300 text-lg">Real‑time shader effect – move your mouse</p>
+      <p class="text-slate-300 text-lg">Move mouse to interact | Configurable modes & colors</p>
     </div>
 
-    <!-- Canvas for dither shader -->
-    <div class="relative w-full h-[500px] md:h-[600px] flex items-center justify-center">
-      <canvas id="dither-canvas" class="w-full h-full max-w-5xl mx-auto rounded-3xl shadow-2xl"></canvas>
+    <!-- Container for dither shader canvas + controls (optional) -->
+    <div class="relative w-full max-w-5xl mx-auto px-6">
+      <div class="relative overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
+        <canvas id="dither-canvas" class="w-full h-auto aspect-[16/9]"></canvas>
+      </div>
+      <!-- Simple controls (you can remove or expand) -->
+      <div class="mt-6 flex flex-wrap gap-4 justify-center text-white text-sm">
+        <label><input type="radio" name="ditherMode" value="bayer" checked> Bayer</label>
+        <label><input type="radio" name="ditherMode" value="halftone"> Halftone</label>
+        <label><input type="radio" name="ditherMode" value="noise"> Noise</label>
+        <label><input type="radio" name="ditherMode" value="crosshatch"> Crosshatch</label>
+        <label class="ml-4"><input type="checkbox" id="animatedCheck" checked> Animate</label>
+      </div>
     </div>
   </section>
 </div>
@@ -63,113 +73,12 @@
 {% block scripts %}
 <!-- Vanilla JS for drawer toggling (unchanged) -->
 <script>
-  document.addEventListener('DOMContentLoaded', function() {
-    const hamburgerBtn = document.getElementById('hamburgerBtn');
-    const drawer = document.getElementById('drawer');
-    const overlay = document.getElementById('drawerOverlay');
-    const closeBtn = document.getElementById('closeDrawerBtn');
-    const drawerLinks = drawer ? drawer.querySelectorAll('a') : [];
-    
-    function openDrawer() {
-      if (drawer) {
-        drawer.classList.remove('-translate-x-full');
-        overlay.classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
-        
-        const spans = hamburgerBtn?.querySelectorAll('span');
-        if (spans && spans.length === 3) {
-          spans[0].style.transform = 'rotate(45deg) translateY(9px)';
-          spans[1].style.opacity = '0';
-          spans[2].style.transform = 'rotate(-45deg) translateY(-9px)';
-        }
-      }
-    }
-    
-    function closeDrawer() {
-      if (drawer) {
-        drawer.classList.add('-translate-x-full');
-        overlay.classList.add('hidden');
-        document.body.style.overflow = '';
-        
-        const spans = hamburgerBtn?.querySelectorAll('span');
-        if (spans && spans.length === 3) {
-          spans[0].style.transform = 'rotate(0) translateY(0)';
-          spans[1].style.opacity = '1';
-          spans[2].style.transform = 'rotate(0) translateY(0)';
-        }
-      }
-    }
-    
-    if (hamburgerBtn) hamburgerBtn.addEventListener('click', openDrawer);
-    if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
-    if (overlay) overlay.addEventListener('click', closeDrawer);
-    
-    drawerLinks.forEach(link => link.addEventListener('click', closeDrawer));
-    
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape' && drawer && !drawer.classList.contains('-translate-x-full')) {
-        closeDrawer();
-      }
-    });
-  });
+  // ... (your existing drawer script) ...
 </script>
 
 <!-- Active Navigation Script (unchanged) -->
 <script>
-  document.addEventListener('DOMContentLoaded', function() {
-    const navLinks = document.querySelectorAll('.nav-link');
-    
-    function setActiveLink(clickedLink) {
-      navLinks.forEach(link => {
-        link.classList.remove('text-teal-800', 'bg-white', 'shadow-sm');
-        if (link.closest('nav')) {
-          link.classList.add('text-slate-600', 'hover:text-teal-700', 'hover:bg-white');
-        } else {
-          link.classList.remove('text-teal-700');
-        }
-      });
-      
-      if (clickedLink.closest('nav')) {
-        clickedLink.classList.remove('text-slate-600', 'hover:text-teal-700', 'hover:bg-white');
-        clickedLink.classList.add('text-teal-800', 'bg-white', 'shadow-sm');
-      } else {
-        clickedLink.classList.add('text-teal-700');
-      }
-    }
-    
-    navLinks.forEach(link => {
-      link.addEventListener('click', function(e) {
-        e.preventDefault();
-        setActiveLink(this);
-        
-        const drawer = document.getElementById('drawer');
-        if (drawer && !drawer.classList.contains('-translate-x-full')) {
-          document.getElementById('closeDrawerBtn')?.click();
-        }
-        
-        const href = this.getAttribute('href');
-        if (href && href !== '#') {
-          const targetId = href.replace('/', '');
-          const targetSection = document.getElementById(targetId);
-          if (targetSection) {
-            targetSection.scrollIntoView({ behavior: 'smooth' });
-          }
-        }
-      });
-    });
-    
-    const path = window.location.pathname;
-    let activeFound = false;
-    navLinks.forEach(link => {
-      if (link.getAttribute('href') === path) {
-        setActiveLink(link);
-        activeFound = true;
-      }
-    });
-    if (!activeFound && navLinks.length > 0) {
-      setActiveLink(navLinks[0]);
-    }
-  });
+  // ... (your existing nav script) ...
 </script>
 
 <!-- GSAP + Dither Shader -->
@@ -178,262 +87,270 @@
     if (typeof gsap === 'undefined') return;
     gsap.registerPlugin(ScrollTrigger);
 
-    // --- Helper: detect mobile ---
     const isMobile = window.innerWidth < 768;
 
-    // --- 1. GSAP STAGGER GRID (responsive timing) ---
-    const staggerGrid = document.getElementById('stagger-grid');
-    if (staggerGrid) {
-      staggerGrid.innerHTML = '';
+    // --- GSAP STAGGER GRID (same as before, with responsive timing) ---
+    // ... (your existing stagger grid code) ...
 
-      const images = [
-        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=600&q=90',
-        'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=600&q=90',
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&q=90',
-        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=600&q=90',
-        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=600&q=90',
-        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=600&q=90',
-        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=600&q=90',
-        'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=600&q=90',
-        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=600&q=90'
-      ];
+    // --- GSAP HORIZONTAL SCROLL GALLERY (same as before) ---
+    // ... (your existing horizontal scroll code) ...
 
-      images.forEach((src, i) => {
-        const card = document.createElement('div');
-        card.className = 'stagger-card aspect-square rounded-2xl overflow-hidden shadow-2xl relative group';
-        card.style.background = `url(${src}) center/cover`;
-        card.style.transformStyle = 'preserve-3d';
-        card.style.border = '2px solid rgba(255,255,255,0.1)';
-        
-        const overlay = document.createElement('div');
-        overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4';
-        overlay.innerHTML = `<span class="text-white text-xl font-bold">${String(i + 1).padStart(2, '0')}</span>`;
-        card.appendChild(overlay);
-        
-        staggerGrid.appendChild(card);
-      });
-
-      gsap.from('.stagger-card', {
-        scrollTrigger: {
-          trigger: '#stagger-grid',
-          start: 'top 70%',
-          end: 'bottom 30%',
-          scrub: isMobile ? 0.8 : 1.2,         // faster on mobile
-          toggleActions: 'play none none reverse'
-        },
-        rotationY: (i) => (i % 3 === 0 ? 180 : i % 3 === 1 ? 90 : -90),
-        rotationX: (i) => (i % 2 === 0 ? 30 : -30),
-        opacity: 0,
-        scale: isMobile ? 0.6 : 0.5,
-        stagger: {
-          amount: isMobile ? 1 : 1.5,
-          from: "center",
-          grid: isMobile ? [2, 4] : [3, 3],   // mobile: 2 cols, 4 rows
-          ease: "power2.inOut"
-        },
-        ease: "power2.out"
-      });
-
-      ScrollTrigger.refresh();
-    }
-
-    // --- 2. GSAP HORIZONTAL SCROLL GALLERY (responsive cards & scrub) ---
-    const track = document.getElementById('horizontal-track');
-    if (track) {
-      track.innerHTML = '';
-
-      const images = [
-        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=800&q=90',
-        'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=800&q=90',
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=90',
-        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=800&q=90',
-        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=800&q=90',
-        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800&q=90',
-        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=800&q=90',
-        'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=800&q=90'
-      ];
-
-      images.forEach((src, index) => {
-        const card = document.createElement('div');
-        // Smaller cards on mobile
-        const widthClass = isMobile ? 'w-[200px]' : 'w-[350px]';
-        const heightClass = isMobile ? 'h-[300px]' : 'h-[450px]';
-        card.className = `horizontal-card ${widthClass} ${heightClass} flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl relative group`;
-        card.style.background = `url(${src}) center/cover`;
-        card.style.border = '2px solid rgba(255,255,255,0.2)';
-
-        const overlay = document.createElement('div');
-        overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500';
-        card.appendChild(overlay);
-
-        const text = document.createElement('div');
-        text.className = 'absolute bottom-0 left-0 p-4 text-white translate-y-5 group-hover:translate-y-0 transition-transform duration-500';
-        text.innerHTML = `<span class="text-xl md:text-2xl font-bold">${String(index + 1).padStart(2, '0')}</span>`;
-        card.appendChild(text);
-
-        track.appendChild(card);
-      });
-
-      setTimeout(() => {
-        const trackWidth = track.scrollWidth;
-        const viewportWidth = window.innerWidth;
-        const maxScroll = trackWidth - viewportWidth + (isMobile ? 16 : 32);
-
-        if (maxScroll <= 0) return;
-
-        ScrollTrigger.getAll().forEach(st => {
-          if (st.vars.trigger === '#horizontal-scroll-section' || st.trigger === '#horizontal-scroll-section') {
-            st.kill();
-          }
-        });
-
-        gsap.to(track, {
-          x: -maxScroll,
-          ease: 'none',
-          scrollTrigger: {
-            trigger: '#horizontal-scroll-section',
-            start: 'top top',
-            end: () => `+=${maxScroll + window.innerHeight}`,
-            pin: true,
-            scrub: isMobile ? 1 : 1.5,        // smoother on mobile? actually 1 is fine
-            anticipatePin: 1,
-            invalidateOnRefresh: true,
-            onRefresh: (self) => {
-              const newTrackWidth = track.scrollWidth;
-              const newViewportWidth = window.innerWidth;
-              const newMaxScroll = newTrackWidth - newViewportWidth + (isMobile ? 16 : 32);
-              self.vars.end = `+=${newMaxScroll + window.innerHeight}`;
-              gsap.set(track, { x: -newMaxScroll * self.progress });
-            }
-          }
-        });
-
-        gsap.from('.horizontal-card', {
-          scrollTrigger: {
-            trigger: '#horizontal-scroll-section',
-            start: 'top 80%',
-            toggleActions: 'play none none none'
-          },
-          opacity: 0,
-          scale: 0.8,
-          duration: isMobile ? 0.8 : 1,
-          stagger: 0.1,
-          ease: 'power2.out'
-        });
-
-        ScrollTrigger.refresh();
-      }, 500);
-    }
-
-    // --- 3. ACETERNITY DITHER SHADER (ASCII ART) ---
+    // --- 3. DITHER SHADER (standalone JS version) ---
     (function initDither() {
       const canvas = document.getElementById('dither-canvas');
-      if (!canvas || typeof THREE === 'undefined') return;
+      if (!canvas) return;
 
-      // Simple Three.js scene with a rotating cube and a dithering shader
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x111111);
+      // --- Configuration (matching React component props) ---
+      const config = {
+        src: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?q=80&w=2670&auto=format&fit=crop',
+        gridSize: 4,
+        ditherMode: 'bayer',      // 'bayer', 'halftone', 'noise', 'crosshatch'
+        colorMode: 'grayscale',    // 'original', 'grayscale', 'duotone', 'custom'
+        invert: false,
+        pixelRatio: 1,
+        primaryColor: '#000000',
+        secondaryColor: '#f5f5f5',
+        customPalette: ['#000000', '#ffffff'],
+        brightness: 0,
+        contrast: 1,
+        backgroundColor: 'transparent',
+        objectFit: 'cover',
+        threshold: 0.5,
+        animated: true,
+        animationSpeed: 0.02,
+      };
 
-      const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
-      camera.position.z = 3;
+      // --- Helper functions (same as React component) ---
+      const BAYER_MATRIX_4x4 = [
+        [0,8,2,10],
+        [12,4,14,6],
+        [3,11,1,9],
+        [15,7,13,5]
+      ];
+      const BAYER_MATRIX_8x8 = [
+        [0,32,8,40,2,34,10,42],
+        [48,16,56,24,50,18,58,26],
+        [12,44,4,36,14,46,6,38],
+        [60,28,52,20,62,30,54,22],
+        [3,35,11,43,1,33,9,41],
+        [51,19,59,27,49,17,57,25],
+        [15,47,7,39,13,45,5,37],
+        [63,31,55,23,61,29,53,21]
+      ];
 
-      const renderer = new THREE.WebGLRenderer({ canvas, antialias: false }); // no antialiasing for dither effect
-      renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-      renderer.setPixelRatio(1);
-
-      // Custom shader material with dither effect (simple black/white dither)
-      const geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
-      const material = new THREE.ShaderMaterial({
-        uniforms: {
-          time: { value: 0 },
-          mouse: { value: new THREE.Vector2(0.5, 0.5) }
-        },
-        vertexShader: `
-          varying vec2 vUv;
-          varying vec3 vPosition;
-          void main() {
-            vUv = uv;
-            vPosition = position;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          uniform float time;
-          uniform vec2 mouse;
-          varying vec2 vUv;
-          varying vec3 vPosition;
-
-          // Simple dither function (Bayer matrix 4x4)
-          float bayer4x4(vec2 p) {
-            int x = int(mod(p.x, 4.0));
-            int y = int(mod(p.y, 4.0));
-            int index = x + y * 4;
-            int bayer[16] = int[](
-              0, 8, 2, 10,
-              12, 4, 14, 6,
-              3, 11, 1, 9,
-              15, 7, 13, 5
-            );
-            return float(bayer[index]) / 16.0;
-          }
-
-          void main() {
-            // Fake lighting based on position and mouse
-            float brightness = abs(sin(vPosition.x * 2.0 + time) * cos(vPosition.y * 2.0 + time) * sin(vPosition.z * 2.0 + time));
-            brightness = brightness * 0.8 + 0.2; // range 0.2-1.0
-
-            // Add mouse influence
-            brightness += (mouse.x - 0.5) * 0.5;
-
-            // Quantize to 8 levels for dithering
-            float levels = 8.0;
-            float quant = floor(brightness * levels) / levels;
-
-            // Dither threshold
-            float threshold = bayer4x4(gl_FragCoord.xy);
-            float dither = step(threshold, fract(brightness * levels));
-
-            // Final color: either black or white (ASCII art feel)
-            float final = step(0.5, quant + dither * 0.1);
-            gl_FragColor = vec4(vec3(final), 1.0);
-          }
-        `,
-        side: THREE.DoubleSide
-      });
-
-      const cube = new THREE.Mesh(geometry, material);
-      scene.add(cube);
-
-      // Mouse move interaction
-      const mouse = new THREE.Vector2(0.5, 0.5);
-      canvas.addEventListener('mousemove', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        mouse.x = (e.clientX - rect.left) / rect.width;
-        mouse.y = 1.0 - (e.clientY - rect.top) / rect.height; // flip Y
-      });
-
-      // Animation loop
-      function animate() {
-        requestAnimationFrame(animate);
-
-        cube.rotation.x += 0.005;
-        cube.rotation.y += 0.01;
-
-        material.uniforms.time.value += 0.05;
-        material.uniforms.mouse.value.set(mouse.x, mouse.y);
-
-        renderer.render(scene, camera);
+      function parseColor(color) {
+        if (color.startsWith('#')) {
+          const hex = color.slice(1);
+          if (hex.length === 3) return [
+            parseInt(hex[0]+hex[0],16),
+            parseInt(hex[1]+hex[1],16),
+            parseInt(hex[2]+hex[2],16)
+          ];
+          return [
+            parseInt(hex.slice(0,2),16),
+            parseInt(hex.slice(2,4),16),
+            parseInt(hex.slice(4,6),16)
+          ];
+        }
+        const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/i);
+        if (match) return [parseInt(match[1]),parseInt(match[2]),parseInt(match[3])];
+        return [0,0,0];
       }
-      animate();
 
-      // Resize handler
+      function getLuminance(r,g,b) { return 0.299*r + 0.587*g + 0.114*b; }
+      function clamp(v,min,max) { return Math.max(min,Math.min(max,v)); }
+
+      const parsedPrimary = parseColor(config.primaryColor);
+      const parsedSecondary = parseColor(config.secondaryColor);
+      const parsedCustom = config.customPalette.map(parseColor);
+
+      // --- Setup canvas ---
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      let img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = config.src;
+
+      let imageDataCache = null;
+      let imgWidth = 0, imgHeight = 0;
+      let animationFrame = null;
+      let time = 0;
+
+      function resizeCanvas() {
+        const container = canvas.parentElement;
+        const rect = container.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+      }
+
       window.addEventListener('resize', () => {
-        camera.aspect = canvas.clientWidth / canvas.clientHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+        resizeCanvas();
+        if (imageDataCache) renderFrame(time);
       });
-    })();
 
+      function renderFrame(t) {
+        if (!imageDataCache || canvas.width === 0 || canvas.height === 0) return;
+
+        const w = canvas.width;
+        const h = canvas.height;
+
+        ctx.clearRect(0,0,w,h);
+        if (config.backgroundColor !== 'transparent') {
+          ctx.fillStyle = config.backgroundColor;
+          ctx.fillRect(0,0,w,h);
+        }
+
+        const sourceData = imageDataCache.data;
+        const sw = imgWidth, sh = imgHeight;
+
+        const effectivePixelSize = Math.max(1, Math.floor(config.gridSize * config.pixelRatio));
+        const matrixSize = config.gridSize <= 4 ? 4 : 8;
+        const bayerMatrix = matrixSize === 4 ? BAYER_MATRIX_4x4 : BAYER_MATRIX_8x8;
+        const matrixScale = matrixSize === 4 ? 16 : 64;
+
+        for (let y = 0; y < h; y += effectivePixelSize) {
+          for (let x = 0; x < w; x += effectivePixelSize) {
+            const srcX = Math.floor((x / w) * sw);
+            const srcY = Math.floor((y / h) * sh);
+            const srcIdx = (srcY * sw + srcX) * 4;
+
+            let r = sourceData[srcIdx] || 0;
+            let g = sourceData[srcIdx+1] || 0;
+            let b = sourceData[srcIdx+2] || 0;
+            const a = sourceData[srcIdx+3] || 0;
+            if (a < 10) continue;
+
+            r = clamp((r-128)*config.contrast + 128 + config.brightness*255, 0, 255);
+            g = clamp((g-128)*config.contrast + 128 + config.brightness*255, 0, 255);
+            b = clamp((b-128)*config.contrast + 128 + config.brightness*255, 0, 255);
+
+            const lum = getLuminance(r,g,b) / 255;
+
+            // dither threshold
+            let thresh;
+            const mx = Math.floor(x / config.gridSize) % matrixSize;
+            const my = Math.floor(y / config.gridSize) % matrixSize;
+            switch (config.ditherMode) {
+              case 'bayer':
+                thresh = bayerMatrix[my][mx] / matrixScale;
+                break;
+              case 'halftone': {
+                const angle = Math.PI/4;
+                const scale = config.gridSize * 2;
+                const rotX = x*Math.cos(angle) + y*Math.sin(angle);
+                const rotY = -x*Math.sin(angle) + y*Math.cos(angle);
+                thresh = (Math.sin(rotX/scale) + Math.sin(rotY/scale) + 2) / 4;
+                break;
+              }
+              case 'noise': {
+                const noiseVal = Math.sin(x*12.9898 + y*78.233 + t*100) * 43758.5453;
+                thresh = noiseVal - Math.floor(noiseVal);
+                break;
+              }
+              case 'crosshatch': {
+                const line1 = (x + y) % (config.gridSize*2) < config.gridSize ? 1 : 0;
+                const line2 = (x - y + config.gridSize*4) % (config.gridSize*2) < config.gridSize ? 1 : 0;
+                thresh = (line1 + line2) / 2;
+                break;
+              }
+              default: thresh = bayerMatrix[my][mx] / matrixScale;
+            }
+            thresh = thresh * (1 - config.threshold) + config.threshold * 0.5;
+
+            // determine output color
+            let outR, outG, outB;
+            switch (config.colorMode) {
+              case 'grayscale':
+                if (lum < thresh) { outR=0; outG=0; outB=0; }
+                else { outR=255; outG=255; outB=255; }
+                break;
+              case 'duotone':
+                if (lum < thresh) { outR=parsedPrimary[0]; outG=parsedPrimary[1]; outB=parsedPrimary[2]; }
+                else { outR=parsedSecondary[0]; outG=parsedSecondary[1]; outB=parsedSecondary[2]; }
+                break;
+              case 'custom':
+                if (parsedCustom.length === 2) {
+                  if (lum < thresh) { outR=parsedCustom[0][0]; outG=parsedCustom[0][1]; outB=parsedCustom[0][2]; }
+                  else { outR=parsedCustom[1][0]; outG=parsedCustom[1][1]; outB=parsedCustom[1][2]; }
+                } else {
+                  const adjLum = lum + (thresh - 0.5) * 0.5;
+                  const idx = Math.floor(clamp(adjLum,0,1) * (parsedCustom.length-1));
+                  outR = parsedCustom[idx][0];
+                  outG = parsedCustom[idx][1];
+                  outB = parsedCustom[idx][2];
+                }
+                break;
+              case 'original':
+              default: {
+                const ditherAmt = thresh - 0.5;
+                const adjR = clamp(r + ditherAmt*64, 0, 255);
+                const adjG = clamp(g + ditherAmt*64, 0, 255);
+                const adjB = clamp(b + ditherAmt*64, 0, 255);
+                const levels = 4;
+                outR = Math.round(adjR / (255/levels)) * (255/levels);
+                outG = Math.round(adjG / (255/levels)) * (255/levels);
+                outB = Math.round(adjB / (255/levels)) * (255/levels);
+                break;
+              }
+            }
+
+            if (config.invert) {
+              outR = 255 - outR;
+              outG = 255 - outG;
+              outB = 255 - outB;
+            }
+
+            ctx.fillStyle = `rgb(${outR},${outG},${outB})`;
+            ctx.fillRect(x, y, effectivePixelSize, effectivePixelSize);
+          }
+        }
+      }
+
+      img.onload = () => {
+        imgWidth = img.naturalWidth;
+        imgHeight = img.naturalHeight;
+
+        // draw image to offscreen canvas to get pixel data
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = imgWidth;
+        offCanvas.height = imgHeight;
+        const offCtx = offCanvas.getContext('2d');
+        offCtx.drawImage(img, 0, 0, imgWidth, imgHeight);
+        try {
+          imageDataCache = offCtx.getImageData(0, 0, imgWidth, imgHeight);
+        } catch(e) {
+          console.error('CORS error?');
+          return;
+        }
+
+        resizeCanvas();
+        const animate = () => {
+          if (config.animated) {
+            time += config.animationSpeed;
+          }
+          renderFrame(time);
+          animationFrame = requestAnimationFrame(animate);
+        };
+        animate();
+      };
+
+      img.onerror = () => console.error('Failed to load image');
+
+      // Connect radio buttons for demo (optional)
+      const modeRadios = document.querySelectorAll('input[name="ditherMode"]');
+      modeRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+          config.ditherMode = e.target.value;
+        });
+      });
+      const animCheck = document.getElementById('animatedCheck');
+      if (animCheck) {
+        animCheck.addEventListener('change', (e) => {
+          config.animated = e.target.checked;
+        });
+      }
+    })();
   })();
 </script>
 {% endblock %}
