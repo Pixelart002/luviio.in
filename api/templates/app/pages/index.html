@@ -11,102 +11,112 @@
 
 {% block content %}
 <style>
-  /* Base Lenis Smooth Scroll */
-  html.lenis, html.lenis body { height: auto; width: 100vw; overflow-x: hidden; }
-  .lenis.lenis-smooth { scroll-behavior: auto !important; }
-  .lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
-  .lenis.lenis-stopped { overflow: hidden; }
-  .lenis.lenis-scrolling iframe { pointer-events: none; }
-  
-  /* Hardware Acceleration & Performance Utilities */
-  .hw-accel {
-    will-change: transform, opacity;
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    transform: translateZ(0);
-  }
-  
-  .glass-card {
-    background: rgba(255, 255, 255, 0.02);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-  }
-  
-  /* Optimized Canvas Rendering */
-  #dither-canvas {
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-    width: 100%;
+  html.lenis, html.lenis body {
     height: auto;
+    width: 100vw;
+    overflow-x: hidden;
+  }
+  .lenis.lenis-smooth {
+    scroll-behavior: auto !important;
+  }
+  .lenis.lenis-smooth [data-lenis-prevent] {
+    overscroll-behavior: contain;
+  }
+  .lenis.lenis-stopped {
+    overflow: hidden;
+  }
+  .lenis.lenis-scrolling iframe {
+    pointer-events: none;
+  }
+  
+  /* Aceternity UI Vibe Utilities */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  }
+  
+  .text-glow {
+    text-shadow: 0 0 40px rgba(45, 212, 191, 0.4);
   }
 </style>
 
 {{ render_drawer() }}
 
-<div id="main-content" class="w-full">
-  
+<div id="main-content" class="w-full bg-[#050507] text-slate-200">
   {{ render_hero() }}
 
-  <div class="w-full bg-[#050507] text-slate-200 relative z-10">
+  <section class="relative w-full min-h-screen py-32 perspective-1000 overflow-hidden" style="perspective: 1200px;">
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-teal-900/20 rounded-full blur-[120px] pointer-events-none"></div>
 
-    <section class="relative w-full min-h-screen py-32 perspective-1000 overflow-hidden" style="perspective: 1200px;">
-      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-teal-900/10 rounded-full blur-[120px] pointer-events-none"></div>
+    <div class="max-w-7xl mx-auto px-6 text-center mb-24 relative z-10">
+      <h2 class="font-['Playfair_Display'] text-6xl md:text-8xl text-white mb-6 tracking-tight">
+        The <span class="text-teal-400 text-glow font-italic">Obsidian</span> Line
+      </h2>
+      <p class="text-slate-400 text-xl md:text-2xl font-light max-w-2xl mx-auto">
+        Brutalist geometry meets the fluidity of water. Masterpieces forged in matte black titanium.
+      </p>
+    </div>
 
-      <div class="max-w-7xl mx-auto px-6 text-center mb-24 relative z-10 hw-accel">
-        <h2 class="font-['Playfair_Display'] text-6xl md:text-8xl text-white mb-6 tracking-tight">
-          The <span class="text-teal-400 font-italic">Obsidian</span> Line
-        </h2>
-        <p class="text-slate-400 text-xl md:text-2xl font-light max-w-2xl mx-auto">
-          Brutalist geometry meets the fluidity of water. Masterpieces forged in matte black titanium.
-        </p>
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto px-6 relative z-10" id="stagger-grid">
+      </div>
+  </section>
+
+  <section id="horizontal-scroll-section" class="relative w-full h-screen bg-[#020203] overflow-hidden border-y border-white/5">
+    <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20 pointer-events-none"></div>
+    
+    <div class="sticky top-0 h-screen flex flex-col justify-center overflow-hidden">
+      <div class="absolute top-16 left-6 md:left-16 z-20">
+        <h3 class="font-['Playfair_Display'] text-4xl text-white">Spatial <span class="text-teal-400 italic">Harmony</span></h3>
+        <p class="text-slate-500 mt-2 uppercase tracking-widest text-sm">Scroll to explore the gallery</p>
       </div>
 
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto px-6 relative z-10" id="stagger-grid">
+      <div id="horizontal-track" class="flex gap-8 md:gap-12 px-6 md:px-16 pt-20 will-change-transform items-center">
         </div>
-    </section>
+    </div>
+  </section>
 
-    <section id="horizontal-scroll-section" class="relative w-full h-screen bg-[#020203] overflow-hidden border-y border-white/5">
-      <div class="sticky top-0 h-screen flex flex-col justify-center overflow-hidden">
-        <div class="absolute top-16 left-6 md:left-16 z-20 hw-accel">
-          <h3 class="font-['Playfair_Display'] text-4xl text-white">Spatial <span class="text-teal-400 italic">Harmony</span></h3>
-          <p class="text-slate-500 mt-2 uppercase tracking-widest text-sm">Scroll to explore</p>
-        </div>
+  <section id="dither-section" class="relative w-full min-h-screen py-32 overflow-hidden bg-[#050507]">
+    <div class="max-w-7xl mx-auto px-6 text-center mb-16 relative z-10">
+      <h2 class="font-['Playfair_Display'] text-5xl md:text-7xl text-white mb-6">
+        Textural <span class="text-teal-400 font-italic">Purity</span>
+      </h2>
+      <p class="text-slate-400 text-lg md:text-xl font-light">
+        Simulating the tactile nature of stone and water through mathematical noise.
+      </p>
+    </div>
 
-        <div id="horizontal-track" class="flex gap-8 md:gap-12 px-6 md:px-16 pt-20 items-center hw-accel flex-nowrap w-max">
-          </div>
-      </div>
-    </section>
-
-    <section id="dither-section" class="relative w-full min-h-screen py-32 overflow-hidden bg-[#050507]">
-      <div class="max-w-7xl mx-auto px-6 text-center mb-16 relative z-10 hw-accel">
-        <h2 class="font-['Playfair_Display'] text-5xl md:text-7xl text-white mb-6">
-          Textural <span class="text-teal-400 font-italic">Purity</span>
-        </h2>
-      </div>
-
-      <div class="relative w-full max-w-4xl mx-auto px-6 hw-accel">
-        <div class="relative overflow-hidden rounded-3xl p-1 glass-card">
-          <div class="rounded-2xl overflow-hidden bg-black relative aspect-[16/9]">
-            <canvas id="dither-canvas" class="block"></canvas>
-            <div class="absolute inset-0 shadow-[inset_0_0_80px_rgba(0,0,0,0.9)] pointer-events-none"></div>
-          </div>
-        </div>
-        
-        <div class="mt-8 flex flex-wrap gap-4 justify-center text-slate-300 text-sm font-medium">
-          <div class="glass-card px-6 py-2 rounded-full flex gap-4 items-center">
-            <label class="cursor-pointer hover:text-white flex items-center gap-2"><input type="radio" name="ditherMode" value="bayer" checked> Bayer</label>
-            <label class="cursor-pointer hover:text-white flex items-center gap-2"><input type="radio" name="ditherMode" value="halftone"> Halftone</label>
-            <label class="cursor-pointer hover:text-white flex items-center gap-2"><input type="radio" name="ditherMode" value="noise"> Noise</label>
-          </div>
-          <div class="glass-card px-6 py-2 rounded-full flex items-center">
-            <label class="cursor-pointer hover:text-white flex items-center gap-2"><input type="checkbox" id="animatedCheck" checked> Flow</label>
-          </div>
+    <div class="relative w-full max-w-5xl mx-auto px-6">
+      <div class="relative overflow-hidden rounded-3xl p-2 glass-card">
+        <div class="rounded-2xl overflow-hidden bg-black relative">
+          <canvas id="dither-canvas" class="w-full h-auto aspect-[16/9] block"></canvas>
+          <div class="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,0.8)] pointer-events-none"></div>
         </div>
       </div>
-    </section>
-
-  </div> </div>
+      
+      <div class="mt-10 flex flex-wrap gap-4 justify-center text-slate-300 text-sm font-medium">
+        <div class="glass-card px-6 py-3 rounded-full flex gap-6 items-center">
+          <label class="cursor-pointer hover:text-white transition-colors flex items-center gap-2">
+            <input type="radio" name="ditherMode" value="bayer" checked class="accent-teal-400"> Bayer
+          </label>
+          <label class="cursor-pointer hover:text-white transition-colors flex items-center gap-2">
+            <input type="radio" name="ditherMode" value="halftone" class="accent-teal-400"> Halftone
+          </label>
+          <label class="cursor-pointer hover:text-white transition-colors flex items-center gap-2">
+            <input type="radio" name="ditherMode" value="noise" class="accent-teal-400"> Noise
+          </label>
+        </div>
+        <div class="glass-card px-6 py-3 rounded-full flex items-center">
+          <label class="cursor-pointer hover:text-white transition-colors flex items-center gap-2">
+            <input type="checkbox" id="animatedCheck" checked class="accent-teal-400"> Animate Water Dynamics
+          </label>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
 
 {{ render_footer() }}
 {% endblock %}
@@ -117,158 +127,261 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.4/ScrollTrigger.min.js"></script>
 
 <script>
-  // Drawer Vanilla JS (unchanged, highly reliable)
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', function() {
     const hamburgerBtn = document.getElementById('hamburgerBtn');
     const drawer = document.getElementById('drawer');
     const overlay = document.getElementById('drawerOverlay');
     const closeBtn = document.getElementById('closeDrawerBtn');
+    const drawerLinks = drawer ? drawer.querySelectorAll('a') : [];
     
-    const toggleDrawer = (open) => {
-      if (!drawer) return;
-      drawer.classList.toggle('-translate-x-full', !open);
-      overlay?.classList.toggle('hidden', !open);
-      document.body.style.overflow = open ? 'hidden' : '';
-      
-      const spans = hamburgerBtn?.querySelectorAll('span');
-      if (spans && spans.length === 3) {
-        spans[0].style.transform = open ? 'rotate(45deg) translateY(9px) translateX(9px)' : 'none';
-        spans[1].style.opacity = open ? '0' : '1';
-        spans[2].style.transform = open ? 'rotate(-45deg) translateY(-9px) translateX(9px)' : 'none';
+    function openDrawer() {
+      if (drawer) {
+        drawer.classList.remove('-translate-x-full');
+        overlay.classList.remove('hidden');
+        document.body.style.overflow = 'hidden'; // Prevents background scroll
+        
+        // Aceternity style hamburger cross
+        const spans = hamburgerBtn?.querySelectorAll('span');
+        if (spans && spans.length === 3) {
+          spans[0].style.transform = 'rotate(45deg) translateY(9px) translateX(9px)';
+          spans[1].style.opacity = '0';
+          spans[2].style.transform = 'rotate(-45deg) translateY(-9px) translateX(9px)';
+        }
       }
-    };
-
-    hamburgerBtn?.addEventListener('click', () => toggleDrawer(true));
-    closeBtn?.addEventListener('click', () => toggleDrawer(false));
-    overlay?.addEventListener('click', () => toggleDrawer(false));
+    }
+    
+    function closeDrawer() {
+      if (drawer) {
+        drawer.classList.add('-translate-x-full');
+        overlay.classList.add('hidden');
+        document.body.style.overflow = '';
+        
+        const spans = hamburgerBtn?.querySelectorAll('span');
+        if (spans && spans.length === 3) {
+          spans[0].style.transform = 'none';
+          spans[1].style.opacity = '1';
+          spans[2].style.transform = 'none';
+        }
+      }
+    }
+    
+    if (hamburgerBtn) hamburgerBtn.addEventListener('click', openDrawer);
+    if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+    if (overlay) overlay.addEventListener('click', closeDrawer);
+    drawerLinks.forEach(link => link.addEventListener('click', closeDrawer));
+    
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && drawer && !drawer.classList.contains('-translate-x-full')) {
+        closeDrawer();
+      }
+    });
   });
 </script>
 
 <script>
   (function() {
-    if (typeof gsap === 'undefined' || typeof Lenis === 'undefined') return;
+    if (typeof gsap === 'undefined' || typeof Lenis === 'undefined') {
+        console.error("Dependencies missing.");
+        return;
+    }
+    
     gsap.registerPlugin(ScrollTrigger);
 
-    // --- 0. LENIS INITIALIZATION (Anti-Glitch) ---
+    // --- 0. LENIS SMOOTH SCROLL INITIALIZATION ---
     const lenis = new Lenis({
         duration: 1.2,
-        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), // Custom ease
+        direction: 'vertical',
+        gestureDirection: 'vertical',
         smooth: true,
+        mouseMultiplier: 1,
         smoothTouch: false,
+        touchMultiplier: 2,
+        infinite: false,
     });
+
+    // Synchronize Lenis with GSAP ScrollTrigger
     lenis.on('scroll', ScrollTrigger.update);
-    gsap.ticker.add((time) => lenis.raf(time * 1000));
+
+    gsap.ticker.add((time) => {
+        lenis.raf(time * 1000);
+    });
+
     gsap.ticker.lagSmoothing(0);
 
     const isMobile = window.innerWidth < 768;
 
-    // --- 1. STAGGER GRID (3D Flip) ---
+    // --- 1. GSAP STAGGER GRID (3D CARD FLIP) ---
     const staggerGrid = document.getElementById('stagger-grid');
     if (staggerGrid) {
+      staggerGrid.innerHTML = '';
+
+      // High-end architectural / bathware imagery
       const images = [
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=90',
-        'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=800&q=90',
-        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=800&q=90',
-        'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=90',
-        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=800&q=90',
-        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=800&q=90'
+        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=90', // Dark bathroom
+        'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=800&q=90', // Minimal sink
+        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=800&q=90', // Tub
+        'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=90', // Architecture
+        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=800&q=90', // Details
+        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=800&q=90', // Stone
+        'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=800&q=90', // Water
+        'https://images.unsplash.com/photo-1585412727339-54e4bae3bbf9?w=800&q=90', // Faucet
+        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=800&q=90'  // Premium interior
       ];
 
       images.forEach((src, i) => {
         const cardContainer = document.createElement('div');
+        // Add extreme perspective for the 3D effect
         cardContainer.style.perspective = "1500px";
 
         const card = document.createElement('div');
-        card.className = 'stagger-card hw-accel aspect-[4/5] rounded-2xl overflow-hidden relative group glass-card';
+        card.className = 'stagger-card aspect-[4/5] rounded-2xl overflow-hidden relative group glass-card cursor-pointer';
         card.style.transformStyle = 'preserve-3d';
         
-        card.innerHTML = `
-          <div class="absolute inset-0 bg-cover bg-center transition-transform duration-1000 group-hover:scale-110 opacity-70 group-hover:opacity-100" style="background-image: url(${src})"></div>
-          <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-6">
+        const imgBg = document.createElement('div');
+        imgBg.className = 'absolute inset-0 bg-cover bg-center transition-transform duration-1000 group-hover:scale-110 opacity-70 group-hover:opacity-100';
+        imgBg.style.backgroundImage = `url(${src})`;
+        card.appendChild(imgBg);
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-6';
+        overlay.innerHTML = `
+          <div class="translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-500 ease-out">
             <span class="text-teal-400 font-mono text-xs uppercase tracking-widest block mb-1">Edition 0${i + 1}</span>
+            <h4 class="text-white text-xl font-['Playfair_Display']">Obsidian Masterpiece</h4>
           </div>
         `;
+        card.appendChild(overlay);
+        
         cardContainer.appendChild(card);
         staggerGrid.appendChild(cardContainer);
       });
 
+      // Complex 3D reveal synchronized with ScrollTrigger
       gsap.from('.stagger-card', {
         scrollTrigger: {
           trigger: '#stagger-grid',
           start: 'top 85%',
-          end: 'bottom 20%',
-          scrub: 1, // Smoother scrub
+          end: 'bottom 15%',
+          scrub: 1.5, // High scrub value for extreme smoothness
         },
-        rotationY: isMobile ? 30 : (i) => (i % 3 === 0 ? 45 : i % 3 === 1 ? 0 : -45),
-        rotationX: 20,
-        z: -300,
+        rotationY: isMobile ? 45 : (i) => (i % 3 === 0 ? 60 : i % 3 === 1 ? 0 : -60),
+        rotationX: 30,
+        z: -500,
         opacity: 0,
-        scale: 0.85,
-        stagger: { amount: 1, from: "center" },
+        scale: 0.8,
+        stagger: {
+          amount: 1.5,
+          from: "center",
+          grid: isMobile ? [images.length/2, 2] : [3, 3],
+          ease: "power3.out"
+        },
         ease: "power2.out"
       });
     }
 
-    // --- 2. ADVANCED HORIZONTAL SCROLL (Resize Safe) ---
+    // --- 2. GSAP HORIZONTAL SCROLL (BULLETPROOF) ---
     const track = document.getElementById('horizontal-track');
     const scrollSection = document.getElementById('horizontal-scroll-section');
     
     if (track && scrollSection) {
+      track.innerHTML = '';
+
       const images = [
         'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=1000&q=90',
         'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=1000&q=90',
         'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=1000&q=90',
-        'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=1000&q=90'
+        'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=1000&q=90',
+        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=1000&q=90',
+        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=1000&q=90'
       ];
 
       images.forEach((src, index) => {
         const card = document.createElement('div');
-        const widthClass = isMobile ? 'w-[80vw]' : 'w-[500px]';
-        card.className = `horizontal-card hw-accel ${widthClass} h-[400px] md:h-[650px] flex-shrink-0 rounded-3xl overflow-hidden relative group glass-card`;
+        const widthClass = isMobile ? 'w-[280px]' : 'w-[500px]';
+        const heightClass = isMobile ? 'h-[400px]' : 'h-[650px]';
+        card.className = `horizontal-card ${widthClass} ${heightClass} flex-shrink-0 rounded-3xl overflow-hidden relative group glass-card`;
         
-        card.innerHTML = `
-          <div class="absolute inset-0 bg-cover bg-center transition-transform duration-[1.5s] ease-out group-hover:scale-105 filter grayscale group-hover:grayscale-0" style="background-image: url(${src})"></div>
-          <div class="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent"></div>
-          <div class="absolute bottom-0 left-0 p-8 w-full border-b border-white/10">
+        const img = document.createElement('div');
+        img.className = 'absolute inset-0 bg-cover bg-center transition-transform duration-[1.5s] ease-out group-hover:scale-105 filter grayscale hover:grayscale-0';
+        img.style.backgroundImage = `url(${src})`;
+        card.appendChild(img);
+
+        const overlay = document.createElement('div');
+        overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent';
+        card.appendChild(overlay);
+
+        const text = document.createElement('div');
+        text.className = 'absolute bottom-0 left-0 p-8 w-full';
+        text.innerHTML = `
+          <div class="flex justify-between items-end border-b border-white/20 pb-4 mb-4 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-700 ease-out">
             <span class="text-3xl md:text-5xl font-['Playfair_Display'] text-white">0${index + 1}</span>
+            <span class="text-teal-400 text-sm tracking-widest uppercase">Explore</span>
           </div>
         `;
+        card.appendChild(text);
+
         track.appendChild(card);
       });
 
-      // Use matchMedia to handle screen resizes cleanly without overlapping triggers
-      let mm = gsap.matchMedia();
-      mm.add("(min-width: 320px)", () => {
-        const amountToScroll = track.scrollWidth - window.innerWidth + (isMobile ? 48 : 128);
-        
-        let tween = gsap.to(track, {
+      // Setup Horizontal Scroll using xPercent for reliability
+      function setupHorizontalScroll() {
+        // Kill existing triggers
+        ScrollTrigger.getAll().forEach(st => {
+          if (st.trigger === scrollSection) st.kill();
+        });
+
+        const trackWidth = track.scrollWidth;
+        const viewportWidth = window.innerWidth;
+        // Calculate exact distance to move
+        const amountToScroll = trackWidth - viewportWidth + (isMobile ? 48 : 128); // Account for padding
+
+        gsap.to(track, {
           x: -amountToScroll,
           ease: 'none',
           scrollTrigger: {
             trigger: scrollSection,
             start: 'top top',
-            end: () => `+=${amountToScroll}`,
+            end: () => `+=${amountToScroll}`, // Pin for exactly the distance scrolled
             pin: true,
-            scrub: 1,
-            invalidateOnRefresh: true, // Crucial for anti-glitch on resize
+            scrub: 1, // Smooth scrubbing tied to Lenis
+            anticipatePin: 1,
+            invalidateOnRefresh: true
           }
         });
+      }
 
-        return () => tween.kill(); // Cleanup on media query change
+      // Initial setup
+      setTimeout(setupHorizontalScroll, 100);
+
+      // Debounced resize handler to rebuild trigger
+      let resizeTimeout;
+      window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(setupHorizontalScroll, 200);
       });
     }
 
-    // --- 3. HIGH-PERFORMANCE DITHER SHADER ---
+    // --- 3. DITHER SHADER (LUVIIO THEME) ---
     (function initDither() {
       const canvas = document.getElementById('dither-canvas');
       if (!canvas) return;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: false });
-      
+
+      // Themed configuration for Luviio (Dark, Teal accents, Water image)
       const config = {
-        src: 'https://images.unsplash.com/photo-1527239441953-caffd968d952?q=50&w=800&auto=format&fit=crop', // Low res source to save memory
+        src: 'https://images.unsplash.com/photo-1527239441953-caffd968d952?q=80&w=2000&auto=format&fit=crop', // Water ripples
+        gridSize: 3, // Tighter grid for finer "stone" texture
         ditherMode: 'bayer',
+        colorMode: 'custom',
+        invert: false,
+        pixelRatio: 1,
+        customPalette: ['#050507', '#1A1B20', '#2DD4BF', '#F8FAFC'], // Luviio Brand Colors
+        brightness: 0.1,
+        contrast: 1.2,
+        backgroundColor: '#050507',
+        threshold: 0.5,
         animated: true,
-        threshold: 0.5
+        animationSpeed: 0.015, // Slow, luxurious flow
       };
 
       const BAYER_8x8 = [
@@ -278,14 +391,20 @@
         [15,47,7,39,13,45,5,37], [63,31,55,23,61,29,53,21]
       ];
 
-      // Luviio Brand Palette (RGB format for faster array lookup)
-      const palette = [
-        [5, 5, 7],     // Deep Void Black
-        [26, 27, 32],  // Slate
-        [45, 212, 191],// Teal 400
-        [248, 250, 252]// Frost White
-      ];
+      function parseColor(c) {
+        if (c.startsWith('#')) {
+          const h = c.slice(1);
+          if (h.length===3) return [parseInt(h[0]+h[0],16), parseInt(h[1]+h[1],16), parseInt(h[2]+h[2],16)];
+          return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+        }
+        return [0,0,0];
+      }
+      const custom = config.customPalette.map(parseColor);
 
+      function luminance(r,g,b) { return 0.299*r + 0.587*g + 0.114*b; }
+      function clamp(v,mi,ma) { return Math.max(mi,Math.min(ma,v)); }
+
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
       let img = new Image();
       img.crossOrigin = 'anonymous';
       img.src = config.src;
@@ -294,70 +413,93 @@
       let isVisible = true;
 
       const observer = new IntersectionObserver((entries) => {
-        isVisible = entries[0].isIntersecting;
+        entries.forEach(entry => isVisible = entry.isIntersecting);
       }, { threshold: 0 });
       observer.observe(document.getElementById('dither-section'));
 
-      // Optimization: Render canvas internally small, use CSS to scale up. 
-      // Massive CPU saving.
-      const internalWidth = isMobile ? 250 : 400; 
+      function resizeCanvas() {
+        const container = canvas.parentElement;
+        const rect = container.getBoundingClientRect();
+        const maxWidth = 1200; // Increased for better Aceternity look
+        let w = rect.width;
+        if (w > maxWidth) w = maxWidth;
+        canvas.width = w;
+        canvas.height = w * 9/16;
+      }
 
       window.addEventListener('resize', () => {
-        canvas.width = internalWidth;
-        canvas.height = internalWidth * (9/16);
+        resizeCanvas();
+        if (imgData) renderFrame(time);
       });
 
       function renderFrame(t) {
-        if (!imgData || canvas.width === 0) return;
+        if (!imgData || canvas.width===0) return;
         const w = canvas.width, h = canvas.height;
-        
+
+        ctx.fillStyle = config.backgroundColor;
+        ctx.fillRect(0,0,w,h);
+
         const src = imgData.data;
         const sw = imgW, sh = imgH;
-        
-        // Cache current fillStyle to avoid redundant state changes
-        let currentFill = '';
+        const cell = Math.max(1, Math.floor(config.gridSize * config.pixelRatio));
+        const matScale = 64;
 
-        for (let y = 0; y < h; y++) {
-          for (let x = 0; x < w; x++) {
-            const waveX = config.animated ? Math.sin(y*0.1 + t*2) * 5 : 0;
-            const waveY = config.animated ? Math.cos(x*0.1 + t*2) * 5 : 0;
+        for (let y=0; y<h; y+=cell) {
+          for (let x=0; x<w; x+=cell) {
+            // Dynamic wave distortion for water effect
+            const waveX = config.animated ? Math.sin(y*0.05 + t*2) * 10 : 0;
+            const waveY = config.animated ? Math.cos(x*0.05 + t*2) * 10 : 0;
             
             let sx = Math.floor(((x+waveX)/w)*sw);
             let sy = Math.floor(((y+waveY)/h)*sh);
             
-            sx = Math.max(0, Math.min(sx, sw-1));
-            sy = Math.max(0, Math.min(sy, sh-1));
+            // Constrain
+            sx = clamp(sx, 0, sw-1);
+            sy = clamp(sy, 0, sh-1);
 
             const idx = (sy*sw + sx)*4;
-            const lum = (0.299*src[idx] + 0.587*src[idx+1] + 0.114*src[idx+2])/255;
+            let r = src[idx]||0, g = src[idx+1]||0, b = src[idx+2]||0, a = src[idx+3]||0;
+            
+            if (a<10) continue;
+
+            r = clamp((r-128)*config.contrast + 128 + config.brightness*255, 0, 255);
+            g = clamp((g-128)*config.contrast + 128 + config.brightness*255, 0, 255);
+            b = clamp((b-128)*config.contrast + 128 + config.brightness*255, 0, 255);
+
+            const lum = luminance(r,g,b)/255;
 
             let th;
-            const mx = x % 8;
-            const my = y % 8;
+            const mx = Math.floor(x/config.gridSize) % 8;
+            const my = Math.floor(y/config.gridSize) % 8;
             
-            if (config.ditherMode === 'noise') {
-              th = (Math.sin(x*12.98 + y*78.23 + t*50) * 43758.54) % 1;
-              if (th < 0) th += 1;
-            } else if (config.ditherMode === 'halftone') {
-               const rx = x*0.707 + y*0.707;
-               const ry = -x*0.707 + y*0.707;
-               th = (Math.sin(rx/2) + Math.sin(ry/2) + 2)/4;
-            } else {
-               th = BAYER_8x8[my][mx] / 64;
+            switch (config.ditherMode) {
+              case 'halftone':
+                const ang = Math.PI/4;
+                const sc = config.gridSize*1.5;
+                const rx = x*Math.cos(ang) + y*Math.sin(ang);
+                const ry = -x*Math.sin(ang) + y*Math.cos(ang);
+                th = (Math.sin(rx/sc) + Math.sin(ry/sc) + 2)/4;
+                break;
+              case 'noise':
+                const n = Math.sin(x*12.9898 + y*78.233 + t*50) * 43758.5453;
+                th = n - Math.floor(n);
+                break;
+              case 'bayer':
+              default:
+                th = BAYER_8x8[my][mx] / matScale;
             }
             
-            th = th * 0.5 + 0.25; // soften threshold
+            th = th * (1-config.threshold) + config.threshold*0.5;
 
-            const adj = lum + (th - 0.5);
-            const cIdx = Math.floor(Math.max(0, Math.min(adj, 0.99)) * palette.length);
-            const colorStr = `rgb(${palette[cIdx][0]},${palette[cIdx][1]},${palette[cIdx][2]})`;
-            
-            // Only update fillStyle if the color changes (Huge performance boost)
-            if (colorStr !== currentFill) {
-              ctx.fillStyle = colorStr;
-              currentFill = colorStr;
-            }
-            ctx.fillRect(x, y, 1, 1);
+            // Map to custom Luviio palette based on luminance + dither threshold
+            const adj = lum + (th-0.5)*0.8;
+            const cIdx = Math.floor(clamp(adj,0,0.99)*custom.length);
+            const outR = custom[cIdx][0];
+            const outG = custom[cIdx][1];
+            const outB = custom[cIdx][2];
+
+            ctx.fillStyle = `rgb(${outR},${outG},${outB})`;
+            ctx.fillRect(x, y, cell, cell);
           }
         }
       }
@@ -368,25 +510,34 @@
         const off = document.createElement('canvas');
         off.width = imgW;
         off.height = imgH;
-        off.getContext('2d').drawImage(img, 0, 0);
-        try { imgData = off.getContext('2d').getImageData(0,0,imgW,imgH); } 
-        catch(e) { return; }
+        const octx = off.getContext('2d');
+        octx.drawImage(img, 0, 0, imgW, imgH);
+        try {
+          imgData = octx.getImageData(0,0,imgW,imgH);
+        } catch(e) {
+          console.error('Canvas CORS error, using fallback pattern.');
+          return;
+        }
 
-        canvas.width = internalWidth;
-        canvas.height = internalWidth * (9/16);
+        resizeCanvas();
 
         function animate() {
-          if (isVisible) {
-            if (config.animated) time += 0.02;
-            renderFrame(time);
+          if (!isVisible) {
+            animFrame = requestAnimationFrame(animate);
+            return;
           }
-          requestAnimationFrame(animate);
+          if (config.animated) time += config.animationSpeed;
+          renderFrame(time);
+          animFrame = requestAnimationFrame(animate);
         }
         animate();
       };
 
-      document.querySelectorAll('input[name="ditherMode"]').forEach(r => r.addEventListener('change', e => config.ditherMode = e.target.value));
-      document.getElementById('animatedCheck')?.addEventListener('change', e => config.animated = e.target.checked);
+      // Connect Luviio UI Controls
+      const radios = document.querySelectorAll('input[name="ditherMode"]');
+      radios.forEach(r => r.addEventListener('change', e => config.ditherMode = e.target.value));
+      const animChk = document.getElementById('animatedCheck');
+      if (animChk) animChk.addEventListener('change', e => config.animated = e.target.checked);
     })();
   })();
 </script>
