@@ -1,11 +1,9 @@
 {% macro render_hero() %}
 <section class="relative w-full min-h-[600px] sm:min-h-[700px] md:min-h-screen flex items-center justify-center overflow-hidden px-4 py-20 md:py-0">
     
-    <!-- Background -->
     <div class="absolute inset-0 bg-gradient-to-b from-slate-100 to-white -z-10"></div>
-    <div class="absolute top-[10%] sm:top-[15%] md:top-[20%] right-[5%] sm:right-[8%] md:right-[10%] w-[250px] sm:w-[350px] md:w-[500px] h-[250px] sm:h-[350px] md:h-[500px] bg-teal-200/30 rounded-full blur-[80px] sm:blur-[100px] md:blur-[120px] mix-blend-multiply animate-pulse" id="hero-orb"></div>
+    <div class="absolute top-[10%] sm:top-[15%] md:top-[20%] right-[5%] sm:right-[8%] md:right-[10%] w-[250px] sm:w-[350px] md:w-[500px] h-[250px] sm:h-[350px] md:h-[500px] bg-teal-200/30 rounded-full blur-[80px] sm:blur-[100px] md:blur-[120px] mix-blend-multiply animate-pulse"></div>
     
-    <!-- Content -->
     <div class="w-full max-w-7xl mx-auto px-4 sm:px-6 text-center z-10">
         <div class="overflow-hidden mb-3 sm:mb-4">
             <span class="inline-block font-['Plus_Jakarta_Sans'] text-[10px] sm:text-xs font-bold tracking-[0.2em] sm:tracking-[0.3em] uppercase text-teal-700 reveal-line">
@@ -22,7 +20,7 @@
             Crafting the world's finest ceramic surfaces and water systems. Where engineering meets pure art.
         </p>
         
-        <!-- Buttons -->
+        <!-- Buttons with proper Unpoly navigation -->
         <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 md:gap-6 justify-center items-center">
             <a href="/experience" 
                up-target="#content"
@@ -37,8 +35,7 @@
         </div>
     </div>
     
-    <!-- Scroll indicator -->
-    <a href="#next" class="absolute bottom-4 sm:bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 text-slate-300 animate-bounce z-10">
+    <a href="#next-section" class="absolute bottom-4 sm:bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 text-slate-300 animate-bounce z-10">
         <svg class="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
         </svg>

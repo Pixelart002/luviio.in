@@ -1,7 +1,5 @@
 import os
 from datetime import datetime
-from typing import List, Dict, Any, Optional
-
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -12,11 +10,9 @@ TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 app = FastAPI(title="Luviio.in")
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
-# --- Helper Function for State ---
 def get_base_state():
-    """Returns complete state dictionary with all required fields"""
+    """Centralised state – all data for the whole site"""
     return {
-        "page_title": "Home | Luviio Luxury Studio",
         "nav_items": [
             {"label": "The Studio", "url": "/studio", "active": True},
             {"label": "Materials", "url": "/materials", "active": False},
@@ -60,40 +56,18 @@ def get_base_state():
             "url": "/materials/arctic-stone"
         },
         "user_status": "Studio Access",
-        "footer_about": "Architecture for the most private spaces of your life.",
-        "server_time": datetime.now().strftime("%H:%M:%S")
+        "footer_about": "Architecture for the most private spaces of your life."
     }
 
-# --- Routes ---
 @app.get("/", response_class=HTMLResponse)
-async def home_route(request: Request):
-    """Home page"""
-    try:
-        state = get_base_state()
-        return templates.TemplateResponse(
-            "app/pages/index.html", 
-            {"request": request, "state": state}
-        )
-    except Exception as e:
-        # Fallback state
-        fallback_state = {
-            "nav_items": [{"label": "Home", "url": "/", "active": True}],
-            "sidebar_categories": [],
-            "footer_sections": [],
-            "user_status": "Studio Access",
-            "footer_about": "Luviio Studio",
-            "page_title": "Luviio"
-        }
-        return templates.TemplateResponse(
-            "app/pages/index.html",
-            {"request": request, "state": fallback_state}
-        )
+async def home(request: Request):
+    state = get_base_state()
+    return templates.TemplateResponse(
+        "app/pages/index.html",
+        {"request": request, "state": state}
+    )
 
+# Optional health check (for Vercel)
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
-
-# For local development
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+async def health():
+    return {"status": "ok", "time": datetime.now().isoformat()}

@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-
     <title>{% block title %}Luviio | Luxury Architecture{% endblock %}</title>
 
     <!-- Fonts -->
@@ -14,10 +13,10 @@
     <!-- Unpoly -->
     <link rel="stylesheet" href="https://unpkg.com/unpoly@3.8.0/dist/unpoly.min.css">
     <script src="https://unpkg.com/unpoly@3.8.0/dist/unpoly.min.js"></script>
-    
+
     <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
+
     <!-- GSAP -->
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
@@ -25,15 +24,13 @@
     {% block head %}{% endblock %}
 </head>
 
-<body up-main="#layout" 
-      up-preload 
-      up-progress-bar="#loading-bar"
+<body up-main="#layout" up-preload up-progress-bar="#loading-bar"
       class="bg-[#FAFAFA] font-['Plus_Jakarta_Sans'] text-slate-900 overflow-x-hidden">
 
-    <!-- Loading Bar -->
-    <div id="loading-bar" class="fixed top-0 left-0 h-1 bg-teal-600 z-[100] origin-left scale-x-0 pointer-events-none opacity-0 transition-opacity duration-300"></div>
+    <!-- Loading bar -->
+    <div id="loading-bar" class="fixed top-0 left-0 h-1 bg-teal-600 z-[100] origin-left scale-x-0 pointer-events-none opacity-0"></div>
 
-    <!-- Main Layout -->
+    <!-- Main layout -->
     <div id="layout" class="flex flex-col min-h-screen relative">
         <header id="header" class="fixed top-0 w-full z-50">
             {% block header %}{% endblock %}
@@ -48,14 +45,12 @@
         </footer>
     </div>
 
-    <!-- IMPORTANT: Unpoly Layer Container -->
+    <!-- Layer container – all Unpoly layers go here -->
     <div id="up-layer-container" up-layer="root" class="z-[100]"></div>
 
-    <!-- Unpoly Configuration -->
+    <!-- Unpoly config & events -->
     <script>
-        document.addEventListener('up:framework:boot', function() {
-            console.log('✅ Unpoly ready');
-            
+        up.on('up:framework:boot', function() {
             up.layer.config.backdrop = {
                 background: 'rgba(0, 0, 0, 0.5)',
                 closeOnClick: true,
@@ -63,17 +58,21 @@
             };
         });
 
-        // GSAP animations for layers
-        document.addEventListener('up:layer:open', function(e) {
-            if (e.detail.layer.mode === 'drawer' && typeof gsap !== 'undefined') {
-                gsap.from(e.detail.layer.element, {
-                    x: -100,
+        // GSAP drawer open animation
+        up.on('up:layer:open', function(e) {
+            if (e.layer.mode === 'drawer' && typeof gsap !== 'undefined') {
+                gsap.from(e.layer.element, {
+                    x: e.layer.position === 'left' ? -100 : 100,
                     opacity: 0,
                     duration: 0.4,
                     ease: 'power2.out'
                 });
             }
         });
+
+        // Prevent body scroll when drawer is open
+        up.on('up:layer:open', function() { document.body.style.overflow = 'hidden'; });
+        up.on('up:layer:close', function() { document.body.style.overflow = ''; });
     </script>
 
     {% block scripts %}{% endblock %}
