@@ -14,13 +14,12 @@
             <!-- Desktop Navigation -->
             <nav class="hidden md:flex items-center p-1 bg-white/50 border border-slate-200/50 rounded-full shadow-sm">
                 {% set nav_items = [
-                    {"label": "The Studio", "url": "/studio", "active": true},
-                    {"label": "Materials", "url": "/materials", "active": false}
+                    {"label": "The Studio", "url": "/studio"},
+                    {"label": "Materials", "url": "/materials"}
                 ] %}
                 {% for item in nav_items %}
                 <a href="{{ item.url }}" 
-                   class="px-3 md:px-5 py-1.5 md:py-2 text-[10px] md:text-sm font-medium transition-all rounded-full 
-                          {{ 'text-teal-800 bg-white shadow-sm' if item.active else 'text-slate-600 hover:text-teal-700 hover:bg-white' }}">
+                   class="nav-link px-3 md:px-5 py-1.5 md:py-2 text-[10px] md:text-sm font-medium transition-all rounded-full text-slate-600 hover:text-teal-700 hover:bg-white">
                     {{ item.label }}
                 </a>
                 {% endfor %}

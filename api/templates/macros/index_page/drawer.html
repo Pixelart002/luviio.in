@@ -7,12 +7,12 @@
             <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-6">Menu</h3>
             <div class="flex flex-col gap-4">
                 {% set nav_items = [
-                    {"label": "The Studio", "url": "/studio", "active": true},
-                    {"label": "Materials", "url": "/materials", "active": false}
+                    {"label": "The Studio", "url": "/studio"},
+                    {"label": "Materials", "url": "/materials"}
                 ] %}
                 {% for item in nav_items %}
                 <a href="{{ item.url }}"
-                   class="text-2xl font-['Playfair_Display'] font-bold {{ 'text-teal-700' if item.active else 'text-slate-900' }}">
+                   class="nav-link text-2xl font-['Playfair_Display'] font-bold text-slate-900 hover:text-teal-700 transition-colors">
                     {{ item.label }}
                 </a>
                 {% endfor %}
@@ -40,7 +40,7 @@
             </ul>
         </div>
         
-        <!-- Featured material (always shown) -->
+        <!-- Featured material -->
         <div class="p-6 bg-slate-900 rounded-[2rem] text-white shadow-2xl mt-auto">
             <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-2 text-teal-400">Signature</p>
             <p class="font-['Playfair_Display'] text-xl mb-4 italic leading-tight">Arctic Matte Stone</p>
