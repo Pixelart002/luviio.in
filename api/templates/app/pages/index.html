@@ -17,140 +17,86 @@
 <div id="main-content" class="w-full">
   {{ render_hero() }}
 
-  <!-- SECTION 1: INFINITE MARQUEE (Aceternity style) -->
-  <section class="py-16 bg-slate-900 overflow-hidden">
-    <div class="marquee-container relative">
-      <div class="marquee-track flex whitespace-nowrap will-change-transform">
-        <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8 border border-white/10 rounded-2xl px-12 py-4 backdrop-blur-sm">✦ ALBUM FLICKER ✦</span>
-        <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8 border border-white/10 rounded-2xl px-12 py-4 backdrop-blur-sm">✦ 3D MOTION ✦</span>
-        <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8 border border-white/10 rounded-2xl px-12 py-4 backdrop-blur-sm">✦ SCROLL MAGIC ✦</span>
-        <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8 border border-white/10 rounded-2xl px-12 py-4 backdrop-blur-sm">✦ GSAP PRO ✦</span>
-      </div>
+  <!-- SECTION 1: GSAP STAGGER SHOWCASE (3D CARD FLIP - BEKAR BENTO HATAYA) -->
+  <section class="relative w-full min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 py-24 perspective overflow-hidden">
+    <div class="max-w-7xl mx-auto px-6 text-center mb-20">
+      <h2 class="font-['Playfair_Display'] text-6xl md:text-7xl text-white mb-4">
+        GSAP <span class="text-teal-400">STAGGER</span>
+      </h2>
+      <p class="text-slate-300 text-xl">Advanced 3D flip with custom stagger patterns</p>
+    </div>
+
+    <!-- Stagger Grid - 3x3 Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-6 max-w-6xl mx-auto px-6" id="stagger-grid">
+      <!-- Cards will be populated by JS -->
     </div>
   </section>
 
-  <!-- SECTION 2: BENTO GRID (Aceternity) with Background Beams -->
-  <section class="relative w-full min-h-screen bg-slate-800 py-24 perspective overflow-hidden">
-    <!-- Background Beams -->
-    <div class="absolute inset-0 overflow-hidden">
-      <div class="absolute -top-40 -right-40 w-80 h-80 bg-teal-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-      <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-    </div>
-
-    <div class="max-w-7xl mx-auto px-6 text-center mb-16 relative z-10">
-      <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl text-white">The <span class="text-teal-400">Bento</span> Collection</h2>
-      <p class="text-slate-300 text-lg mt-4">Luxury redefined through modular elegance.</p>
-    </div>
-
-    <!-- Bento Grid -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-6xl mx-auto px-6 relative z-10" id="bento-grid">
-      <!-- Cards will be populated by JS (but we keep HTML structure for clarity) -->
-      <!-- Large card -->
-      <div class="group relative col-span-2 row-span-2 rounded-3xl overflow-hidden cursor-pointer">
-        <div class="absolute inset-0 bg-gradient-to-br from-teal-500 to-slate-700 opacity-80 group-hover:opacity-100 transition-all duration-700"></div>
-        <img src="https://images.unsplash.com/photo-1618220179428-22790b461013?w=800" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay group-hover:scale-110 transition-transform duration-700" alt="Luxury Bath">
-        <div class="absolute bottom-0 left-0 p-8 text-white">
-          <h3 class="text-3xl font-bold mb-2 translate-y-5 group-hover:translate-y-0 transition-transform duration-500">Luxury Bath</h3>
-          <p class="opacity-0 group-hover:opacity-100 transition-opacity duration-500">Immersive ceramic art</p>
-        </div>
-      </div>
-      <!-- Small cards -->
-      <div class="group relative rounded-3xl overflow-hidden cursor-pointer">
-        <div class="absolute inset-0 bg-gradient-to-tr from-purple-500 to-pink-500 opacity-80 group-hover:opacity-100 transition-all duration-700"></div>
-        <img src="https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=400" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay group-hover:scale-110 transition-transform duration-700" alt="Ceramics">
-        <div class="absolute bottom-0 left-0 p-4 text-white">
-          <h3 class="text-xl font-bold">Ceramics</h3>
-        </div>
-      </div>
-      <div class="group relative rounded-3xl overflow-hidden cursor-pointer">
-        <div class="absolute inset-0 bg-gradient-to-bl from-amber-500 to-orange-500 opacity-80 group-hover:opacity-100 transition-all duration-700"></div>
-        <img src="https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=400" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay group-hover:scale-110 transition-transform duration-700" alt="Water Systems">
-        <div class="absolute bottom-0 left-0 p-4 text-white">
-          <h3 class="text-xl font-bold">Water Systems</h3>
-        </div>
-      </div>
-      <div class="group relative rounded-3xl overflow-hidden cursor-pointer">
-        <div class="absolute inset-0 bg-gradient-to-r from-emerald-500 to-cyan-500 opacity-80 group-hover:opacity-100 transition-all duration-700"></div>
-        <img src="https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=400" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay group-hover:scale-110 transition-transform duration-700" alt="Modern Design">
-        <div class="absolute bottom-0 left-0 p-4 text-white">
-          <h3 class="text-xl font-bold">Design</h3>
-        </div>
-      </div>
-      <div class="group relative rounded-3xl overflow-hidden cursor-pointer">
-        <div class="absolute inset-0 bg-gradient-to-t from-indigo-500 to-purple-500 opacity-80 group-hover:opacity-100 transition-all duration-700"></div>
-        <img src="https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=400" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay group-hover:scale-110 transition-transform duration-700" alt="Signature Stone">
-        <div class="absolute bottom-0 left-0 p-4 text-white">
-          <h3 class="text-xl font-bold">Signature</h3>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- SPOTLIGHT CARD -->
-  <section class="py-16 bg-slate-900 flex justify-center">
-    <div class="group relative max-w-md w-full">
-      <div class="absolute -inset-1 bg-gradient-to-r from-teal-600 to-slate-600 rounded-2xl blur opacity-40 group-hover:opacity-80 transition duration-1000 group-hover:duration-200"></div>
-      <div class="relative px-8 py-8 bg-white ring-1 ring-gray-900/5 rounded-2xl leading-none flex items-center gap-6">
-        <div class="w-16 h-16 rounded-full bg-teal-100 flex items-center justify-center">
-          <svg class="w-8 h-8 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-        </div>
-        <div>
-          <h3 class="text-2xl font-bold text-slate-900">The Experience Center</h3>
-          <p class="text-slate-500">Book a private tour of our flagship studio.</p>
-          <a href="#" class="inline-block mt-3 text-teal-600 font-medium hover:underline">Learn more →</a>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- SECTION 3: HORIZONTAL SCROLL GALLERY (Aceternity Infinite Moving Cards style) -->
-  <section id="horizontal-scroll-section" class="relative w-full h-screen bg-slate-900 overflow-hidden">
-    <div class="sticky top-0 h-screen flex items-center overflow-hidden">
-      <div id="horizontal-track" class="flex gap-8 px-16 will-change-transform">
-        <!-- Cards will be inserted by JS -->
-      </div>
-    </div>
-  </section>
-
-  <!-- 3D FLIP CARDS SECTION -->
-  <section class="py-24 bg-slate-800">
+  <!-- SECTION 2: RIVE INTERACTIVE ICONS (AAPKE JHOLE KA UPYOG) -->
+  <section class="relative w-full py-32 bg-slate-800">
     <div class="max-w-7xl mx-auto px-6 text-center mb-16">
-      <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl text-white">Signature <span class="text-teal-400">Materials</span></h2>
+      <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl text-white mb-4">
+        Rive <span class="text-teal-400">Interactive</span>
+      </h2>
+      <p class="text-slate-300 text-lg">Icons that react to your mouse</p>
     </div>
-    <div class="flex flex-col md:flex-row gap-8 justify-center px-6">
-      <!-- Flip Card 1 -->
-      <div class="group h-96 w-80 [perspective:1000px] mx-auto">
-        <div class="relative h-full w-full rounded-2xl shadow-xl transition-all duration-500 [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)]">
-          <div class="absolute inset-0 h-full w-full rounded-2xl bg-gradient-to-br from-teal-400 to-slate-700 [backface-visibility:hidden]">
-            <img src="https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=400" class="h-full w-full object-cover rounded-2xl opacity-80">
-            <div class="absolute bottom-0 left-0 p-6 text-white">
-              <h3 class="text-2xl font-bold">Arctic Matte</h3>
-            </div>
-          </div>
-          <div class="absolute inset-0 h-full w-full rounded-2xl bg-slate-900 text-white [transform:rotateY(180deg)] [backface-visibility:hidden] flex flex-col items-center justify-center p-6">
-            <h3 class="text-2xl font-bold mb-4">Arctic Matte Stone</h3>
-            <p class="text-center">A premium surface that combines durability with ethereal beauty.</p>
-            <button class="mt-6 px-4 py-2 bg-teal-600 rounded-full">View Craft</button>
-          </div>
+
+    <div class="flex flex-wrap justify-center gap-12 items-center">
+      <!-- Rive Icon 1 -->
+      <div class="text-center">
+        <div class="w-32 h-32 md:w-40 md:h-40 bg-white/10 rounded-3xl p-4 backdrop-blur-sm">
+          <canvas id="rive-icon-1" width="160" height="160"></canvas>
         </div>
+        <p class="text-white mt-4 font-medium">Bath</p>
       </div>
-      <!-- Flip Card 2 -->
-      <div class="group h-96 w-80 [perspective:1000px] mx-auto">
-        <div class="relative h-full w-full rounded-2xl shadow-xl transition-all duration-500 [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)]">
-          <div class="absolute inset-0 h-full w-full rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 [backface-visibility:hidden]">
-            <img src="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=400" class="h-full w-full object-cover rounded-2xl opacity-80">
-            <div class="absolute bottom-0 left-0 p-6 text-white">
-              <h3 class="text-2xl font-bold">Onyx Gold</h3>
-            </div>
-          </div>
-          <div class="absolute inset-0 h-full w-full rounded-2xl bg-slate-900 text-white [transform:rotateY(180deg)] [backface-visibility:hidden] flex flex-col items-center justify-center p-6">
-            <h3 class="text-2xl font-bold mb-4">Onyx Gold</h3>
-            <p class="text-center">Warm, luminous, and rare – the ultimate expression of luxury.</p>
-            <button class="mt-6 px-4 py-2 bg-teal-600 rounded-full">View Craft</button>
-          </div>
+
+      <!-- Rive Icon 2 -->
+      <div class="text-center">
+        <div class="w-32 h-32 md:w-40 md:h-40 bg-white/10 rounded-3xl p-4 backdrop-blur-sm">
+          <canvas id="rive-icon-2" width="160" height="160"></canvas>
         </div>
+        <p class="text-white mt-4 font-medium">Water</p>
+      </div>
+
+      <!-- Rive Icon 3 -->
+      <div class="text-center">
+        <div class="w-32 h-32 md:w-40 md:h-40 bg-white/10 rounded-3xl p-4 backdrop-blur-sm">
+          <canvas id="rive-icon-3" width="160" height="160"></canvas>
+        </div>
+        <p class="text-white mt-4 font-medium">Ceramic</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 3: SWIPER 11 HORIZONTAL GALLERY (BEKAR TRACK HATAYA) -->
+  <section class="relative w-full py-32 bg-slate-900">
+    <div class="max-w-7xl mx-auto px-6 text-center mb-16">
+      <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl text-white mb-4">
+        Swiper <span class="text-teal-400">11</span>
+      </h2>
+      <p class="text-slate-300 text-lg">Touch-enabled horizontal gallery</p>
+    </div>
+
+    <div class="swiper mySwiper w-full h-[500px]">
+      <div class="swiper-wrapper">
+        <!-- Slides will be added by JS -->
+      </div>
+      <div class="swiper-pagination"></div>
+      <div class="swiper-button-next text-teal-400"></div>
+      <div class="swiper-button-prev text-teal-400"></div>
+    </div>
+  </section>
+
+  <!-- SECTION 4: ACETERNITY SPOTLIGHT CARD (SIRF YAHI USE KIYA) -->
+  <section class="py-24 bg-slate-800 flex justify-center">
+    <div class="group relative max-w-lg w-full">
+      <div class="absolute -inset-1 bg-gradient-to-r from-teal-600 to-purple-600 rounded-2xl blur opacity-40 group-hover:opacity-80 transition duration-1000"></div>
+      <div class="relative px-10 py-12 bg-white rounded-2xl text-center">
+        <h3 class="text-3xl font-bold text-slate-900 mb-3">The Experience Center</h3>
+        <p class="text-slate-600 mb-6">Book a private tour of our flagship studio.</p>
+        <button class="px-8 py-3 bg-teal-600 text-white rounded-full font-medium hover:bg-teal-700 transition-all transform hover:scale-105">
+          Reserve Now
+        </button>
       </div>
     </div>
   </section>
@@ -160,7 +106,7 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- Vanilla JS for drawer toggling (unchanged) -->
+<!-- Vanilla JS for drawer toggling (same) -->
 <script>
   document.addEventListener('DOMContentLoaded', function() {
     const hamburgerBtn = document.getElementById('hamburgerBtn');
@@ -213,7 +159,7 @@
   });
 </script>
 
-<!-- Active Navigation Script (unchanged) -->
+<!-- Active Navigation Script (same) -->
 <script>
   document.addEventListener('DOMContentLoaded', function() {
     const navLinks = document.querySelectorAll('.nav-link');
@@ -271,13 +217,157 @@
   });
 </script>
 
-<!-- GSAP + Aceternity Animations with Stagger Fix -->
+<!-- MAIN ANIMATIONS - GSAP STAGGER + RIVE + SWIPER -->
 <script>
   (function() {
     if (typeof gsap === 'undefined') return;
     gsap.registerPlugin(ScrollTrigger);
-    
-    // --- 1. INFINITE MARQUEE ---
+
+    // --- 1. GSAP STAGGER GRID (BEKAR BENTO KI JAGAH YEH LO) ---
+    const staggerGrid = document.getElementById('stagger-grid');
+    if (staggerGrid) {
+      // Empty grid
+      staggerGrid.innerHTML = '';
+
+      // 9 cards with different images
+      const images = [
+        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=600&q=90',
+        'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=600&q=90',
+        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&q=90',
+        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=600&q=90',
+        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=600&q=90',
+        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=600&q=90',
+        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=600&q=90',
+        'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=600&q=90',
+        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=600&q=90'
+      ];
+
+      images.forEach((src, i) => {
+        const card = document.createElement('div');
+        card.className = 'stagger-card aspect-square rounded-2xl overflow-hidden shadow-2xl relative group';
+        card.style.background = `url(${src}) center/cover`;
+        card.style.transformStyle = 'preserve-3d';
+        card.style.border = '2px solid rgba(255,255,255,0.1)';
+        
+        // Overlay with number
+        const overlay = document.createElement('div');
+        overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4';
+        overlay.innerHTML = `<span class="text-white text-xl font-bold">${String(i + 1).padStart(2, '0')}</span>`;
+        card.appendChild(overlay);
+        
+        staggerGrid.appendChild(card);
+      });
+
+      // --- POWERFUL STAGGER ANIMATION (scroll-triggered) ---
+      gsap.from('.stagger-card', {
+        scrollTrigger: {
+          trigger: '#stagger-grid',
+          start: 'top 70%',
+          end: 'bottom 30%',
+          scrub: 1.2,
+          toggleActions: 'play none none reverse'
+        },
+        rotationY: (i) => (i % 3 === 0 ? 180 : i % 3 === 1 ? 90 : -90),
+        rotationX: (i) => (i % 2 === 0 ? 30 : -30),
+        opacity: 0,
+        scale: 0.5,
+        stagger: {
+          amount: 1.5,      // Total time for all cards
+          from: "center",   // Start from center
+          grid: [3, 3],     // 3x3 grid
+          ease: "power2.inOut"
+        },
+        ease: "power2.out"
+      });
+
+      ScrollTrigger.refresh();
+    }
+
+    // --- 2. RIVE INTERACTIVE ICONS (AAPKE JHOLE KA ASLI UPYOG) ---
+    if (typeof rive !== 'undefined') {
+      // Icon 1 - Bath (interactive)
+      const rive1 = new rive.Rive({
+        src: 'https://cdn.rive.app/animations/vehicles.riv', // Replace with your bath icon
+        canvas: document.getElementById('rive-icon-1'),
+        autoplay: true,
+        stateMachines: 'bumpy',
+        onLoad: () => rive1.resizeDrawingSurfaceToCanvas()
+      });
+
+      // Icon 2 - Water
+      const rive2 = new rive.Rive({
+        src: 'https://cdn.rive.app/animations/vehicles.riv', // Replace with water icon
+        canvas: document.getElementById('rive-icon-2'),
+        autoplay: true,
+        stateMachines: 'bumpy',
+        onLoad: () => rive2.resizeDrawingSurfaceToCanvas()
+      });
+
+      // Icon 3 - Ceramic
+      const rive3 = new rive.Rive({
+        src: 'https://cdn.rive.app/animations/vehicles.riv', // Replace with ceramic icon
+        canvas: document.getElementById('rive-icon-3'),
+        autoplay: true,
+        stateMachines: 'bumpy',
+        onLoad: () => rive3.resizeDrawingSurfaceToCanvas()
+      });
+
+      // Mouse interaction example
+      const canvases = document.querySelectorAll('canvas[id^="rive-icon"]');
+      canvases.forEach(canvas => {
+        canvas.addEventListener('mouseenter', () => {
+          // You can trigger specific states if you have custom Rive files
+        });
+      });
+    }
+
+    // --- 3. SWIPER 11 (BEKAR HORIZONTAL TRACK HATAYA) ---
+    if (typeof Swiper !== 'undefined') {
+      const swiperWrapper = document.querySelector('.swiper-wrapper');
+      if (swiperWrapper) {
+        // Add slides
+        const slideImages = [
+          'https://images.unsplash.com/photo-1618220179428-22790b461013?w=1200&q=90',
+          'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=1200&q=90',
+          'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=1200&q=90',
+          'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=1200&q=90',
+          'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=1200&q=90'
+        ];
+
+        slideImages.forEach(src => {
+          const slide = document.createElement('div');
+          slide.className = 'swiper-slide';
+          slide.innerHTML = `<div class="w-full h-full rounded-3xl overflow-hidden shadow-2xl"><img src="${src}" class="w-full h-full object-cover"></div>`;
+          swiperWrapper.appendChild(slide);
+        });
+
+        // Initialize Swiper
+        new Swiper('.mySwiper', {
+          slidesPerView: 1,
+          spaceBetween: 30,
+          centeredSlides: true,
+          loop: true,
+          pagination: {
+            el: '.swiper-pagination',
+            clickable: true
+          },
+          navigation: {
+            nextEl: '.swiper-button-next',
+            prevEl: '.swiper-button-prev',
+          },
+          breakpoints: {
+            768: {
+              slidesPerView: 2,
+            },
+            1024: {
+              slidesPerView: 3,
+            }
+          }
+        });
+      }
+    }
+
+    // --- 4. INFINITE MARQUEE (AGAR HAI TO) ---
     const marqueeTrack = document.querySelector('.marquee-track');
     if (marqueeTrack) {
       const marqueeContent = marqueeTrack.innerHTML;
@@ -291,158 +381,7 @@
         modifiers: { x: (x) => parseFloat(x) % trackWidth + 'px' }
       });
     }
-    
-    // --- 2. BENTO GRID entrance animation (stagger) ---
-    const bentoCards = document.querySelectorAll('#bento-grid > div');
-    if (bentoCards.length) {
-      gsap.from(bentoCards, {
-        scrollTrigger: {
-          trigger: '#bento-grid',
-          start: 'top 80%',
-          toggleActions: 'play none none none'
-        },
-        opacity: 0,
-        y: 50,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: 'power2.out'
-      });
-    }
-    
-    // --- 3. HORIZONTAL SCROLL GALLERY with Aceternity cards ---
-    const track = document.getElementById('horizontal-track');
-    if (track) {
-      track.innerHTML = ''; // clear existing
 
-      const images = [
-        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=800&q=90',
-        'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=800&q=90',
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=90',
-        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=800&q=90',
-        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=800&q=90',
-        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800&q=90',
-        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=800&q=90',
-        'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=800&q=90'
-      ];
-
-      images.forEach((src, index) => {
-        const card = document.createElement('div');
-        card.className = 'horizontal-card w-[350px] h-[450px] flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl relative group';
-        card.style.background = `url(${src}) center/cover`;
-        card.style.border = '2px solid rgba(255,255,255,0.2)';
-
-        // Aceternity style overlay
-        const overlay = document.createElement('div');
-        overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500';
-        card.appendChild(overlay);
-
-        const text = document.createElement('div');
-        text.className = 'absolute bottom-0 left-0 p-6 text-white translate-y-5 group-hover:translate-y-0 transition-transform duration-500';
-        text.innerHTML = `<span class="text-2xl font-bold">Collection ${String(index + 1).padStart(2, '0')}</span>`;
-        card.appendChild(text);
-
-        track.appendChild(card);
-      });
-
-      // Force reflow then calculate
-      setTimeout(() => {
-        const trackWidth = track.scrollWidth;
-        const viewportWidth = window.innerWidth;
-        const maxScroll = trackWidth - viewportWidth + 32; // padding adjustment
-
-        if (maxScroll <= 0) {
-          console.warn('Track not wider than viewport; horizontal scroll disabled.');
-          return;
-        }
-
-        // Kill existing ScrollTriggers on this section
-        ScrollTrigger.getAll().forEach(st => {
-          if (st.vars.trigger === '#horizontal-scroll-section' || st.trigger === '#horizontal-scroll-section') {
-            st.kill();
-          }
-        });
-
-        gsap.to(track, {
-          x: -maxScroll,
-          ease: 'none',
-          scrollTrigger: {
-            trigger: '#horizontal-scroll-section',
-            start: 'top top',
-            end: () => `+=${maxScroll + window.innerHeight}`,
-            pin: true,
-            scrub: 1.5,
-            anticipatePin: 1,
-            invalidateOnRefresh: true,
-            onRefresh: (self) => {
-              const newTrackWidth = track.scrollWidth;
-              const newViewportWidth = window.innerWidth;
-              const newMaxScroll = newTrackWidth - newViewportWidth + 32;
-              self.vars.end = `+=${newMaxScroll + window.innerHeight}`;
-              gsap.set(track, { x: -newMaxScroll * self.progress });
-            }
-          }
-        });
-
-        // Fade-in on enter (optional)
-        gsap.from('.horizontal-card', {
-          scrollTrigger: {
-            trigger: '#horizontal-scroll-section',
-            start: 'top 80%',
-            toggleActions: 'play none none none'
-          },
-          opacity: 0,
-          scale: 0.8,
-          duration: 1,
-          stagger: 0.1,
-          ease: 'power2.out'
-        });
-
-        ScrollTrigger.refresh(); // important after dynamic content
-      }, 500);
-    }
-    
-    // --- 4. Flip Cards entrance animation ---
-    gsap.from('.group.h-96', {
-      scrollTrigger: {
-        trigger: '.group.h-96',
-        start: 'top 80%',
-        toggleActions: 'play none none none'
-      },
-      opacity: 0,
-      y: 50,
-      duration: 0.8,
-      stagger: 0.2,
-      ease: 'back.out(1.2)'
-    });
-    
-    // --- 5. Spotlight card animation ---
-    gsap.from('.group.relative.max-w-md', {
-      scrollTrigger: {
-        trigger: '.group.relative.max-w-md',
-        start: 'top 80%',
-        toggleActions: 'play none none none'
-      },
-      scale: 0.9,
-      opacity: 0,
-      duration: 1,
-      ease: 'power2.out'
-    });
   })();
 </script>
-
-<!-- Animation keyframes for background blobs -->
-<style>
-  @keyframes blob {
-    0% { transform: translate(0px, 0px) scale(1); }
-    33% { transform: translate(30px, -50px) scale(1.1); }
-    66% { transform: translate(-20px, 20px) scale(0.9); }
-    100% { transform: translate(0px, 0px) scale(1); }
-  }
-  .animate-blob {
-    animation: blob 7s infinite;
-  }
-  .animation-delay-2000 {
-    animation-delay: 2s;
-  }
-</style>
 {% endblock %}
