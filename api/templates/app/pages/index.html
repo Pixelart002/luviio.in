@@ -16,36 +16,47 @@
 <!-- Main content -->
 <div id="main-content" class="w-full">
   {{ render_hero() }}
-  
-  <!-- SECTION 1: INFINITE MARQUEE -->
-  <section class="py-16 bg-slate-900 overflow-hidden">
-    <div class="marquee-container relative">
+
+  <!-- SECTION 1: INFINITE MARQUEE (enhanced with 3D tilt) -->
+  <section class="py-16 bg-slate-900 overflow-hidden perspective">
+    <div class="marquee-container relative transform-gpu" style="transform-style: preserve-3d; rotateX(5deg);">
       <div class="marquee-track flex whitespace-nowrap will-change-transform">
-        <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8">✦ ALBUM FLICKER ✦</span>
-        <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8">✦ 3D MOTION ✦</span>
-        <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8">✦ SCROLL MAGIC ✦</span>
-        <span class="text-7xl md:text-8xl font-['Playfair_Display'] italic text-white/10 mx-8">✦ GSAP PRO ✦</span>
+        <span class="text-8xl md:text-9xl font-['Playfair_Display'] italic text-white/10 mx-8">✦ ULTRA BEAST ✦</span>
+        <span class="text-8xl md:text-9xl font-['Playfair_Display'] italic text-white/10 mx-8">✦ 3D HYPERCUBE ✦</span>
+        <span class="text-8xl md:text-9xl font-['Playfair_Display'] italic text-white/10 mx-8">✦ GSAP GODLIKE ✦</span>
       </div>
     </div>
   </section>
-  
-  <!-- SECTION 2: ALBUM FLICKER GRID (3D + STAGGER) -->
+
+  <!-- SECTION 2: 3D HYPERCUBE GALLERY (Three.js + GSAP) -->
+  <section id="hypercube-section" class="relative w-full h-[200vh] bg-black">
+    <div class="sticky top-0 h-screen overflow-hidden">
+      <canvas id="hypercube-canvas" class="absolute inset-0 w-full h-full"></canvas>
+      
+      <!-- Overlay text -->
+      <div class="absolute bottom-10 left-1/2 -translate-x-1/2 z-10 text-white/30 text-2xl font-light tracking-[0.3em]">
+        SCROLL TO ROTATE
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 3: ALBUM FLICKER GRID (already advanced) -->
   <section class="relative w-full min-h-screen bg-slate-800 py-24 perspective">
     <div class="max-w-7xl mx-auto px-6 text-center mb-16">
       <h2 class="font-['Playfair_Display'] text-5xl md:text-6xl text-white">Image Album Flicker</h2>
       <p class="text-slate-300 text-lg mt-4">Staggered 3D flip with scroll trigger</p>
     </div>
-    
+
     <div class="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-6xl mx-auto px-6" id="flicker-grid">
-      <!-- Cards will be populated by JS -->
+      <!-- Cards populated by JS -->
     </div>
   </section>
-  
-  <!-- SECTION 3: 3D PARALLAX CARD STACK -->
+
+  <!-- SECTION 4: 3D PARALLAX CARD STACK (already advanced) -->
   <section class="relative w-full h-[150vh] bg-slate-900" id="card-stack-section">
     <div class="sticky top-24 h-screen flex items-center justify-center">
       <div class="relative w-full max-w-4xl h-[500px]" id="card-stack-container">
-        <!-- Cards will be inserted by JS -->
+        <!-- Cards inserted by JS -->
       </div>
     </div>
   </section>
@@ -108,127 +119,254 @@
   });
 </script>
 
-<!-- GSAP ADVANCED ANIMATIONS -->
+<!-- GSAP + Three.js ULTRA BEAST 3D HYPERCUBE -->
+<script>
+  (function() {
+    if (typeof THREE === 'undefined' || typeof gsap === 'undefined') return;
+
+    const canvas = document.getElementById('hypercube-canvas');
+    if (!canvas) return;
+
+    // --- Scene Setup ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050505);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 2, 12);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+
+    // --- Lighting ---
+    const ambient = new THREE.AmbientLight(0x404060);
+    scene.add(ambient);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    dirLight.position.set(2, 5, 5);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    const pointLight = new THREE.PointLight(0x3366ff, 1, 20);
+    pointLight.position.set(-3, 2, 4);
+    scene.add(pointLight);
+
+    // --- Particle Field (for extra beast mode) ---
+    const particleGeo = new THREE.BufferGeometry();
+    const particleCount = 2000;
+    const positions = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount * 3; i += 3) {
+      positions[i] = (Math.random() - 0.5) * 50;
+      positions[i+1] = (Math.random() - 0.5) * 30;
+      positions[i+2] = (Math.random() - 0.5) * 50 - 20;
+    }
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const particleMat = new THREE.PointsMaterial({ color: 0x88aaff, size: 0.05, transparent: true, opacity: 0.6 });
+    const particles = new THREE.Points(particleGeo, particleMat);
+    scene.add(particles);
+
+    // --- Create Hypercube (a cube with images on each face) ---
+    const cubeGroup = new THREE.Group();
+
+    // Load images for each face
+    const imageUrls = [
+      'https://images.unsplash.com/photo-1618220179428-22790b461013?w=400&q=80',
+      'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=400&q=80',
+      'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=400&q=80',
+      'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=400&q=80',
+      'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=400&q=80',
+      'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=400&q=80'
+    ];
+
+    const size = 2.5;
+    const geometry = new THREE.BoxGeometry(size, size, size);
+
+    // Create materials with textures
+    const materials = imageUrls.map(url => {
+      const texture = new THREE.TextureLoader().load(url);
+      return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.2, metalness: 0.1 });
+    });
+
+    const cube = new THREE.Mesh(geometry, materials);
+    cube.castShadow = true;
+    cube.receiveShadow = true;
+    cubeGroup.add(cube);
+
+    // Add glowing edges
+    const edges = new THREE.EdgesGeometry(geometry);
+    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x3366ff, linewidth: 1 }));
+    cubeGroup.add(line);
+
+    scene.add(cubeGroup);
+
+    // --- ScrollTrigger Animation (Ultra Smooth) ---
+    gsap.registerPlugin(ScrollTrigger);
+
+    // Create a timeline that maps scroll progress to cube rotation and camera movement
+    const tl = gsap.timeline({
+      scrollTrigger: {
+        trigger: "#hypercube-section",
+        start: "top top",
+        end: "bottom bottom",
+        scrub: 2,
+        invalidateOnRefresh: true
+      },
+      defaults: { ease: "power2.inOut" }
+    });
+
+    // Rotate cube in multiple axes
+    tl.to(cubeGroup.rotation, {
+      y: Math.PI * 4,      // two full rotations
+      x: Math.PI * 2,
+      z: Math.PI,
+      duration: 1
+    }, 0)
+    // Move camera closer and change angle
+    .to(camera.position, {
+      x: 3,
+      y: 3,
+      z: 8,
+      duration: 1
+    }, 0)
+    // Animate particles
+    .to(particles.rotation, {
+      y: Math.PI,
+      duration: 1
+    }, 0)
+    // Additional flashy effect: scale cube slightly
+    .to(cubeGroup.scale, {
+      x: 1.2,
+      y: 1.2,
+      z: 1.2,
+      duration: 0.5,
+      yoyo: true,
+      repeat: 1
+    }, 0.5);
+
+    // --- Subtle idle rotation (just for fun) ---
+    gsap.to(cubeGroup.rotation, {
+      y: "+=0.2",
+      duration: 10,
+      repeat: -1,
+      ease: "none"
+    });
+
+    // --- Mouse interaction (3D tilt) ---
+    document.addEventListener('mousemove', (e) => {
+      const mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+      const mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+      gsap.to(cubeGroup.rotation, {
+        x: mouseY * 0.2,
+        y: mouseY * 0.1 + mouseX * 0.3,
+        duration: 1,
+        overwrite: true
+      });
+    });
+
+    // --- Animation Loop ---
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      // Slowly rotate particles
+      particles.rotation.y += 0.0005;
+      
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // --- Resize ---
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  })();
+</script>
+
+<!-- GSAP Pop-in Card Loop (already present) -->
 <script>
   (function() {
     if (typeof gsap === 'undefined') return;
-    gsap.registerPlugin(ScrollTrigger);
-    
-    // --- 1. INFINITE MARQUEE ---
-    const marqueeTrack = document.querySelector('.marquee-track');
-    if (marqueeTrack) {
-      // Clone content for seamless loop
-      const marqueeContent = marqueeTrack.innerHTML;
-      marqueeTrack.innerHTML += marqueeContent;
+
+    const container = document.getElementById('popin-cards');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    const images = [
+      'https://images.unsplash.com/photo-1618220179428-22790b461013?w=400&q=80',
+      'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=400&q=80',
+      'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=400&q=80',
+      'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=400&q=80',
+      'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=400&q=80'
+    ];
+
+    const cards = [];
+    images.forEach((src, index) => {
+      const card = document.createElement('div');
+      card.className = 'absolute w-64 h-80 rounded-2xl overflow-hidden shadow-2xl transition-all duration-300';
+      card.style.background = `url(${src}) center/cover`;
+      card.style.boxShadow = '0 20px 40px rgba(0,0,0,0.5)';
+      card.style.border = '2px solid rgba(255,255,255,0.1)';
+      card.style.backfaceVisibility = 'hidden';
       
-      // Measure width
-      const trackWidth = marqueeTrack.scrollWidth / 2;
-      
-      gsap.to(marqueeTrack, {
-        x: -trackWidth,
-        duration: 20,
-        ease: "none",
-        repeat: -1,
-        modifiers: {
-          x: (x) => parseFloat(x) % trackWidth + 'px'
-        }
+      const depth = index * 0.15;
+      const scale = 1 - depth * 0.3;
+      const yOffset = index * 15;
+      const widthFactor = 1 - depth * 0.2;
+
+      gsap.set(card, {
+        scale: scale,
+        y: yOffset,
+        zIndex: 100 - index,
+        width: 16 * widthFactor + 'rem',
+        opacity: 1 - index * 0.1,
+        filter: `blur(${index * 0.5}px)`
       });
+
+      container.appendChild(card);
+      cards.push(card);
+    });
+
+    function startLoop() {
+      const tl = gsap.timeline({ repeat: -1, repeatDelay: 0.5, ease: "power2.inOut" });
+
+      const currentScales = cards.map(c => gsap.getProperty(c, 'scale'));
+      const currentY = cards.map(c => gsap.getProperty(c, 'y'));
+      const currentWidth = cards.map(c => parseFloat(c.style.width) || 16);
+      const currentZ = cards.map(c => parseInt(c.style.zIndex) || 0);
+      const currentOpacity = cards.map(c => gsap.getProperty(c, 'opacity'));
+      const currentBlur = cards.map(c => parseFloat(c.style.filter.replace(/[^\d.]/g, '')) || 0);
+
+      const targetScales = [currentScales[cards.length-1], ...currentScales.slice(0, -1)];
+      const targetY = [currentY[cards.length-1] - 15 * (cards.length-1), ...currentY.slice(0, -1)];
+      const targetWidth = [currentWidth[cards.length-1] * 1.2, ...currentWidth.slice(0, -1)];
+      const targetZ = [100, ...currentZ.slice(0, -1).map(z => z - 10)];
+      const targetOpacity = [1, ...currentOpacity.slice(0, -1).map(o => o - 0.1)];
+      const targetBlur = [0, ...currentBlur.slice(0, -1).map(b => b + 0.5)];
+
+      cards.forEach((card, i) => {
+        tl.to(card, {
+          scale: targetScales[i],
+          y: targetY[i],
+          width: targetWidth[i] + 'rem',
+          zIndex: targetZ[i],
+          opacity: targetOpacity[i],
+          filter: `blur(${targetBlur[i]}px)`,
+          duration: 1,
+          ease: "power2.inOut"
+        }, 0);
+      });
+
+      tl.fromTo(cards[cards.length-1], 
+        { scale: targetScales[0] * 0.8, y: targetY[0] + 50, opacity: 0.5 },
+        { scale: targetScales[0], y: targetY[0], opacity: 1, duration: 0.8, ease: "back.out(1.7)" },
+        0.2
+      );
     }
-    
-    // --- 2. ALBUM FLICKER GRID (3D flip + stagger on scroll) ---
-    const grid = document.getElementById('flicker-grid');
-    if (grid) {
-      const images = [
-        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=400&q=80',
-        'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=400&q=80',
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=400&q=80',
-        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=400&q=80',
-        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=400&q=80',
-        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=400&q=80',
-        'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=400&q=80',
-        'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=400&q=80'
-      ];
-      
-      // Create cards
-      images.forEach((src, i) => {
-        const card = document.createElement('div');
-        card.className = 'flicker-card aspect-[3/4] rounded-2xl overflow-hidden shadow-2xl';
-        card.style.background = `url(${src}) center/cover`;
-        card.style.transform = 'rotateY(0deg) rotateX(0deg)';
-        card.style.transformStyle = 'preserve-3d';
-        card.style.boxShadow = '0 20px 40px rgba(0,0,0,0.6)';
-        grid.appendChild(card);
-      });
-      
-      // Staggered 3D flip on scroll
-      gsap.from('.flicker-card', {
-        scrollTrigger: {
-          trigger: '#flicker-grid',
-          start: 'top 80%',
-          end: 'bottom 20%',
-          scrub: 1
-        },
-        rotationY: (i) => i % 2 === 0 ? 180 : -180,
-        rotationX: 15,
-        opacity: 0,
-        stagger: 0.1,
-        duration: 2,
-        ease: 'power2.inOut'
-      });
-    }
-    
-    // --- 3. 3D PARALLAX CARD STACK (with scroll) ---
-    const stackContainer = document.getElementById('card-stack-container');
-    if (stackContainer) {
-      const images = [
-        'https://images.unsplash.com/photo-1618220179428-22790b461013?w=400&q=80',
-        'https://images.unsplash.com/photo-1618219944342-824e40a1328e?w=400&q=80',
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=400&q=80',
-        'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=400&q=80',
-        'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=400&q=80'
-      ];
-      
-      // Create cards absolutely positioned
-      images.forEach((src, index) => {
-        const card = document.createElement('div');
-        card.className = 'absolute inset-0 w-full h-full rounded-3xl overflow-hidden shadow-2xl';
-        card.style.background = `url(${src}) center/cover`;
-        card.style.boxShadow = '0 30px 60px rgba(0,0,0,0.5)';
-        card.style.border = '2px solid rgba(255,255,255,0.1)';
-        card.style.transformStyle = 'preserve-3d';
-        card.style.backfaceVisibility = 'hidden';
-        
-        // Initial Z offset and rotation
-        gsap.set(card, {
-          z: -index * 200, // stack behind
-          rotationY: index * 5, // slight fan
-          rotationX: -2,
-          opacity: 1 - index * 0.15
-        });
-        
-        stackContainer.appendChild(card);
-      });
-      
-      // Scroll-triggered 3D animation
-      const cards = stackContainer.children;
-      gsap.to(cards, {
-        scrollTrigger: {
-          trigger: '#card-stack-section',
-          start: 'top top',
-          end: 'bottom bottom',
-          scrub: 2,
-          pin: '#card-stack-container',
-          anticipatePin: 1
-        },
-        z: (i) => -i * 50 + 200, // move forward
-        rotationY: (i) => i * 10 - 20,
-        rotationX: 5,
-        x: (i) => i * 30 - 60,
-        ease: 'power2.inOut',
-        stagger: 0.05
-      });
-    }
-    
+
+    setTimeout(startLoop, 500);
   })();
 </script>
 {% endblock %}
