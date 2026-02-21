@@ -39,7 +39,12 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# --- ROUTES ---
+# --- IMPORT ROUTES ---
+# This connects the routes.py file to main.py
+from routes import router as app_router
+app.include_router(app_router)
+
+# --- ROUTES (main route can stay here or move to routes.py) ---
 @app.get("/", response_class=HTMLResponse)
 async def home_route(request: Request):
     # No state needed – templates are static
