@@ -8,6 +8,9 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+# Ye import bilkul sahi jagah par hai
+from api.routes.routes import router as luviio_router
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 
@@ -38,13 +41,11 @@ async def global_exception_handler(request: Request, exc: Exception):
             "ai_suggestion": ai_fix[:200]
         }
     )
+    
+# FIX: Ye line block ke bahar honi chahiye (No indentation)
+app.include_router(luviio_router)
 
-# --- IMPORT ROUTES ---
-# This connects the routes.py file to main.py
-from routes import router as app_router
-app.include_router(app_router)
-
-# --- ROUTES (main route can stay here or move to routes.py) ---
+# --- ROUTES ---
 @app.get("/", response_class=HTMLResponse)
 async def home_route(request: Request):
     # No state needed – templates are static
