@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-# Ye import bilkul sahi jagah par hai
+# Yahan hum routes.py se 'router' import kar rahe hain
 from api.routes.routes import router as luviio_router
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -42,7 +42,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     )
     
-# FIX: Ye line block ke bahar honi chahiye (No indentation)
+# FIX: Router yahan include hoga, function ke bahar!
 app.include_router(luviio_router)
 
 # --- ROUTES ---
