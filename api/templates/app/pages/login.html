@@ -21,7 +21,7 @@
                     colors: {
                         luviio: {
                             stone: '#F5F5F0',
-                            charcoal: '#0a0a0a', /* Matched the deeper black from screenshot */
+                            charcoal: '#0a0a0a',
                             gold: '#C5A059',
                             sand: '#E5E5DF'
                         }
@@ -39,13 +39,15 @@
         body {
             font-family: 'Inter', sans-serif;
             -webkit-font-smoothing: antialiased;
-            background-color: #0a0a0a; /* Pure deep background */
+            background-color: #0a0a0a;
             color: #ffffff;
-            overflow: hidden; /* Prevent scrolling on auth page */
+            overflow: hidden;
+            /* Added explicit fallback for dynamic viewport height */
+            height: 100vh; 
+            height: 100dvh; 
         }
         h1, h2, h3, h4, h5, h6 { font-family: 'Playfair Display', serif; }
 
-        /* Custom Input Styling (Floating effect) matched to screenshot */
         .input-group { position: relative; margin-bottom: 2.5rem; }
         .input-group input {
             width: 100%; padding: 8px 0; font-size: 0.875rem; color: #fff;
@@ -65,7 +67,6 @@
         .sys-transition { transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
         .gpu-target { transform: translateZ(0); will-change: transform; }
         
-        /* Custom Checkbox */
         .custom-checkbox {
             appearance: none;
             background-color: transparent;
@@ -99,7 +100,7 @@
     </style>
 </head>
 
-<body class="flex h-screen w-full">
+<body class="flex h-[100dvh] w-full">
 
     <div class="hidden md:flex md:w-1/2 h-full relative overflow-hidden bg-black">
         <img src="https://images.unsplash.com/photo-1584622781867-1c64eb3768bf?auto=format&fit=crop&q=80&w=1200" id="authImage" class="absolute inset-0 w-full h-full object-cover opacity-60 scale-[1.2] gpu-target" alt="Luxury Bathware">
@@ -117,7 +118,8 @@
             <i class="ri-arrow-left-line text-sm"></i> Home
         </a>
 
-        <div class="w-full max-w-[320px]"> <div class="flex justify-center mb-8 auth-anim opacity-0 -translate-y-4">
+        <div class="w-full max-w-[320px]">
+            <div class="flex justify-center mb-8 auth-anim opacity-0 -translate-y-4">
                 <div class="w-14 h-14 flex items-center justify-center p-2 border border-white/10 rounded-sm">
                     <img src="/api/static/images/logo.png" alt="Luviio Lotus" class="w-full h-full object-contain invert opacity-90">
                 </div>
@@ -171,14 +173,12 @@
         document.addEventListener("DOMContentLoaded", () => {
             gsap.config({ force3D: true });
 
-            // Slow cinematic zoom on the background image
             gsap.to("#authImage", {
                 scale: 1,
                 duration: 10,
                 ease: "power1.out"
             });
 
-            // Staggered reveal for form elements
             gsap.to(".auth-anim", {
                 y: 0,
                 opacity: 1,
