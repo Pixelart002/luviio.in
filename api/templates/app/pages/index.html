@@ -5,20 +5,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>LUVIIO - Premium Bathware</title>
-
+    
     <link rel="preload" as="image" href="/api/static/images/logo.png">
     <link rel="preload" as="image" href="https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=2000">
-
+    
     <link rel="preconnect" href="https://images.unsplash.com">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400;1,500&family=Great+Vibes&display=swap" rel="stylesheet">
-
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
-
+    
     <script>
         tailwind.config = {
             theme: {
@@ -41,34 +41,71 @@
             }
         }
     </script>
-
+    
     <style>
-        html, body {
+        html,
+        body {
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             text-rendering: optimizeLegibility;
             background-color: #F5F5F0;
             color: #111111;
         }
-
-        html.lenis, html.lenis body { height: auto; width: 100vw; overflow-x: hidden; }
-        .lenis.lenis-smooth { scroll-behavior: auto !important; }
-        .lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
-        .lenis.lenis-stopped { overflow: hidden; }
-
+        
+        html.lenis,
+        html.lenis body {
+            height: auto;
+            width: 100vw;
+            overflow-x: hidden;
+        }
+        
+        .lenis.lenis-smooth {
+            scroll-behavior: auto !important;
+        }
+        
+        .lenis.lenis-smooth [data-lenis-prevent] {
+            overscroll-behavior: contain;
+        }
+        
+        .lenis.lenis-stopped {
+            overflow: hidden;
+        }
+        
         @media (min-width: 768px) {
-            body, a, button, input { cursor: none; }
+
+            body,
+            a,
+            button,
+            input {
+                cursor: none;
+            }
+            
             #cursor {
-                position: fixed; top: 0; left: 0; width: 16px; height: 16px;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 16px;
+                height: 16px;
                 background: #C5A059;
                 border-radius: 50%;
-                pointer-events: none; z-index: 9999; mix-blend-mode: difference;
-                transform: translate(-50%, -50%); transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), height 0.4s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.4s;
+                pointer-events: none;
+                z-index: 9999;
+                mix-blend-mode: difference;
+                transform: translate(-50%, -50%);
+                transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), height 0.4s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.4s;
                 will-change: transform;
             }
-            #cursor.hover-active { width: 80px; height: 80px; background: rgba(255,255,255,0.1); backdrop-filter: blur(4px); mix-blend-mode: normal; border: 1px solid rgba(255,255,255,0.3); }
+            
+            #cursor.hover-active {
+                width: 80px;
+                height: 80px;
+                background: rgba(255, 255, 255, 0.1);
+                backdrop-filter: blur(4px);
+                mix-blend-mode: normal;
+                border: 1px solid rgba(255, 255, 255, 0.3);
+            }
         }
-
+        
         .text-marble {
             background-image: url('https://images.unsplash.com/photo-1558055620-1e5b8823f666?q=80&w=1200&auto=format&fit=crop');
             background-size: cover;
@@ -79,44 +116,127 @@
             display: inline-block;
             filter: contrast(1.2) brightness(0.9);
         }
-
-        .cinematic-vignette { box-shadow: inset 0 0 100px rgba(0,0,0,0.5); }
-        .glass-overlay { backdrop-filter: blur(0px); transition: backdrop-filter 0.8s ease-in-out; }
-        .glass-overlay.active { backdrop-filter: blur(16px); }
-        .glass-menu { background: rgba(245, 245, 240, 0.95); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border-left: 1px solid rgba(255, 255, 255, 0.4); }
         
-        .stacked-section { position: sticky; top: 0; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; transform-origin: top center; }
-        
-        .reveal-mask { clip-path: polygon(0 0, 100% 0, 100% 100%, 0% 100%); display: inline-block; padding-bottom: 0.1em; }
-        .reveal-text { transform: translateY(120%) rotateZ(2deg); display: inline-block; transform-origin: top left; }
-        .clip-mask { overflow: hidden; display: inline-block; padding-bottom: 0.1em; }
-        .clip-text { display: inline-block; transform: translateY(100%); }
-
-        .gpu-target { transform: translateZ(0); backface-visibility: hidden; perspective: 1000px; }
-
-        @keyframes float-subtle { 0%, 100% { transform: translateY(0px) rotate(-1deg); } 50% { transform: translateY(-10px) rotate(1deg); } }
-        .anim-float { animation: float-subtle 8s ease-in-out infinite; }
-
-        ::-webkit-scrollbar { width: 0px; background: transparent; }
-        .sys-transition { transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
-
-        .pricing-glow::before {
-            content: ''; position: absolute; inset: -2px;
-            background: linear-gradient(45deg, #C5A059, transparent, #C5A059);
-            z-index: -1; filter: blur(15px); opacity: 0; transition: opacity 0.5s ease;
+        .cinematic-vignette {
+            box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.5);
         }
-        .pricing-card:hover .pricing-glow::before { opacity: 0.6; }
+        
+        .glass-overlay {
+            backdrop-filter: blur(0px);
+            transition: backdrop-filter 0.8s ease-in-out;
+        }
+        
+        .glass-overlay.active {
+            backdrop-filter: blur(16px);
+        }
+        
+        .glass-menu {
+            background: rgba(245, 245, 240, 0.95);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border-left: 1px solid rgba(255, 255, 255, 0.4);
+        }
+        
+        .stacked-section {
+            position: sticky;
+            top: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            transform-origin: top center;
+        }
+        
+        .reveal-mask {
+            clip-path: polygon(0 0, 100% 0, 100% 100%, 0% 100%);
+            display: inline-block;
+            padding-bottom: 0.1em;
+        }
+        
+        .reveal-text {
+            transform: translateY(120%) rotateZ(2deg);
+            display: inline-block;
+            transform-origin: top left;
+        }
+        
+        .clip-mask {
+            overflow: hidden;
+            display: inline-block;
+            padding-bottom: 0.1em;
+        }
+        
+        .clip-text {
+            display: inline-block;
+            transform: translateY(100%);
+        }
+        
+        .gpu-target {
+            transform: translateZ(0);
+            backface-visibility: hidden;
+            perspective: 1000px;
+        }
+        
+        @keyframes float-subtle {
 
+            0%,
+            100% {
+                transform: translateY(0px) rotate(-1deg);
+            }
+            
+            50% {
+                transform: translateY(-10px) rotate(1deg);
+            }
+        }
+        
+        .anim-float {
+            animation: float-subtle 8s ease-in-out infinite;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 0px;
+            background: transparent;
+        }
+        
+        .sys-transition {
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        
+        .pricing-glow::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            background: linear-gradient(45deg, #C5A059, transparent, #C5A059);
+            z-index: -1;
+            filter: blur(15px);
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        
+        .pricing-card:hover .pricing-glow::before {
+            opacity: 0.6;
+        }
+        
         /* Swiper Fixes */
-        .swiper-pagination-bullet { background-color: rgba(0,0,0,0.3) !important; }
-        .swiper-pagination-bullet-active { background-color: #C5A059 !important; }
-        .dark-swiper .swiper-pagination-bullet { background-color: rgba(255,255,255,0.3) !important; }
-        .dark-swiper .swiper-pagination-bullet-active { background-color: #C5A059 !important; }
+        .swiper-pagination-bullet {
+            background-color: rgba(0, 0, 0, 0.3) !important;
+        }
+        
+        .swiper-pagination-bullet-active {
+            background-color: #C5A059 !important;
+        }
+        
+        .dark-swiper .swiper-pagination-bullet {
+            background-color: rgba(255, 255, 255, 0.3) !important;
+        }
+        
+        .dark-swiper .swiper-pagination-bullet-active {
+            background-color: #C5A059 !important;
+        }
     </style>
 </head>
 
 <body class="relative bg-luviio-stone">
-
+    
     <div id="splashScreen" class="fixed inset-0 z-[999] bg-luviio-charcoal flex flex-col items-center justify-center text-white origin-bottom">
         <div class="overflow-hidden mb-8">
             <h1 id="splashLogo" class="text-4xl md:text-6xl font-serif tracking-[0.2em] flex items-center gap-4 opacity-0 scale-110" style="filter: blur(10px);">
@@ -127,9 +247,9 @@
             <div id="splashProgress" class="absolute top-0 left-0 h-full bg-luviio-gold w-0 shadow-[0_0_10px_#C5A059]"></div>
         </div>
     </div>
-
+    
     <div id="cursor" class="hidden md:block"></div>
-
+    
     <header class="fixed w-full top-0 z-50 transition-transform duration-700" id="mainHeader" style="transform: translateY(-100%);">
         <div class="bg-luviio-stone/80 backdrop-blur-xl flex justify-between items-center px-6 md:px-10 py-4 relative z-10 border-b border-luviio-sand/50">
             <div class="flex items-center gap-3 hover-target cursor-pointer group">
@@ -138,20 +258,20 @@
                 </div>
                 <h1 class="text-sm md:text-lg font-serif font-medium tracking-[0.2em] text-luviio-charcoal uppercase leading-none mt-1">LUVIIO</h1>
             </div>
-
+            
             <div class="flex items-center gap-6 md:gap-10">
                 <div class="hidden md:flex items-center gap-5 border-r border-luviio-sand/80 pr-8">
                     {% if user %}
-                        <a href="/dashboard" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-2.5 rounded-full hover:bg-luviio-gold hover:shadow-[0_10px_20px_rgba(197,160,89,0.2)] sys-transition hover-target">Dashboard</a>
-                        <a href="/logout" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-red-800 hover:text-red-500 sys-transition hover-target ml-2">Logout</a>
+                    <a href="/dashboard" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-2.5 rounded-full hover:bg-luviio-gold hover:shadow-[0_10px_20px_rgba(197,160,89,0.2)] sys-transition hover-target">Dashboard</a>
+                    <a href="/logout" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-red-800 hover:text-red-500 sys-transition hover-target ml-2">Logout</a>
                     {% else %}
-                        <a href="/login" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-luviio-charcoal hover:text-luviio-gold sys-transition hover-target">Sign In</a>
-                        <a href="/register" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-luviio-charcoal hover:text-luviio-gold sys-transition hover-target">Sign Up</a>
-                        <div class="w-[1px] h-4 bg-luviio-sand mx-2"></div>
-                        <a href="/partner" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-2.5 rounded-full hover:bg-luviio-gold hover:shadow-[0_10px_20px_rgba(197,160,89,0.2)] sys-transition hover-target">Partner Portal</a>
+                    <a href="/login" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-luviio-charcoal hover:text-luviio-gold sys-transition hover-target">Sign In</a>
+                    <a href="/register" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-luviio-charcoal hover:text-luviio-gold sys-transition hover-target">Sign Up</a>
+                    <div class="w-[1px] h-4 bg-luviio-sand mx-2"></div>
+                    <a href="/partner" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-2.5 rounded-full hover:bg-luviio-gold hover:shadow-[0_10px_20px_rgba(197,160,89,0.2)] sys-transition hover-target">Partner Portal</a>
                     {% endif %}
                 </div>
-
+                
                 <button id="menuTrigger" class="text-2xl md:text-3xl text-luviio-charcoal sys-transition hover:text-luviio-gold hover:scale-105 p-2 hover-target outline-none flex gap-2 items-center">
                     <span class="text-[10px] uppercase tracking-[0.2em] font-sans font-bold hidden md:block mt-1">Menu</span>
                     <i class="ri-menu-3-line"></i>
@@ -159,7 +279,7 @@
             </div>
         </div>
     </header>
-
+    
     <div id="drawerOverlay" class="fixed inset-0 bg-luviio-charcoal/40 glass-overlay z-[60] opacity-0 pointer-events-none transition-opacity duration-700"></div>
     
     <div id="drawerContent" class="fixed top-0 right-0 h-full w-full md:w-[450px] glass-menu z-[70] transform translate-x-full transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col overflow-hidden shadow-2xl">
@@ -177,20 +297,20 @@
                     <div class="clip-mask"><a href="#" class="clip-text drawer-link text-4xl md:text-5xl font-serif italic text-gray-400 sys-transition hover:text-luviio-charcoal hover:translate-x-4 hover-target">Gallery.</a></div>
                     <div class="clip-mask"><a href="#" class="clip-text drawer-link text-4xl md:text-5xl font-serif italic text-gray-400 sys-transition hover:text-luviio-charcoal hover:translate-x-4 hover-target">Our Story.</a></div>
                 </div>
-
+                
                 <div class="mt-auto pt-8 border-t border-luviio-sand/50">
                     <div class="flex flex-col gap-3 mb-8">
                         {% if user %}
-                            <div class="clip-mask w-full"><a href="/dashboard" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-gold sys-transition">Dashboard</a></div>
-                            <div class="clip-mask w-full"><a href="/logout" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl border border-red-900/50 text-red-800 font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-red-900 hover:text-white sys-transition">Logout</a></div>
+                        <div class="clip-mask w-full"><a href="/dashboard" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-gold sys-transition">Dashboard</a></div>
+                        <div class="clip-mask w-full"><a href="/logout" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl border border-red-900/50 text-red-800 font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-red-900 hover:text-white sys-transition">Logout</a></div>
                         {% else %}
-                            <div class="flex gap-3 clip-mask w-full">
-                                <a href="/login" class="clip-text drawer-btn w-1/2 block text-center py-3.5 rounded-xl border border-luviio-charcoal text-luviio-charcoal font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-charcoal hover:text-white sys-transition">Sign In</a>
-                                <a href="/register" class="clip-text drawer-btn w-1/2 block text-center py-3.5 rounded-xl border border-luviio-charcoal text-luviio-charcoal font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-charcoal hover:text-white sys-transition">Sign Up</a>
-                            </div>
-                            <div class="clip-mask w-full mt-1">
-                                <a href="/partner" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-gold sys-transition">Partner Portal</a>
-                            </div>
+                        <div class="flex gap-3 clip-mask w-full">
+                            <a href="/login" class="clip-text drawer-btn w-1/2 block text-center py-3.5 rounded-xl border border-luviio-charcoal text-luviio-charcoal font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-charcoal hover:text-white sys-transition">Sign In</a>
+                            <a href="/register" class="clip-text drawer-btn w-1/2 block text-center py-3.5 rounded-xl border border-luviio-charcoal text-luviio-charcoal font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-charcoal hover:text-white sys-transition">Sign Up</a>
+                        </div>
+                        <div class="clip-mask w-full mt-1">
+                            <a href="/partner" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-gold sys-transition">Partner Portal</a>
+                        </div>
                         {% endif %}
                     </div>
                     <div class="flex gap-6 clip-mask">
@@ -202,43 +322,43 @@
             
             <div id="accountState" class="absolute inset-0 px-10 pb-24 pt-12 flex flex-col transition-all duration-500 transform scale-95 opacity-0 pointer-events-none ease-[cubic-bezier(0.16,1,0.3,1)]">
                 {% if user %}
-                    <div class="mt-4">
-                        <div class="flex flex-col items-center text-center gap-4 mb-12">
-                            <div class="w-24 h-24 bg-luviio-charcoal rounded-full flex items-center justify-center text-luviio-gold text-4xl shadow-2xl sys-transition hover:scale-105"><i class="ri-vip-diamond-line"></i></div>
-                            <div>
-                                <h3 class="font-serif italic text-3xl text-luviio-charcoal">{{ user.name | default("Premium User") }}</h3>
-                                <p class="text-xs text-gray-500 mt-2 font-sans tracking-widest uppercase">{{ user.email | default("user@example.com") }}</p>
-                            </div>
-                        </div>
-                        <div class="space-y-4 w-full">
-                            <a href="/dashboard" class="w-full block text-center py-4 bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase rounded-xl hover-target sys-transition hover:bg-luviio-gold">Access Dashboard</a>
-                            <a href="/settings" class="w-full block text-center py-4 border border-luviio-charcoal text-luviio-charcoal sys-transition hover:bg-luviio-charcoal hover:text-white font-sans text-[10px] tracking-widest uppercase font-bold hover-target rounded-xl">Account Settings</a>
+                <div class="mt-4">
+                    <div class="flex flex-col items-center text-center gap-4 mb-12">
+                        <div class="w-24 h-24 bg-luviio-charcoal rounded-full flex items-center justify-center text-luviio-gold text-4xl shadow-2xl sys-transition hover:scale-105"><i class="ri-vip-diamond-line"></i></div>
+                        <div>
+                            <h3 class="font-serif italic text-3xl text-luviio-charcoal">{{ user.name | default("Premium User") }}</h3>
+                            <p class="text-xs text-gray-500 mt-2 font-sans tracking-widest uppercase">{{ user.email | default("user@example.com") }}</p>
                         </div>
                     </div>
+                    <div class="space-y-4 w-full">
+                        <a href="/dashboard" class="w-full block text-center py-4 bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase rounded-xl hover-target sys-transition hover:bg-luviio-gold">Access Dashboard</a>
+                        <a href="/settings" class="w-full block text-center py-4 border border-luviio-charcoal text-luviio-charcoal sys-transition hover:bg-luviio-charcoal hover:text-white font-sans text-[10px] tracking-widest uppercase font-bold hover-target rounded-xl">Account Settings</a>
+                    </div>
+                </div>
                 {% else %}
-                    <div class="mt-4 flex flex-col h-full">
-                        <h3 class="font-serif text-3xl text-luviio-charcoal mb-2">Welcome Back.</h3>
-                        <p class="text-xs text-gray-500 font-sans tracking-wide mb-10">Sign in to track your orders.</p>
-                        
-                        <form action="/login" method="POST" class="space-y-6 w-full mb-8">
-                            <input type="email" name="email" placeholder="Email Address" class="w-full border-b border-luviio-charcoal/30 pb-3 outline-none font-sans text-sm bg-transparent focus:border-luviio-gold sys-transition" required>
-                            <input type="password" name="password" placeholder="Password" class="w-full border-b border-luviio-charcoal/30 pb-3 outline-none font-sans text-sm bg-transparent focus:border-luviio-gold sys-transition" required>
-                            <button type="submit" class="w-full mt-4 py-4 bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase rounded-xl hover-target sys-transition hover:bg-luviio-gold">Sign In</button>
-                        </form>
-
-                        <div class="mt-auto border-t border-luviio-sand/50 pt-6">
-                            <p class="text-xs text-gray-500 font-sans text-center mb-3">Don't have an account? <a href="/register" class="text-luviio-charcoal font-bold hover:text-luviio-gold hover-target">Sign Up</a></p>
-                            <p class="text-xs text-gray-500 font-sans text-center">Are you a dealer? <a href="/partner" class="text-luviio-charcoal font-bold hover:text-luviio-gold hover-target border-b border-luviio-charcoal pb-0.5">Partner Portal</a></p>
-                        </div>
+                <div class="mt-4 flex flex-col h-full">
+                    <h3 class="font-serif text-3xl text-luviio-charcoal mb-2">Welcome Back.</h3>
+                    <p class="text-xs text-gray-500 font-sans tracking-wide mb-10">Sign in to track your orders.</p>
+                    
+                    <form action="/login" method="POST" class="space-y-6 w-full mb-8">
+                        <input type="email" name="email" placeholder="Email Address" class="w-full border-b border-luviio-charcoal/30 pb-3 outline-none font-sans text-sm bg-transparent focus:border-luviio-gold sys-transition" required>
+                        <input type="password" name="password" placeholder="Password" class="w-full border-b border-luviio-charcoal/30 pb-3 outline-none font-sans text-sm bg-transparent focus:border-luviio-gold sys-transition" required>
+                        <button type="submit" class="w-full mt-4 py-4 bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase rounded-xl hover-target sys-transition hover:bg-luviio-gold">Sign In</button>
+                    </form>
+                    
+                    <div class="mt-auto border-t border-luviio-sand/50 pt-6">
+                        <p class="text-xs text-gray-500 font-sans text-center mb-3">Don't have an account? <a href="/register" class="text-luviio-charcoal font-bold hover:text-luviio-gold hover-target">Sign Up</a></p>
+                        <p class="text-xs text-gray-500 font-sans text-center">Are you a dealer? <a href="/partner" class="text-luviio-charcoal font-bold hover:text-luviio-gold hover-target border-b border-luviio-charcoal pb-0.5">Partner Portal</a></p>
                     </div>
+                </div>
                 {% endif %}
             </div>
-
+            
         </div>
     </div>
-
+    
     <main id="mainContent" class="opacity-0 hidden bg-luviio-stone">
-
+        
         <div class="relative w-full z-20">
             <section class="h-[100dvh] pt-32 pb-8 px-4 md:px-10 relative flex flex-col items-center overflow-hidden">
                 <div class="flex-shrink-0 text-center w-full max-w-6xl mx-auto z-10 pt-2 md:pt-4">
@@ -259,7 +379,7 @@
                 </div>
             </section>
         </div>
-
+        
         <section id="brandSection" class="py-24 md:py-40 bg-luviio-stone relative overflow-hidden border-b border-luviio-sand">
             <div class="max-w-[1400px] mx-auto px-6 md:px-16 flex flex-col md:flex-row items-center gap-12 md:gap-20">
                 <div class="w-full md:w-1/2 relative overflow-hidden rounded-[2rem] h-[50vh] md:h-[80vh] group shadow-[0_20px_40px_rgba(0,0,0,0.08)]">
@@ -272,8 +392,12 @@
                         <div class="clip-mask"><span class="clip-text brand-anim">Curating spaces</span></div>
                         <div class="clip-mask"><span class="clip-text brand-anim italic text-gray-500">with soul.</span></div>
                     </h2>
-                    <div class="clip-mask mb-6"><p class="clip-text brand-anim text-gray-600 font-sans leading-relaxed text-sm md:text-base">At Luviio, we don't just supply bathware. We curate experiences. Founded with a refined vision: to bring the world's most exquisite luxury ceramics to your doorstep.</p></div>
-                    <div class="clip-mask mb-12"><p class="clip-text brand-anim text-gray-600 font-sans leading-relaxed text-sm md:text-base">Every piece we handpick is a testament to uncompromising quality and aesthetic brilliance. Welcome to the new standard of living.</p></div>
+                    <div class="clip-mask mb-6">
+                        <p class="clip-text brand-anim text-gray-600 font-sans leading-relaxed text-sm md:text-base">At Luviio, we don't just supply bathware. We curate experiences. Founded with a refined vision: to bring the world's most exquisite luxury ceramics to your doorstep.</p>
+                    </div>
+                    <div class="clip-mask mb-12">
+                        <p class="clip-text brand-anim text-gray-600 font-sans leading-relaxed text-sm md:text-base">Every piece we handpick is a testament to uncompromising quality and aesthetic brilliance. Welcome to the new standard of living.</p>
+                    </div>
                     <div class="flex items-center gap-8 border-l-2 border-luviio-gold pl-6">
                         <div class="clip-mask">
                             <div class="clip-text brand-anim">
@@ -288,7 +412,7 @@
                 </div>
             </div>
         </section>
-
+        
         <section id="galleryWrapper" class="py-24 md:py-40 bg-white relative w-full overflow-hidden border-b border-luviio-sand">
             <div class="max-w-[1600px] mx-auto px-6 md:px-16 flex flex-col md:flex-row gap-16 relative">
                 <div class="md:w-5/12 flex flex-col md:h-[100dvh] md:sticky top-0 justify-center pb-12 md:pb-0 z-10 bg-white/80 md:bg-transparent backdrop-blur-sm md:backdrop-blur-none">
@@ -313,7 +437,7 @@
                 </div>
             </div>
         </section>
-
+        
         <section id="showcaseWrapper" class="bg-luviio-stone text-luviio-charcoal overflow-hidden relative w-full pt-10">
             <div id="showcaseContainer" class="h-[100dvh] flex flex-col justify-center relative z-10">
                 <div class="px-6 md:px-16 mb-10 flex justify-between items-end w-full max-w-[1600px] mx-auto">
@@ -321,7 +445,7 @@
                         <span id="showcaseTitle" class="inline-block transform translate-y-full text-luviio-charcoal">Showcase.</span>
                     </h2>
                 </div>
-
+                
                 <div class="flex gap-8 md:gap-16 px-6 md:px-16 items-center w-max gpu-target" id="horizontalTrack">
                     <div class="showcase-card flex-shrink-0 w-[85vw] md:w-[450px] lg:w-[550px] h-[55vh] md:h-[65vh] bg-black rounded-[2rem] p-8 flex flex-col justify-between overflow-hidden group hover-target relative shadow-2xl">
                         <img src="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&q=80&w=1000" decoding="async" class="showcase-img absolute inset-0 w-full h-full object-cover object-center opacity-70 scale-[1.3] sys-transition group-hover:scale-[1.35] group-hover:opacity-100" alt="Minimalist Space">
@@ -338,14 +462,14 @@
                 </div>
             </div>
         </section>
-
+        
         <section class="py-24 md:py-32 bg-luviio-charcoal dark-swiper overflow-hidden relative border-y border-white/5">
             <div class="max-w-5xl mx-auto px-6 relative z-10 text-white">
                 <div class="text-center mb-10 md:mb-16">
-                     <i class="ri-double-quotes-l text-4xl md:text-6xl text-luviio-gold/30 mb-4 block"></i>
-                     <span class="text-luviio-gold text-[10px] md:text-xs uppercase tracking-[0.4em] font-sans font-bold">Client Voices</span>
+                    <i class="ri-double-quotes-l text-4xl md:text-6xl text-luviio-gold/30 mb-4 block"></i>
+                    <span class="text-luviio-gold text-[10px] md:text-xs uppercase tracking-[0.4em] font-sans font-bold">Client Voices</span>
                 </div>
-
+                
                 <div class="swiper homeSwiper pb-16">
                     <div class="swiper-wrapper">
                         <div class="swiper-slide h-auto">
@@ -367,56 +491,56 @@
                 </div>
             </div>
         </section>
-
-        <section id="pricingSection" class="py-24 md:py-40 bg-luviio-stone relative w-full text-luviio-charcoal overflow-hidden">
-            <div class="absolute inset-0 z-0 pointer-events-none opacity-[0.05]" style="background-image: radial-gradient(circle at center, rgba(197, 160, 89, 1) 1px, transparent 1px); background-size: 24px 24px;"></div>
+        
+        <section id="pricingSection" class="py-20 md:py-40 bg-luviio-charcoal relative w-full text-white overflow-hidden border-t border-white/5">
+            <div class="absolute inset-0 z-0 pointer-events-none opacity-[0.03]" style="background-image: radial-gradient(circle at center, rgba(197, 160, 89, 1) 1px, transparent 1px); background-size: 24px 24px;"></div>
             
             <div class="max-w-7xl mx-auto px-6 relative z-10">
-                <div class="text-center mb-16 md:mb-24 pricing-header">
+                <div class="text-center mb-12 md:mb-24 pricing-header opacity-0 translate-y-8">
                     <span class="text-luviio-gold text-[10px] uppercase tracking-[0.4em] font-sans font-bold">Partnerships</span>
-                    <h2 class="text-4xl md:text-6xl font-serif mt-4">Trade & <span class="italic text-gray-500">Retail.</span></h2>
-                    <p class="mt-4 text-gray-500 font-sans text-sm max-w-lg mx-auto">Join our exclusive network of dealers and architects to access premium bathware at wholesale rates.</p>
+                    <h2 class="text-3xl md:text-6xl font-serif mt-4">Trade & <span class="italic text-gray-500">Retail.</span></h2>
+                    <p class="mt-4 text-gray-400 font-sans text-xs md:text-sm max-w-lg mx-auto">Join our exclusive network of dealers and architects to access premium bathware at wholesale rates.</p>
                 </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8" style="perspective: 1200px;">
-                    <div class="pricing-card bg-white border border-luviio-sand rounded-3xl p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-300 gpu-target relative overflow-hidden shadow-lg">
-                        <h3 class="text-2xl font-serif text-gray-800 mb-2 relative z-10">Standard Retail</h3>
-                        <p class="text-xs text-gray-500 font-sans tracking-wide mb-8 relative z-10">For individual showrooms.</p>
-                        <div class="text-4xl font-serif mb-8 text-luviio-charcoal relative z-10">15% <span class="text-[10px] font-sans text-gray-500 tracking-widest uppercase align-middle">Margin</span></div>
-                        <ul class="space-y-5 mb-10 flex-1 relative z-10">
-                            <li class="text-xs text-gray-600 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Standard Catalog Access</li>
-                            <li class="text-xs text-gray-600 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Basic Marketing Kit</li>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 perspective-1000" id="pricingGrid">
+                    <div class="pricing-card bg-[#161616] border border-gray-800 rounded-3xl p-6 md:p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-600 gpu-target relative overflow-hidden opacity-0 translate-y-12">
+                        <h3 class="text-xl md:text-2xl font-serif text-gray-300 mb-2 relative z-10">Standard Retail</h3>
+                        <p class="text-[10px] md:text-xs text-gray-500 font-sans tracking-wide mb-6 md:mb-8 relative z-10">For individual showrooms.</p>
+                        <div class="text-3xl md:text-4xl font-serif mb-6 md:mb-8 text-white relative z-10">15% <span class="text-[9px] md:text-[10px] font-sans text-gray-500 tracking-widest uppercase align-middle">Margin</span></div>
+                        <ul class="space-y-4 md:space-y-5 mb-8 md:mb-10 flex-1 relative z-10">
+                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Standard Catalog Access</li>
+                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Basic Marketing Kit</li>
                         </ul>
-                        <a href="/partner" class="w-full text-center py-4 rounded-xl border border-luviio-charcoal text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-luviio-charcoal hover:text-white sys-transition hover-target relative z-10 block">Apply Now</a>
+                        <a href="/partner" class="w-full text-center py-3.5 md:py-4 rounded-xl border border-gray-700 text-[9px] md:text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10 block">Apply Now</a>
                     </div>
-
-                    <div class="pricing-card pricing-glow relative bg-luviio-charcoal border border-luviio-gold/40 rounded-3xl p-8 flex flex-col transform md:-translate-y-4 shadow-[0_20px_40px_rgba(197,160,89,0.15)] gpu-target z-10">
-                        <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-luviio-gold text-black px-4 py-1.5 rounded-full text-[8px] font-bold uppercase tracking-[0.3em]">Most Popular</div>
-                        <h3 class="text-2xl font-serif text-luviio-gold mb-2 relative z-10">Trade Partner</h3>
-                        <p class="text-xs text-gray-400 font-sans tracking-wide mb-8 relative z-10">For architects & developers.</p>
-                        <div class="text-4xl font-serif mb-8 text-white relative z-10">35% <span class="text-[10px] font-sans text-gray-400 tracking-widest uppercase align-middle">Margin</span></div>
-                        <ul class="space-y-5 mb-10 flex-1 relative z-10">
+                    
+                    <div class="pricing-card pricing-glow relative bg-[#0a0a0a] border border-luviio-gold/40 rounded-3xl p-6 md:p-8 flex flex-col transform md:-translate-y-4 shadow-[0_20px_40px_rgba(197,160,89,0.1)] gpu-target z-10 opacity-0 translate-y-12">
+                        <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-luviio-gold text-black px-4 py-1.5 rounded-full text-[7px] md:text-[8px] font-bold uppercase tracking-[0.3em]">Most Popular</div>
+                        <h3 class="text-xl md:text-2xl font-serif text-luviio-gold mb-2 relative z-10">Trade Partner</h3>
+                        <p class="text-[10px] md:text-xs text-gray-400 font-sans tracking-wide mb-6 md:mb-8 relative z-10">For architects & developers.</p>
+                        <div class="text-3xl md:text-4xl font-serif mb-6 md:mb-8 text-white relative z-10">35% <span class="text-[9px] md:text-[10px] font-sans text-gray-400 tracking-widest uppercase align-middle">Margin</span></div>
+                        <ul class="space-y-4 md:space-y-5 mb-8 md:mb-10 flex-1 relative z-10">
                             <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Priority Bulk Pricing</li>
-                            <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Custom 3D CAD Models</li>
+                            <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Dedicated Account Manager</li>
                             <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Express Logistics</li>
                         </ul>
-                        <a href="/partner" class="w-full text-center py-4 rounded-xl bg-luviio-gold text-black text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white sys-transition hover-target relative z-10 block">Become Partner</a>
+                        <a href="/partner" class="w-full text-center py-3.5 md:py-4 rounded-xl bg-luviio-gold text-black text-[9px] md:text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white sys-transition hover-target relative z-10 block">Become Partner</a>
                     </div>
-
-                    <div class="pricing-card bg-white border border-luviio-sand rounded-3xl p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-300 gpu-target relative overflow-hidden shadow-lg">
-                        <h3 class="text-2xl font-serif text-gray-800 mb-2 relative z-10">Dealership</h3>
-                        <p class="text-xs text-gray-500 font-sans tracking-wide mb-8 relative z-10">State-level exclusivity.</p>
-                        <div class="text-4xl font-serif mb-8 text-luviio-charcoal relative z-10">Custom</div>
-                        <ul class="space-y-5 mb-10 flex-1 relative z-10">
-                            <li class="text-xs text-gray-600 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Territorial Monopoly</li>
-                            <li class="text-xs text-gray-600 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Premium Display Setup</li>
+                    
+                    <div class="pricing-card bg-[#161616] border border-gray-800 rounded-3xl p-6 md:p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-600 gpu-target relative overflow-hidden opacity-0 translate-y-12">
+                        <h3 class="text-xl md:text-2xl font-serif text-gray-300 mb-2 relative z-10">Dealership</h3>
+                        <p class="text-[10px] md:text-xs text-gray-500 font-sans tracking-wide mb-6 md:mb-8 relative z-10">State-level exclusivity.</p>
+                        <div class="text-3xl md:text-4xl font-serif mb-6 md:mb-8 text-white relative z-10">Custom</div>
+                        <ul class="space-y-4 md:space-y-5 mb-8 md:mb-10 flex-1 relative z-10">
+                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Territorial Monopoly</li>
+                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Premium Display Setup</li>
                         </ul>
-                        <a href="/partner" class="w-full text-center py-4 rounded-xl border border-luviio-charcoal text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-luviio-charcoal hover:text-white sys-transition hover-target relative z-10 block">Contact Us</a>
+                        <a href="/partner" class="w-full text-center py-3.5 md:py-4 rounded-xl border border-gray-700 text-[9px] md:text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10 block">Contact Us</a>
                     </div>
                 </div>
             </div>
         </section>
-
+        
         <footer class="bg-luviio-charcoal text-luviio-stone relative z-50 pt-24 md:pt-40 overflow-hidden w-full border-t border-luviio-gold/10">
             <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl opacity-[0.03] pointer-events-none z-0">
                 <img src="/api/static/images/lotus.png" class="w-full h-full object-contain anim-float filter sepia hue-rotate-180" alt="Lotus Decor" loading="lazy">
@@ -438,18 +562,19 @@
             <h1 class="absolute -bottom-4 md:-bottom-12 left-0 text-[20vw] md:text-[15vw] font-serif font-bold text-white/[0.02] leading-none pointer-events-none select-none text-center w-full">LUVIIO</h1>
         </footer>
     </main>
-
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
     <script src="https://unpkg.com/@studio-freight/lenis@1.0.33/dist/lenis.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script> <script type="module">
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+    <script type="module">
         document.addEventListener("DOMContentLoaded", () => {
             gsap.registerPlugin(ScrollTrigger);
             gsap.config({ force3D: true });
             let lenis;
-
+            
             gsap.to("#splashLogo", { opacity: 1, scale: 1, filter: "blur(0px)", duration: 2, ease: "power3.out" });
-
+            
             const hideSplashTl = gsap.timeline({
                 paused: true,
                 onStart: () => { document.getElementById('mainContent').classList.remove('hidden'); },
@@ -458,25 +583,27 @@
                     initMainAnimations();
                 }
             });
-
+            
             hideSplashTl.to("#splashProgress", { opacity: 0, duration: 0.3 })
-                        .to("#splashScreen", { yPercent: -100, duration: 1.5, ease: "expo.inOut", delay: 0.2 })
-                        .to("#mainContent", { opacity: 1, duration: 0.8 }, "-=0.8")
-                        .to("#mainHeader", { y: 0, duration: 1.2, ease: "power4.out" }, "-=0.5");
-
+                .to("#splashScreen", { yPercent: -100, duration: 1.5, ease: "expo.inOut", delay: 0.2 })
+                .to("#mainContent", { opacity: 1, duration: 0.8 }, "-=0.8")
+                .to("#mainHeader", { y: 0, duration: 1.2, ease: "power4.out" }, "-=0.5");
+            
             const splashLogoImage = new Image();
             splashLogoImage.src = "/api/static/images/logo.png";
+            
             function completeSplash() {
                 gsap.to("#splashProgress", { width: "100%", duration: 1.5, ease: "power3.inOut", onComplete: () => setTimeout(() => hideSplashTl.play(), 400) });
             }
-            if (splashLogoImage.complete) { completeSplash(); } else { splashLogoImage.onload = completeSplash; splashLogoImage.onerror = completeSplash; }
-
+            if (splashLogoImage.complete) { completeSplash(); } else { splashLogoImage.onload = completeSplash;
+                splashLogoImage.onerror = completeSplash; }
+            
             function initMainAnimations() {
                 lenis = new Lenis({ duration: 1.5, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smooth: true, smoothTouch: false });
                 lenis.on('scroll', ScrollTrigger.update);
                 gsap.ticker.add((time) => { lenis.raf(time * 1000); });
                 gsap.ticker.lagSmoothing(0, 0);
-
+                
                 // Initializing Swiper for Testimonials
                 new Swiper(".homeSwiper", {
                     slidesPerView: 1,
@@ -486,7 +613,7 @@
                     autoplay: { delay: 4000, disableOnInteraction: true },
                     pagination: { el: ".swiper-pagination", clickable: true }
                 });
-
+                
                 const cursor = document.getElementById('cursor');
                 if (window.innerWidth >= 768) {
                     window.addEventListener('mousemove', (e) => { gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.15, ease: "power2.out" }); });
@@ -495,17 +622,17 @@
                         target.addEventListener('mouseleave', () => cursor.classList.remove('hover-active'));
                     });
                 }
-
+                
                 const heroTl = gsap.timeline({ delay: 0.3 });
                 heroTl.to(".hero-text", { y: "0%", rotateZ: 0, duration: 1.8, stagger: 0.2, ease: "power4.out" })
-                      .to(".hero-image-wrapper", { clipPath: "polygon(0 0%, 100% 0%, 100% 100%, 0 100%)", opacity: 1, duration: 2, ease: "expo.inOut" }, "-=1.2")
-                      .to("#heroImage", { scale: 1, filter: "blur(0px)", duration: 3, ease: "power3.out" }, "-=1.5");
-                gsap.to("#heroImage", { yPercent: 10, ease: "none", scrollTrigger: { trigger: ".hero-image-wrapper", start: "top bottom", end: "bottom top", scrub: true }});
-
+                    .to(".hero-image-wrapper", { clipPath: "polygon(0 0%, 100% 0%, 100% 100%, 0 100%)", opacity: 1, duration: 2, ease: "expo.inOut" }, "-=1.2")
+                    .to("#heroImage", { scale: 1, filter: "blur(0px)", duration: 3, ease: "power3.out" }, "-=1.5");
+                gsap.to("#heroImage", { yPercent: 10, ease: "none", scrollTrigger: { trigger: ".hero-image-wrapper", start: "top bottom", end: "bottom top", scrub: true } });
+                
                 const brandTl = gsap.timeline({ scrollTrigger: { trigger: "#brandSection", start: "top 65%" } });
                 gsap.to(".brand-img", { yPercent: 15, ease: "none", scrollTrigger: { trigger: "#brandSection", start: "top bottom", end: "bottom top", scrub: true } });
                 brandTl.to(".brand-anim", { y: "0%", opacity: 1, rotateZ: 0, duration: 1.2, stagger: 0.1, ease: "power4.out" });
-
+                
                 const drawerContent = document.getElementById('drawerContent');
                 const drawerOverlay = document.getElementById('drawerOverlay');
                 let isDrawerOpen = false;
@@ -527,7 +654,7 @@
                         setTimeout(() => { if (isAccountView) toggleView(); }, 600);
                     }
                 }
-
+                
                 function toggleView() {
                     isAccountView = !isAccountView;
                     if (isAccountView) {
@@ -535,39 +662,47 @@
                         document.getElementById('menuState').classList.remove('opacity-100', 'scale-100');
                         document.getElementById('accountState').classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
                         document.getElementById('accountState').classList.add('opacity-100', 'scale-100');
-                        gsap.to("#profileTrigger i", { rotation: -180, opacity: 0, duration: 0.3, onComplete: () => { document.getElementById('profileTrigger').innerHTML = '<i class="ri-arrow-left-line text-2xl"></i>'; gsap.fromTo("#profileTrigger i", { rotation: 180, opacity: 0 }, { rotation: 0, opacity: 1, duration: 0.3 }); }});
+                        gsap.to("#profileTrigger i", { rotation: -180, opacity: 0, duration: 0.3, onComplete: () => { document.getElementById('profileTrigger').innerHTML = '<i class="ri-arrow-left-line text-2xl"></i>';
+                                gsap.fromTo("#profileTrigger i", { rotation: 180, opacity: 0 }, { rotation: 0, opacity: 1, duration: 0.3 }); } });
                     } else {
                         document.getElementById('accountState').classList.add('opacity-0', 'scale-95', 'pointer-events-none');
                         document.getElementById('accountState').classList.remove('opacity-100', 'scale-100');
                         document.getElementById('menuState').classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
                         document.getElementById('menuState').classList.add('opacity-100', 'scale-100');
-                        gsap.to("#profileTrigger i", { rotation: 180, opacity: 0, duration: 0.3, onComplete: () => { document.getElementById('profileTrigger').innerHTML = '<i class="ri-user-3-line text-xl"></i>'; gsap.fromTo("#profileTrigger i", { rotation: -180, opacity: 0 }, { rotation: 0, opacity: 1, duration: 0.3 }); }});
+                        gsap.to("#profileTrigger i", { rotation: 180, opacity: 0, duration: 0.3, onComplete: () => { document.getElementById('profileTrigger').innerHTML = '<i class="ri-user-3-line text-xl"></i>';
+                                gsap.fromTo("#profileTrigger i", { rotation: -180, opacity: 0 }, { rotation: 0, opacity: 1, duration: 0.3 }); } });
                     }
                 }
-
+                
                 document.getElementById('menuTrigger').addEventListener('click', toggleDrawer);
                 document.getElementById('closeDrawer').addEventListener('click', toggleDrawer);
                 drawerOverlay.addEventListener('click', toggleDrawer);
                 document.getElementById('profileTrigger').addEventListener('click', toggleView);
-
+                
                 gsap.to(".gallery-col-1", { yPercent: -20, ease: "none", scrollTrigger: { trigger: ".gallery-container", start: "top bottom", end: "bottom top", scrub: 1 } });
                 gsap.to(".gallery-col-2", { yPercent: -40, ease: "none", scrollTrigger: { trigger: ".gallery-container", start: "top bottom", end: "bottom top", scrub: 1.5 } });
-
+                
                 // Text Reveal for the Marquee replacement 
                 gsap.to("#showcaseTitle", { scrollTrigger: { trigger: "#showcaseWrapper", start: "top 80%" }, y: 0, duration: 1.5, ease: "expo.out" });
                 
                 const track = document.getElementById("horizontalTrack");
+                
                 function getScrollAmount() { return -(track.scrollWidth - window.innerWidth + (window.innerWidth > 768 ? 128 : 48)); }
                 ScrollTrigger.create({ trigger: "#showcaseWrapper", start: "top top", end: () => `+=${Math.abs(getScrollAmount())}`, pin: true, animation: gsap.to(track, { x: getScrollAmount, ease: "none" }), scrub: 1, invalidateOnRefresh: true });
                 gsap.utils.toArray('.showcase-img').forEach((img) => { gsap.to(img, { xPercent: 15, ease: "none", scrollTrigger: { trigger: "#showcaseWrapper", start: "top top", end: () => `+=${Math.abs(getScrollAmount())}`, scrub: 1 } }); });
-
-                gsap.from(".pricing-header", { y: 50, opacity: 0, duration: 1.2, ease: "power3.out", scrollTrigger: { trigger: "#pricingSection", start: "top 75%" } });
-                gsap.from(".pricing-card", {
-                    scrollTrigger: { trigger: "#pricingSection", start: "top 60%" },
-                    y: 100, rotationX: 25, opacity: 0, duration: 1.5, stagger: 0.15, ease: "expo.out", transformOrigin: "top center"
+                
+              // FIXED: Pricing Animations (Using fromTo to guarantee visibility)
+                gsap.to(".pricing-header", { 
+                    y: 0, opacity: 1, duration: 1.2, ease: "power3.out", 
+                    scrollTrigger: { trigger: "#pricingSection", start: "top 80%" } 
+                });
+                
+                gsap.to(".pricing-card", {
+                    y: 0, opacity: 1, rotationX: 0, duration: 1, stagger: 0.15, ease: "power3.out",
+                    scrollTrigger: { trigger: "#pricingGrid", start: "top 75%" }
                 });
             }
-
+            
             window.addEventListener('beforeunload', () => { if (lenis) lenis.destroy(); });
         });
     </script>
