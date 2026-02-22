@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sign In - LUVIIO</title>
+    <title>Create Account - LUVIIO</title>
 
     <link rel="preconnect" href="https://images.unsplash.com">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,7 +21,7 @@
                     colors: {
                         luviio: {
                             stone: '#F5F5F0',
-                            charcoal: '#0a0a0a',
+                            charcoal: '#0a0a0a', /* Matched the deeper black */
                             gold: '#C5A059',
                             sand: '#E5E5DF'
                         }
@@ -39,16 +39,16 @@
         body {
             font-family: 'Inter', sans-serif;
             -webkit-font-smoothing: antialiased;
-            background-color: #0a0a0a;
+            background-color: #0a0a0a; 
             color: #ffffff;
-            overflow: hidden;
-            /* Added explicit fallback for dynamic viewport height */
+            overflow: hidden; 
             height: 100vh; 
-            height: 100dvh; 
+            height: 100dvh; /* Fix for mobile browser address bar */
         }
         h1, h2, h3, h4, h5, h6 { font-family: 'Playfair Display', serif; }
 
-        .input-group { position: relative; margin-bottom: 2.5rem; }
+        /* Custom Input Styling (Floating effect) matched to login */
+        .input-group { position: relative; margin-bottom: 2rem; } /* Slightly reduced margin to fit 3 fields perfectly */
         .input-group input {
             width: 100%; padding: 8px 0; font-size: 0.875rem; color: #fff;
             background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.15);
@@ -67,6 +67,7 @@
         .sys-transition { transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
         .gpu-target { transform: translateZ(0); will-change: transform; }
         
+        /* Custom Checkbox */
         .custom-checkbox {
             appearance: none;
             background-color: transparent;
@@ -79,6 +80,7 @@
             border-radius: 1px;
             display: grid;
             place-content: center;
+            cursor: pointer;
         }
         .custom-checkbox::before {
             content: "";
@@ -107,8 +109,8 @@
         <div class="absolute inset-0 bg-gradient-to-t from-luviio-charcoal via-transparent to-luviio-charcoal/30"></div>
         
         <div class="absolute bottom-16 left-16 z-10 auth-anim opacity-0 translate-y-8">
-            <h2 class="text-5xl font-serif mb-4 text-white leading-tight">Curated for<br><span class="italic text-luviio-gold">Eternity.</span></h2>
-            <p class="text-xs font-sans text-gray-400 tracking-wider max-w-xs leading-relaxed">Access your exclusive dashboard to explore premium collections and manage orders.</p>
+            <h2 class="text-5xl font-serif mb-4 text-white leading-tight">Crafted for<br><span class="italic text-luviio-gold">Perfection.</span></h2>
+            <p class="text-xs font-sans text-gray-400 tracking-wider max-w-xs leading-relaxed">Join LUVIIO to discover our exclusive collections and curate your perfect space.</p>
         </div>
     </div>
 
@@ -119,43 +121,48 @@
         </a>
 
         <div class="w-full max-w-[320px]">
-            <div class="flex justify-center mb-8 auth-anim opacity-0 -translate-y-4">
+            <div class="flex justify-center mb-6 auth-anim opacity-0 -translate-y-4">
                 <div class="w-14 h-14 flex items-center justify-center p-2 border border-white/10 rounded-sm">
                     <img src="/api/static/images/logo.png" alt="Luviio Lotus" class="w-full h-full object-contain invert opacity-90">
                 </div>
             </div>
 
-            <div class="text-center mb-12 auth-anim opacity-0 translate-y-4">
-                <h1 class="text-[28px] font-serif mb-3 tracking-wide">Welcome Back</h1>
-                <p class="text-[8px] text-gray-500 uppercase tracking-[0.2em] font-sans font-semibold">Sign in to continue</p>
+            <div class="text-center mb-10 auth-anim opacity-0 translate-y-4">
+                <h1 class="text-[28px] font-serif mb-3 tracking-wide">Create Account</h1>
+                <p class="text-[8px] text-gray-500 uppercase tracking-[0.2em] font-sans font-semibold">Start your luxury journey</p>
             </div>
 
-            <form action="/login" method="POST" class="w-full">
+            <form action="/register" method="POST" class="w-full">
+                
+                <div class="input-group auth-anim opacity-0 translate-y-4">
+                    <input type="text" name="name" id="name" required autocomplete="name">
+                    <label for="name">Full Name</label>
+                </div>
+
                 <div class="input-group auth-anim opacity-0 translate-y-4">
                     <input type="email" name="email" id="email" required autocomplete="email">
                     <label for="email">Email Address</label>
                 </div>
 
                 <div class="input-group auth-anim opacity-0 translate-y-4 mb-6">
-                    <input type="password" name="password" id="password" required autocomplete="current-password">
+                    <input type="password" name="password" id="password" required autocomplete="new-password">
                     <label for="password">Password</label>
                 </div>
 
-                <div class="flex justify-between items-center mb-10 auth-anim opacity-0 w-full">
-                    <label class="flex items-center gap-2 cursor-pointer group">
-                        <input type="checkbox" class="custom-checkbox">
-                        <span class="text-[8px] text-white uppercase tracking-widest font-bold sys-transition pt-0.5">Remember me</span>
+                <div class="flex items-center mb-8 auth-anim opacity-0 w-full">
+                    <label class="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" class="custom-checkbox" required>
+                        <span class="text-[8px] text-gray-400 uppercase tracking-wider font-bold sys-transition pt-0.5 group-hover:text-white">I agree to the Terms & Privacy Policy</span>
                     </label>
-                    <a href="#" class="text-[8px] text-gray-400 uppercase tracking-widest font-bold hover:text-luviio-gold sys-transition pt-0.5">Forgot Password?</a>
                 </div>
 
                 <button type="submit" class="w-full py-3.5 bg-[#C5A059] text-black rounded-sm font-bold uppercase tracking-[0.15em] text-[9px] hover:bg-white sys-transition auth-anim opacity-0 translate-y-4 shadow-sm">
-                    Secure Sign In
+                    Create Account
                 </button>
             </form>
 
-            <div class="mt-10 text-center auth-anim opacity-0 flex flex-col items-center gap-4">
-                <p class="text-[9px] text-gray-500 font-sans tracking-wide">New to Luviio? <a href="/register" class="text-white font-bold hover:text-luviio-gold sys-transition border-b border-gray-600 pb-[1px] ml-1">Create an account</a></p>
+            <div class="mt-8 text-center auth-anim opacity-0 flex flex-col items-center gap-4">
+                <p class="text-[9px] text-gray-500 font-sans tracking-wide">Already have an account? <a href="/login" class="text-white font-bold hover:text-luviio-gold sys-transition border-b border-gray-600 pb-[1px] ml-1">Sign In</a></p>
                 
                 <div class="flex items-center justify-center gap-3 w-32 opacity-60">
                     <div class="h-[1px] flex-1 bg-gray-700"></div>
@@ -173,12 +180,14 @@
         document.addEventListener("DOMContentLoaded", () => {
             gsap.config({ force3D: true });
 
+            // Slow cinematic zoom on the background image
             gsap.to("#authImage", {
                 scale: 1,
                 duration: 10,
                 ease: "power1.out"
             });
 
+            // Staggered reveal for form elements
             gsap.to(".auth-anim", {
                 y: 0,
                 opacity: 1,
