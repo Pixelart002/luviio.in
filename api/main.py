@@ -1,25 +1,26 @@
 import os
 import httpx
-from datetime import datetime
-from typing import List, Dict, Any, Optional
-
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+# 1. Ye Nayi line add karo:
+from fastapi.staticfiles import StaticFiles
 
-# Yahan hum routes.py se 'router' import kar rahe hain
 from api.routes.routes import router as luviio_router
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
+# 2. Static directory ka path define karo:
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 app = FastAPI(title="Luviio.in | Static Version")
 
-templates = Jinja2Templates(directory=TEMPLATE_DIR)
-templates.env.enable_async = True
+# 3. Yahan StaticFiles ko mount karo:
+app.mount("/api/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# --- AI DEBUGGER (optional, can be removed if not needed) ---
+templates = Jinja2Templates(directory=TEMPLATE_DIR)
+
+# --- AI DEBUGGER (optional) ---
 async def get_ai_solution(error_msg: str):
     url = f"https://mistral-ai-three.vercel.app/?id=Luviio_Vercel&question=Fix: {error_msg}"
     try:
@@ -41,6 +42,5 @@ async def global_exception_handler(request: Request, exc: Exception):
             "ai_suggestion": ai_fix[:200]
         }
     )
-    
-# FIX: Router yahan include hoga, function ke bahar!
+
 app.include_router(luviio_router)
