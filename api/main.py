@@ -44,12 +44,3 @@ async def global_exception_handler(request: Request, exc: Exception):
     
 # FIX: Router yahan include hoga, function ke bahar!
 app.include_router(luviio_router)
-
-# --- ROUTES ---
-@app.get("/", response_class=HTMLResponse)
-async def home_route(request: Request):
-    # No state needed – templates are static
-    return templates.TemplateResponse(
-        "app/pages/index.html", 
-        {"request": request}
-    )
