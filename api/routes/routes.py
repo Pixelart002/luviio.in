@@ -87,10 +87,24 @@ async def login_page(request: Request):
         
     return templates.TemplateResponse("app/pages/login.html", {"request": request})
     
-@router.get("/register")
+# 5. User Sign Up Page
+@router.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return {"message": "B2C Sign Up Page chalegi yahan."}
+    # Agar user already logged in hai, toh wapas home/dashboard bhej do
+    if request.cookies.get("luviio_auth"):
+        return RedirectResponse(url="/dashboard", status_code=303)
+        
+    return templates.TemplateResponse("app/pages/register.html", {"request": request})
 
+# 5.1 Handle Register Form Submit
+@router.post("/register")
+async def process_register(name: str = Form(...), email: str = Form(...), password: str = Form(...)):
+    # TODO: Yahan Database me naya user save karna aur Password Hash karna
+    
+    # Registration ke baad sidha Login Page pe bhej do
+    return RedirectResponse(url="/login", status_code=303)
+    
+    
 @router.get("/partner")
 async def partner_page(request: Request):
     return {"message": "B2B Partner Portal & Signup chalega yahan."}
