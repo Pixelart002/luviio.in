@@ -4,448 +4,446 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LUVIIO - Premium Experience</title>
-  
-  
-  <link rel="prefetch" as="image" src="/api/static/images/logo.png" >
-  
-  
-    
+    <title>LUVIIO - Premium Bathware</title>
+
+    <link rel="preload" as="image" href="/api/static/images/logo.png">
+    <link rel="preload" as="image" href="https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=2000">
+
     <link rel="preconnect" href="https://images.unsplash.com">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
-    <link rel="dns-prefetch" href="https://images.unsplash.com">
-    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400;1,500&family=Great+Vibes&display=swap" rel="stylesheet">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
-    
-    
-    
-    
-    
-    
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        luviio: {
+                            stone: '#F5F5F0',
+                            charcoal: '#111111',
+                            gold: '#C5A059',
+                            sand: '#E5E5DF'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif'],
+                        signature: ['Great Vibes', 'cursive'],
+                    }
+                }
+            }
+        }
+    </script>
+
     <style>
-        /* Lenis Smooth Scroll Setup */
-        html.lenis,
-        html.lenis body { height: auto; width: 100vw; overflow-x: hidden; }
+        html, body {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+            background-color: #F5F5F0;
+            color: #111111;
+        }
+
+        html.lenis, html.lenis body { height: auto; width: 100vw; overflow-x: hidden; }
         .lenis.lenis-smooth { scroll-behavior: auto !important; }
         .lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
         .lenis.lenis-stopped { overflow: hidden; }
-        
-        body { overflow-x: hidden; background-color: #f8fafc; }
-        
-        /* Custom Cursor for Desktop */
+
         @media (min-width: 768px) {
             body, a, button, input { cursor: none; }
             #cursor {
-                position: fixed; top: 0; left: 0; width: 20px; height: 20px;
-                background: theme('colors.gray.900'); border-radius: 50%;
+                position: fixed; top: 0; left: 0; width: 16px; height: 16px;
+                background: #C5A059;
+                border-radius: 50%;
                 pointer-events: none; z-index: 9999; mix-blend-mode: difference;
-                transform: translate(-50%, -50%); transition: width 0.3s, height 0.3s, background-color 0.3s;
+                transform: translate(-50%, -50%); transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), height 0.4s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.4s;
                 will-change: transform;
             }
-            #cursor.hover-active {
-                width: 60px; height: 60px; background: rgba(255, 255, 255, 0.8); mix-blend-mode: screen;
-            }
+            #cursor.hover-active { width: 80px; height: 80px; background: rgba(255,255,255,0.1); backdrop-filter: blur(4px); mix-blend-mode: normal; border: 1px solid rgba(255,255,255,0.3); }
         }
-        
-        /* Shutter Border Sticker */
-        .shutter-border {
-            background-image: url("data:image/svg+xml,%3Csvg width='100%25' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0 L 20 24 L 40 0 L 60 24 L 80 0 L 100 24 L 120 0 L 140 24 L 160 0 L 180 24 L 200 0 L 220 24 L 240 0 L 260 24 L 280 0 L 300 24 L 320 0 L 340 24 L 360 0 L 380 24 L 400 0 L 420 24 L 440 0 L 460 24 L 480 0 L 500 24 Z' fill='%23ffffff'/%3E%3C/svg%3E");
-            background-repeat: repeat-x; background-size: 40px 24px;
-            filter: drop-shadow(0px -4px 6px rgba(0, 0, 0, 0.04));
-            height: 24px; width: 100%;
+
+        .text-marble {
+            background-image: url('https://images.unsplash.com/photo-1558055620-1e5b8823f666?q=80&w=1200&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+            display: inline-block;
+            filter: contrast(1.2) brightness(0.9);
         }
+
+        .cinematic-vignette { box-shadow: inset 0 0 100px rgba(0,0,0,0.5); }
+        .glass-overlay { backdrop-filter: blur(0px); transition: backdrop-filter 0.8s ease-in-out; }
+        .glass-overlay.active { backdrop-filter: blur(16px); }
+        .glass-menu { background: rgba(245, 245, 240, 0.95); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border-left: 1px solid rgba(255, 255, 255, 0.4); }
         
-        /* Aceternity Fancy Menu Background */
-        .glass-menu {
-            background: rgba(255, 255, 255, 0.75);
-            backdrop-filter: blur(40px);
-            -webkit-backdrop-filter: blur(40px);
-            border-left: 1px solid rgba(255, 255, 255, 0.4);
-            box-shadow: -30px 0 80px rgba(0, 0, 0, 0.1);
-        }
+        .stacked-section { position: sticky; top: 0; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; transform-origin: top center; }
         
-        .dot-pattern {
-            background-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
-            background-size: 24px 24px;
-        }
-        
-        .stacked-section {
-            position: sticky; top: 0; min-height: 100vh;
-            display: flex; flex-direction: column; justify-content: center;
-            transform-origin: top center; will-change: transform;
-        }
-        
-        .reveal-mask {
-            clip-path: polygon(0 0, 100% 0, 100% 100%, 0% 100%);
-            display: inline-block; padding-bottom: 0.1em;
-        }
-        
-        .reveal-text {
-            transform: translateY(120%) rotateZ(6deg);
-            display: inline-block; transform-origin: top left;
-        }
-        
+        .reveal-mask { clip-path: polygon(0 0, 100% 0, 100% 100%, 0% 100%); display: inline-block; padding-bottom: 0.1em; }
+        .reveal-text { transform: translateY(120%) rotateZ(2deg); display: inline-block; transform-origin: top left; }
+        .clip-mask { overflow: hidden; display: inline-block; padding-bottom: 0.1em; }
+        .clip-text { display: inline-block; transform: translateY(100%); }
+
+        .gpu-target { transform: translateZ(0); backface-visibility: hidden; perspective: 1000px; }
+
+        @keyframes float-subtle { 0%, 100% { transform: translateY(0px) rotate(-1deg); } 50% { transform: translateY(-10px) rotate(1deg); } }
+        .anim-float { animation: float-subtle 8s ease-in-out infinite; }
+
         ::-webkit-scrollbar { width: 0px; background: transparent; }
+        .sys-transition { transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+
+        .pricing-glow::before {
+            content: ''; position: absolute; inset: -2px;
+            background: linear-gradient(45deg, #C5A059, transparent, #C5A059);
+            z-index: -1; filter: blur(15px); opacity: 0; transition: opacity 0.5s ease;
+        }
+        .pricing-card:hover .pricing-glow::before { opacity: 0.6; }
     </style>
 </head>
 
-<body class="font-sans antialiased text-gray-900 selection:bg-gray-900 selection:text-white relative">
-    
-    <div class="fixed inset-0 z-[-1] pointer-events-none opacity-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-200 via-gray-50 to-white"></div>
-    
-    <div id="splashScreen" class="fixed inset-0 z-[999] bg-gray-900 flex flex-col items-center justify-center text-white origin-bottom">
-        <div class="overflow-hidden mb-6">
-            <h1 id="splashLogo" class="text-5xl md:text-7xl font-black tracking-widest translate-y-full flex items-center gap-4">
+<body class="relative bg-luviio-stone">
+
+    <div id="splashScreen" class="fixed inset-0 z-[999] bg-luviio-charcoal flex flex-col items-center justify-center text-white origin-bottom">
+        <div class="overflow-hidden mb-8">
+            <h1 id="splashLogo" class="text-4xl md:text-6xl font-serif tracking-[0.2em] flex items-center gap-4 opacity-0 scale-110" style="filter: blur(10px);">
                 <img src="/api/static/images/logo.png" alt="Luviio Logo" class="w-12 h-12 md:w-16 md:h-16 object-contain invert" fetchpriority="high"> LUVIIO
             </h1>
         </div>
-        <div class="w-64 h-[2px] bg-white/20 rounded overflow-hidden relative">
-            <div id="splashProgress" class="absolute top-0 left-0 h-full bg-white w-0"></div>
+        <div class="w-48 h-[1px] bg-white/10 overflow-hidden relative">
+            <div id="splashProgress" class="absolute top-0 left-0 h-full bg-luviio-gold w-0 shadow-[0_0_10px_#C5A059]"></div>
         </div>
-        <p id="splashStatus" class="mt-4 text-xs font-bold tracking-widest uppercase text-gray-400 opacity-0">Initializing Store...</p>
     </div>
-    
+
     <div id="cursor" class="hidden md:block"></div>
-    
-    <header class="fixed w-full top-0 z-50 transition-all duration-300">
-        <div class="bg-white/70 backdrop-blur-xl flex justify-between items-center px-4 md:px-8 py-4 relative z-10 border-b border-gray-200/50 shadow-sm">
-            <div class="flex items-center gap-3 hover-target cursor-pointer">
-                <div class="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center overflow-hidden p-1.5 shadow-md">
-                    <img src="/api/static/images/logo.png" alt="Logo" class="w-full h-full object-contain invert">
+
+    <header class="fixed w-full top-0 z-50 transition-transform duration-700" id="mainHeader" style="transform: translateY(-100%);">
+        <div class="bg-luviio-stone/80 backdrop-blur-xl flex justify-between items-center px-6 md:px-10 py-4 relative z-10 border-b border-luviio-sand/50">
+            <div class="flex items-center gap-4 hover-target cursor-pointer group">
+                <div class="w-8 h-8 flex items-center justify-center overflow-hidden">
+                    <img src="/api/static/images/logo.png" alt="Logo" class="w-full h-full object-contain sys-transition group-hover:scale-110">
                 </div>
-                <h1 class="text-xl font-black tracking-widest">LUVIIO</h1>
+                <h1 class="text-sm md:text-lg font-serif font-medium tracking-[0.2em] text-luviio-charcoal uppercase">Luviio</h1>
             </div>
-            <button id="menuTrigger" class="text-3xl text-gray-800 hover:text-black transition-transform hover:scale-110 p-2 hover-target magnetic-btn outline-none">
-                <i class="ri-menu-4-line"></i>
-            </button>
+
+            <div class="flex items-center gap-6 md:gap-10">
+                <div class="hidden md:flex items-center gap-6 border-r border-luviio-sand/80 pr-10">
+                    {% if user %}
+                        <a href="/logout" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-red-800 hover:text-red-500 sys-transition hover-target">Logout</a>
+                        <a href="/dashboard" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-3 rounded-full hover:bg-luviio-gold hover:shadow-[0_10px_20px_rgba(197,160,89,0.2)] sys-transition hover-target">Dashboard</a>
+                    {% else %}
+                        <a href="/login" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-luviio-charcoal hover:text-luviio-gold sys-transition hover-target">Sign In</a>
+                        <a href="/signup" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-3 rounded-full hover:bg-luviio-gold hover:shadow-[0_10px_20px_rgba(197,160,89,0.2)] sys-transition hover-target">Partner With Us</a>
+                    {% endif %}
+                </div>
+
+                <button id="menuTrigger" class="text-2xl md:text-3xl text-luviio-charcoal sys-transition hover:text-luviio-gold hover:scale-105 p-2 hover-target outline-none flex gap-2 items-center">
+                    <span class="text-[10px] uppercase tracking-[0.2em] font-sans font-bold hidden md:block mt-1">Menu</span>
+                    <i class="ri-menu-3-line"></i>
+                </button>
+            </div>
         </div>
     </header>
+
+    <div id="drawerOverlay" class="fixed inset-0 bg-luviio-charcoal/40 glass-overlay z-[60] opacity-0 pointer-events-none transition-opacity duration-700"></div>
     
-    <div id="drawerOverlay" class="fixed inset-0 bg-gray-900/20 backdrop-blur-sm z-[60] opacity-0 pointer-events-none transition-opacity duration-500"></div>
-    
-    <div id="drawerContent" class="fixed top-0 right-0 h-full w-full md:w-[450px] glass-menu z-[70] transform translate-x-full transition-transform duration-700 ease-[cubic-bezier(0.77,0,0.175,1)] flex flex-col overflow-hidden">
-        <div class="absolute inset-0 z-0 pointer-events-none dot-pattern"></div>
-        <div class="absolute top-0 right-0 w-96 h-96 bg-gray-200 rounded-full blur-[80px] opacity-50 z-0 pointer-events-none"></div>
-        
-        <div class="flex justify-between items-center px-8 py-6 z-20 relative bg-transparent">
-            <button id="profileTrigger" class="w-12 h-12 flex items-center justify-start text-gray-900 hover:scale-110 transition-transform duration-300 hover-target outline-none bg-transparent">
-                <i class="ri-user-smile-line text-3xl"></i>
-            </button>
-            <span id="drawerTitle" class="font-bold text-xs tracking-widest uppercase text-gray-500">Menu</span>
-            <button id="closeDrawer" class="w-12 h-12 flex items-center justify-end text-gray-900 hover:scale-110 transition-transform duration-300 hover-target outline-none bg-transparent">
-                <i class="ri-close-line text-3xl"></i>
-            </button>
+    <div id="drawerContent" class="fixed top-0 right-0 h-full w-full md:w-[450px] glass-menu z-[70] transform translate-x-full transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col overflow-hidden shadow-2xl">
+        <div class="flex justify-between items-center px-10 py-8 z-20 relative bg-transparent border-b border-luviio-sand/50">
+            <button id="profileTrigger" class="w-10 h-10 flex items-center justify-start text-luviio-charcoal sys-transition hover:scale-110 hover:text-luviio-gold hover-target outline-none bg-transparent"><i class="ri-user-3-line text-xl"></i></button>
+            <button id="closeDrawer" class="w-10 h-10 flex items-center justify-end text-luviio-charcoal sys-transition hover:scale-110 hover:text-luviio-gold hover-target outline-none bg-transparent"><i class="ri-close-line text-2xl"></i></button>
         </div>
         
-        <div class="relative flex-grow overflow-hidden z-10">
-            <div id="menuState" class="absolute inset-0 px-10 pb-24 pt-8 flex flex-col justify-between transition-all duration-500 transform translate-x-0 opacity-100">
-                <div class="flex flex-col gap-6 mt-10">
-                    <a href="#" class="drawer-link text-4xl md:text-6xl font-black text-gray-300 hover:text-gray-900 hover:translate-x-4 transition-all duration-400 hover-target drop-shadow-sm">Home.</a>
-                    <a href="#" class="drawer-link text-4xl md:text-6xl font-black text-gray-300 hover:text-gray-900 hover:translate-x-4 transition-all duration-400 hover-target drop-shadow-sm">Catalogue.</a>
-                    <a href="#" class="drawer-link text-4xl md:text-6xl font-black text-gray-300 hover:text-gray-900 hover:translate-x-4 transition-all duration-400 hover-target drop-shadow-sm">Store.</a>
-                    <a href="#" class="drawer-link text-4xl md:text-6xl font-black text-gray-300 hover:text-gray-900 hover:translate-x-4 transition-all duration-400 hover-target drop-shadow-sm">About.</a>
+        <div class="relative flex-grow overflow-hidden z-10 flex flex-col">
+            
+            <div id="menuState" class="absolute inset-0 px-10 pb-12 pt-8 flex flex-col justify-between transition-all duration-500 transform translate-x-0 opacity-100 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                <div class="flex flex-col gap-6 mt-4">
+                    <div class="clip-mask"><a href="#" class="clip-text drawer-link text-4xl md:text-5xl font-serif italic text-gray-400 sys-transition hover:text-luviio-charcoal hover:translate-x-4 hover-target">Collection.</a></div>
+                    <div class="clip-mask"><a href="#" class="clip-text drawer-link text-4xl md:text-5xl font-serif italic text-gray-400 sys-transition hover:text-luviio-charcoal hover:translate-x-4 hover-target">Pricing.</a></div>
+                    <div class="clip-mask"><a href="#" class="clip-text drawer-link text-4xl md:text-5xl font-serif italic text-gray-400 sys-transition hover:text-luviio-charcoal hover:translate-x-4 hover-target">Gallery.</a></div>
+                    <div class="clip-mask"><a href="#" class="clip-text drawer-link text-4xl md:text-5xl font-serif italic text-gray-400 sys-transition hover:text-luviio-charcoal hover:translate-x-4 hover-target">Our Story.</a></div>
                 </div>
-                <div class="drawer-link flex gap-6 pt-8 border-t border-gray-300/40">
-                    <a href="#" class="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-600 hover:bg-gray-900 hover:text-white transition-all hover-target"><i class="ri-instagram-line"></i></a>
-                    <a href="#" class="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-600 hover:bg-gray-900 hover:text-white transition-all hover-target"><i class="ri-twitter-x-line"></i></a>
-                    <a href="#" class="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-600 hover:bg-gray-900 hover:text-white transition-all hover-target"><i class="ri-linkedin-fill"></i></a>
+
+                <div class="mt-auto pt-8 border-t border-luviio-sand/50">
+                    <div class="flex flex-col gap-4 mb-8">
+                        {% if user %}
+                            <div class="clip-mask w-full"><a href="/logout" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl border border-red-900/50 text-red-800 font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-red-900 hover:text-white sys-transition">Logout</a></div>
+                            <div class="clip-mask w-full"><a href="/dashboard" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-gold sys-transition">Dashboard</a></div>
+                        {% else %}
+                            <div class="clip-mask w-full"><a href="/login" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl border border-luviio-charcoal text-luviio-charcoal font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-charcoal hover:text-white sys-transition">Sign In</a></div>
+                            <div class="clip-mask w-full"><a href="/signup" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-gold sys-transition">Become a Partner</a></div>
+                        {% endif %}
+                    </div>
+                    <div class="flex gap-6 clip-mask">
+                        <a href="#" class="clip-text drawer-social text-luviio-charcoal sys-transition hover:text-luviio-gold hover-target text-xl"><i class="ri-instagram-line"></i></a>
+                        <a href="#" class="clip-text drawer-social text-luviio-charcoal sys-transition hover:text-luviio-gold hover-target text-xl"><i class="ri-linkedin-fill"></i></a>
+                    </div>
                 </div>
             </div>
             
-            <div id="accountState" class="absolute inset-0 px-10 pb-24 pt-8 flex flex-col justify-between transition-all duration-500 transform scale-95 opacity-0 pointer-events-none">
-                <div class="mt-8">
-                    <div class="flex flex-col items-center text-center gap-4 mb-10">
-                        <div class="w-28 h-28 bg-gradient-to-tr from-gray-900 to-gray-700 rounded-full flex items-center justify-center text-white text-5xl shadow-2xl ring-4 ring-white/50 transform hover:scale-105 transition-transform"><i class="ri-vip-diamond-fill"></i></div>
-                        <div>
-                            <h3 class="font-bold text-3xl text-gray-900">Retail Partner <span class="align-top text-[10px] bg-gray-900 text-white px-2 py-0.5 rounded-full ml-1">PRO</span></h3>
-                            <p class="text-sm text-gray-600 mt-1 font-medium">partner@luviio.in</p>
-                        </div>
-                    </div>
-                    <div class="space-y-6 w-full bg-white/50 p-6 rounded-3xl border border-white/60 shadow-sm">
-                        <div class="flex flex-col gap-2">
-                            <label class="text-xs text-gray-500 uppercase tracking-widest font-bold">Username</label>
-                            <input type="text" value="@wholesale_hub" class="border-b border-gray-300/50 pb-2 outline-none text-gray-900 font-black bg-transparent w-full text-xl" readonly>
-                        </div>
-                        <button class="w-full py-4 bg-gray-900 text-white hover:bg-gray-800 rounded-2xl font-bold transition-all duration-300 shadow-xl hover-target"><i class="ri-settings-4-line mr-2"></i> Account Settings</button>
-                    </div>
-                </div>
-                <div class="flex gap-6 pt-8 border-t border-gray-300/40">
-                    <a href="#" class="text-gray-500 hover:text-gray-900 transition-colors hover-target text-sm font-bold tracking-widest uppercase">Support</a>
-                    <a href="#" class="text-gray-500 hover:text-red-500 transition-colors hover-target text-sm font-bold tracking-widest uppercase">Logout</a>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <main id="mainContent" class="opacity-0 hidden">
-        
-        <div class="relative w-full z-20">
-            <div class="shutter-border absolute top-0 left-0 w-full z-30"></div>
-            
-            <section class="pt-32 md:pt-40 pb-16 md:pb-20 bg-white relative flex flex-col items-center justify-start min-h-[100svh] rounded-b-[30px] md:rounded-b-[40px] shadow-sm overflow-hidden">
-                <div class="absolute inset-0 pointer-events-none opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-gray-200 via-transparent to-transparent"></div>
-                
-                <div class="text-center px-4 md:px-6 w-full max-w-5xl mx-auto z-10 flex flex-col">
-                    <h2 class="text-5xl sm:text-6xl md:text-8xl font-black mb-6 md:mb-8 leading-[1.05] tracking-tight uppercase">
-                        <div class="reveal-mask"><span class="reveal-text hero-text text-gray-900">Elevate Your</span></div><br>
-                        <div class="reveal-mask"><span class="reveal-text hero-text text-transparent bg-clip-text bg-gradient-to-r from-gray-900 via-gray-700 to-gray-400">Lifestyle.</span></div>
-                    </h2>
-                    
-                    <div class="w-full h-[50vh] sm:h-[60vh] md:h-[65vh] bg-gray-200 rounded-3xl md:rounded-[2.5rem] mt-4 md:mt-8 overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.1)] hero-image-wrapper">
-                        <img src="/api/static/images/hero.jpg" id="heroImage" class="absolute inset-0 w-full h-full object-cover object-center scale-[1.4] will-change-transform" alt="Premium Setup" fetchpriority="high">
-                        <div class="absolute inset-0 bg-black/10"></div>
-                        <div class="absolute bottom-4 left-4 right-4 md:bottom-8 md:left-8 md:right-8 flex justify-between items-end text-white">
-                            <span class="font-bold tracking-widest text-xs md:text-sm backdrop-blur-md bg-white/20 px-5 py-2.5 rounded-full border border-white/30 shadow-lg">EST. 2026</span>
-                            <div class="w-14 h-14 rounded-full border border-white/30 flex justify-center items-center animate-bounce backdrop-blur-md bg-black/30 shadow-lg">
-                                <i class="ri-arrow-down-line text-2xl"></i>
+            <div id="accountState" class="absolute inset-0 px-10 pb-24 pt-12 flex flex-col transition-all duration-500 transform scale-95 opacity-0 pointer-events-none ease-[cubic-bezier(0.16,1,0.3,1)]">
+                {% if user %}
+                    <div class="mt-4">
+                        <div class="flex flex-col items-center text-center gap-4 mb-12">
+                            <div class="w-24 h-24 bg-luviio-charcoal rounded-full flex items-center justify-center text-luviio-gold text-4xl shadow-2xl sys-transition hover:scale-105"><i class="ri-vip-diamond-line"></i></div>
+                            <div>
+                                <h3 class="font-serif italic text-3xl text-luviio-charcoal">{{ user.name | default("Trade Partner") }}</h3>
+                                <p class="text-xs text-gray-500 mt-2 font-sans tracking-widest uppercase">{{ user.email | default("partner@luviio.in") }}</p>
                             </div>
                         </div>
+                        <div class="space-y-8 w-full">
+                            <div class="flex flex-col gap-2">
+                                <label class="text-[9px] text-gray-400 uppercase tracking-[0.2em] font-sans font-bold">Business ID</label>
+                                <input type="text" value="{{ user.business_id | default('LUV-WHOLESALE-01') }}" class="border-b border-luviio-sand pb-3 outline-none text-luviio-charcoal font-serif text-lg bg-transparent w-full" readonly>
+                            </div>
+                            <a href="/dashboard" class="w-full block text-center py-4 border border-luviio-charcoal text-luviio-charcoal sys-transition hover:bg-luviio-charcoal hover:text-white font-sans text-[10px] tracking-widest uppercase font-bold hover-target rounded-xl">Access Dashboard</a>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="mt-4 flex flex-col h-full">
+                        <h3 class="font-serif text-3xl text-luviio-charcoal mb-2">Welcome Back.</h3>
+                        <p class="text-xs text-gray-500 font-sans tracking-wide mb-12">Please sign in to your partner portal.</p>
+                        
+                        <form action="/login" method="POST" class="space-y-6 w-full">
+                            <input type="email" name="email" placeholder="Email Address" class="w-full border-b border-luviio-charcoal/30 pb-3 outline-none font-sans text-sm bg-transparent focus:border-luviio-gold sys-transition" required>
+                            <input type="password" name="password" placeholder="Password" class="w-full border-b border-luviio-charcoal/30 pb-3 outline-none font-sans text-sm bg-transparent focus:border-luviio-gold sys-transition" required>
+                            <button type="submit" class="w-full mt-8 py-4 bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase rounded-xl hover-target sys-transition hover:bg-luviio-gold">Secure Sign In</button>
+                        </form>
+                    </div>
+                {% endif %}
+            </div>
+
+        </div>
+    </div>
+
+    <main id="mainContent" class="opacity-0 hidden bg-luviio-stone">
+
+        <div class="relative w-full z-20">
+            <section class="h-[100svh] pt-32 pb-8 px-4 md:px-10 relative flex flex-col items-center overflow-hidden">
+                <div class="flex-shrink-0 text-center w-full max-w-6xl mx-auto z-10 pt-2 md:pt-4">
+                    <h2 class="text-[11vw] leading-[1.05] sm:text-[8vw] md:text-[6.5rem] font-serif tracking-tight text-luviio-charcoal">
+                        <div class="reveal-mask"><span class="reveal-text hero-text">Premium Ceramic</span></div><br>
+                        <div class="reveal-mask"><span class="reveal-text hero-text text-marble italic pr-4">Bathware.</span></div>
+                    </h2>
+                </div>
+                <div class="flex-1 w-full max-w-[1500px] mt-8 md:mt-12 rounded-t-[10rem] md:rounded-t-[30rem] rounded-b-xl md:rounded-b-3xl overflow-hidden relative hero-image-wrapper opacity-0" style="clip-path: polygon(0 100%, 100% 100%, 100% 100%, 0 100%);">
+                    <img src="https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=2000" id="heroImage" class="absolute inset-0 w-full h-full object-cover object-center scale-[1.5] blur-[20px] gpu-target cinematic-vignette" alt="Luxury Washbasin" fetchpriority="high">
+                    <div class="absolute inset-0 bg-gradient-to-t from-luviio-charcoal/80 via-transparent to-black/20"></div>
+                    <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex flex-col items-center text-white/80 sys-transition hover:text-white">
+                        <div class="w-8 h-12 rounded-full border border-white/40 flex justify-center items-start pt-2 backdrop-blur-sm mb-4">
+                            <div class="w-1 h-2 bg-luviio-gold rounded-full animate-bounce"></div>
+                        </div>
+                        <span class="font-sans text-[8px] tracking-[0.4em] uppercase font-bold">Discover</span>
                     </div>
                 </div>
             </section>
         </div>
-        
-        <section class="py-16 md:py-24 overflow-hidden relative z-0 w-full dot-pattern">
-            <div class="flex whitespace-nowrap overflow-hidden py-4 md:py-6 border-y border-gray-300 mb-12 md:mb-20 bg-white transform -rotate-2 scale-105 shadow-md w-full">
-                <div id="marqueeText" class="text-3xl md:text-5xl font-black tracking-widest text-gray-900 uppercase flex gap-6 md:gap-10 drop-shadow-sm">
-                    <span>✧ LUVIIO ✧</span><span>✧ LUVIIO ✧</span><span>✧ LUVIIO ✧</span><span>✧ LUVIIO ✧</span><span>✧ LUVIIO✧</span><span>✧ LUVIOO ✧</span>
+
+        <section id="brandSection" class="py-24 md:py-40 bg-luviio-stone relative overflow-hidden border-b border-luviio-sand">
+            <div class="max-w-[1400px] mx-auto px-6 md:px-16 flex flex-col md:flex-row items-center gap-12 md:gap-20">
+                
+                <div class="w-full md:w-1/2 relative overflow-hidden rounded-[2rem] h-[50vh] md:h-[80vh] group shadow-[0_20px_40px_rgba(0,0,0,0.08)]">
+                    <img src="https://images.unsplash.com/photo-1600607688969-a5bfcd646154?auto=format&fit=crop&q=80&w=1000" class="absolute inset-0 w-full h-full object-cover brand-img scale-[1.2] gpu-target" alt="Curated Selection">
+                    <div class="absolute inset-0 bg-luviio-charcoal/10 sys-transition group-hover:bg-transparent"></div>
                 </div>
-            </div>
-            
-            <div class="h-[20vh] md:h-[28vh] flex flex-col items-center justify-center text-4xl sm:text-5xl md:text-7xl font-black px-4 text-center w-full">
-                <span class="text-gray-500 mb-2 md:mb-4 text-lg md:text-2xl uppercase tracking-widest font-bold">We operate as a</span>
-                <div class="relative h-16 md:h-24 w-full overflow-hidden flex justify-center" style="perspective: 800px;">
-                    <span id="wholesalerText" class="absolute top-0 text-gray-900 origin-bottom">B2B</span>
-                    <span id="retailerText" class="absolute top-0 text-transparent bg-clip-text bg-gradient-to-r from-gray-900 to-gray-500 origin-top opacity-0" style="transform: rotateX(-90deg);">B2C</span>
-                </div>
-            </div>
-        </section>
-        
-        <section id="showcaseWrapper" class="bg-gray-900 text-white overflow-hidden relative w-full">
-            <div id="showcaseContainer" class="h-[100svh] flex flex-col justify-center">
-                <div class="px-4 md:px-12 mb-8 md:mb-12 flex justify-between items-end w-full max-w-[1400px] mx-auto">
-                    <h2 class="text-4xl md:text-7xl font-black uppercase tracking-tighter overflow-hidden">
-                        <span id="showcaseTitle" class="inline-block transform translate-y-full"><i class="ri-sparkling-fill text-yellow-400 text-3xl md:text-4xl align-top"></i> Showcase</span>
+
+                <div class="w-full md:w-1/2 flex flex-col justify-center">
+                    <div class="clip-mask mb-6"><span class="clip-text brand-anim text-luviio-gold text-[10px] uppercase tracking-[0.4em] font-sans font-bold">The Visionary</span></div>
+                    
+                    <h2 class="text-4xl md:text-6xl font-serif text-luviio-charcoal mb-8 leading-tight">
+                        <div class="clip-mask"><span class="clip-text brand-anim">Curating spaces</span></div>
+                        <div class="clip-mask"><span class="clip-text brand-anim italic text-gray-500">with soul.</span></div>
                     </h2>
-                    <p class="hidden md:block text-gray-400 max-w-xs text-right text-sm">Scroll to explore our exclusive catalog of premium design assets.</p>
-                </div>
-                
-                <div class="flex gap-4 md:gap-8 px-4 md:px-12 items-center w-max" id="horizontalTrack">
-                    <div class="showcase-card flex-shrink-0 w-[85vw] md:w-[400px] lg:w-[450px] h-[55vh] md:h-[60vh] bg-gray-800 rounded-3xl md:rounded-[2.5rem] p-6 md:p-8 flex flex-col justify-between overflow-hidden group hover-target relative">
-                        <img src="https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&q=80&w=800" loading="lazy" class="absolute inset-0 w-full h-full object-cover object-center opacity-60 group-hover:scale-105 transition-transform duration-700 will-change-transform" alt="P1">
-                        <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-transparent to-transparent"></div>
-                        <span class="bg-white text-black px-4 py-1.5 md:px-5 md:py-2 rounded-full font-bold text-[10px] md:text-xs uppercase tracking-wider w-max z-10 shadow-lg">New Arrival</span>
-                        <h3 class="text-3xl md:text-4xl font-black z-10 translate-y-4 group-hover:translate-y-0 transition-transform duration-300">Aesthetic Setup</h3>
-                    </div>
-                    <div class="showcase-card flex-shrink-0 w-[85vw] md:w-[400px] lg:w-[450px] h-[55vh] md:h-[60vh] bg-gray-800 rounded-3xl md:rounded-[2.5rem] p-6 md:p-8 flex flex-col justify-between overflow-hidden group hover-target relative">
-                        <img src="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&q=80&w=800" loading="lazy" class="absolute inset-0 w-full h-full object-cover object-center opacity-60 group-hover:scale-105 transition-transform duration-700 will-change-transform" alt="P2">
-                        <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-transparent to-transparent"></div>
-                        <span class="bg-yellow-400 text-black px-4 py-1.5 md:px-5 md:py-2 rounded-full font-bold text-[10px] md:text-xs uppercase tracking-wider w-max z-10 shadow-lg">Trending</span>
-                        <h3 class="text-3xl md:text-4xl font-black z-10 translate-y-4 group-hover:translate-y-0 transition-transform duration-300">Premium Audio</h3>
-                    </div>
-                    <div class="showcase-card flex-shrink-0 w-[85vw] md:w-[400px] lg:w-[450px] h-[55vh] md:h-[60vh] bg-gray-800 rounded-3xl md:rounded-[2.5rem] p-6 md:p-8 flex flex-col justify-between overflow-hidden group hover-target relative">
-                        <img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=800" loading="lazy" class="absolute inset-0 w-full h-full object-cover object-center opacity-60 group-hover:scale-105 transition-transform duration-700 will-change-transform" alt="P3">
-                        <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-transparent to-transparent"></div>
-                        <span class="bg-white text-black px-4 py-1.5 md:px-5 md:py-2 rounded-full font-bold text-[10px] md:text-xs uppercase tracking-wider w-max z-10 shadow-lg">Classic</span>
-                        <h3 class="text-3xl md:text-4xl font-black z-10 translate-y-4 group-hover:translate-y-0 transition-transform duration-300">Urban Kicks</h3>
-                    </div>
-                </div>
-            </div>
-        </section>
-        
-        <section class="stacked-section bg-gray-100 z-20 rounded-t-[30px] md:rounded-t-[40px] shadow-[0_-20px_40px_rgba(0,0,0,0.1)] pt-16 md:pt-24" id="stack-1">
-            <div class="max-w-6xl mx-auto px-4 md:px-6 w-full">
-                <h2 class="text-xs md:text-sm font-bold text-center mb-8 md:mb-12 uppercase tracking-widest text-gray-500">we sells bathware products </h2>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-8" id="partnersGrid">
-                    <div class="partner-card bg-white h-24 md:h-32 rounded-2xl md:rounded-3xl shadow-sm flex justify-center items-center text-lg md:text-xl font-black text-gray-400 hover:text-gray-900 hover:shadow-xl transition-all duration-300 opacity-0 translate-y-10 hover-target"><i class="ri-google-fill mr-1 md:mr-2"></i> FILOMAX</div>
-                    <div class="partner-card bg-white h-24 md:h-32 rounded-2xl md:rounded-3xl shadow-sm flex justify-center items-center text-lg md:text-xl font-black text-gray-400 hover:text-gray-900 hover:shadow-xl transition-all duration-300 opacity-0 translate-y-10 hover-target">RR CAPRY </div>
-                    <div class="partner-card bg-white h-24 md:h-32 rounded-2xl md:rounded-3xl shadow-sm flex justify-center items-center text-lg md:text-xl font-black text-gray-400 hover:text-gray-900 hover:shadow-xl transition-all duration-300 opacity-0 translate-y-10 hover-target">XTRA POWER</div>
-                    <div class="partner-card bg-white h-24 md:h-32 rounded-2xl md:rounded-3xl shadow-sm flex justify-center items-center text-lg md:text-xl font-black text-gray-400 hover:text-gray-900 hover:shadow-xl transition-all duration-300 opacity-0 translate-y-10 hover-target">LUVIIO</div>
-                </div>
-            </div>
-        </section>
-        
-        <section class="stacked-section bg-white z-30 rounded-t-[30px] md:rounded-t-[40px] shadow-[0_-20px_40px_rgba(0,0,0,0.05)] pt-16 md:pt-24" id="stack-2">
-            <div class="max-w-5xl mx-auto px-4 md:px-6 w-full">
-                <h2 class="text-4xl md:text-5xl font-black text-center mb-10 md:mb-16 conceptual-header overflow-hidden"><span class="inline-block transform translate-y-full text-gray-900">TESTIMONIALS</span></h2>
-                <div class="swiper reviewSwiper pb-12 cursor-grab">
-                    <div class="swiper-wrapper">
-                        <div class="swiper-slide h-auto">
-                            <div class="bg-gray-50 rounded-2xl md:rounded-3xl p-6 md:p-8 border border-gray-200 h-full flex flex-col justify-between hover:border-gray-300 transition-colors">
-                                <div>
-                                    <div class="flex justify-between items-start mb-6">
-                                        <div class="flex gap-3 md:gap-4 items-center">
-                                            <img src="https://i.pravatar.cc/150?img=32" loading="lazy" class="w-12 h-12 md:w-14 md:h-14 rounded-full object-cover shadow-sm" alt="User">
-                                            <div>
-                                                <h4 class="font-bold text-base md:text-lg text-gray-900">Alex Design</h4>
-                                                <p class="text-[10px] md:text-xs text-gray-500 font-medium">22 Oct 2023 <span class="bg-gray-900 text-white px-2 py-0.5 rounded ml-1">Verified</span></p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <p class="text-gray-700 font-medium mb-6 text-sm md:text-base leading-relaxed">"The layout implementation is fantastic. Smooth transitions and exactly what the wireframes demanded. Responsive fixes are on point!"</p>
-                                </div>
-                                <div class="flex text-yellow-500 text-lg md:text-xl gap-1">
-                                    <i class="ri-star-fill"></i><i class="ri-star-fill"></i><i class="ri-star-fill"></i><i class="ri-star-fill"></i><i class="ri-star-fill"></i>
-                                </div>
+                    
+                    <div class="clip-mask mb-6"><p class="clip-text brand-anim text-gray-600 font-sans leading-relaxed text-sm md:text-base">At Luviio, we don't just supply bathware. We curate experiences. Founded with a refined vision: to bring the world's most exquisite luxury ceramics to your doorstep.</p></div>
+                    <div class="clip-mask mb-12"><p class="clip-text brand-anim text-gray-600 font-sans leading-relaxed text-sm md:text-base">Every piece we handpick is a testament to uncompromising quality and aesthetic brilliance. Welcome to the new standard of living.</p></div>
+                    
+                    <div class="flex items-center gap-8 border-l-2 border-luviio-gold pl-6">
+                        <div class="clip-mask">
+                            <div class="clip-text brand-anim">
+                                <h4 class="font-bold text-luviio-charcoal tracking-widest uppercase text-[10px] font-sans">Vikram Singhania</h4>
+                                <p class="text-[9px] text-gray-400 tracking-[0.2em] uppercase mt-1 font-sans">Founder & Curator</p>
                             </div>
                         </div>
-                        <div class="swiper-slide h-auto">
-                            <div class="bg-gray-50 rounded-2xl md:rounded-3xl p-6 md:p-8 border border-gray-200 h-full flex flex-col justify-between hover:border-gray-300 transition-colors">
-                                <div>
-                                    <div class="flex justify-between items-start mb-6">
-                                        <div class="flex gap-3 md:gap-4 items-center">
-                                            <img src="https://i.pravatar.cc/150?img=47" loading="lazy" class="w-12 h-12 md:w-14 md:h-14 rounded-full object-cover shadow-sm" alt="User">
-                                            <div>
-                                                <h4 class="font-bold text-base md:text-lg text-gray-900">Sarah Jenkins</h4>
-                                                <p class="text-[10px] md:text-xs text-gray-500 font-medium">15 Nov 2023 <span class="bg-gray-900 text-white px-2 py-0.5 rounded ml-1">Verified</span></p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <p class="text-gray-700 font-medium mb-6 text-sm md:text-base leading-relaxed">"GSAP integration combined with Lenis scrolling creates an Awwwards-worthy feel. Completely elevated our brand presence overnight."</p>
-                                </div>
-                                <div class="flex text-yellow-500 text-lg md:text-xl gap-1">
-                                    <i class="ri-star-fill"></i><i class="ri-star-fill"></i><i class="ri-star-fill"></i><i class="ri-star-fill"></i><i class="ri-star-half-fill"></i>
-                                </div>
-                            </div>
+                        <div class="clip-mask">
+                            <div class="clip-text brand-anim font-signature text-3xl text-gray-400 -rotate-2">V. Singhania</div>
                         </div>
                     </div>
-                    <div class="swiper-pagination mt-4 md:mt-8 relative"></div>
                 </div>
             </div>
         </section>
-        
-        <footer class="bg-gray-900 text-white relative z-50 rounded-t-[30px] md:rounded-t-[40px] pt-20 md:pt-24 overflow-hidden w-full">
-            <div class="absolute inset-0 z-0 pointer-events-none opacity-20" style="background-image: radial-gradient(circle at center, rgba(255, 255, 255, 0.1) 1px, transparent 1px); background-size: 24px 24px;"></div>
-            <div class="max-w-5xl mx-auto px-4 md:px-6 pb-12 text-center relative z-10 w-full">
-                
-                <div class="flex justify-center items-center gap-3 mb-8">
-                    <img src="/api/static/images/logo.png" alt="Luviio Logo" class="w-10 h-10 object-contain invert opacity-80" loading="lazy">
+
+        <section id="galleryWrapper" class="py-24 md:py-40 bg-white relative w-full overflow-hidden border-b border-luviio-sand">
+            <div class="max-w-[1600px] mx-auto px-6 md:px-16 flex flex-col md:flex-row gap-16 relative">
+                <div class="md:w-5/12 flex flex-col md:h-screen md:sticky top-0 justify-center pb-12 md:pb-0 z-10 bg-white/80 md:bg-transparent backdrop-blur-sm md:backdrop-blur-none">
+                    <span class="text-luviio-gold text-[10px] uppercase tracking-[0.4em] font-sans font-bold mb-4">The Gallery</span>
+                    <h2 class="text-4xl md:text-6xl lg:text-7xl font-serif text-luviio-charcoal mb-8 leading-tight">
+                        Curated for<br><span class="italic text-gray-400">Eternity.</span>
+                    </h2>
+                    <p class="text-gray-500 font-sans leading-relaxed max-w-sm text-sm">Every curve, every texture is meticulously selected. We source only the finest global bathware to transform your spaces into sanctuaries of absolute luxury.</p>
+                    <button class="mt-10 w-max border-b border-luviio-charcoal pb-1 text-[10px] uppercase tracking-widest font-bold hover-target sys-transition hover:text-luviio-gold hover:border-luviio-gold">Explore Collection</button>
                 </div>
-                
-                <h2 class="text-5xl md:text-8xl font-black mb-6 md:mb-8 uppercase tracking-tighter">Get In Touch</h2>
-                <div class="flex flex-col md:flex-row justify-center items-center gap-4 max-w-xl mx-auto mb-16 md:mb-24 relative group w-full">
-                    <input type="email" placeholder="Enter your email address..." class="bg-white/5 border border-white/10 backdrop-blur-md px-6 md:px-8 py-4 w-full rounded-full focus:outline-none focus:border-white/50 transition-colors text-white placeholder-gray-500 hover-target text-sm md:text-base">
-                    <button class="bg-white text-black px-8 py-4 rounded-full font-bold hover:bg-gray-200 transition-colors whitespace-nowrap w-full md:w-auto md:absolute right-1 top-1 bottom-1 hover-target shadow-lg">Confirm <i class="ri-arrow-right-line ml-1"></i></button>
-                </div>
-                
-                <div class="text-gray-600 text-[10px] md:text-sm mt-12 md:mt-16 flex flex-col sm:flex-row justify-between items-center gap-4 border-t border-white/5 pt-6">
-                    <p>&copy; 2026 Luviio.in. All rights reserved.</p>
-                    <p>Developed to perfection with <i class="ri-heart-fill text-red-500"></i></p>
+
+                <div class="md:w-7/12 grid grid-cols-2 gap-4 md:gap-8 h-[70vh] md:h-[150vh] overflow-hidden gallery-container relative">
+                    <div class="flex flex-col gap-4 md:gap-8 gallery-col-1 gpu-target w-full">
+                        <img src="https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&q=80&w=800" class="w-full h-[30vh] md:h-[50vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+                        <img src="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&q=80&w=800" class="w-full h-[40vh] md:h-[60vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+                        <img src="https://images.unsplash.com/photo-1595515106969-1ce29566ff1c?auto=format&fit=crop&q=80&w=800" class="w-full h-[30vh] md:h-[40vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+                    </div>
+                    <div class="flex flex-col gap-4 md:gap-8 gallery-col-2 gpu-target w-full mt-24 md:mt-48">
+                        <img src="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&q=80&w=800" class="w-full h-[40vh] md:h-[60vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+                        <img src="https://images.unsplash.com/photo-1584622781564-1d987f7333c1?auto=format&fit=crop&q=80&w=800" class="w-full h-[30vh] md:h-[45vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+                        <img src="https://images.unsplash.com/photo-1507652313651-74ff74d3ca9e?auto=format&fit=crop&q=80&w=800" class="w-full h-[40vh] md:h-[50vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+                    </div>
+                    <div class="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white to-transparent pointer-events-none"></div>
+                    <div class="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white to-transparent pointer-events-none"></div>
                 </div>
             </div>
-            <h1 class="absolute -bottom-4 md:-bottom-10 left-0 text-[20vw] md:text-[15vw] font-black text-white/[0.02] leading-none pointer-events-none select-none text-center w-full">LUVIIO</h1>
+        </section>
+
+        <section id="pricingSection" class="py-24 md:py-40 bg-luviio-charcoal relative w-full text-white overflow-hidden">
+            <div class="absolute inset-0 z-0 pointer-events-none opacity-[0.03]" style="background-image: radial-gradient(circle at center, rgba(197, 160, 89, 1) 1px, transparent 1px); background-size: 24px 24px;"></div>
+            
+            <div class="max-w-7xl mx-auto px-6 relative z-10">
+                <div class="text-center mb-16 md:mb-24 pricing-header">
+                    <span class="text-luviio-gold text-[10px] uppercase tracking-[0.4em] font-sans font-bold">Partnerships</span>
+                    <h2 class="text-4xl md:text-6xl font-serif mt-4">Trade & <span class="italic text-gray-500">Retail.</span></h2>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8" style="perspective: 1200px;">
+                    <div class="pricing-card bg-[#161616] border border-gray-800 rounded-3xl p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-600 gpu-target relative overflow-hidden">
+                        <h3 class="text-2xl font-serif text-gray-300 mb-2 relative z-10">Standard Retail</h3>
+                        <p class="text-xs text-gray-500 font-sans tracking-wide mb-8 relative z-10">For individual showrooms.</p>
+                        <div class="text-4xl font-serif mb-8 text-white relative z-10">15% <span class="text-[10px] font-sans text-gray-500 tracking-widest uppercase align-middle">Margin</span></div>
+                        <ul class="space-y-5 mb-10 flex-1 relative z-10">
+                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Standard Catalog Access</li>
+                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Basic Marketing Kit</li>
+                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Standard Delivery</li>
+                        </ul>
+                        <button class="w-full py-4 rounded-xl border border-gray-700 text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10">Apply Now</button>
+                    </div>
+
+                    <div class="pricing-card pricing-glow relative bg-[#111111] border border-luviio-gold/40 rounded-3xl p-8 flex flex-col transform md:-translate-y-4 shadow-[0_20px_40px_rgba(197,160,89,0.08)] gpu-target z-10">
+                        <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-luviio-gold text-black px-4 py-1.5 rounded-full text-[8px] font-bold uppercase tracking-[0.3em]">Most Popular</div>
+                        <h3 class="text-2xl font-serif text-luviio-gold mb-2 relative z-10">Trade Partner</h3>
+                        <p class="text-xs text-gray-400 font-sans tracking-wide mb-8 relative z-10">For architects & developers.</p>
+                        <div class="text-4xl font-serif mb-8 text-white relative z-10">35% <span class="text-[10px] font-sans text-gray-400 tracking-widest uppercase align-middle">Margin</span></div>
+                        <ul class="space-y-5 mb-10 flex-1 relative z-10">
+                            <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Priority Bulk Pricing</li>
+                            <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Dedicated Account Manager</li>
+                            <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Custom 3D CAD Models</li>
+                            <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Express Logistics</li>
+                        </ul>
+                        <button class="w-full py-4 rounded-xl bg-luviio-gold text-black text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white sys-transition hover-target relative z-10">Become Partner</button>
+                    </div>
+
+                    <div class="pricing-card bg-[#161616] border border-gray-800 rounded-3xl p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-600 gpu-target relative overflow-hidden">
+                        <h3 class="text-2xl font-serif text-gray-300 mb-2 relative z-10">Dealership</h3>
+                        <p class="text-xs text-gray-500 font-sans tracking-wide mb-8 relative z-10">State-level exclusivity.</p>
+                        <div class="text-4xl font-serif mb-8 text-white relative z-10">Custom</div>
+                        <ul class="space-y-5 mb-10 flex-1 relative z-10">
+                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Territorial Monopoly</li>
+                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Co-branded Marketing</li>
+                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Premium Display Setup</li>
+                        </ul>
+                        <button class="w-full py-4 rounded-xl border border-gray-700 text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10">Contact Us</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="bg-luviio-charcoal text-luviio-stone relative z-50 pt-24 md:pt-40 overflow-hidden w-full">
+            <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl opacity-[0.03] pointer-events-none z-0">
+                <img src="/api/static/images/lotus.png" class="w-full h-full object-contain anim-float filter sepia hue-rotate-180" alt="Lotus Decor" loading="lazy">
+            </div>
+            <div class="max-w-4xl mx-auto px-6 pb-12 text-center relative z-10 w-full">
+                <div class="flex justify-center items-center mb-10">
+                    <img src="/api/static/images/logo.png" alt="Luviio Logo" class="w-12 h-12 object-contain invert opacity-60" loading="lazy">
+                </div>
+                <h2 class="text-4xl md:text-7xl font-serif italic mb-10 md:mb-16 tracking-wide text-white">Redefine your space.</h2>
+                <div class="flex flex-col md:flex-row justify-center items-center gap-0 max-w-lg mx-auto mb-24 relative group w-full">
+                    <input type="email" placeholder="Email address" class="bg-transparent border-b border-gray-600 px-4 py-4 w-full focus:outline-none focus:border-luviio-gold sys-transition text-white placeholder-gray-500 font-sans text-sm rounded-none tracking-wide">
+                    <button class="text-luviio-gold font-sans font-bold sys-transition hover:text-white md:absolute right-0 bottom-4 tracking-[0.2em] text-[10px] uppercase mt-6 md:mt-0 hover-target">Subscribe</button>
+                </div>
+                <div class="text-gray-500 text-[9px] md:text-[10px] font-sans flex flex-col sm:flex-row justify-between items-center gap-6 border-t border-gray-800 pt-10 uppercase tracking-[0.3em]">
+                    <p>&copy; 2026 Luviio Bathware.</p>
+                    <p>Designed for Luxury.</p>
+                </div>
+            </div>
+            <h1 class="absolute -bottom-4 md:-bottom-12 left-0 text-[20vw] md:text-[15vw] font-serif font-bold text-white/[0.02] leading-none pointer-events-none select-none text-center w-full">LUVIIO</h1>
         </footer>
     </main>
-    
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
     <script src="https://unpkg.com/@studio-freight/lenis@1.0.33/dist/lenis.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
-    
+
     <script type="module">
-        import { animate, stagger, inView } from "https://cdn.jsdelivr.net/npm/motion@11.11.13/+esm";
-        
         document.addEventListener("DOMContentLoaded", () => {
             gsap.registerPlugin(ScrollTrigger);
+            gsap.config({ force3D: true });
             let lenis;
-            
-            // --- 1. ONLY LOGO PRELOADER LOGIC ---
-            gsap.to("#splashLogo", { y: "0%", duration: 1, ease: "power4.out" });
-            gsap.to("#splashStatus", { opacity: 1, duration: 0.5, delay: 0.5 });
+
+            // PRELOADER
+            gsap.to("#splashLogo", { opacity: 1, scale: 1, filter: "blur(0px)", duration: 2, ease: "power3.out" });
 
             const hideSplashTl = gsap.timeline({
                 paused: true,
+                onStart: () => { document.getElementById('mainContent').classList.remove('hidden'); },
                 onComplete: () => {
                     document.getElementById('splashScreen').style.display = 'none';
-                    document.getElementById('mainContent').classList.remove('opacity-0', 'hidden');
                     initMainAnimations();
                 }
             });
 
-            hideSplashTl.to("#splashStatus", { opacity: 0, duration: 0.2 })
-                        .to("#splashScreen", {
-                            scaleY: 0,
-                            transformOrigin: "top",
-                            duration: 1.2,
-                            ease: "power4.inOut"
-                        });
+            hideSplashTl.to("#splashProgress", { opacity: 0, duration: 0.3 })
+                        .to("#splashScreen", { yPercent: -100, duration: 1.5, ease: "expo.inOut", delay: 0.2 })
+                        .to("#mainContent", { opacity: 1, duration: 0.8 }, "-=0.8")
+                        .to("#mainHeader", { y: 0, duration: 1.2, ease: "power4.out" }, "-=0.5");
 
-            // Sirf Logo Image track karenge
             const splashLogoImage = new Image();
             splashLogoImage.src = "/api/static/images/logo.png";
-
             function completeSplash() {
-                // Ek smooth animation bar ke liye
-                gsap.to("#splashProgress", { 
-                    width: "100%", 
-                    duration: 1.2, 
-                    ease: "power2.inOut",
-                    onComplete: () => {
-                        document.getElementById('splashStatus').innerText = "Store Ready.";
-                        setTimeout(() => hideSplashTl.play(), 300);
-                    }
-                });
+                gsap.to("#splashProgress", { width: "100%", duration: 1.5, ease: "power3.inOut", onComplete: () => setTimeout(() => hideSplashTl.play(), 400) });
             }
+            if (splashLogoImage.complete) { completeSplash(); } else { splashLogoImage.onload = completeSplash; splashLogoImage.onerror = completeSplash; }
 
-            // Check if logo is already loaded from cache
-            if (splashLogoImage.complete) {
-                completeSplash();
-            } else {
-                splashLogoImage.onload = completeSplash;
-                splashLogoImage.onerror = completeSplash; // Agar logo fetch mein error aaye toh bhi page atakna nahi chahiye
-            }
-            
-            // --- 2. MAIN WEBSITE ANIMATIONS ---
+            // MAIN ANIMATIONS
             function initMainAnimations() {
-                lenis = new Lenis({
-                    duration: 1.2,
-                    easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-                    smooth: true,
-                    smoothTouch: false,
-                });
-                
+                lenis = new Lenis({ duration: 1.5, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smooth: true, smoothTouch: false });
                 lenis.on('scroll', ScrollTrigger.update);
                 gsap.ticker.add((time) => { lenis.raf(time * 1000); });
                 gsap.ticker.lagSmoothing(0, 0);
-                
+
                 const cursor = document.getElementById('cursor');
                 if (window.innerWidth >= 768) {
-                    const hoverTargets = document.querySelectorAll('.hover-target');
-                    window.addEventListener('mousemove', (e) => {
-                        gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.1, ease: "power2.out" });
-                    });
-                    hoverTargets.forEach(target => {
+                    window.addEventListener('mousemove', (e) => { gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.15, ease: "power2.out" }); });
+                    document.querySelectorAll('.hover-target').forEach(target => {
                         target.addEventListener('mouseenter', () => cursor.classList.add('hover-active'));
                         target.addEventListener('mouseleave', () => cursor.classList.remove('hover-active'));
                     });
                 }
-                
-                const heroTl = gsap.timeline();
-                heroTl.to(".hero-text", {
-                    y: "0%",
-                    rotateZ: 0,
-                    duration: 1.4,
-                    stagger: 0.15,
-                    ease: "power4.out"
-                }).fromTo(".hero-image-wrapper", { clipPath: "polygon(0 100%, 100% 100%, 100% 100%, 0 100%)", opacity: 0 }, { clipPath: "polygon(0 0%, 100% 0%, 100% 100%, 0 100%)", opacity: 1, duration: 1.5, ease: "power4.inOut" }, "-=0.9")
-                .to("#heroImage", { scale: 1.2, duration: 2, ease: "power2.out" }, "-=1.5");
-                
-                gsap.fromTo("#heroImage", 
-                    { yPercent: -10 },
-                    {
-                        yPercent: 10,
-                        ease: "none",
-                        scrollTrigger: { trigger: ".hero-image-wrapper", start: "top bottom", end: "bottom top", scrub: true }
-                    }
-                );
-                
+
+                // Hero
+                const heroTl = gsap.timeline({ delay: 0.3 });
+                heroTl.to(".hero-text", { y: "0%", rotateZ: 0, duration: 1.8, stagger: 0.2, ease: "power4.out" })
+                      .to(".hero-image-wrapper", { clipPath: "polygon(0 0%, 100% 0%, 100% 100%, 0 100%)", opacity: 1, duration: 2, ease: "expo.inOut" }, "-=1.2")
+                      .to("#heroImage", { scale: 1, filter: "blur(0px)", duration: 3, ease: "power3.out" }, "-=1.5");
+                gsap.to("#heroImage", { yPercent: 10, ease: "none", scrollTrigger: { trigger: ".hero-image-wrapper", start: "top bottom", end: "bottom top", scrub: true }});
+
+                // ADVANCED: Brand Owner Timeline (Staggered Mask Reveal)
+                const brandTl = gsap.timeline({ scrollTrigger: { trigger: "#brandSection", start: "top 65%" } });
+                gsap.to(".brand-img", { yPercent: 15, ease: "none", scrollTrigger: { trigger: "#brandSection", start: "top bottom", end: "bottom top", scrub: true } });
+                brandTl.to(".brand-anim", { y: "0%", opacity: 1, rotateZ: 0, duration: 1.2, stagger: 0.1, ease: "power4.out" });
+
+                // Drawer
                 const drawerContent = document.getElementById('drawerContent');
                 const drawerOverlay = document.getElementById('drawerOverlay');
-                const menuState = document.getElementById('menuState');
-                const accountState = document.getElementById('accountState');
                 let isDrawerOpen = false;
                 let isAccountView = false;
                 
@@ -453,131 +451,54 @@
                     isDrawerOpen = !isDrawerOpen;
                     if (isDrawerOpen) {
                         drawerOverlay.classList.remove('opacity-0', 'pointer-events-none');
+                        drawerOverlay.classList.add('active');
                         drawerContent.classList.remove('translate-x-full');
-                        gsap.fromTo(".drawer-link", { x: 50, opacity: 0 }, { x: 0, opacity: 1, stagger: 0.1, delay: 0.3, duration: 0.6, ease: "power3.out" });
+                        // Stagger menu links and auth buttons together inside Drawer
+                        gsap.fromTo(".clip-text", { y: "100%" }, { y: "0%", duration: 1, stagger: 0.05, delay: 0.2, ease: "power4.out" });
                         lenis.stop();
                     } else {
                         drawerOverlay.classList.add('opacity-0', 'pointer-events-none');
+                        drawerOverlay.classList.remove('active');
                         drawerContent.classList.add('translate-x-full');
                         lenis.start();
-                        setTimeout(() => { if (isAccountView) toggleView(); }, 500);
+                        setTimeout(() => { if (isAccountView) toggleView(); }, 600);
                     }
                 }
-                
+
                 function toggleView() {
                     isAccountView = !isAccountView;
                     if (isAccountView) {
-                        menuState.classList.add('opacity-0', 'scale-95', 'pointer-events-none');
-                        menuState.classList.remove('opacity-100', 'scale-100');
-                        accountState.classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
-                        accountState.classList.add('opacity-100', 'scale-100');
-                        document.getElementById('drawerTitle').innerText = "Account";
-                        
-                        gsap.to("#profileTrigger i", {
-                            rotation: -180,
-                            opacity: 0,
-                            duration: 0.2,
-                            onComplete: () => {
-                                document.getElementById('profileTrigger').innerHTML = '<i class="ri-arrow-left-line text-3xl"></i>';
-                                gsap.fromTo("#profileTrigger i", { rotation: 180, opacity: 0 }, { rotation: 0, opacity: 1, duration: 0.3 });
-                            }
-                        });
+                        document.getElementById('menuState').classList.add('opacity-0', 'scale-95', 'pointer-events-none');
+                        document.getElementById('menuState').classList.remove('opacity-100', 'scale-100');
+                        document.getElementById('accountState').classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
+                        document.getElementById('accountState').classList.add('opacity-100', 'scale-100');
+                        gsap.to("#profileTrigger i", { rotation: -180, opacity: 0, duration: 0.3, onComplete: () => { document.getElementById('profileTrigger').innerHTML = '<i class="ri-arrow-left-line text-2xl"></i>'; gsap.fromTo("#profileTrigger i", { rotation: 180, opacity: 0 }, { rotation: 0, opacity: 1, duration: 0.3 }); }});
                     } else {
-                        accountState.classList.add('opacity-0', 'scale-95', 'pointer-events-none');
-                        accountState.classList.remove('opacity-100', 'scale-100');
-                        menuState.classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
-                        menuState.classList.add('opacity-100', 'scale-100');
-                        document.getElementById('drawerTitle').innerText = "Menu";
-                        
-                        gsap.to("#profileTrigger i", {
-                            rotation: 180,
-                            opacity: 0,
-                            duration: 0.2,
-                            onComplete: () => {
-                                document.getElementById('profileTrigger').innerHTML = '<i class="ri-user-smile-line text-3xl"></i>';
-                                gsap.fromTo("#profileTrigger i", { rotation: -180, opacity: 0 }, { rotation: 0, opacity: 1, duration: 0.3 });
-                            }
-                        });
+                        document.getElementById('accountState').classList.add('opacity-0', 'scale-95', 'pointer-events-none');
+                        document.getElementById('accountState').classList.remove('opacity-100', 'scale-100');
+                        document.getElementById('menuState').classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
+                        document.getElementById('menuState').classList.add('opacity-100', 'scale-100');
+                        gsap.to("#profileTrigger i", { rotation: 180, opacity: 0, duration: 0.3, onComplete: () => { document.getElementById('profileTrigger').innerHTML = '<i class="ri-user-3-line text-xl"></i>'; gsap.fromTo("#profileTrigger i", { rotation: -180, opacity: 0 }, { rotation: 0, opacity: 1, duration: 0.3 }); }});
                     }
                 }
-                
+
                 document.getElementById('menuTrigger').addEventListener('click', toggleDrawer);
                 document.getElementById('closeDrawer').addEventListener('click', toggleDrawer);
                 drawerOverlay.addEventListener('click', toggleDrawer);
                 document.getElementById('profileTrigger').addEventListener('click', toggleView);
-                
-                let marqueeTween = gsap.to("#marqueeText", { xPercent: -50, ease: "none", duration: 15, repeat: -1 });
-                lenis.on('scroll', (e) => {
-                    let velocity = Math.abs(e.velocity);
-                    let newTimeScale = 1 + (velocity * 0.1);
-                    gsap.to(marqueeTween, { timeScale: newTimeScale, duration: 0.2 });
+
+                // ADVANCED: Parallax Gallery
+                gsap.to(".gallery-col-1", { yPercent: -20, ease: "none", scrollTrigger: { trigger: ".gallery-container", start: "top bottom", end: "bottom top", scrub: 1 } });
+                gsap.to(".gallery-col-2", { yPercent: -40, ease: "none", scrollTrigger: { trigger: ".gallery-container", start: "top bottom", end: "bottom top", scrub: 1.5 } });
+
+                // ADVANCED: 3D Pricing Matrix Reveal
+                gsap.from(".pricing-header", { y: 50, opacity: 0, duration: 1.2, ease: "power3.out", scrollTrigger: { trigger: "#pricingSection", start: "top 75%" } });
+                gsap.from(".pricing-card", {
+                    scrollTrigger: { trigger: "#pricingSection", start: "top 60%" },
+                    y: 100, rotationX: 25, opacity: 0, duration: 1.5, stagger: 0.15, ease: "expo.out", transformOrigin: "top center"
                 });
-                
-                gsap.timeline({ scrollTrigger: { trigger: "#wholesalerText", start: "top 65%", end: "bottom 30%", scrub: 1 } })
-                    .to("#wholesalerText", { rotationX: 90, opacity: 0, duration: 1, ease: "none" })
-                    .to("#retailerText", { rotationX: 0, opacity: 1, duration: 1, ease: "none" }, "<");
-                
-                gsap.to("#showcaseTitle", {
-                    scrollTrigger: { trigger: "#showcaseWrapper", start: "top 70%" },
-                    y: 0,
-                    duration: 1.2,
-                    ease: "power4.out"
-                });
-                
-                const track = document.getElementById("horizontalTrack");
-                
-                function getScrollAmount() {
-                    let paddingOffset = window.innerWidth > 768 ? 96 : 32;
-                    return -(track.scrollWidth - window.innerWidth + paddingOffset);
-                }
-                
-                const horizontalTween = gsap.to(track, { x: getScrollAmount, ease: "none" });
-                
-                ScrollTrigger.create({
-                    trigger: "#showcaseWrapper",
-                    start: "top top",
-                    end: () => `+=${Math.abs(getScrollAmount())}`,
-                    pin: true,
-                    animation: horizontalTween,
-                    scrub: 1,
-                    invalidateOnRefresh: true,
-                    fastScrollEnd: true
-                });
-                
-                gsap.to(".partner-card", {
-                    scrollTrigger: { trigger: "#partnersGrid", start: "top 85%" },
-                    y: 0,
-                    opacity: 1,
-                    duration: 0.8,
-                    stagger: 0.1,
-                    ease: "back.out(1.7)"
-                });
-                
-                gsap.utils.toArray('.conceptual-header span').forEach(span => {
-                    gsap.to(span, {
-                        scrollTrigger: { trigger: span.parentElement, start: "top 85%" },
-                        y: 0,
-                        duration: 1,
-                        ease: "power4.out"
-                    });
-                });
-                
-                new Swiper(".reviewSwiper", {
-                    slidesPerView: 1,
-                    spaceBetween: 20,
-                    loop: true,
-                    autoplay: { delay: 3500, disableOnInteraction: true },
-                    pagination: { el: ".swiper-pagination", clickable: true },
-                    breakpoints: { 768: { slidesPerView: 2, spaceBetween: 30 } }
-                });
-                
-                if(document.querySelector("#teamGrid")) {
-                    inView("#teamGrid", () => {
-                        animate(".team-member", { opacity: [0, 1], y: [50, 0] }, { duration: 0.8, delay: stagger(0.2), easing: [0.17, 0.55, 0.55, 1] });
-                    });
-                }
             }
-            
+
             window.addEventListener('beforeunload', () => { if (lenis) lenis.destroy(); });
         });
     </script>
