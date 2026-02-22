@@ -89,7 +89,7 @@
     <div id="splashScreen" class="fixed inset-0 z-[999] bg-gray-900 flex flex-col items-center justify-center text-white origin-bottom">
         <div class="overflow-hidden mb-6">
             <h1 id="splashLogo" class="text-5xl md:text-7xl font-black tracking-widest translate-y-full flex items-center gap-4">
-                <img src="/api/static/images/logo.png" alt="Luviio Logo" class="w-12 h-12 md:w-16 md:h-16 object-contain invert"> LUVIIO
+                <img src="/api/static/images/logo.png" alt="Luviio Logo" class="w-12 h-12 md:w-16 md:h-16 object-contain invert" fetchpriority="high"> LUVIIO
             </h1>
         </div>
         <div class="w-64 h-[2px] bg-white/20 rounded overflow-hidden relative">
@@ -185,7 +185,7 @@
                     </h2>
                     
                     <div class="w-full h-[50vh] sm:h-[60vh] md:h-[65vh] bg-gray-200 rounded-3xl md:rounded-[2.5rem] mt-4 md:mt-8 overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.1)] hero-image-wrapper">
-                        <img src="/api/static/images/hero.jpg" id="heroImage" class="absolute inset-0 w-full h-full object-cover object-center scale-[1.4] will-change-transform" alt="Premium Setup">
+                        <img src="/api/static/images/hero.jpg" id="heroImage" class="absolute inset-0 w-full h-full object-cover object-center scale-[1.4] will-change-transform" alt="Premium Setup" fetchpriority="high">
                         <div class="absolute inset-0 bg-black/10"></div>
                         <div class="absolute bottom-4 left-4 right-4 md:bottom-8 md:left-8 md:right-8 flex justify-between items-end text-white">
                             <span class="font-bold tracking-widest text-xs md:text-sm backdrop-blur-md bg-white/20 px-5 py-2.5 rounded-full border border-white/30 shadow-lg">EST. 2026</span>
@@ -312,7 +312,7 @@
             <div class="max-w-5xl mx-auto px-4 md:px-6 pb-12 text-center relative z-10 w-full">
                 
                 <div class="flex justify-center items-center gap-3 mb-8">
-                    <img src="/api/static/images/logo.png" alt="Luviio Logo" class="w-10 h-10 object-contain invert opacity-80">
+                    <img src="/api/static/images/logo.png" alt="Luviio Logo" class="w-10 h-10 object-contain invert opacity-80" loading="lazy">
                 </div>
                 
                 <h2 class="text-5xl md:text-8xl font-black mb-6 md:mb-8 uppercase tracking-tighter">Get In Touch</h2>
@@ -342,26 +342,53 @@
             gsap.registerPlugin(ScrollTrigger);
             let lenis;
             
-            const splashTl = gsap.timeline({
+            // --- 1. ONLY LOGO PRELOADER LOGIC ---
+            gsap.to("#splashLogo", { y: "0%", duration: 1, ease: "power4.out" });
+            gsap.to("#splashStatus", { opacity: 1, duration: 0.5, delay: 0.5 });
+
+            const hideSplashTl = gsap.timeline({
+                paused: true,
                 onComplete: () => {
                     document.getElementById('splashScreen').style.display = 'none';
                     document.getElementById('mainContent').classList.remove('opacity-0', 'hidden');
                     initMainAnimations();
                 }
             });
-            
-            splashTl.to("#splashLogo", { y: "0%", duration: 1, ease: "power4.out" })
-                .to("#splashStatus", { opacity: 1, duration: 0.5 }, "-=0.5")
-                .to("#splashProgress", { width: "100%", duration: 1.5, ease: "power2.inOut" })
-                .to("#splashStatus", { opacity: 0, duration: 0.2 })
-                .to("#splashScreen", {
-                    scaleY: 0,
-                    transformOrigin: "top",
-                    duration: 1.2,
-                    ease: "power4.inOut",
-                    delay: 0.2
+
+            hideSplashTl.to("#splashStatus", { opacity: 0, duration: 0.2 })
+                        .to("#splashScreen", {
+                            scaleY: 0,
+                            transformOrigin: "top",
+                            duration: 1.2,
+                            ease: "power4.inOut"
+                        });
+
+            // Sirf Logo Image track karenge
+            const splashLogoImage = new Image();
+            splashLogoImage.src = "/api/static/images/logo.png";
+
+            function completeSplash() {
+                // Ek smooth animation bar ke liye
+                gsap.to("#splashProgress", { 
+                    width: "100%", 
+                    duration: 1.2, 
+                    ease: "power2.inOut",
+                    onComplete: () => {
+                        document.getElementById('splashStatus').innerText = "Store Ready.";
+                        setTimeout(() => hideSplashTl.play(), 300);
+                    }
                 });
+            }
+
+            // Check if logo is already loaded from cache
+            if (splashLogoImage.complete) {
+                completeSplash();
+            } else {
+                splashLogoImage.onload = completeSplash;
+                splashLogoImage.onerror = completeSplash; // Agar logo fetch mein error aaye toh bhi page atakna nahi chahiye
+            }
             
+            // --- 2. MAIN WEBSITE ANIMATIONS ---
             function initMainAnimations() {
                 lenis = new Lenis({
                     duration: 1.2,
