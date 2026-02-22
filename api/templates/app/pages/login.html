@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://images.unsplash.com">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
@@ -21,7 +21,7 @@
                     colors: {
                         luviio: {
                             stone: '#F5F5F0',
-                            charcoal: '#111111',
+                            charcoal: '#0a0a0a', /* Matched the deeper black from screenshot */
                             gold: '#C5A059',
                             sand: '#E5E5DF'
                         }
@@ -39,31 +39,63 @@
         body {
             font-family: 'Inter', sans-serif;
             -webkit-font-smoothing: antialiased;
-            background-color: #111111; /* Pure dark theme for Auth */
+            background-color: #0a0a0a; /* Pure deep background */
             color: #ffffff;
             overflow: hidden; /* Prevent scrolling on auth page */
         }
         h1, h2, h3, h4, h5, h6 { font-family: 'Playfair Display', serif; }
 
-        /* Custom Input Styling (Floating effect) */
-        .input-group { position: relative; margin-bottom: 2rem; }
+        /* Custom Input Styling (Floating effect) matched to screenshot */
+        .input-group { position: relative; margin-bottom: 2.5rem; }
         .input-group input {
-            width: 100%; padding: 10px 0; font-size: 1rem; color: #fff;
-            background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.2);
+            width: 100%; padding: 8px 0; font-size: 0.875rem; color: #fff;
+            background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.15);
             outline: none; transition: border-color 0.3s;
         }
         .input-group input:focus { border-bottom: 1px solid #C5A059; }
         .input-group label {
-            position: absolute; top: 10px; left: 0; font-size: 0.875rem; color: rgba(255,255,255,0.5);
-            pointer-events: none; transition: 0.3s ease all; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 500;
+            position: absolute; top: 8px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.6);
+            pointer-events: none; transition: 0.3s ease all; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
         }
         .input-group input:focus ~ label,
         .input-group input:valid ~ label {
-            top: -15px; font-size: 0.65rem; color: #C5A059;
+            top: -16px; font-size: 0.55rem; color: #C5A059;
         }
 
         .sys-transition { transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
         .gpu-target { transform: translateZ(0); will-change: transform; }
+        
+        /* Custom Checkbox */
+        .custom-checkbox {
+            appearance: none;
+            background-color: transparent;
+            margin: 0;
+            font: inherit;
+            color: currentColor;
+            width: 12px;
+            height: 12px;
+            border: 1px solid rgba(255,255,255,0.4);
+            border-radius: 1px;
+            display: grid;
+            place-content: center;
+        }
+        .custom-checkbox::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            transform: scale(0);
+            transition: 120ms transform ease-in-out;
+            box-shadow: inset 1em 1em #C5A059;
+            background-color: #C5A059;
+            transform-origin: center;
+            clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+        }
+        .custom-checkbox:checked::before {
+            transform: scale(1);
+        }
+        .custom-checkbox:checked {
+            border-color: #C5A059;
+        }
     </style>
 </head>
 
@@ -71,28 +103,29 @@
 
     <div class="hidden md:flex md:w-1/2 h-full relative overflow-hidden bg-black">
         <img src="https://images.unsplash.com/photo-1584622781867-1c64eb3768bf?auto=format&fit=crop&q=80&w=1200" id="authImage" class="absolute inset-0 w-full h-full object-cover opacity-60 scale-[1.2] gpu-target" alt="Luxury Bathware">
-        <div class="absolute inset-0 bg-gradient-to-t from-luviio-charcoal via-transparent to-luviio-charcoal/50"></div>
+        <div class="absolute inset-0 bg-gradient-to-t from-luviio-charcoal via-transparent to-luviio-charcoal/30"></div>
         
         <div class="absolute bottom-16 left-16 z-10 auth-anim opacity-0 translate-y-8">
-            <h2 class="text-5xl font-serif mb-4 text-white">Curated for<br><span class="italic text-luviio-gold">Eternity.</span></h2>
-            <p class="text-sm font-sans text-gray-400 tracking-wide max-w-xs">Access your exclusive dashboard to explore premium collections and manage orders.</p>
+            <h2 class="text-5xl font-serif mb-4 text-white leading-tight">Curated for<br><span class="italic text-luviio-gold">Eternity.</span></h2>
+            <p class="text-xs font-sans text-gray-400 tracking-wider max-w-xs leading-relaxed">Access your exclusive dashboard to explore premium collections and manage orders.</p>
         </div>
     </div>
 
     <div class="w-full md:w-1/2 h-full flex flex-col justify-center items-center px-8 sm:px-16 lg:px-24 bg-luviio-charcoal relative">
         
-        <a href="/" class="absolute top-8 left-8 text-gray-400 hover:text-white sys-transition flex items-center gap-2 text-xs uppercase tracking-widest font-bold z-10 auth-anim opacity-0">
-            <i class="ri-arrow-left-line text-lg"></i> Home
+        <a href="/" class="absolute top-8 left-8 text-gray-400 hover:text-white sys-transition flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold z-10 auth-anim opacity-0">
+            <i class="ri-arrow-left-line text-sm"></i> Home
         </a>
 
-        <div class="w-full max-w-md">
-            <div class="flex justify-center mb-12 auth-anim opacity-0 -translate-y-4">
-                <img src="/api/static/images/logo.png" alt="Luviio" class="w-12 h-12 invert">
+        <div class="w-full max-w-[320px]"> <div class="flex justify-center mb-8 auth-anim opacity-0 -translate-y-4">
+                <div class="w-14 h-14 flex items-center justify-center p-2 border border-white/10 rounded-sm">
+                    <img src="/api/static/images/logo.png" alt="Luviio Lotus" class="w-full h-full object-contain invert opacity-90">
+                </div>
             </div>
 
             <div class="text-center mb-12 auth-anim opacity-0 translate-y-4">
-                <h1 class="text-3xl md:text-4xl font-serif mb-2">Welcome Back</h1>
-                <p class="text-xs text-gray-400 uppercase tracking-[0.2em] font-sans">Sign in to continue</p>
+                <h1 class="text-[28px] font-serif mb-3 tracking-wide">Welcome Back</h1>
+                <p class="text-[8px] text-gray-500 uppercase tracking-[0.2em] font-sans font-semibold">Sign in to continue</p>
             </div>
 
             <form action="/login" method="POST" class="w-full">
@@ -101,32 +134,34 @@
                     <label for="email">Email Address</label>
                 </div>
 
-                <div class="input-group auth-anim opacity-0 translate-y-4 mb-8">
+                <div class="input-group auth-anim opacity-0 translate-y-4 mb-6">
                     <input type="password" name="password" id="password" required autocomplete="current-password">
                     <label for="password">Password</label>
                 </div>
 
-                <div class="flex justify-between items-center mb-10 auth-anim opacity-0">
+                <div class="flex justify-between items-center mb-10 auth-anim opacity-0 w-full">
                     <label class="flex items-center gap-2 cursor-pointer group">
-                        <input type="checkbox" class="w-3 h-3 accent-luviio-gold bg-transparent border border-gray-600 rounded-sm">
-                        <span class="text-[10px] text-gray-400 uppercase tracking-widest font-bold group-hover:text-white sys-transition">Remember me</span>
+                        <input type="checkbox" class="custom-checkbox">
+                        <span class="text-[8px] text-white uppercase tracking-widest font-bold sys-transition pt-0.5">Remember me</span>
                     </label>
-                    <a href="#" class="text-[10px] text-gray-400 uppercase tracking-widest font-bold hover:text-luviio-gold sys-transition">Forgot Password?</a>
+                    <a href="#" class="text-[8px] text-gray-400 uppercase tracking-widest font-bold hover:text-luviio-gold sys-transition pt-0.5">Forgot Password?</a>
                 </div>
 
-                <button type="submit" class="w-full py-4 bg-luviio-gold text-black rounded-xl font-bold uppercase tracking-[0.2em] text-[10px] hover:bg-white sys-transition shadow-[0_10px_30px_rgba(197,160,89,0.15)] hover:shadow-[0_10px_30px_rgba(255,255,255,0.2)] auth-anim opacity-0 translate-y-4">
+                <button type="submit" class="w-full py-3.5 bg-[#C5A059] text-black rounded-sm font-bold uppercase tracking-[0.15em] text-[9px] hover:bg-white sys-transition auth-anim opacity-0 translate-y-4 shadow-sm">
                     Secure Sign In
                 </button>
             </form>
 
-            <div class="mt-12 text-center auth-anim opacity-0">
-                <p class="text-xs text-gray-500 font-sans mb-4">New to Luviio? <a href="/register" class="text-white font-bold hover:text-luviio-gold sys-transition border-b border-gray-600 pb-0.5">Create an account</a></p>
-                <div class="flex items-center justify-center gap-4">
-                    <div class="h-[1px] w-8 bg-gray-800"></div>
-                    <p class="text-[9px] text-gray-600 uppercase tracking-[0.3em] font-bold">OR</p>
-                    <div class="h-[1px] w-8 bg-gray-800"></div>
+            <div class="mt-10 text-center auth-anim opacity-0 flex flex-col items-center gap-4">
+                <p class="text-[9px] text-gray-500 font-sans tracking-wide">New to Luviio? <a href="/register" class="text-white font-bold hover:text-luviio-gold sys-transition border-b border-gray-600 pb-[1px] ml-1">Create an account</a></p>
+                
+                <div class="flex items-center justify-center gap-3 w-32 opacity-60">
+                    <div class="h-[1px] flex-1 bg-gray-700"></div>
+                    <p class="text-[7px] text-gray-500 uppercase tracking-[0.3em] font-bold mt-[1px]">OR</p>
+                    <div class="h-[1px] flex-1 bg-gray-700"></div>
                 </div>
-                <p class="text-xs text-gray-500 font-sans mt-4">Are you a dealer? <a href="/partner" class="text-luviio-gold font-bold hover:text-white sys-transition border-b border-luviio-gold/30 pb-0.5">Partner Portal</a></p>
+                
+                <p class="text-[9px] text-gray-500 font-sans tracking-wide">Are you a dealer? <a href="/partner" class="text-luviio-gold font-bold hover:text-white sys-transition border-b border-luviio-gold/40 pb-[1px] ml-1">Partner Portal</a></p>
             </div>
         </div>
     </div>
@@ -148,7 +183,7 @@
                 y: 0,
                 opacity: 1,
                 duration: 1,
-                stagger: 0.1,
+                stagger: 0.08,
                 ease: "power3.out",
                 delay: 0.2
             });
