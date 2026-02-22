@@ -105,10 +105,27 @@ async def process_register(name: str = Form(...), email: str = Form(...), passwo
     return RedirectResponse(url="/login", status_code=303)
     
     
-@router.get("/partner")
+# 6. Partner/Dealer Portal (B2B ke liye alag page)
+@router.get("/partner", response_class=HTMLResponse)
 async def partner_page(request: Request):
-    return {"message": "B2B Partner Portal & Signup chalega yahan."}
+    # Agar user already logged in hai, toh wapas dashboard bhej do
+    if request.cookies.get("luviio_auth"):
+        return RedirectResponse(url="/dashboard", status_code=303)
+        
+    return templates.TemplateResponse("app/pages/partner.html", {"request": request})
 
+# 6.1 Handle Partner Registration Submit
+@router.post("/partner")
+async def process_partner(
+    company_name: str = Form(...), 
+    business_id: str = Form(...), 
+    email: str = Form(...), 
+    password: str = Form(...)
+):
+    # TODO: Yahan Database me naya Partner save karna aur review ke liye pending status dalna
+    
+    # Form submit hone ke baad approval message ya sidha login page pe bhej do
+    return RedirectResponse(url="/login", status_code=303)
 @router.get("/dashboard")
 async def dashboard_page(request: Request):
     auth_cookie = request.cookies.get("luviio_auth")
