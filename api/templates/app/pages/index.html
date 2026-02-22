@@ -18,71 +18,34 @@
     <style>
         /* Lenis Smooth Scroll Setup */
         html.lenis,
-        html.lenis body {
-            height: auto;
-            width: 100vw;
-            overflow-x: hidden;
-        }
+        html.lenis body { height: auto; width: 100vw; overflow-x: hidden; }
+        .lenis.lenis-smooth { scroll-behavior: auto !important; }
+        .lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+        .lenis.lenis-stopped { overflow: hidden; }
         
-        .lenis.lenis-smooth {
-            scroll-behavior: auto !important;
-        }
-        
-        .lenis.lenis-smooth [data-lenis-prevent] {
-            overscroll-behavior: contain;
-        }
-        
-        .lenis.lenis-stopped {
-            overflow: hidden;
-        }
-        
-        body {
-            overflow-x: hidden;
-            background-color: #f8fafc;
-        }
+        body { overflow-x: hidden; background-color: #f8fafc; }
         
         /* Custom Cursor for Desktop */
         @media (min-width: 768px) {
-            
-            body,
-            a,
-            button,
-            input {
-                cursor: none;
-            }
-            
+            body, a, button, input { cursor: none; }
             #cursor {
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 20px;
-                height: 20px;
-                background: theme('colors.gray.900');
-                border-radius: 50%;
-                pointer-events: none;
-                z-index: 9999;
-                mix-blend-mode: difference;
-                transform: translate(-50%, -50%);
-                transition: width 0.3s, height 0.3s, background-color 0.3s;
+                position: fixed; top: 0; left: 0; width: 20px; height: 20px;
+                background: theme('colors.gray.900'); border-radius: 50%;
+                pointer-events: none; z-index: 9999; mix-blend-mode: difference;
+                transform: translate(-50%, -50%); transition: width 0.3s, height 0.3s, background-color 0.3s;
                 will-change: transform;
             }
-            
             #cursor.hover-active {
-                width: 60px;
-                height: 60px;
-                background: rgba(255, 255, 255, 0.8);
-                mix-blend-mode: screen;
+                width: 60px; height: 60px; background: rgba(255, 255, 255, 0.8); mix-blend-mode: screen;
             }
         }
         
-        /* Shutter Border Sticker - Adjusted for section placement */
+        /* Shutter Border Sticker */
         .shutter-border {
             background-image: url("data:image/svg+xml,%3Csvg width='100%25' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0 L 20 24 L 40 0 L 60 24 L 80 0 L 100 24 L 120 0 L 140 24 L 160 0 L 180 24 L 200 0 L 220 24 L 240 0 L 260 24 L 280 0 L 300 24 L 320 0 L 340 24 L 360 0 L 380 24 L 400 0 L 420 24 L 440 0 L 460 24 L 480 0 L 500 24 Z' fill='%23ffffff'/%3E%3C/svg%3E");
-            background-repeat: repeat-x;
-            background-size: 40px 24px;
+            background-repeat: repeat-x; background-size: 40px 24px;
             filter: drop-shadow(0px -4px 6px rgba(0, 0, 0, 0.04));
-            height: 24px;
-            width: 100%;
+            height: 24px; width: 100%;
         }
         
         /* Aceternity Fancy Menu Background */
@@ -94,39 +57,28 @@
             box-shadow: -30px 0 80px rgba(0, 0, 0, 0.1);
         }
         
-        /* Aceternity Dot Pattern */
         .dot-pattern {
             background-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
             background-size: 24px 24px;
         }
         
         .stacked-section {
-            position: sticky;
-            top: 0;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            transform-origin: top center;
-            will-change: transform;
+            position: sticky; top: 0; min-height: 100vh;
+            display: flex; flex-direction: column; justify-content: center;
+            transform-origin: top center; will-change: transform;
         }
         
         .reveal-mask {
             clip-path: polygon(0 0, 100% 0, 100% 100%, 0% 100%);
-            display: inline-block;
-            padding-bottom: 0.1em;
+            display: inline-block; padding-bottom: 0.1em;
         }
         
         .reveal-text {
             transform: translateY(120%) rotateZ(6deg);
-            display: inline-block;
-            transform-origin: top left;
+            display: inline-block; transform-origin: top left;
         }
         
-        ::-webkit-scrollbar {
-            width: 0px;
-            background: transparent;
-        }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
     </style>
 </head>
 
@@ -151,11 +103,9 @@
     <header class="fixed w-full top-0 z-50 transition-all duration-300">
         <div class="bg-white/70 backdrop-blur-xl flex justify-between items-center px-4 md:px-8 py-4 relative z-10 border-b border-gray-200/50 shadow-sm">
             <div class="flex items-center gap-2 hover-target cursor-pointer">
-                
-                <div class="w-8 h-8 bg-gray-900 rounded flex items-center justify-center">
-                    <img src="/api/static/images/logo.png" alt="Logo" class="w-6 h-6 object-contain">
+                <div class="w-8 h-8 bg-gray-900 rounded flex items-center justify-center overflow-hidden">
+                    <img src="/api/static/images/logo.png" alt="Logo" class="w-full h-full object-cover">
                 </div>
-                
                 <h1 class="text-xl font-black tracking-widest">LUVIIO</h1>
             </div>
             <button id="menuTrigger" class="text-3xl text-gray-800 hover:text-black transition-transform hover:scale-110 p-2 hover-target magnetic-btn outline-none">
@@ -167,7 +117,6 @@
     <div id="drawerOverlay" class="fixed inset-0 bg-gray-900/20 backdrop-blur-sm z-[60] opacity-0 pointer-events-none transition-opacity duration-500"></div>
     
     <div id="drawerContent" class="fixed top-0 right-0 h-full w-full md:w-[450px] glass-menu z-[70] transform translate-x-full transition-transform duration-700 ease-[cubic-bezier(0.77,0,0.175,1)] flex flex-col overflow-hidden">
-        
         <div class="absolute inset-0 z-0 pointer-events-none dot-pattern"></div>
         <div class="absolute top-0 right-0 w-96 h-96 bg-gray-200 rounded-full blur-[80px] opacity-50 z-0 pointer-events-none"></div>
         
@@ -221,22 +170,22 @@
         </div>
     </div>
     
-    <main id="mainContent" class="opacity-0 hidden pt-[70px]">
+    <main id="mainContent" class="opacity-0 hidden">
         
         <div class="relative w-full z-20">
             <div class="shutter-border absolute top-0 left-0 w-full z-30"></div>
             
-            <section class="pt-20 pb-16 md:pb-20 bg-white relative flex flex-col items-center justify-center min-h-[90vh] rounded-b-[30px] md:rounded-b-[40px] shadow-sm overflow-hidden">
+            <section class="pt-32 md:pt-40 pb-16 md:pb-20 bg-white relative flex flex-col items-center justify-start min-h-[100svh] rounded-b-[30px] md:rounded-b-[40px] shadow-sm overflow-hidden">
                 <div class="absolute inset-0 pointer-events-none opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-gray-200 via-transparent to-transparent"></div>
                 
-                <div class="text-center px-4 md:px-6 w-full max-w-5xl mx-auto z-10 flex flex-col pt-8">
-                    <h2 class="text-5xl sm:text-6xl md:text-8xl font-black mb-4 md:mb-6 leading-[1.05] tracking-tight uppercase">
-                        <div class="reveal-mask"><span class="reveal-text hero-text text-gray-900">Elevate Your</span></div><br class="hidden md:block">
+                <div class="text-center px-4 md:px-6 w-full max-w-5xl mx-auto z-10 flex flex-col">
+                    <h2 class="text-5xl sm:text-6xl md:text-8xl font-black mb-6 md:mb-8 leading-[1.05] tracking-tight uppercase">
+                        <div class="reveal-mask"><span class="reveal-text hero-text text-gray-900">Elevate Your</span></div><br>
                         <div class="reveal-mask"><span class="reveal-text hero-text text-transparent bg-clip-text bg-gradient-to-r from-gray-900 via-gray-700 to-gray-400">Lifestyle.</span></div>
                     </h2>
                     
-                    <div class="w-full h-[45vh] sm:h-[50vh] md:h-[65vh] bg-gray-200 rounded-3xl md:rounded-[2.5rem] mt-8 md:mt-12 overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.1)] hero-image-wrapper">
-                        <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop" id="heroImage" class="w-full h-full object-cover scale-110" alt="Premium Setup">
+                    <div class="w-full h-[50vh] sm:h-[60vh] md:h-[65vh] bg-gray-200 rounded-3xl md:rounded-[2.5rem] mt-4 md:mt-8 overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.1)] hero-image-wrapper">
+                        <img src="/api/static/images/hero.jpg" id="heroImage" class="absolute inset-0 w-full h-full object-cover object-center scale-[1.4] will-change-transform" alt="Premium Setup">
                         <div class="absolute inset-0 bg-black/10"></div>
                         <div class="absolute bottom-4 left-4 right-4 md:bottom-8 md:left-8 md:right-8 flex justify-between items-end text-white">
                             <span class="font-bold tracking-widest text-xs md:text-sm backdrop-blur-md bg-white/20 px-5 py-2.5 rounded-full border border-white/30 shadow-lg">EST. 2026</span>
@@ -256,7 +205,7 @@
                 </div>
             </div>
             
-            <div class="h-[25vh] md:h-[30vh] flex flex-col items-center justify-center text-4xl sm:text-5xl md:text-7xl font-black px-4 text-center w-full">
+            <div class="h-[20vh] md:h-[28vh] flex flex-col items-center justify-center text-4xl sm:text-5xl md:text-7xl font-black px-4 text-center w-full">
                 <span class="text-gray-500 mb-2 md:mb-4 text-lg md:text-2xl uppercase tracking-widest font-bold">We operate as a</span>
                 <div class="relative h-16 md:h-24 w-full overflow-hidden flex justify-center" style="perspective: 800px;">
                     <span id="wholesalerText" class="absolute top-0 text-gray-900 origin-bottom">B2B</span>
@@ -276,19 +225,19 @@
                 
                 <div class="flex gap-4 md:gap-8 px-4 md:px-12 items-center w-max" id="horizontalTrack">
                     <div class="showcase-card flex-shrink-0 w-[85vw] md:w-[400px] lg:w-[450px] h-[55vh] md:h-[60vh] bg-gray-800 rounded-3xl md:rounded-[2.5rem] p-6 md:p-8 flex flex-col justify-between overflow-hidden group hover-target relative">
-                        <img src="https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&q=80&w=800" loading="lazy" class="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" alt="P1">
+                        <img src="https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&q=80&w=800" loading="lazy" class="absolute inset-0 w-full h-full object-cover object-center opacity-60 group-hover:scale-105 transition-transform duration-700 will-change-transform" alt="P1">
                         <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-transparent to-transparent"></div>
                         <span class="bg-white text-black px-4 py-1.5 md:px-5 md:py-2 rounded-full font-bold text-[10px] md:text-xs uppercase tracking-wider w-max z-10 shadow-lg">New Arrival</span>
                         <h3 class="text-3xl md:text-4xl font-black z-10 translate-y-4 group-hover:translate-y-0 transition-transform duration-300">Aesthetic Setup</h3>
                     </div>
                     <div class="showcase-card flex-shrink-0 w-[85vw] md:w-[400px] lg:w-[450px] h-[55vh] md:h-[60vh] bg-gray-800 rounded-3xl md:rounded-[2.5rem] p-6 md:p-8 flex flex-col justify-between overflow-hidden group hover-target relative">
-                        <img src="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&q=80&w=800" loading="lazy" class="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" alt="P2">
+                        <img src="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&q=80&w=800" loading="lazy" class="absolute inset-0 w-full h-full object-cover object-center opacity-60 group-hover:scale-105 transition-transform duration-700 will-change-transform" alt="P2">
                         <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-transparent to-transparent"></div>
                         <span class="bg-yellow-400 text-black px-4 py-1.5 md:px-5 md:py-2 rounded-full font-bold text-[10px] md:text-xs uppercase tracking-wider w-max z-10 shadow-lg">Trending</span>
                         <h3 class="text-3xl md:text-4xl font-black z-10 translate-y-4 group-hover:translate-y-0 transition-transform duration-300">Premium Audio</h3>
                     </div>
                     <div class="showcase-card flex-shrink-0 w-[85vw] md:w-[400px] lg:w-[450px] h-[55vh] md:h-[60vh] bg-gray-800 rounded-3xl md:rounded-[2.5rem] p-6 md:p-8 flex flex-col justify-between overflow-hidden group hover-target relative">
-                        <img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=800" loading="lazy" class="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" alt="P3">
+                        <img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=800" loading="lazy" class="absolute inset-0 w-full h-full object-cover object-center opacity-60 group-hover:scale-105 transition-transform duration-700 will-change-transform" alt="P3">
                         <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-transparent to-transparent"></div>
                         <span class="bg-white text-black px-4 py-1.5 md:px-5 md:py-2 rounded-full font-bold text-[10px] md:text-xs uppercase tracking-wider w-max z-10 shadow-lg">Classic</span>
                         <h3 class="text-3xl md:text-4xl font-black z-10 translate-y-4 group-hover:translate-y-0 transition-transform duration-300">Urban Kicks</h3>
@@ -439,13 +388,19 @@
                     duration: 1.4,
                     stagger: 0.15,
                     ease: "power4.out"
-                }).fromTo(".hero-image-wrapper", { clipPath: "polygon(0 100%, 100% 100%, 100% 100%, 0 100%)", opacity: 0 }, { clipPath: "polygon(0 0%, 100% 0%, 100% 100%, 0 100%)", opacity: 1, duration: 1.5, ease: "power4.inOut" }, "-=0.9").to("#heroImage", { scale: 1, duration: 2, ease: "power2.out" }, "-=1.5");
+                }).fromTo(".hero-image-wrapper", { clipPath: "polygon(0 100%, 100% 100%, 100% 100%, 0 100%)", opacity: 0 }, { clipPath: "polygon(0 0%, 100% 0%, 100% 100%, 0 100%)", opacity: 1, duration: 1.5, ease: "power4.inOut" }, "-=0.9")
+                // FIX 2: Instead of animating scale to 1, we animate it down to 1.2 so there's enough extra image left to parallax properly
+                .to("#heroImage", { scale: 1.2, duration: 2, ease: "power2.out" }, "-=1.5");
                 
-                gsap.to("#heroImage", {
-                    yPercent: 15,
-                    ease: "none",
-                    scrollTrigger: { trigger: ".hero-image-wrapper", start: "top bottom", end: "bottom top", scrub: true }
-                });
+                // FIX 3: Parallax now moves from -10 to 10 instead of 0 to 15 to stay completely hidden behind the edges
+                gsap.fromTo("#heroImage", 
+                    { yPercent: -10 },
+                    {
+                        yPercent: 10,
+                        ease: "none",
+                        scrollTrigger: { trigger: ".hero-image-wrapper", start: "top bottom", end: "bottom top", scrub: true }
+                    }
+                );
                 
                 const drawerContent = document.getElementById('drawerContent');
                 const drawerOverlay = document.getElementById('drawerOverlay');
@@ -469,7 +424,6 @@
                     }
                 }
                 
-                // ICON MORPHING LOGIC
                 function toggleView() {
                     isAccountView = !isAccountView;
                     if (isAccountView) {
@@ -479,7 +433,6 @@
                         accountState.classList.add('opacity-100', 'scale-100');
                         document.getElementById('drawerTitle').innerText = "Account";
                         
-                        // Morph to back arrow
                         gsap.to("#profileTrigger i", {
                             rotation: -180,
                             opacity: 0,
@@ -496,7 +449,6 @@
                         menuState.classList.add('opacity-100', 'scale-100');
                         document.getElementById('drawerTitle').innerText = "Menu";
                         
-                        // Morph to user icon
                         gsap.to("#profileTrigger i", {
                             rotation: 180,
                             opacity: 0,
@@ -579,9 +531,11 @@
                     breakpoints: { 768: { slidesPerView: 2, spaceBetween: 30 } }
                 });
                 
-                inView("#teamGrid", () => {
-                    animate(".team-member", { opacity: [0, 1], y: [50, 0] }, { duration: 0.8, delay: stagger(0.2), easing: [0.17, 0.55, 0.55, 1] });
-                });
+                if(document.querySelector("#teamGrid")) {
+                    inView("#teamGrid", () => {
+                        animate(".team-member", { opacity: [0, 1], y: [50, 0] }, { duration: 0.8, delay: stagger(0.2), easing: [0.17, 0.55, 0.55, 1] });
+                    });
+                }
             }
             
             window.addEventListener('beforeunload', () => { if (lenis) lenis.destroy(); });
