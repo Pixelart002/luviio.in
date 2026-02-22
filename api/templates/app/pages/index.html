@@ -28,7 +28,8 @@
                             stone: '#F5F5F0',
                             charcoal: '#111111',
                             gold: '#C5A059',
-                            sand: '#E5E5DF'
+                            sand: '#E5E5DF',
+                            panel: '#121212'
                         }
                     },
                     fontFamily: {
@@ -105,6 +106,12 @@
             z-index: -1; filter: blur(15px); opacity: 0; transition: opacity 0.5s ease;
         }
         .pricing-card:hover .pricing-glow::before { opacity: 0.6; }
+
+        /* Swiper Fixes */
+        .swiper-pagination-bullet { background-color: rgba(0,0,0,0.3) !important; }
+        .swiper-pagination-bullet-active { background-color: #C5A059 !important; }
+        .dark-swiper .swiper-pagination-bullet { background-color: rgba(255,255,255,0.3) !important; }
+        .dark-swiper .swiper-pagination-bullet-active { background-color: #C5A059 !important; }
     </style>
 </head>
 
@@ -125,11 +132,11 @@
 
     <header class="fixed w-full top-0 z-50 transition-transform duration-700" id="mainHeader" style="transform: translateY(-100%);">
         <div class="bg-luviio-stone/80 backdrop-blur-xl flex justify-between items-center px-6 md:px-10 py-4 relative z-10 border-b border-luviio-sand/50">
-            <div class="flex items-center gap-4 hover-target cursor-pointer group">
-                <div class="w-8 h-8 flex items-center justify-center overflow-hidden">
+            <div class="flex items-center gap-3 hover-target cursor-pointer group">
+                <div class="w-6 h-6 md:w-8 md:h-8 flex items-center justify-center overflow-hidden">
                     <img src="/api/static/images/logo.png" alt="Logo" class="w-full h-full object-contain sys-transition group-hover:scale-110">
                 </div>
-                <h1 class="text-sm md:text-lg font-serif font-medium tracking-[0.2em] text-luviio-charcoal uppercase">Luviio</h1>
+                <h1 class="text-sm md:text-lg font-serif font-medium tracking-[0.2em] text-luviio-charcoal uppercase leading-none mt-1">LUVIIO</h1>
             </div>
 
             <div class="flex items-center gap-6 md:gap-10">
@@ -233,7 +240,7 @@
     <main id="mainContent" class="opacity-0 hidden bg-luviio-stone">
 
         <div class="relative w-full z-20">
-            <section class="h-[100svh] pt-32 pb-8 px-4 md:px-10 relative flex flex-col items-center overflow-hidden">
+            <section class="h-[100dvh] pt-32 pb-8 px-4 md:px-10 relative flex flex-col items-center overflow-hidden">
                 <div class="flex-shrink-0 text-center w-full max-w-6xl mx-auto z-10 pt-2 md:pt-4">
                     <h2 class="text-[11vw] leading-[1.05] sm:text-[8vw] md:text-[6.5rem] font-serif tracking-tight text-luviio-charcoal">
                         <div class="reveal-mask"><span class="reveal-text hero-text">Premium Ceramic</span></div><br>
@@ -284,7 +291,7 @@
 
         <section id="galleryWrapper" class="py-24 md:py-40 bg-white relative w-full overflow-hidden border-b border-luviio-sand">
             <div class="max-w-[1600px] mx-auto px-6 md:px-16 flex flex-col md:flex-row gap-16 relative">
-                <div class="md:w-5/12 flex flex-col md:h-screen md:sticky top-0 justify-center pb-12 md:pb-0 z-10 bg-white/80 md:bg-transparent backdrop-blur-sm md:backdrop-blur-none">
+                <div class="md:w-5/12 flex flex-col md:h-[100dvh] md:sticky top-0 justify-center pb-12 md:pb-0 z-10 bg-white/80 md:bg-transparent backdrop-blur-sm md:backdrop-blur-none">
                     <span class="text-luviio-gold text-[10px] uppercase tracking-[0.4em] font-sans font-bold mb-4">The Gallery</span>
                     <h2 class="text-4xl md:text-6xl lg:text-7xl font-serif text-luviio-charcoal mb-8 leading-tight">Curated for<br><span class="italic text-gray-400">Eternity.</span></h2>
                     <p class="text-gray-500 font-sans leading-relaxed max-w-sm text-sm">Every curve, every texture is meticulously selected. We source only the finest global bathware to transform your spaces into sanctuaries of absolute luxury.</p>
@@ -307,59 +314,110 @@
             </div>
         </section>
 
-        <section id="pricingSection" class="py-24 md:py-40 bg-luviio-charcoal relative w-full text-white overflow-hidden">
-            <div class="absolute inset-0 z-0 pointer-events-none opacity-[0.03]" style="background-image: radial-gradient(circle at center, rgba(197, 160, 89, 1) 1px, transparent 1px); background-size: 24px 24px;"></div>
+        <section id="showcaseWrapper" class="bg-luviio-stone text-luviio-charcoal overflow-hidden relative w-full pt-10">
+            <div id="showcaseContainer" class="h-[100dvh] flex flex-col justify-center relative z-10">
+                <div class="px-6 md:px-16 mb-10 flex justify-between items-end w-full max-w-[1600px] mx-auto">
+                    <h2 class="text-4xl md:text-7xl font-serif italic uppercase tracking-widest overflow-hidden">
+                        <span id="showcaseTitle" class="inline-block transform translate-y-full text-luviio-charcoal">Showcase.</span>
+                    </h2>
+                </div>
+
+                <div class="flex gap-8 md:gap-16 px-6 md:px-16 items-center w-max gpu-target" id="horizontalTrack">
+                    <div class="showcase-card flex-shrink-0 w-[85vw] md:w-[450px] lg:w-[550px] h-[55vh] md:h-[65vh] bg-black rounded-[2rem] p-8 flex flex-col justify-between overflow-hidden group hover-target relative shadow-2xl">
+                        <img src="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&q=80&w=1000" decoding="async" class="showcase-img absolute inset-0 w-full h-full object-cover object-center opacity-70 scale-[1.3] sys-transition group-hover:scale-[1.35] group-hover:opacity-100" alt="Minimalist Space">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent pointer-events-none"></div>
+                        <span class="bg-luviio-gold text-white px-4 py-2 rounded-full font-sans font-bold text-[9px] uppercase tracking-[0.3em] w-max z-10">2026 Edition</span>
+                        <h3 class="text-3xl md:text-5xl font-serif z-10 translate-y-4 sys-transition group-hover:translate-y-0 text-white">Modern Ceramics</h3>
+                    </div>
+                    <div class="showcase-card flex-shrink-0 w-[85vw] md:w-[450px] lg:w-[550px] h-[55vh] md:h-[65vh] bg-black rounded-[2rem] p-8 flex flex-col justify-between overflow-hidden group hover-target relative shadow-2xl">
+                        <img src="https://images.unsplash.com/photo-1595515106969-1ce29566ff1c?auto=format&fit=crop&q=80&w=1000" decoding="async" class="showcase-img absolute inset-0 w-full h-full object-cover object-center opacity-70 scale-[1.3] sys-transition group-hover:scale-[1.35] group-hover:opacity-100" alt="Gold Faucet">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent pointer-events-none"></div>
+                        <span class="border border-white/40 backdrop-blur-md text-white px-4 py-2 rounded-full font-sans font-bold text-[9px] uppercase tracking-[0.3em] w-max z-10">Premium</span>
+                        <h3 class="text-3xl md:text-5xl font-serif z-10 translate-y-4 sys-transition group-hover:translate-y-0 text-white">Brass Textures</h3>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="py-24 md:py-32 bg-luviio-charcoal dark-swiper overflow-hidden relative border-y border-white/5">
+            <div class="max-w-5xl mx-auto px-6 relative z-10 text-white">
+                <div class="text-center mb-10 md:mb-16">
+                     <i class="ri-double-quotes-l text-4xl md:text-6xl text-luviio-gold/30 mb-4 block"></i>
+                     <span class="text-luviio-gold text-[10px] md:text-xs uppercase tracking-[0.4em] font-sans font-bold">Client Voices</span>
+                </div>
+
+                <div class="swiper homeSwiper pb-16">
+                    <div class="swiper-wrapper">
+                        <div class="swiper-slide h-auto">
+                            <div class="text-center px-2 md:px-12">
+                                <p class="text-xl md:text-4xl font-serif leading-relaxed mb-8">"The quality of the ceramic basins we ordered was beyond expectations. It transformed our master bathroom into a literal spa."</p>
+                                <h4 class="font-sans font-bold text-[10px] md:text-xs uppercase tracking-widest text-luviio-gold">Ananya Sharma</h4>
+                                <p class="text-[8px] md:text-[10px] text-gray-500 font-sans mt-2 tracking-widest uppercase">Verified Buyer</p>
+                            </div>
+                        </div>
+                        <div class="swiper-slide h-auto">
+                            <div class="text-center px-2 md:px-12">
+                                <p class="text-xl md:text-4xl font-serif leading-relaxed mb-8">"We sourced Luviio for an entire boutique hotel project. Their minimalist designs and matte finishes are unmatched in the market."</p>
+                                <h4 class="font-sans font-bold text-[10px] md:text-xs uppercase tracking-widest text-luviio-gold">Design Element Co.</h4>
+                                <p class="text-[8px] md:text-[10px] text-gray-500 font-sans mt-2 tracking-widest uppercase">Trade Partner</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="swiper-pagination mt-6 relative"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="pricingSection" class="py-24 md:py-40 bg-luviio-stone relative w-full text-luviio-charcoal overflow-hidden">
+            <div class="absolute inset-0 z-0 pointer-events-none opacity-[0.05]" style="background-image: radial-gradient(circle at center, rgba(197, 160, 89, 1) 1px, transparent 1px); background-size: 24px 24px;"></div>
             
             <div class="max-w-7xl mx-auto px-6 relative z-10">
                 <div class="text-center mb-16 md:mb-24 pricing-header">
                     <span class="text-luviio-gold text-[10px] uppercase tracking-[0.4em] font-sans font-bold">Partnerships</span>
                     <h2 class="text-4xl md:text-6xl font-serif mt-4">Trade & <span class="italic text-gray-500">Retail.</span></h2>
-                    <p class="mt-4 text-gray-400 font-sans text-sm max-w-lg mx-auto">Join our exclusive network of dealers and architects to access premium bathware at wholesale rates.</p>
+                    <p class="mt-4 text-gray-500 font-sans text-sm max-w-lg mx-auto">Join our exclusive network of dealers and architects to access premium bathware at wholesale rates.</p>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8" style="perspective: 1200px;">
-                    <div class="pricing-card bg-[#161616] border border-gray-800 rounded-3xl p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-600 gpu-target relative overflow-hidden">
-                        <h3 class="text-2xl font-serif text-gray-300 mb-2 relative z-10">Standard Retail</h3>
+                    <div class="pricing-card bg-white border border-luviio-sand rounded-3xl p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-300 gpu-target relative overflow-hidden shadow-lg">
+                        <h3 class="text-2xl font-serif text-gray-800 mb-2 relative z-10">Standard Retail</h3>
                         <p class="text-xs text-gray-500 font-sans tracking-wide mb-8 relative z-10">For individual showrooms.</p>
-                        <div class="text-4xl font-serif mb-8 text-white relative z-10">15% <span class="text-[10px] font-sans text-gray-500 tracking-widest uppercase align-middle">Margin</span></div>
+                        <div class="text-4xl font-serif mb-8 text-luviio-charcoal relative z-10">15% <span class="text-[10px] font-sans text-gray-500 tracking-widest uppercase align-middle">Margin</span></div>
                         <ul class="space-y-5 mb-10 flex-1 relative z-10">
-                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Standard Catalog Access</li>
-                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Basic Marketing Kit</li>
-                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Standard Delivery</li>
+                            <li class="text-xs text-gray-600 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Standard Catalog Access</li>
+                            <li class="text-xs text-gray-600 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Basic Marketing Kit</li>
                         </ul>
-                        <a href="/partner" class="w-full text-center py-4 rounded-xl border border-gray-700 text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10 block">Apply Now</a>
+                        <a href="/partner" class="w-full text-center py-4 rounded-xl border border-luviio-charcoal text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-luviio-charcoal hover:text-white sys-transition hover-target relative z-10 block">Apply Now</a>
                     </div>
 
-                    <div class="pricing-card pricing-glow relative bg-[#111111] border border-luviio-gold/40 rounded-3xl p-8 flex flex-col transform md:-translate-y-4 shadow-[0_20px_40px_rgba(197,160,89,0.08)] gpu-target z-10">
+                    <div class="pricing-card pricing-glow relative bg-luviio-charcoal border border-luviio-gold/40 rounded-3xl p-8 flex flex-col transform md:-translate-y-4 shadow-[0_20px_40px_rgba(197,160,89,0.15)] gpu-target z-10">
                         <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-luviio-gold text-black px-4 py-1.5 rounded-full text-[8px] font-bold uppercase tracking-[0.3em]">Most Popular</div>
                         <h3 class="text-2xl font-serif text-luviio-gold mb-2 relative z-10">Trade Partner</h3>
                         <p class="text-xs text-gray-400 font-sans tracking-wide mb-8 relative z-10">For architects & developers.</p>
                         <div class="text-4xl font-serif mb-8 text-white relative z-10">35% <span class="text-[10px] font-sans text-gray-400 tracking-widest uppercase align-middle">Margin</span></div>
                         <ul class="space-y-5 mb-10 flex-1 relative z-10">
                             <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Priority Bulk Pricing</li>
-                            <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Dedicated Account Manager</li>
                             <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Custom 3D CAD Models</li>
                             <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Express Logistics</li>
                         </ul>
                         <a href="/partner" class="w-full text-center py-4 rounded-xl bg-luviio-gold text-black text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white sys-transition hover-target relative z-10 block">Become Partner</a>
                     </div>
 
-                    <div class="pricing-card bg-[#161616] border border-gray-800 rounded-3xl p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-600 gpu-target relative overflow-hidden">
-                        <h3 class="text-2xl font-serif text-gray-300 mb-2 relative z-10">Dealership</h3>
+                    <div class="pricing-card bg-white border border-luviio-sand rounded-3xl p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-300 gpu-target relative overflow-hidden shadow-lg">
+                        <h3 class="text-2xl font-serif text-gray-800 mb-2 relative z-10">Dealership</h3>
                         <p class="text-xs text-gray-500 font-sans tracking-wide mb-8 relative z-10">State-level exclusivity.</p>
-                        <div class="text-4xl font-serif mb-8 text-white relative z-10">Custom</div>
+                        <div class="text-4xl font-serif mb-8 text-luviio-charcoal relative z-10">Custom</div>
                         <ul class="space-y-5 mb-10 flex-1 relative z-10">
-                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Territorial Monopoly</li>
-                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Co-branded Marketing</li>
-                            <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Premium Display Setup</li>
+                            <li class="text-xs text-gray-600 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Territorial Monopoly</li>
+                            <li class="text-xs text-gray-600 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Premium Display Setup</li>
                         </ul>
-                        <a href="/partner" class="w-full text-center py-4 rounded-xl border border-gray-700 text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10 block">Contact Us</a>
+                        <a href="/partner" class="w-full text-center py-4 rounded-xl border border-luviio-charcoal text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-luviio-charcoal hover:text-white sys-transition hover-target relative z-10 block">Contact Us</a>
                     </div>
                 </div>
             </div>
         </section>
 
-        <footer class="bg-luviio-charcoal text-luviio-stone relative z-50 pt-24 md:pt-40 overflow-hidden w-full">
+        <footer class="bg-luviio-charcoal text-luviio-stone relative z-50 pt-24 md:pt-40 overflow-hidden w-full border-t border-luviio-gold/10">
             <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl opacity-[0.03] pointer-events-none z-0">
                 <img src="/api/static/images/lotus.png" class="w-full h-full object-contain anim-float filter sepia hue-rotate-180" alt="Lotus Decor" loading="lazy">
             </div>
@@ -384,8 +442,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
     <script src="https://unpkg.com/@studio-freight/lenis@1.0.33/dist/lenis.min.js"></script>
-
-    <script type="module">
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script> <script type="module">
         document.addEventListener("DOMContentLoaded", () => {
             gsap.registerPlugin(ScrollTrigger);
             gsap.config({ force3D: true });
@@ -419,6 +476,16 @@
                 lenis.on('scroll', ScrollTrigger.update);
                 gsap.ticker.add((time) => { lenis.raf(time * 1000); });
                 gsap.ticker.lagSmoothing(0, 0);
+
+                // Initializing Swiper for Testimonials
+                new Swiper(".homeSwiper", {
+                    slidesPerView: 1,
+                    spaceBetween: 30,
+                    loop: true,
+                    grabCursor: true,
+                    autoplay: { delay: 4000, disableOnInteraction: true },
+                    pagination: { el: ".swiper-pagination", clickable: true }
+                });
 
                 const cursor = document.getElementById('cursor');
                 if (window.innerWidth >= 768) {
@@ -485,6 +552,14 @@
 
                 gsap.to(".gallery-col-1", { yPercent: -20, ease: "none", scrollTrigger: { trigger: ".gallery-container", start: "top bottom", end: "bottom top", scrub: 1 } });
                 gsap.to(".gallery-col-2", { yPercent: -40, ease: "none", scrollTrigger: { trigger: ".gallery-container", start: "top bottom", end: "bottom top", scrub: 1.5 } });
+
+                // Text Reveal for the Marquee replacement 
+                gsap.to("#showcaseTitle", { scrollTrigger: { trigger: "#showcaseWrapper", start: "top 80%" }, y: 0, duration: 1.5, ease: "expo.out" });
+                
+                const track = document.getElementById("horizontalTrack");
+                function getScrollAmount() { return -(track.scrollWidth - window.innerWidth + (window.innerWidth > 768 ? 128 : 48)); }
+                ScrollTrigger.create({ trigger: "#showcaseWrapper", start: "top top", end: () => `+=${Math.abs(getScrollAmount())}`, pin: true, animation: gsap.to(track, { x: getScrollAmount, ease: "none" }), scrub: 1, invalidateOnRefresh: true });
+                gsap.utils.toArray('.showcase-img').forEach((img) => { gsap.to(img, { xPercent: 15, ease: "none", scrollTrigger: { trigger: "#showcaseWrapper", start: "top top", end: () => `+=${Math.abs(getScrollAmount())}`, scrub: 1 } }); });
 
                 gsap.from(".pricing-header", { y: 50, opacity: 0, duration: 1.2, ease: "power3.out", scrollTrigger: { trigger: "#pricingSection", start: "top 75%" } });
                 gsap.from(".pricing-card", {
