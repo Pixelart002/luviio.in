@@ -112,7 +112,7 @@ async def partner_page(request: Request):
     if request.cookies.get("luviio_auth"):
         return RedirectResponse(url="/dashboard", status_code=303)
         
-    return templates.TemplateResponse("app/pages/partner.html", {"request": request})
+    return templates.TemplateResponse("app/pages/partner_landing.html", {"request": request})
 
 # 6.1 Handle Partner Registration Submit
 @router.post("/partner")
