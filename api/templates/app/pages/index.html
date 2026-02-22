@@ -88,8 +88,8 @@
     
     <div id="splashScreen" class="fixed inset-0 z-[999] bg-gray-900 flex flex-col items-center justify-center text-white origin-bottom">
         <div class="overflow-hidden mb-6">
-            <h1 id="splashLogo" class="text-5xl md:text-7xl font-black tracking-widest translate-y-full flex items-center gap-3">
-                <i class="ri-gemini-line text-white"></i> LUVIIO
+            <h1 id="splashLogo" class="text-5xl md:text-7xl font-black tracking-widest translate-y-full flex items-center gap-4">
+                <img src="/api/static/images/logo.png" alt="Luviio Logo" class="w-12 h-12 md:w-16 md:h-16 object-contain invert"> LUVIIO
             </h1>
         </div>
         <div class="w-64 h-[2px] bg-white/20 rounded overflow-hidden relative">
@@ -102,9 +102,9 @@
     
     <header class="fixed w-full top-0 z-50 transition-all duration-300">
         <div class="bg-white/70 backdrop-blur-xl flex justify-between items-center px-4 md:px-8 py-4 relative z-10 border-b border-gray-200/50 shadow-sm">
-            <div class="flex items-center gap-2 hover-target cursor-pointer">
-                <div class="w-8 h-8 bg-gray-900 rounded flex items-center justify-center overflow-hidden">
-                    <img src="/api/static/images/logo.png" alt="Logo" class="w-full h-full object-cover">
+            <div class="flex items-center gap-3 hover-target cursor-pointer">
+                <div class="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center overflow-hidden p-1.5 shadow-md">
+                    <img src="/api/static/images/logo.png" alt="Logo" class="w-full h-full object-contain invert">
                 </div>
                 <h1 class="text-xl font-black tracking-widest">LUVIIO</h1>
             </div>
@@ -310,6 +310,11 @@
         <footer class="bg-gray-900 text-white relative z-50 rounded-t-[30px] md:rounded-t-[40px] pt-20 md:pt-24 overflow-hidden w-full">
             <div class="absolute inset-0 z-0 pointer-events-none opacity-20" style="background-image: radial-gradient(circle at center, rgba(255, 255, 255, 0.1) 1px, transparent 1px); background-size: 24px 24px;"></div>
             <div class="max-w-5xl mx-auto px-4 md:px-6 pb-12 text-center relative z-10 w-full">
+                
+                <div class="flex justify-center items-center gap-3 mb-8">
+                    <img src="/api/static/images/logo.png" alt="Luviio Logo" class="w-10 h-10 object-contain invert opacity-80">
+                </div>
+                
                 <h2 class="text-5xl md:text-8xl font-black mb-6 md:mb-8 uppercase tracking-tighter">Get In Touch</h2>
                 <div class="flex flex-col md:flex-row justify-center items-center gap-4 max-w-xl mx-auto mb-16 md:mb-24 relative group w-full">
                     <input type="email" placeholder="Enter your email address..." class="bg-white/5 border border-white/10 backdrop-blur-md px-6 md:px-8 py-4 w-full rounded-full focus:outline-none focus:border-white/50 transition-colors text-white placeholder-gray-500 hover-target text-sm md:text-base">
@@ -389,10 +394,8 @@
                     stagger: 0.15,
                     ease: "power4.out"
                 }).fromTo(".hero-image-wrapper", { clipPath: "polygon(0 100%, 100% 100%, 100% 100%, 0 100%)", opacity: 0 }, { clipPath: "polygon(0 0%, 100% 0%, 100% 100%, 0 100%)", opacity: 1, duration: 1.5, ease: "power4.inOut" }, "-=0.9")
-                // FIX 2: Instead of animating scale to 1, we animate it down to 1.2 so there's enough extra image left to parallax properly
                 .to("#heroImage", { scale: 1.2, duration: 2, ease: "power2.out" }, "-=1.5");
                 
-                // FIX 3: Parallax now moves from -10 to 10 instead of 0 to 15 to stay completely hidden behind the edges
                 gsap.fromTo("#heroImage", 
                     { yPercent: -10 },
                     {
