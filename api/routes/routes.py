@@ -79,10 +79,14 @@ async def logout_user():
 async def redirect_to_index():
     return RedirectResponse(url="/", status_code=301)
 
-@router.get("/login")
+@router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return {"message": "B2C Login Page chalegi yahan."}
-
+    # Agar user already logged in hai, toh wapas home/dashboard bhej do
+    if request.cookies.get("luviio_auth"):
+        return RedirectResponse(url="/dashboard", status_code=303)
+        
+    return templates.TemplateResponse("app/pages/login.html", {"request": request})
+    
 @router.get("/register")
 async def register_page(request: Request):
     return {"message": "B2C Sign Up Page chalegi yahan."}
