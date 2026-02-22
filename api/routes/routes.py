@@ -15,7 +15,7 @@ TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
 # FIX: Yahan @app.get ki jagah @router.get aayega!
-@router.get("/", response_class=HTMLResponse)
+@router.get("/","home","#", response_class=HTMLResponse)
 async def home_route(request: Request):
     return templates.TemplateResponse(
         "app/pages/index.html", 
