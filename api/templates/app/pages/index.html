@@ -133,13 +133,15 @@
             </div>
 
             <div class="flex items-center gap-6 md:gap-10">
-                <div class="hidden md:flex items-center gap-6 border-r border-luviio-sand/80 pr-10">
+                <div class="hidden md:flex items-center gap-5 border-r border-luviio-sand/80 pr-8">
                     {% if user %}
-                        <a href="/logout" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-red-800 hover:text-red-500 sys-transition hover-target">Logout</a>
-                        <a href="/dashboard" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-3 rounded-full hover:bg-luviio-gold hover:shadow-[0_10px_20px_rgba(197,160,89,0.2)] sys-transition hover-target">Dashboard</a>
+                        <a href="/dashboard" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-2.5 rounded-full hover:bg-luviio-gold hover:shadow-[0_10px_20px_rgba(197,160,89,0.2)] sys-transition hover-target">Dashboard</a>
+                        <a href="/logout" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-red-800 hover:text-red-500 sys-transition hover-target ml-2">Logout</a>
                     {% else %}
                         <a href="/login" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-luviio-charcoal hover:text-luviio-gold sys-transition hover-target">Sign In</a>
-                        <a href="/signup" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-3 rounded-full hover:bg-luviio-gold hover:shadow-[0_10px_20px_rgba(197,160,89,0.2)] sys-transition hover-target">Partner With Us</a>
+                        <a href="/register" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-luviio-charcoal hover:text-luviio-gold sys-transition hover-target">Sign Up</a>
+                        <div class="w-[1px] h-4 bg-luviio-sand mx-2"></div>
+                        <a href="/partner" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-2.5 rounded-full hover:bg-luviio-gold hover:shadow-[0_10px_20px_rgba(197,160,89,0.2)] sys-transition hover-target">Partner Portal</a>
                     {% endif %}
                 </div>
 
@@ -155,7 +157,7 @@
     
     <div id="drawerContent" class="fixed top-0 right-0 h-full w-full md:w-[450px] glass-menu z-[70] transform translate-x-full transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col overflow-hidden shadow-2xl">
         <div class="flex justify-between items-center px-10 py-8 z-20 relative bg-transparent border-b border-luviio-sand/50">
-            <button id="profileTrigger" class="w-10 h-10 flex items-center justify-start text-luviio-charcoal sys-transition hover:scale-110 hover:text-luviio-gold hover-target outline-none bg-transparent"><i class="ri-user-3-line text-xl"></i></button>
+            <button id="profileTrigger" class="w-10 h-10 flex items-center justify-start text-luviio-charcoal sys-transition hover:scale-110 hover:text-luviio-gold hover-target outline-none bg-transparent" title="Account"><i class="ri-user-3-line text-xl"></i></button>
             <button id="closeDrawer" class="w-10 h-10 flex items-center justify-end text-luviio-charcoal sys-transition hover:scale-110 hover:text-luviio-gold hover-target outline-none bg-transparent"><i class="ri-close-line text-2xl"></i></button>
         </div>
         
@@ -170,13 +172,18 @@
                 </div>
 
                 <div class="mt-auto pt-8 border-t border-luviio-sand/50">
-                    <div class="flex flex-col gap-4 mb-8">
+                    <div class="flex flex-col gap-3 mb-8">
                         {% if user %}
-                            <div class="clip-mask w-full"><a href="/logout" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl border border-red-900/50 text-red-800 font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-red-900 hover:text-white sys-transition">Logout</a></div>
                             <div class="clip-mask w-full"><a href="/dashboard" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-gold sys-transition">Dashboard</a></div>
+                            <div class="clip-mask w-full"><a href="/logout" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl border border-red-900/50 text-red-800 font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-red-900 hover:text-white sys-transition">Logout</a></div>
                         {% else %}
-                            <div class="clip-mask w-full"><a href="/login" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl border border-luviio-charcoal text-luviio-charcoal font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-charcoal hover:text-white sys-transition">Sign In</a></div>
-                            <div class="clip-mask w-full"><a href="/signup" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-gold sys-transition">Become a Partner</a></div>
+                            <div class="flex gap-3 clip-mask w-full">
+                                <a href="/login" class="clip-text drawer-btn w-1/2 block text-center py-3.5 rounded-xl border border-luviio-charcoal text-luviio-charcoal font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-charcoal hover:text-white sys-transition">Sign In</a>
+                                <a href="/register" class="clip-text drawer-btn w-1/2 block text-center py-3.5 rounded-xl border border-luviio-charcoal text-luviio-charcoal font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-charcoal hover:text-white sys-transition">Sign Up</a>
+                            </div>
+                            <div class="clip-mask w-full mt-1">
+                                <a href="/partner" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-gold sys-transition">Partner Portal</a>
+                            </div>
                         {% endif %}
                     </div>
                     <div class="flex gap-6 clip-mask">
@@ -192,28 +199,30 @@
                         <div class="flex flex-col items-center text-center gap-4 mb-12">
                             <div class="w-24 h-24 bg-luviio-charcoal rounded-full flex items-center justify-center text-luviio-gold text-4xl shadow-2xl sys-transition hover:scale-105"><i class="ri-vip-diamond-line"></i></div>
                             <div>
-                                <h3 class="font-serif italic text-3xl text-luviio-charcoal">{{ user.name | default("Trade Partner") }}</h3>
-                                <p class="text-xs text-gray-500 mt-2 font-sans tracking-widest uppercase">{{ user.email | default("partner@luviio.in") }}</p>
+                                <h3 class="font-serif italic text-3xl text-luviio-charcoal">{{ user.name | default("Premium User") }}</h3>
+                                <p class="text-xs text-gray-500 mt-2 font-sans tracking-widest uppercase">{{ user.email | default("user@example.com") }}</p>
                             </div>
                         </div>
-                        <div class="space-y-8 w-full">
-                            <div class="flex flex-col gap-2">
-                                <label class="text-[9px] text-gray-400 uppercase tracking-[0.2em] font-sans font-bold">Business ID</label>
-                                <input type="text" value="{{ user.business_id | default('LUV-WHOLESALE-01') }}" class="border-b border-luviio-sand pb-3 outline-none text-luviio-charcoal font-serif text-lg bg-transparent w-full" readonly>
-                            </div>
-                            <a href="/dashboard" class="w-full block text-center py-4 border border-luviio-charcoal text-luviio-charcoal sys-transition hover:bg-luviio-charcoal hover:text-white font-sans text-[10px] tracking-widest uppercase font-bold hover-target rounded-xl">Access Dashboard</a>
+                        <div class="space-y-4 w-full">
+                            <a href="/dashboard" class="w-full block text-center py-4 bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase rounded-xl hover-target sys-transition hover:bg-luviio-gold">Access Dashboard</a>
+                            <a href="/settings" class="w-full block text-center py-4 border border-luviio-charcoal text-luviio-charcoal sys-transition hover:bg-luviio-charcoal hover:text-white font-sans text-[10px] tracking-widest uppercase font-bold hover-target rounded-xl">Account Settings</a>
                         </div>
                     </div>
                 {% else %}
                     <div class="mt-4 flex flex-col h-full">
                         <h3 class="font-serif text-3xl text-luviio-charcoal mb-2">Welcome Back.</h3>
-                        <p class="text-xs text-gray-500 font-sans tracking-wide mb-12">Please sign in to your partner portal.</p>
+                        <p class="text-xs text-gray-500 font-sans tracking-wide mb-10">Sign in to track your orders.</p>
                         
-                        <form action="/login" method="POST" class="space-y-6 w-full">
+                        <form action="/login" method="POST" class="space-y-6 w-full mb-8">
                             <input type="email" name="email" placeholder="Email Address" class="w-full border-b border-luviio-charcoal/30 pb-3 outline-none font-sans text-sm bg-transparent focus:border-luviio-gold sys-transition" required>
                             <input type="password" name="password" placeholder="Password" class="w-full border-b border-luviio-charcoal/30 pb-3 outline-none font-sans text-sm bg-transparent focus:border-luviio-gold sys-transition" required>
-                            <button type="submit" class="w-full mt-8 py-4 bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase rounded-xl hover-target sys-transition hover:bg-luviio-gold">Secure Sign In</button>
+                            <button type="submit" class="w-full mt-4 py-4 bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase rounded-xl hover-target sys-transition hover:bg-luviio-gold">Sign In</button>
                         </form>
+
+                        <div class="mt-auto border-t border-luviio-sand/50 pt-6">
+                            <p class="text-xs text-gray-500 font-sans text-center mb-3">Don't have an account? <a href="/register" class="text-luviio-charcoal font-bold hover:text-luviio-gold hover-target">Sign Up</a></p>
+                            <p class="text-xs text-gray-500 font-sans text-center">Are you a dealer? <a href="/partner" class="text-luviio-charcoal font-bold hover:text-luviio-gold hover-target border-b border-luviio-charcoal pb-0.5">Partner Portal</a></p>
+                        </div>
                     </div>
                 {% endif %}
             </div>
@@ -246,23 +255,18 @@
 
         <section id="brandSection" class="py-24 md:py-40 bg-luviio-stone relative overflow-hidden border-b border-luviio-sand">
             <div class="max-w-[1400px] mx-auto px-6 md:px-16 flex flex-col md:flex-row items-center gap-12 md:gap-20">
-                
                 <div class="w-full md:w-1/2 relative overflow-hidden rounded-[2rem] h-[50vh] md:h-[80vh] group shadow-[0_20px_40px_rgba(0,0,0,0.08)]">
                     <img src="https://images.unsplash.com/photo-1600607688969-a5bfcd646154?auto=format&fit=crop&q=80&w=1000" class="absolute inset-0 w-full h-full object-cover brand-img scale-[1.2] gpu-target" alt="Curated Selection">
                     <div class="absolute inset-0 bg-luviio-charcoal/10 sys-transition group-hover:bg-transparent"></div>
                 </div>
-
                 <div class="w-full md:w-1/2 flex flex-col justify-center">
                     <div class="clip-mask mb-6"><span class="clip-text brand-anim text-luviio-gold text-[10px] uppercase tracking-[0.4em] font-sans font-bold">The Visionary</span></div>
-                    
                     <h2 class="text-4xl md:text-6xl font-serif text-luviio-charcoal mb-8 leading-tight">
                         <div class="clip-mask"><span class="clip-text brand-anim">Curating spaces</span></div>
                         <div class="clip-mask"><span class="clip-text brand-anim italic text-gray-500">with soul.</span></div>
                     </h2>
-                    
                     <div class="clip-mask mb-6"><p class="clip-text brand-anim text-gray-600 font-sans leading-relaxed text-sm md:text-base">At Luviio, we don't just supply bathware. We curate experiences. Founded with a refined vision: to bring the world's most exquisite luxury ceramics to your doorstep.</p></div>
                     <div class="clip-mask mb-12"><p class="clip-text brand-anim text-gray-600 font-sans leading-relaxed text-sm md:text-base">Every piece we handpick is a testament to uncompromising quality and aesthetic brilliance. Welcome to the new standard of living.</p></div>
-                    
                     <div class="flex items-center gap-8 border-l-2 border-luviio-gold pl-6">
                         <div class="clip-mask">
                             <div class="clip-text brand-anim">
@@ -282,13 +286,10 @@
             <div class="max-w-[1600px] mx-auto px-6 md:px-16 flex flex-col md:flex-row gap-16 relative">
                 <div class="md:w-5/12 flex flex-col md:h-screen md:sticky top-0 justify-center pb-12 md:pb-0 z-10 bg-white/80 md:bg-transparent backdrop-blur-sm md:backdrop-blur-none">
                     <span class="text-luviio-gold text-[10px] uppercase tracking-[0.4em] font-sans font-bold mb-4">The Gallery</span>
-                    <h2 class="text-4xl md:text-6xl lg:text-7xl font-serif text-luviio-charcoal mb-8 leading-tight">
-                        Curated for<br><span class="italic text-gray-400">Eternity.</span>
-                    </h2>
+                    <h2 class="text-4xl md:text-6xl lg:text-7xl font-serif text-luviio-charcoal mb-8 leading-tight">Curated for<br><span class="italic text-gray-400">Eternity.</span></h2>
                     <p class="text-gray-500 font-sans leading-relaxed max-w-sm text-sm">Every curve, every texture is meticulously selected. We source only the finest global bathware to transform your spaces into sanctuaries of absolute luxury.</p>
                     <button class="mt-10 w-max border-b border-luviio-charcoal pb-1 text-[10px] uppercase tracking-widest font-bold hover-target sys-transition hover:text-luviio-gold hover:border-luviio-gold">Explore Collection</button>
                 </div>
-
                 <div class="md:w-7/12 grid grid-cols-2 gap-4 md:gap-8 h-[70vh] md:h-[150vh] overflow-hidden gallery-container relative">
                     <div class="flex flex-col gap-4 md:gap-8 gallery-col-1 gpu-target w-full">
                         <img src="https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&q=80&w=800" class="w-full h-[30vh] md:h-[50vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
@@ -313,6 +314,7 @@
                 <div class="text-center mb-16 md:mb-24 pricing-header">
                     <span class="text-luviio-gold text-[10px] uppercase tracking-[0.4em] font-sans font-bold">Partnerships</span>
                     <h2 class="text-4xl md:text-6xl font-serif mt-4">Trade & <span class="italic text-gray-500">Retail.</span></h2>
+                    <p class="mt-4 text-gray-400 font-sans text-sm max-w-lg mx-auto">Join our exclusive network of dealers and architects to access premium bathware at wholesale rates.</p>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8" style="perspective: 1200px;">
@@ -325,7 +327,7 @@
                             <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Basic Marketing Kit</li>
                             <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Standard Delivery</li>
                         </ul>
-                        <button class="w-full py-4 rounded-xl border border-gray-700 text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10">Apply Now</button>
+                        <a href="/partner" class="w-full text-center py-4 rounded-xl border border-gray-700 text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10 block">Apply Now</a>
                     </div>
 
                     <div class="pricing-card pricing-glow relative bg-[#111111] border border-luviio-gold/40 rounded-3xl p-8 flex flex-col transform md:-translate-y-4 shadow-[0_20px_40px_rgba(197,160,89,0.08)] gpu-target z-10">
@@ -339,7 +341,7 @@
                             <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Custom 3D CAD Models</li>
                             <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Express Logistics</li>
                         </ul>
-                        <button class="w-full py-4 rounded-xl bg-luviio-gold text-black text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white sys-transition hover-target relative z-10">Become Partner</button>
+                        <a href="/partner" class="w-full text-center py-4 rounded-xl bg-luviio-gold text-black text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white sys-transition hover-target relative z-10 block">Become Partner</a>
                     </div>
 
                     <div class="pricing-card bg-[#161616] border border-gray-800 rounded-3xl p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-600 gpu-target relative overflow-hidden">
@@ -351,7 +353,7 @@
                             <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Co-branded Marketing</li>
                             <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Premium Display Setup</li>
                         </ul>
-                        <button class="w-full py-4 rounded-xl border border-gray-700 text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10">Contact Us</button>
+                        <a href="/partner" class="w-full text-center py-4 rounded-xl border border-gray-700 text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10 block">Contact Us</a>
                     </div>
                 </div>
             </div>
@@ -389,7 +391,6 @@
             gsap.config({ force3D: true });
             let lenis;
 
-            // PRELOADER
             gsap.to("#splashLogo", { opacity: 1, scale: 1, filter: "blur(0px)", duration: 2, ease: "power3.out" });
 
             const hideSplashTl = gsap.timeline({
@@ -413,7 +414,6 @@
             }
             if (splashLogoImage.complete) { completeSplash(); } else { splashLogoImage.onload = completeSplash; splashLogoImage.onerror = completeSplash; }
 
-            // MAIN ANIMATIONS
             function initMainAnimations() {
                 lenis = new Lenis({ duration: 1.5, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smooth: true, smoothTouch: false });
                 lenis.on('scroll', ScrollTrigger.update);
@@ -429,19 +429,16 @@
                     });
                 }
 
-                // Hero
                 const heroTl = gsap.timeline({ delay: 0.3 });
                 heroTl.to(".hero-text", { y: "0%", rotateZ: 0, duration: 1.8, stagger: 0.2, ease: "power4.out" })
                       .to(".hero-image-wrapper", { clipPath: "polygon(0 0%, 100% 0%, 100% 100%, 0 100%)", opacity: 1, duration: 2, ease: "expo.inOut" }, "-=1.2")
                       .to("#heroImage", { scale: 1, filter: "blur(0px)", duration: 3, ease: "power3.out" }, "-=1.5");
                 gsap.to("#heroImage", { yPercent: 10, ease: "none", scrollTrigger: { trigger: ".hero-image-wrapper", start: "top bottom", end: "bottom top", scrub: true }});
 
-                // ADVANCED: Brand Owner Timeline (Staggered Mask Reveal)
                 const brandTl = gsap.timeline({ scrollTrigger: { trigger: "#brandSection", start: "top 65%" } });
                 gsap.to(".brand-img", { yPercent: 15, ease: "none", scrollTrigger: { trigger: "#brandSection", start: "top bottom", end: "bottom top", scrub: true } });
                 brandTl.to(".brand-anim", { y: "0%", opacity: 1, rotateZ: 0, duration: 1.2, stagger: 0.1, ease: "power4.out" });
 
-                // Drawer
                 const drawerContent = document.getElementById('drawerContent');
                 const drawerOverlay = document.getElementById('drawerOverlay');
                 let isDrawerOpen = false;
@@ -453,7 +450,6 @@
                         drawerOverlay.classList.remove('opacity-0', 'pointer-events-none');
                         drawerOverlay.classList.add('active');
                         drawerContent.classList.remove('translate-x-full');
-                        // Stagger menu links and auth buttons together inside Drawer
                         gsap.fromTo(".clip-text", { y: "100%" }, { y: "0%", duration: 1, stagger: 0.05, delay: 0.2, ease: "power4.out" });
                         lenis.stop();
                     } else {
@@ -487,11 +483,9 @@
                 drawerOverlay.addEventListener('click', toggleDrawer);
                 document.getElementById('profileTrigger').addEventListener('click', toggleView);
 
-                // ADVANCED: Parallax Gallery
                 gsap.to(".gallery-col-1", { yPercent: -20, ease: "none", scrollTrigger: { trigger: ".gallery-container", start: "top bottom", end: "bottom top", scrub: 1 } });
                 gsap.to(".gallery-col-2", { yPercent: -40, ease: "none", scrollTrigger: { trigger: ".gallery-container", start: "top bottom", end: "bottom top", scrub: 1.5 } });
 
-                // ADVANCED: 3D Pricing Matrix Reveal
                 gsap.from(".pricing-header", { y: 50, opacity: 0, duration: 1.2, ease: "power3.out", scrollTrigger: { trigger: "#pricingSection", start: "top 75%" } });
                 gsap.from(".pricing-card", {
                     scrollTrigger: { trigger: "#pricingSection", start: "top 60%" },
