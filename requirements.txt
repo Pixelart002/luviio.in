@@ -6,3 +6,5 @@ email-validator==2.1.0.post1
 httpx
 supabase
 python-dotenv
+passlib
+bcrypt

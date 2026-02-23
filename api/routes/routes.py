@@ -3,7 +3,7 @@ from fastapi import APIRouter, Request, Form, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-# FIX: Spelling typo fixed from "datsbase" to "database"
+from api.utils.security import hash_password
 from api.db.database import get_db, get_admin_db
 
 router = APIRouter()
@@ -90,10 +90,30 @@ async def register_page(request: Request):
 
 @router.post("/register")
 async def process_register(name: str = Form(...), email: str = Form(...), password: str = Form(...)):
-    # TODO: Save user to Database
-    return RedirectResponse(url="/login", status_code=303)
-
-
+    admin_db = get_admin_db()
+    
+    # 1. Password ko hash karo
+    hashed_pwd = hash_password(password)
+    
+    try:
+        # 2. Database me insert karo
+        response = admin_db.table("users").insert({
+            "name": name,
+            "email": email,
+            "password_hash": hashed_pwd,
+            "tier": "standard",
+            "tags": ["b2c_website", "new_user"]
+        }).execute()
+        
+        # 3. Success ke baad login par bhej do
+        # Future UI upgrade: yahan "msg=success" pass karke frontend par green toast dikha sakte hain
+        return RedirectResponse(url="/login?msg=account_created", status_code=303)
+        
+    except Exception as e:
+        # Agar email pehle se exist karta hai, toh database error dega
+        print(f"User Creation Error: {str(e)}")
+        # User ko wapas register page pe bhej do with error
+        return RedirectResponse(url="/register?error=email_exists", status_code=303)
 # ==========================================
 # 4. PARTNER NETWORK ROUTES (B2B)
 # ==========================================
@@ -115,10 +135,25 @@ async def process_partner(
     email: str = Form(...), 
     password: str = Form(...)
 ):
-    # TODO: Save Partner Application to Database
-    return RedirectResponse(url="/login", status_code=303)
-
-
+    admin_db = get_admin_db()
+    hashed_pwd = hash_password(password)
+    
+    try:
+        response = admin_db.table("partners").insert({
+            "company_name": company_name,
+            "business_id": business_id,
+            "email": email,
+            "password_hash": hashed_pwd,
+            "status": "pending",           # Partner default pending rahega admin review tak
+            "tier": "trade_partner",       # Default tier
+            "tags": ["b2b_lead", "website_form"]
+        }).execute()
+        
+        return RedirectResponse(url="/login?msg=partner_application_received", status_code=303)
+        
+    except Exception as e:
+        print(f"Partner Creation Error: {str(e)}")
+        return RedirectResponse(url="/partner/apply?error=application_failed", status_code=303)
 # ==========================================
 # 5. PROTECTED DASHBOARD
 # ==========================================
@@ -156,3 +191,4 @@ async def test_db_connection():
         return status
     except Exception as e:
         return {"error": f"Connection fail ho gaya bhai: {str(e)}"}
+        
