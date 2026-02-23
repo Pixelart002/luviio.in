@@ -1,33 +1,36 @@
 import os
 import jwt
+import bcrypt
 from datetime import datetime, timedelta
-from passlib.context import CryptContext
 
-# Bcrypt algorithm setup (truncate_error=False add karna zaroori hai)
-pwd_context = CryptContext(
-    schemes=["bcrypt"], 
-    deprecated="auto",
-    bcrypt__truncate_error=False # Ye passlib ko error fekne se rokega
-)
-
+# JWT Settings
 JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-luviio-key-12345")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
 def hash_password(password: str) -> str:
-    """Plain password ko secure hash me convert karega (Max 72 chars fix ke sath)"""
-    # Safety Check: Password ko 72 characters par cut (truncate) kar do
-    safe_password = password[:72]
-    return pwd_context.hash(safe_password)
+    """Password ko hash karta hai aur 72-byte ki bcrypt limit ko handle karta hai."""
+    # Bcrypt strictly needs bytes, aur 72 bytes se bada password allow nahi karta
+    pwd_bytes = password.encode('utf-8')[:72] 
+    
+    # Salt generate karke hash banao
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(pwd_bytes, salt)
+    
+    # Wapas string me convert karke return karo taaki DB me text ki tarah save ho
+    return hashed_password.decode('utf-8')
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Login ke waqt password check karne ke liye."""
-    # Verification ke time bhi same 72 char logic lagana hoga
-    safe_password = plain_password[:72]
-    return pwd_context.verify(safe_password, hashed_password)
+    """Check karta hai ki plain password aur hashed password match karte hain ya nahi."""
+    # Dono ko bytes me convert karo, plain_password ko truncate karna zaroori hai
+    password_byte_enc = plain_password.encode('utf-8')[:72]
+    hashed_password_bytes = hashed_password.encode('utf-8')
+    
+    # Bcrypt ka native function use karo verify karne ke liye
+    return bcrypt.checkpw(password_byte_enc, hashed_password_bytes)
 
 def create_access_token(data: dict) -> str:
-    """User/Partner details ka ek secure token banayega."""
+    """User/Partner details ka ek secure JWT token banayega."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
     to_encode.update({"exp": expire})
