@@ -92,11 +92,13 @@ async def register_page(request: Request):
 async def process_register(name: str = Form(...), email: str = Form(...), password: str = Form(...)):
     admin_db = get_admin_db()
     
-    # 1. Password ko hash karo
+    # 1. Check karo ki Admin DB load hua ya nahi
+    if not admin_db:
+        return HTMLResponse("<h1>Error:</h1><p>Admin DB client initialize nahi hua. Apni .env file me SB_SERVICE_ROLE_KEY check karo.</p>")
+        
     hashed_pwd = hash_password(password)
     
     try:
-        # 2. Database me insert karo
         response = admin_db.table("users").insert({
             "name": name,
             "email": email,
@@ -105,15 +107,12 @@ async def process_register(name: str = Form(...), email: str = Form(...), passwo
             "tags": ["b2c_website", "new_user"]
         }).execute()
         
-        # 3. Success ke baad login par bhej do
-        # Future UI upgrade: yahan "msg=success" pass karke frontend par green toast dikha sakte hain
         return RedirectResponse(url="/login?msg=account_created", status_code=303)
         
     except Exception as e:
-        # Agar email pehle se exist karta hai, toh database error dega
-        print(f"User Creation Error: {str(e)}")
-        # User ko wapas register page pe bhej do with error
-        return RedirectResponse(url="/register?error=email_exists", status_code=303)
+        # ASLI ERROR YAHAN SCREEN PAR DIKHEGA
+        print(f"REAL SUPABASE ERROR: {str(e)}")
+        return HTMLResponse(f"<div style='background: black; color: red; padding: 20px; font-family: sans-serif;'><h1>Asli Error Pata Chal Gaya:</h1><p>{str(e)}</p></div>")
 # ==========================================
 # 4. PARTNER NETWORK ROUTES (B2B)
 # ==========================================
