@@ -3,7 +3,12 @@ from fastapi import APIRouter, Request, Form, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+# FIX: Spelling typo fixed from "datsbase" to "database"
+from api.db.database import get_db, get_admin_db
+
 router = APIRouter()
+
+db = get_db()
 
 # --- TEMPLATE CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
@@ -92,12 +97,10 @@ async def process_register(name: str = Form(...), email: str = Form(...), passwo
 # ==========================================
 # 4. PARTNER NETWORK ROUTES (B2B)
 # ==========================================
-# A. Partner Landing Page (Shows Perks)
 @router.get("/partner", response_class=HTMLResponse)
 async def partner_landing_page(request: Request):
     return templates.TemplateResponse("app/pages/partner_landing.html", {"request": request})
 
-# B. Partner Application Form (Shows Actual Form)
 @router.get("/partner/apply", response_class=HTMLResponse)
 async def partner_apply_page(request: Request):
     if request.cookies.get("luviio_auth"):
@@ -105,7 +108,6 @@ async def partner_apply_page(request: Request):
         
     return templates.TemplateResponse("app/pages/partner.html", {"request": request})
 
-# C. Partner Form Submit Logic
 @router.post("/partner/apply")
 async def process_partner(
     company_name: str = Form(...), 
@@ -124,11 +126,9 @@ async def process_partner(
 async def dashboard_page(request: Request):
     auth_cookie = request.cookies.get("luviio_auth")
     
-    # Prevent unauthorized access
     if not auth_cookie:
         return RedirectResponse(url="/login", status_code=303)
         
-    # Temporary placeholder UI for Dashboard
     html_content = """
     <body style="background-color: #0a0a0a; color: white; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: sans-serif;">
         <h1 style="margin-bottom: 20px;">Welcome to Luviio Dashboard</h1>
@@ -136,3 +136,23 @@ async def dashboard_page(request: Request):
     </body>
     """
     return HTMLResponse(content=html_content)
+    
+    
+# ==========================================
+# 6. DATABASE CONNECTION TEST ROUTE
+# ==========================================
+@router.get("/test-db")
+async def test_db_connection():
+    try:
+        # get_db() local variable hata diya kyunki wo already global declared hai
+        admin_db = get_admin_db()
+        
+        status = {
+            "message": "Supabase Connection Successful! 🎉",
+            "url_loaded": bool(os.getenv("SB_URL")),
+            "anon_key_loaded": bool(db),
+            "service_role_loaded": bool(admin_db)
+        }
+        return status
+    except Exception as e:
+        return {"error": f"Connection fail ho gaya bhai: {str(e)}"}
