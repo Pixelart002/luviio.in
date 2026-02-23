@@ -59,57 +59,18 @@ async def login_page(request: Request):
 
 @router.post("/login")
 async def process_login(email: str = Form(...), password: str = Form(...)):
-    admin_db = get_admin_db()
+    # TODO: Verify credentials from Database
     
-    account = None
-    account_type = "user"
-    
-    # 1. Pehle 'users' table me check karo
-    user_response = admin_db.table("users").select("*").eq("email", email).execute()
-    
-    if len(user_response.data) > 0:
-        account = user_response.data[0]
-    else:
-        # 2. Agar user nahi mila, toh 'partners' table me check karo
-        partner_response = admin_db.table("partners").select("*").eq("email", email).execute()
-        if len(partner_response.data) > 0:
-            account = partner_response.data[0]
-            account_type = "partner"
-            
-    # Agar dono tables me email nahi mila
-    if not account:
-        return RedirectResponse(url="/login?error=user_not_found", status_code=303)
-        
-    # 3. Password Verify Karo
-    is_password_correct = verify_password(password, account["password_hash"])
-    
-    if not is_password_correct:
-        return RedirectResponse(url="/login?error=invalid_password", status_code=303)
-        
-    # 4. Success! Ab JWT Token generate karo
-    # Token ke andar hum name, email, tier waghera store kar sakte hain
-    token_payload = {
-        "sub": str(account["id"]), # User ID
-        "email": account["email"],
-        "type": account_type, # 'user' ya 'partner'
-        "name": account.get("name") or account.get("company_name"),
-        "tier": account.get("tier")
-    }
-    
-    jwt_token = create_access_token(token_payload)
-    
-    # 5. Cookie me set karke Dashboard pe bhej do
-    response = RedirectResponse(url="/dashboard", status_code=303)
+    response = RedirectResponse(url="/", status_code=303)
     response.set_cookie(
         key="luviio_auth", 
-        value=jwt_token, 
+        value="valid_token_123", 
         httponly=True, 
         secure=True, 
-        max_age=86400 # 24 Hours
+        max_age=86400 
     )
-    
     return response
-    
+
 @router.get("/logout")
 async def logout_user():
     response = RedirectResponse(url="/", status_code=303)
