@@ -3,7 +3,7 @@ from fastapi import APIRouter, Request, Form, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from api.utils.security import hash_password, verify_password, create_access_token
+from api.utils.security import hash_password
 from api.db.database import get_db, get_admin_db
 
 router = APIRouter()
