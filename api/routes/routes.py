@@ -3,7 +3,7 @@ from fastapi import APIRouter, Request, Form, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from api.utils.security import hash_password
+from api.utils.security import hash_password, verify_password, create_access_token
 from api.db.database import get_db, get_admin_db
 
 router = APIRouter()
@@ -59,16 +59,55 @@ async def login_page(request: Request):
 
 @router.post("/login")
 async def process_login(email: str = Form(...), password: str = Form(...)):
-    # TODO: Verify credentials from Database
     
-    response = RedirectResponse(url="/", status_code=303)
+    # 1. Admin DB load karo (taaki hum users/partners check kar sakein)
+    admin_db = get_admin_db()
+    account = None
+    account_type = "user"
+    
+    # 2. Pehle 'users' table me check karo
+    user_response = admin_db.table("users").select("*").eq("email", email).execute()
+    
+    if len(user_response.data) > 0:
+        account = user_response.data[0]
+    else:
+        # 3. Agar user me nahi mila, toh 'partners' table me check karo
+        partner_response = admin_db.table("partners").select("*").eq("email", email).execute()
+        if len(partner_response.data) > 0:
+            account = partner_response.data[0]
+            account_type = "partner"
+            
+    # Agar kisi bhi table me email nahi mila
+    if not account:
+        return RedirectResponse(url="/login?error=user_not_found", status_code=303)
+        
+    # 4. Password Verify Karo (security.py wale function se)
+    is_password_correct = verify_password(password, account["password_hash"])
+    
+    if not is_password_correct:
+        return RedirectResponse(url="/login?error=invalid_password", status_code=303)
+        
+    # 5. Success! Ab Asli JWT Token generate karo
+    token_payload = {
+        "sub": str(account["id"]), 
+        "email": account["email"],
+        "type": account_type, 
+        "name": account.get("name") or account.get("company_name"),
+        "tier": account.get("tier")
+    }
+    
+    jwt_token = create_access_token(token_payload)
+    
+    # 6. Redirect to DASHBOARD aur Cookie set karo
+    response = RedirectResponse(url="/dashboard", status_code=303)
     response.set_cookie(
         key="luviio_auth", 
-        value="valid_token_123", 
+        value=jwt_token, 
         httponly=True, 
         secure=True, 
-        max_age=86400 
+        max_age=86400 # 24 Hours ke liye login rahega
     )
+    
     return response
 
 @router.get("/logout")
