@@ -5,20 +5,23 @@ from fastapi.templating import Jinja2Templates
 
 router = APIRouter()
 
+# --- TEMPLATE CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
-# 1. Main Index Route (Reading the Cookie)
+
+# ==========================================
+# 1. MAIN HOMEPAGE ROUTE
+# ==========================================
 @router.get("/", response_class=HTMLResponse)
 async def home_route(request: Request):
     
     # Browser se 'luviio_auth' naam ki cookie read karo
     auth_cookie = request.cookies.get("luviio_auth")
-    
     current_user = None 
     
-    # Agar cookie exist karti hai aur valid hai (abhi dummy check lagaya hai)
+    # Dummy verification
     if auth_cookie == "valid_token_123":
         current_user = {
             "name": "Trade Partner", 
@@ -34,102 +37,102 @@ async def home_route(request: Request):
         }
     )
 
-# 2. Handle Login Form Submit (Setting the Cookie)
-# Note: Form(...) use kiya hai taaki HTML form data catch kar sakein
-@router.post("/login")
-async def process_login(email: str = Form(...), password: str = Form(...)):
-    
-    # TODO: Yahan Database se email/password check karna
-    # Agar details sahi hain:
-    
-    # Login success hone ke baad wapas Homepage ("/") par bhejenge
-    response = RedirectResponse(url="/", status_code=303)
-    
-    # --- COOKIE SET KARNE KA LOGIC ---
-    # httponly=True (JavaScript isko chura nahi sakta - XSS attack se safe)
-    # secure=True (Sirf HTTPS/SSL par kaam karegi, Vercel by default HTTPS deta hai)
-    # max_age=86400 (Cookie 24 ghante baad expire ho jayegi)
-    response.set_cookie(
-        key="luviio_auth", 
-        value="valid_token_123", # Future me yahan actual JWT token dalega
-        httponly=True, 
-        secure=True, 
-        max_age=86400 
-    )
-    
-    return response
-
-# 3. Logout Logic (Deleting the Cookie)
-@router.get("/logout")
-async def logout_user():
-    
-    # Logout hote hi wapas homepage par bhej do
-    response = RedirectResponse(url="/", status_code=303)
-    
-    # --- COOKIE DELETE KARNE KA LOGIC ---
-    response.delete_cookie(key="luviio_auth")
-    
-    return response
-
-# ==========================================
-# --- OTHER PLACEHOLDER ROUTES ---
-# ==========================================
-
 @router.get("/home")
 async def redirect_to_index():
     return RedirectResponse(url="/", status_code=301)
 
+
+# ==========================================
+# 2. LOGIN & LOGOUT ROUTES
+# ==========================================
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    # Agar user already logged in hai, toh wapas home/dashboard bhej do
     if request.cookies.get("luviio_auth"):
         return RedirectResponse(url="/dashboard", status_code=303)
         
     return templates.TemplateResponse("app/pages/login.html", {"request": request})
+
+@router.post("/login")
+async def process_login(email: str = Form(...), password: str = Form(...)):
+    # TODO: Verify credentials from Database
     
-# 5. User Sign Up Page
+    response = RedirectResponse(url="/", status_code=303)
+    response.set_cookie(
+        key="luviio_auth", 
+        value="valid_token_123", 
+        httponly=True, 
+        secure=True, 
+        max_age=86400 
+    )
+    return response
+
+@router.get("/logout")
+async def logout_user():
+    response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie(key="luviio_auth")
+    return response
+
+
+# ==========================================
+# 3. USER REGISTRATION (B2C)
+# ==========================================
 @router.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    # Agar user already logged in hai, toh wapas home/dashboard bhej do
     if request.cookies.get("luviio_auth"):
         return RedirectResponse(url="/dashboard", status_code=303)
         
     return templates.TemplateResponse("app/pages/register.html", {"request": request})
 
-# 5.1 Handle Register Form Submit
 @router.post("/register")
 async def process_register(name: str = Form(...), email: str = Form(...), password: str = Form(...)):
-    # TODO: Yahan Database me naya user save karna aur Password Hash karna
-    
-    # Registration ke baad sidha Login Page pe bhej do
+    # TODO: Save user to Database
     return RedirectResponse(url="/login", status_code=303)
-    
-    
-# 6. Partner/Dealer Portal (B2B ke liye alag page)
+
+
+# ==========================================
+# 4. PARTNER NETWORK ROUTES (B2B)
+# ==========================================
+# A. Partner Landing Page (Shows Perks)
 @router.get("/partner", response_class=HTMLResponse)
-async def partner_page(request: Request):
-    # Agar user already logged in hai, toh wapas dashboard bhej do
+async def partner_landing_page(request: Request):
+    return templates.TemplateResponse("app/pages/partner_landing.html", {"request": request})
+
+# B. Partner Application Form (Shows Actual Form)
+@router.get("/partner/apply", response_class=HTMLResponse)
+async def partner_apply_page(request: Request):
     if request.cookies.get("luviio_auth"):
         return RedirectResponse(url="/dashboard", status_code=303)
         
-    return templates.TemplateResponse("app/pages/partner_landing.html", {"request": request})
+    return templates.TemplateResponse("app/pages/partner.html", {"request": request})
 
-# 6.1 Handle Partner Registration Submit
-@router.post("/partner")
+# C. Partner Form Submit Logic
+@router.post("/partner/apply")
 async def process_partner(
     company_name: str = Form(...), 
     business_id: str = Form(...), 
     email: str = Form(...), 
     password: str = Form(...)
 ):
-    # TODO: Yahan Database me naya Partner save karna aur review ke liye pending status dalna
-    
-    # Form submit hone ke baad approval message ya sidha login page pe bhej do
+    # TODO: Save Partner Application to Database
     return RedirectResponse(url="/login", status_code=303)
-@router.get("/dashboard")
+
+
+# ==========================================
+# 5. PROTECTED DASHBOARD
+# ==========================================
+@router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     auth_cookie = request.cookies.get("luviio_auth")
+    
+    # Prevent unauthorized access
     if not auth_cookie:
         return RedirectResponse(url="/login", status_code=303)
         
-    return {"message": "User/Partner Dashboard chalega yahan."}
+    # Temporary placeholder UI for Dashboard
+    html_content = """
+    <body style="background-color: #0a0a0a; color: white; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: sans-serif;">
+        <h1 style="margin-bottom: 20px;">Welcome to Luviio Dashboard</h1>
+        <a href="/" style="color: #C5A059; text-decoration: none; padding: 10px 20px; border: 1px solid #C5A059; border-radius: 5px;">Go back Home</a>
+    </body>
+    """
+    return HTMLResponse(content=html_content)
