@@ -205,17 +205,19 @@ async def dashboard_page(request: Request):
         response.delete_cookie(key="luviio_auth")
         return response
         
-    user_name = user_payload.get("name", "Partner")
-    user_tier = user_payload.get("tier", "Unknown Tier")
+    # User ka asli data payload me se nikal rahe hain
+    current_user = {
+        "name": user_payload.get("name", "User"),
+        "email": user_payload.get("email", ""),
+        "tier": user_payload.get("tier", "standard"),
+        "type": user_payload.get("type", "user")
+    }
     
-    html_content = f"""
-    <body style="background-color: #0a0a0a; color: white; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: sans-serif;">
-        <h1 style="margin-bottom: 10px; color: #C5A059;">Welcome, {user_name}!</h1>
-        <p style="margin-bottom: 30px; color: gray; letter-spacing: 2px; text-transform: uppercase;">Your Tier: {user_tier}</p>
-        <div style="display: flex; gap: 15px;">
-            <a href="/" style="color: black; background-color: #C5A059; text-decoration: none; padding: 12px 30px; border-radius: 5px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Go back Home</a>
-            <a href="/logout" style="color: white; border: 1px solid red; text-decoration: none; padding: 12px 30px; border-radius: 5px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Logout</a>
-        </div>
-    </body>
-    """
-    return HTMLResponse(content=html_content)
+    # Asli dashboard.html render kar rahe hain aur user ka data bhej rahe hain
+    return templates.TemplateResponse(
+        "app/pages/dashboard.html", 
+        {
+            "request": request, 
+            "user": current_user
+        }
+    )
