@@ -37,3 +37,17 @@ def create_access_token(data: dict) -> str:
     
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return encoded_jwt
+
+# --- NAYA FUNCTION ADD KIYA HAI ---
+def verify_token(token: str):
+    """Token ki security aur validity check karne ke liye."""
+    try:
+        # Secret key aur algorithm se signature verify hoga
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        print("Token expire ho chuka hai.")
+        return None 
+    except jwt.InvalidTokenError:
+        print("Fake ya tampered token pakda gaya!")
+        return None
