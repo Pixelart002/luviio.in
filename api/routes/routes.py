@@ -3,11 +3,10 @@ from fastapi import APIRouter, Request, Form, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from api.utils.security import hash_password, verify_password, create_access_token, verify_token 
 from api.db.database import get_db, get_admin_db
+from api.utils.security import hash_password, verify_password, create_access_token, verify_token
 
 router = APIRouter()
-
 db = get_db()
 
 # --- TEMPLATE CONFIGURATION ---
@@ -26,14 +25,19 @@ async def home_route(request: Request):
     auth_cookie = request.cookies.get("luviio_auth")
     current_user = None 
     
-    # Dummy verification
-    if auth_cookie == "valid_token_123":
-        current_user = {
-            "name": "Trade Partner", 
-            "email": "partner@luviio.in", 
-            "business_id": "LUV-PREMIUM-01"
-        }
+    # Asli Security Check: JWT Token ko decode karo
+    if auth_cookie:
+        payload = verify_token(auth_cookie)
+        if payload:
+            # Agar token valid hai, toh user object banakar frontend ko bhejo
+            current_user = {
+                "name": payload.get("name"), 
+                "email": payload.get("email"), 
+                "tier": payload.get("tier"),
+                "type": payload.get("type")
+            }
 
+    # Template render karte waqt 'user' variable pass ho raha hai
     return templates.TemplateResponse(
         "app/pages/index.html", 
         {
@@ -59,35 +63,33 @@ async def login_page(request: Request):
 
 @router.post("/login")
 async def process_login(email: str = Form(...), password: str = Form(...)):
-    
-    # 1. Admin DB load karo (taaki hum users/partners check kar sakein)
     admin_db = get_admin_db()
     account = None
     account_type = "user"
     
-    # 2. Pehle 'users' table me check karo
+    # 1. 'users' table me check karo
     user_response = admin_db.table("users").select("*").eq("email", email).execute()
     
     if len(user_response.data) > 0:
         account = user_response.data[0]
     else:
-        # 3. Agar user me nahi mila, toh 'partners' table me check karo
+        # 2. Agar user nahi mila, 'partners' table me check karo
         partner_response = admin_db.table("partners").select("*").eq("email", email).execute()
         if len(partner_response.data) > 0:
             account = partner_response.data[0]
             account_type = "partner"
             
-    # Agar kisi bhi table me email nahi mila
+    # Agar dono me nahi mila
     if not account:
         return RedirectResponse(url="/login?error=user_not_found", status_code=303)
         
-    # 4. Password Verify Karo (security.py wale function se)
+    # 3. Password Verify Karo
     is_password_correct = verify_password(password, account["password_hash"])
     
     if not is_password_correct:
         return RedirectResponse(url="/login?error=invalid_password", status_code=303)
         
-    # 5. Success! Ab Asli JWT Token generate karo
+    # 4. JWT Token generate karo
     token_payload = {
         "sub": str(account["id"]), 
         "email": account["email"],
@@ -98,20 +100,21 @@ async def process_login(email: str = Form(...), password: str = Form(...)):
     
     jwt_token = create_access_token(token_payload)
     
-    # 6. Redirect to DASHBOARD aur Cookie set karo
+    # 5. Dashboard redirect with Cookie
     response = RedirectResponse(url="/dashboard", status_code=303)
     response.set_cookie(
         key="luviio_auth", 
         value=jwt_token, 
         httponly=True, 
         secure=True, 
-        max_age=86400 # 24 Hours ke liye login rahega
+        max_age=86400 
     )
     
     return response
 
 @router.get("/logout")
 async def logout_user():
+    # Logout pe Homepage phek do aur cookie uda do
     response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie(key="luviio_auth")
     return response
@@ -129,30 +132,23 @@ async def register_page(request: Request):
 
 @router.post("/register")
 async def process_register(name: str = Form(...), email: str = Form(...), password: str = Form(...)):
-    # FIX: Route ke andar direct Admin DB call karo
     admin_db = get_admin_db()
-    
-    if not admin_db:
-        return HTMLResponse("<h1 style='color:red;'>Error: Service Role Key missing! Check your .env file variables.</h1>")
-        
     hashed_pwd = hash_password(password)
     
     try:
-        # Service Role Client se call
-        response = admin_db.table("users").insert({
+        admin_db.table("users").insert({
             "name": name,
             "email": email,
             "password_hash": hashed_pwd,
             "tier": "standard",
             "tags": ["b2c_website", "new_user"]
         }).execute()
-        
         return RedirectResponse(url="/login?msg=account_created", status_code=303)
-        
     except Exception as e:
-        # Agar ab bhi Permission Denied aata hai, toh iska matlab .env file refresh nahi hui
-        print(f"SUPABASE ERROR: {str(e)}")
-        return HTMLResponse(f"<body style='background:black;color:white;padding:50px;'><h1>Signup Failed</h1><p>{str(e)}</p></body>")
+        print(f"Error: {e}")
+        return RedirectResponse(url="/register?error=email_exists", status_code=303)
+
+
 # ==========================================
 # 4. PARTNER NETWORK ROUTES (B2B)
 # ==========================================
@@ -164,7 +160,6 @@ async def partner_landing_page(request: Request):
 async def partner_apply_page(request: Request):
     if request.cookies.get("luviio_auth"):
         return RedirectResponse(url="/dashboard", status_code=303)
-        
     return templates.TemplateResponse("app/pages/partner.html", {"request": request})
 
 @router.post("/partner/apply")
@@ -178,21 +173,21 @@ async def process_partner(
     hashed_pwd = hash_password(password)
     
     try:
-        response = admin_db.table("partners").insert({
+        admin_db.table("partners").insert({
             "company_name": company_name,
             "business_id": business_id,
             "email": email,
             "password_hash": hashed_pwd,
-            "status": "pending",           # Partner default pending rahega admin review tak
-            "tier": "trade_partner",       # Default tier
+            "status": "pending",
+            "tier": "trade_partner",
             "tags": ["b2b_lead", "website_form"]
         }).execute()
-        
         return RedirectResponse(url="/login?msg=partner_application_received", status_code=303)
-        
     except Exception as e:
-        print(f"Partner Creation Error: {str(e)}")
+        print(f"Error: {e}")
         return RedirectResponse(url="/partner/apply?error=application_failed", status_code=303)
+
+
 # ==========================================
 # 5. PROTECTED DASHBOARD
 # ==========================================
@@ -203,31 +198,24 @@ async def dashboard_page(request: Request):
     if not auth_cookie:
         return RedirectResponse(url="/login", status_code=303)
         
-    html_content = """
+    user_payload = verify_token(auth_cookie)
+    
+    if not user_payload:
+        response = RedirectResponse(url="/login?error=invalid_session", status_code=303)
+        response.delete_cookie(key="luviio_auth")
+        return response
+        
+    user_name = user_payload.get("name", "Partner")
+    user_tier = user_payload.get("tier", "Unknown Tier")
+    
+    html_content = f"""
     <body style="background-color: #0a0a0a; color: white; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: sans-serif;">
-        <h1 style="margin-bottom: 20px;">Welcome to Luviio Dashboard</h1>
-        <a href="/" style="color: #C5A059; text-decoration: none; padding: 10px 20px; border: 1px solid #C5A059; border-radius: 5px;">Go back Home</a>
+        <h1 style="margin-bottom: 10px; color: #C5A059;">Welcome, {user_name}!</h1>
+        <p style="margin-bottom: 30px; color: gray; letter-spacing: 2px; text-transform: uppercase;">Your Tier: {user_tier}</p>
+        <div style="display: flex; gap: 15px;">
+            <a href="/" style="color: black; background-color: #C5A059; text-decoration: none; padding: 12px 30px; border-radius: 5px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Go back Home</a>
+            <a href="/logout" style="color: white; border: 1px solid red; text-decoration: none; padding: 12px 30px; border-radius: 5px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Logout</a>
+        </div>
     </body>
     """
     return HTMLResponse(content=html_content)
-    
-    
-# ==========================================
-# 6. DATABASE CONNECTION TEST ROUTE
-# ==========================================
-@router.get("/test-db")
-async def test_db_connection():
-    try:
-        # get_db() local variable hata diya kyunki wo already global declared hai
-        admin_db = get_admin_db()
-        
-        status = {
-            "message": "Supabase Connection Successful! 🎉",
-            "url_loaded": bool(os.getenv("SB_URL")),
-            "anon_key_loaded": bool(db),
-            "service_role_loaded": bool(admin_db)
-        }
-        return status
-    except Exception as e:
-        return {"error": f"Connection fail ho gaya bhai: {str(e)}"}
-        
