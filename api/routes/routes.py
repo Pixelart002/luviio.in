@@ -90,28 +90,16 @@ async def register_page(request: Request):
 
 @router.post("/register")
 async def process_register(name: str = Form(...), email: str = Form(...), password: str = Form(...)):
-    # 1. Admin DB client lene ki koshish karo
+    # FIX: Route ke andar direct Admin DB call karo
     admin_db = get_admin_db()
     
-    # 2. DEBUG CHECK: Agar admin_db initialize nahi hua (Keys missing hain)
-    if admin_db is None:
-        return HTMLResponse(content=f"""
-            <div style="background: #111; color: #ff4d4d; padding: 30px; font-family: sans-serif; border: 2px solid red; border-radius: 10px; margin: 50px;">
-                <h1 style="color: #fff; border-bottom: 1px solid #333; pb: 10px;">❌ System Configuration Error</h1>
-                <p style="font-size: 18px;">Bhai, <b>SB_SERVICE_ROLE_KEY</b> backend ko nahi mil rahi hai.</p>
-                <ul style="color: #ccc;">
-                    <li>Agar Local hai: <b>.env</b> file check karo.</li>
-                    <li>Agar Vercel hai: Dashboard ke <b>Environment Variables</b> check karo.</li>
-                </ul>
-            </div>
-        """, status_code=500)
-
-    # 3. Password hashing
+    if not admin_db:
+        return HTMLResponse("<h1 style='color:red;'>Error: Service Role Key missing! Check your .env file variables.</h1>")
+        
     hashed_pwd = hash_password(password)
     
     try:
-        # 4. Supabase insertion attempt
-        # Dhyan rahe table ka naam 'users' hi hona chahiye Supabase mein
+        # Service Role Client se call
         response = admin_db.table("users").insert({
             "name": name,
             "email": email,
@@ -120,29 +108,12 @@ async def process_register(name: str = Form(...), email: str = Form(...), passwo
             "tags": ["b2c_website", "new_user"]
         }).execute()
         
-        # Success Redirect
         return RedirectResponse(url="/login?msg=account_created", status_code=303)
         
     except Exception as e:
-        # 5. ASLI ERROR DEBUGGER: Agar Supabase ne mana kiya (e.g. Email already exists)
-        error_str = str(e)
-        print(f"DEBUG: Supabase Insertion Error -> {error_str}")
-        
-        return HTMLResponse(content=f"""
-            <div style="background: #000; color: #ffcc00; padding: 30px; font-family: monospace; border: 1px solid #333; border-radius: 8px; margin: 50px;">
-                <h1 style="color: red;">🚨 Supabase Error Detected</h1>
-                <p style="font-size: 16px; background: #222; padding: 15px; border-radius: 5px;">{error_str}</p>
-                <div style="margin-top: 20px; color: #888;">
-                    <p><b>Checklist:</b></p>
-                    <ul>
-                        <li>Kya Supabase mein <b>'users'</b> naam ki table hai?</li>
-                        <li>Kya <b>email</b> unique constraint ki wajah se error aa raha hai?</li>
-                        <li>Kya <b>password_hash</b> column ka naam sahi hai?</li>
-                    </ul>
-                </div>
-                <a href="/register" style="display: inline-block; margin-top: 20px; color: #fff; background: #C5A059; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Back to Signup</a>
-            </div>
-        """, status_code=400)
+        # Agar ab bhi Permission Denied aata hai, toh iska matlab .env file refresh nahi hui
+        print(f"SUPABASE ERROR: {str(e)}")
+        return HTMLResponse(f"<body style='background:black;color:white;padding:50px;'><h1>Signup Failed</h1><p>{str(e)}</p></body>")
 # ==========================================
 # 4. PARTNER NETWORK ROUTES (B2B)
 # ==========================================
