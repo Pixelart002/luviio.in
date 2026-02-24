@@ -219,4 +219,68 @@ async def dashboard_page(request: Request):
         
     return response
 
-# (Test DB Route waisa hi rahega)
+
+
+
+
+
+# ==========================================
+# 7. CONTENT PAGES (Collection, Gallery, Story)
+# ==========================================
+
+@router.get("/collection", response_class=HTMLResponse)
+async def collection_page(request: Request):
+    payload, new_access_token = manage_session(request)
+    
+    current_user = None
+    discount_percentage = 0
+    
+    # 1. User/Partner Check
+    if payload and payload != "expired":
+        current_user = {
+            "name": payload.get("name"), 
+            "email": payload.get("email"), 
+            "tier": payload.get("tier"),
+            "type": payload.get("type")
+        }
+        # RULE ENGINE: Agar partner hai, toh 35% wholesale discount do
+        if current_user["type"] == "partner":
+            discount_percentage = 35 
+
+    # 2. Database se active products laao
+    admin_db = get_admin_db()
+    try:
+        product_response = admin_db.table("products").select("*").eq("is_active", True).execute()
+        products = product_response.data
+    except Exception as e:
+        print(f"DB Error: {e}")
+        products = []
+
+    # 3. Dynamic Price Calculation
+    for product in products:
+        mrp = product["mrp"]
+        if discount_percentage > 0:
+            # Partner Price
+            discounted_price = mrp - (mrp * (discount_percentage / 100))
+            product["display_price"] = int(discounted_price)
+            product["original_mrp"] = int(mrp)
+        else:
+            # Normal B2C Price
+            product["display_price"] = int(mrp)
+            product["original_mrp"] = None
+
+    # 4. Render Template
+    response = templates.TemplateResponse(
+        "app/pages/collection.html", 
+        {
+            "request": request, 
+            "user": current_user,
+            "products": products
+        }
+    )
+    
+    # Session refresh logic
+    if new_access_token:
+        response.set_cookie(key="access_token", value=new_access_token, httponly=True, secure=True, samesite="strict", max_age=1800)
+        
+    return response
