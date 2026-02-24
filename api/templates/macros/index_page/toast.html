@@ -1,4 +1,4 @@
-{% macro render_toast() %}
+
 <div id="toast" class="fixed top-6 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-sm shadow-2xl z-[100] flex items-center gap-3 font-sans text-[10px] uppercase tracking-widest font-bold sys-transition opacity-0 pointer-events-none translate-y-[-20px]">
   <i id="toastIcon" class="text-lg"></i>
   <span id="toastMsg"></span>
@@ -56,4 +56,3 @@
     else if (msg && messages[msg]) showToast(messages[msg].text, messages[msg].error);
   });
 </script>
-{% endmacro %}

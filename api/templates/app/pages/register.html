@@ -1,4 +1,4 @@
-{% from "app/macros/toast.html" import render_toast %}
+
 
 
 <!DOCTYPE html>
@@ -19,6 +19,16 @@
 
     <script>
         tailwind.config = {
+            
+            
+            safelist: [
+                'bg-red-900', 'text-white', 'border-red-700',
+                'bg-luviio-gold', 'text-black', 'border-luviio-gold',
+                'opacity-100', 'translate-y-0', 'pointer-events-auto'
+            ],
+            
+            
+            
             theme: {
                 extend: {
                     colors: {
@@ -204,7 +214,7 @@
     
     
     
-    {{ render_toast() }}
+    {% include "app/macros/toast.html" %}
     
 </body>
 
