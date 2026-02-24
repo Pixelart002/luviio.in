@@ -4,7 +4,7 @@ import bcrypt
 from datetime import datetime, timedelta
 
 # JWT Settings
-JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-luviio-key-12345")
+JWT_SECRET = os.getenv("JWT_SECRET", "luviio_premium_bathware_secure_jwt_secret_key_2026_xyz_abcdef123456")
 JWT_ALGORITHM = "HS256"
 
 # 2-Token System Timings
