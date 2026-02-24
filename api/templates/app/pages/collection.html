@@ -52,7 +52,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">
             
             {% for product in products %}
-            <div class="group cursor-pointer dash-anim opacity-0 translate-y-8">
+            <a href="/product/{{ product.id }}" class="group block cursor-pointer dash-anim opacity-0 translate-y-8">
                 <div class="relative aspect-[4/5] overflow-hidden rounded-2xl bg-[#111] mb-6 border border-white/5">
                     <img src="{{ product.image_url }}" alt="{{ product.name }}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 sys-transition duration-700">
                     
