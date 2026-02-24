@@ -6,48 +6,48 @@ from datetime import datetime, timedelta
 # JWT Settings
 JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-luviio-key-12345")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = 24
+
+# 2-Token System Timings
+ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Chhota time (Safe)
+REFRESH_TOKEN_EXPIRE_DAYS = 7     # Lamba time (User ko bar bar login nahi karna padega)
 
 def hash_password(password: str) -> str:
-    """Password ko hash karta hai aur 72-byte ki bcrypt limit ko handle karta hai."""
-    # Bcrypt strictly needs bytes, aur 72 bytes se bada password allow nahi karta
     pwd_bytes = password.encode('utf-8')[:72] 
-    
-    # Salt generate karke hash banao
     salt = bcrypt.gensalt()
     hashed_password = bcrypt.hashpw(pwd_bytes, salt)
-    
-    # Wapas string me convert karke return karo taaki DB me text ki tarah save ho
     return hashed_password.decode('utf-8')
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Check karta hai ki plain password aur hashed password match karte hain ya nahi."""
-    # Dono ko bytes me convert karo, plain_password ko truncate karna zaroori hai
     password_byte_enc = plain_password.encode('utf-8')[:72]
     hashed_password_bytes = hashed_password.encode('utf-8')
-    
-    # Bcrypt ka native function use karo verify karne ke liye
     return bcrypt.checkpw(password_byte_enc, hashed_password_bytes)
 
-def create_access_token(data: dict) -> str:
-    """User/Partner details ka ek secure JWT token banayega."""
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
-    to_encode.update({"exp": expire})
+def create_tokens(data: dict):
+    """Access Token aur Refresh Token dono ek saath banata hai."""
     
-    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    return encoded_jwt
+    # 1. Access Token (Short-lived)
+    access_payload = data.copy()
+    access_expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_payload.update({"exp": access_expire, "token_type": "access"})
+    access_token = jwt.encode(access_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    
+    # 2. Refresh Token (Long-lived, isme bhi basic details dalenge taaki refresh karte waqt data mil jaye)
+    refresh_payload = data.copy()
+    refresh_expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    refresh_payload.update({"exp": refresh_expire, "token_type": "refresh"})
+    refresh_token = jwt.encode(refresh_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    
+    return access_token, refresh_token
 
-# --- NAYA FUNCTION ADD KIYA HAI ---
-def verify_token(token: str):
-    """Token ki security aur validity check karne ke liye."""
+def verify_token(token: str, expected_type: str = "access"):
+    """Token ki validity aur uska type check karta hai."""
     try:
-        # Secret key aur algorithm se signature verify hoga
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        # Check if token type matches (taaki koi refresh token daal ke access na le le)
+        if payload.get("token_type") != expected_type:
+            return None
         return payload
     except jwt.ExpiredSignatureError:
-        print("Token expire ho chuka hai.")
-        return None 
+        return "expired"  # Backend ko pata chalega ki naya token dena hai
     except jwt.InvalidTokenError:
-        print("Fake ya tampered token pakda gaya!")
-        return None
+        return None       # Fake/Tampered token

@@ -3,22 +3,47 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-# 1. Ye Nayi line add karo:
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 
 from api.routes.routes import router as luviio_router
+
+
+
+
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 # 2. Static directory ka path define karo:
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
+
+
+
+
+limiter = Limiter(key_func=get_remote_address)
+
+
 app = FastAPI(title="Luviio.in | Static Version")
+
+
+app.state.limiter = limiter
+app.add_exception_handler(Rate_Limit_Exceeded,_rate_limit_exceeded_handler)
+
+
+
+
 
 # 3. Yahan StaticFiles ko mount karo:
 app.mount("/api/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
+
+
 
 # --- AI DEBUGGER (optional) ---
 async def get_ai_solution(error_msg: str):

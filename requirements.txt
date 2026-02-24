@@ -8,3 +8,4 @@ supabase
 python-dotenv
 bcrypt
 PyJWT
+slowapi
