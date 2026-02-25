@@ -7,6 +7,8 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from fastapi.middleware.gzip import GZipMiddleware
+
 
 
 from api.routes.routes import router as luviio_router
@@ -30,7 +32,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title="Luviio.in | Static Version")
 
-
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded,_rate_limit_exceeded_handler)
 
