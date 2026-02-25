@@ -1,5 +1,5 @@
 
-
+{% from "app/macros/toast.html" import render_toast %}
 
 <!DOCTYPE html>
 <html lang="en">
@@ -214,7 +214,7 @@
     
     
     
-    {% include "/macros/index_page/toast.html" %}
+    {{ render_toast() }}
     
 </body>
 
