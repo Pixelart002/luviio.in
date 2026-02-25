@@ -74,6 +74,19 @@
                 if (result.status === 'success') {
                     showToast(result.message, false);
                     btnText.innerText = 'Added ✓';
+                    
+                    
+                    
+                    
+                    
+                    // 🔥 PRO UX MOVE: Open cart drawer automatically
+                if(typeof window.openCart === 'function') {
+                    window.openCart();
+                }
+                
+                
+                
+                    
                     setTimeout(() => { btnText.innerText = originalText; btn.disabled = false; btn.classList.remove('opacity-70'); }, 2000);
                 } else {
                     if (response.status === 401) {
