@@ -1,0 +1,124 @@
+{% from "app/macros/shared/toast.html" import render_toast %}
+{% from "app/macros/auth_page/auth_banner.html" import render_auth_banner %}
+{% from "app/macros/auth_page/partner_auth_form.html" import render_partner_auth_form %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Partner Portal - LUVIIO</title>
+
+    <link rel="preconnect" href="https://images.unsplash.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        luviio: {
+                            stone: '#F5F5F0',
+                            charcoal: '#0a0a0a', 
+                            gold: '#C5A059',
+                            sand: '#E5E5DF'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            background-color: #0a0a0a; 
+            color: #ffffff;
+            overflow: hidden; 
+            height: 100vh; 
+            height: 100dvh; 
+        }
+        h1, h2, h3, h4, h5, h6 { font-family: 'Playfair Display', serif; }
+
+        .input-group { position: relative; margin-bottom: 1.75rem; } 
+        .input-group input {
+            width: 100%; padding: 6px 0; font-size: 0.875rem; color: #fff;
+            background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.15);
+            outline: none; transition: border-color 0.3s;
+        }
+        .input-group input:focus { border-bottom: 1px solid #C5A059; }
+        .input-group label {
+            position: absolute; top: 6px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.6);
+            pointer-events: none; transition: 0.3s ease all; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
+        }
+        .input-group input:focus ~ label,
+        .input-group input:valid ~ label {
+            top: -14px; font-size: 0.55rem; color: #C5A059;
+        }
+
+        .sys-transition { transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        .gpu-target { transform: translateZ(0); will-change: transform; }
+        
+        .custom-checkbox {
+            appearance: none; background-color: transparent; margin: 0; font: inherit; color: currentColor;
+            width: 12px; height: 12px; border: 1px solid rgba(255,255,255,0.4); border-radius: 1px;
+            display: grid; place-content: center; cursor: pointer;
+        }
+        .custom-checkbox::before {
+            content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform ease-in-out;
+            box-shadow: inset 1em 1em #C5A059; background-color: #C5A059; transform-origin: center;
+            clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+        }
+        .custom-checkbox:checked::before { transform: scale(1); }
+        .custom-checkbox:checked { border-color: #C5A059; }
+    </style>
+</head>
+
+<body class="flex h-[100dvh] w-full">
+
+    {{ render_auth_banner(
+        image_url="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&q=80&w=1200",
+        heading_1="Trade &", 
+        heading_2="Retail.", 
+        subheading="Join our exclusive network of architects, developers, and dealers. Elevate your projects with our premium curation."
+    ) }}
+
+    {{ render_partner_auth_form() }}
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            gsap.config({ force3D: true });
+
+            gsap.to("#authImage", {
+                scale: 1,
+                duration: 12, // Slightly slower for this architectural image
+                ease: "power1.out"
+            });
+
+            gsap.to(".auth-anim", {
+                y: 0,
+                opacity: 1,
+                duration: 1,
+                stagger: 0.08,
+                ease: "power3.out",
+                delay: 0.2
+            });
+        });
+    </script>
+    
+    {{ render_toast() }}
+    
+</body>
+</html>
