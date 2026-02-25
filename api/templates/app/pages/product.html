@@ -1,11 +1,7 @@
-
-
-
 {% from "app/macros/shared/toast.html" import render_toast %}
+{% from "app/macros/shared/cart_drawer.html" import render_cart_drawer %}
 {% from "app/macros/product_page/navbar.html" import render_product_navbar %}
 {% from "app/macros/product_page/details.html" import render_product_details %}
-{% from "app/macros/shared/cart_drawer.html" import render_cart_drawer %}
-
 
 <!DOCTYPE html>
 <html lang="en">
@@ -55,59 +51,58 @@
             });
         });
     </script>
-   <script>
-    document.getElementById('addToCartBtn').addEventListener('click', async (e) => {
-        const btn = e.currentTarget;
-        const btnText = document.getElementById('btnText');
-        const productId = btn.getAttribute('data-product-id');
-        const originalText = btnText.innerText;
-        
-        btnText.innerText = 'Adding...';
-        btn.disabled = true;
-        btn.classList.add('opacity-70');
+    
+    <script>
+        document.getElementById('addToCartBtn').addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const btnText = document.getElementById('btnText');
+            const productId = btn.getAttribute('data-product-id');
+            const originalText = btnText.innerText;
+            
+            btnText.innerText = 'Adding...';
+            btn.disabled = true;
+            btn.classList.add('opacity-70');
 
-        try {
-            const response = await fetch('/api/cart/add', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ product_id: productId, quantity: 1 })
-            });
-            
-            const result = await response.json();
-            
-            if (result.status === 'success') {
-                showToast(result.message, false);
-                btnText.innerText = 'Added ✓';
+            try {
+                const response = await fetch('/api/cart/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_id: productId, quantity: 1 })
+                });
                 
-                // 🔥 PRO UX MOVE: Open cart drawer automatically
-                if(typeof window.openCart === 'function') {
-                    window.openCart();
-                }
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showToast(result.message, false);
+                    btnText.innerText = 'Added ✓';
+                    
+                    // PRO UX MOVE: Open cart drawer automatically
+                    if(typeof window.openCart === 'function') {
+                        window.openCart();
+                    }
 
-                setTimeout(() => { btnText.innerText = originalText; btn.disabled = false; btn.classList.remove('opacity-70'); }, 2000);
-            } else {
-                if (response.status === 401) {
-                    window.location.href = '/login?error=invalid_session';
+                    setTimeout(() => { btnText.innerText = originalText; btn.disabled = false; btn.classList.remove('opacity-70'); }, 2000);
                 } else {
-                    showToast(result.message, true);
-                    btnText.innerText = originalText;
-                    btn.disabled = false;
-                    btn.classList.remove('opacity-70');
+                    if (response.status === 401) {
+                        window.location.href = '/login?error=invalid_session';
+                    } else {
+                        showToast(result.message, true);
+                        btnText.innerText = originalText;
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-70');
+                    }
                 }
+            } catch (error) {
+                showToast("Network error occurred.", true);
+                btnText.innerText = originalText;
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
             }
-        } catch (error) {
-            showToast("Network error occurred.", true);
-            btnText.innerText = originalText;
-            btn.disabled = false;
-            btn.classList.remove('opacity-70');
-        }
-    });
-</script>
-    {{ render_toast() }}
-    
-    
-    
-    
+        });
+    </script>
+
     {{ render_cart_drawer() }}
+
+    {{ render_toast() }}
 </body>
 </html>
