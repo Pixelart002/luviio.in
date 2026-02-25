@@ -10,6 +10,10 @@
 {% from "app/macros/index_page/pricing.html" import render_pricing %}
 {% from "app/macros/shared/footer.html" import render_footer %}
 
+{% block title %}LUVIIO - Premium Bathware{% endblock %}
+
+{% block body_class %}relative bg-luviio-stone{% endblock %}
+
 {% block content %}
     {{ render_splash() }}
     
@@ -27,7 +31,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script type="module">
+<script>
     document.addEventListener("DOMContentLoaded", () => {
         gsap.registerPlugin(ScrollTrigger);
         gsap.config({ force3D: true });
@@ -55,8 +59,7 @@
         function completeSplash() {
             gsap.to("#splashProgress", { width: "100%", duration: 1.5, ease: "power3.inOut", onComplete: () => setTimeout(() => hideSplashTl.play(), 400) });
         }
-        if (splashLogoImage.complete) { completeSplash(); } else { splashLogoImage.onload = completeSplash;
-            splashLogoImage.onerror = completeSplash; }
+        if (splashLogoImage.complete) { completeSplash(); } else { splashLogoImage.onload = completeSplash; splashLogoImage.onerror = completeSplash; }
         
         function initMainAnimations() {
             lenis = new Lenis({ duration: 1.5, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smooth: true, smoothTouch: false });
@@ -64,7 +67,6 @@
             gsap.ticker.add((time) => { lenis.raf(time * 1000); });
             gsap.ticker.lagSmoothing(0, 0);
             
-            // Initializing Swiper for Testimonials
             new Swiper(".homeSwiper", {
                 slidesPerView: 1,
                 spaceBetween: 30,
@@ -142,7 +144,6 @@
             gsap.to(".gallery-col-1", { yPercent: -20, ease: "none", scrollTrigger: { trigger: ".gallery-container", start: "top bottom", end: "bottom top", scrub: 1 } });
             gsap.to(".gallery-col-2", { yPercent: -40, ease: "none", scrollTrigger: { trigger: ".gallery-container", start: "top bottom", end: "bottom top", scrub: 1.5 } });
             
-            // Text Reveal for the Marquee replacement 
             gsap.to("#showcaseTitle", { scrollTrigger: { trigger: "#showcaseWrapper", start: "top 80%" }, y: 0, duration: 1.5, ease: "expo.out" });
             
             const track = document.getElementById("horizontalTrack");
@@ -151,16 +152,8 @@
             ScrollTrigger.create({ trigger: "#showcaseWrapper", start: "top top", end: () => `+=${Math.abs(getScrollAmount())}`, pin: true, animation: gsap.to(track, { x: getScrollAmount, ease: "none" }), scrub: 1, invalidateOnRefresh: true });
             gsap.utils.toArray('.showcase-img').forEach((img) => { gsap.to(img, { xPercent: 15, ease: "none", scrollTrigger: { trigger: "#showcaseWrapper", start: "top top", end: () => `+=${Math.abs(getScrollAmount())}`, scrub: 1 } }); });
             
-          // FIXED: Pricing Animations (Using fromTo to guarantee visibility)
-            gsap.to(".pricing-header", { 
-                y: 0, opacity: 1, duration: 1.2, ease: "power3.out", 
-                scrollTrigger: { trigger: "#pricingSection", start: "top 80%" } 
-            });
-            
-            gsap.to(".pricing-card", {
-                y: 0, opacity: 1, rotationX: 0, duration: 1, stagger: 0.15, ease: "power3.out",
-                scrollTrigger: { trigger: "#pricingGrid", start: "top 75%" }
-            });
+            gsap.to(".pricing-header", { y: 0, opacity: 1, duration: 1.2, ease: "power3.out", scrollTrigger: { trigger: "#pricingSection", start: "top 80%" } });
+            gsap.to(".pricing-card", { y: 0, opacity: 1, rotationX: 0, duration: 1, stagger: 0.15, ease: "power3.out", scrollTrigger: { trigger: "#pricingGrid", start: "top 75%" } });
         }
         
         window.addEventListener('beforeunload', () => { if (lenis) lenis.destroy(); });

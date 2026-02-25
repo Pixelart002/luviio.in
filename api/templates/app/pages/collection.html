@@ -1,49 +1,16 @@
-
-
-
+{% extends "app/base.html" %}
 
 {% from "app/macros/collection_page/header.html" import render_collection_header %}
 {% from "app/macros/collection_page/product_grid.html" import render_product_grid %}
 
-{% from "app/macros/shared/toast.html" import render_toast %}
-{% from "app/macros/shared/cart_drawer.html" import render_cart_drawer %}
+{% block title %}The Collection - LUVIIO{% endblock %}
 
+{% block body_class %}bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1a1a1a] via-[#0a0a0a] to-black min-h-screen text-white{% endblock %}
 
-
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Collection - LUVIIO</title>
-    
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: { luviio: { charcoal: '#0a0a0a', gold: '#C5A059', panel: '#121212', border: 'rgba(255,255,255,0.05)' } },
-                    fontFamily: { sans: ['Inter', 'sans-serif'], serif: ['Playfair Display', 'serif'] }
-                }
-            }
-        }
-    </script>
-    <style>
-        body { background-color: #0a0a0a; color: white; font-family: 'Inter', sans-serif; overflow-x: hidden; }
-        .glass-panel { background: rgba(18, 18, 18, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .sys-transition { transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-        /* Hide scrollbar */
-        ::-webkit-scrollbar { width: 0px; }
-    </style>
-</head>
-<body class="bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1a1a1a] via-[#0a0a0a] to-black min-h-screen">
+{% block content %}
 <nav class="fixed top-0 w-full z-50 glass-panel border-b border-luviio-border">
     <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-        <a href="/" class="text-sm font-serif tracking-[0.2em] uppercase text-white">LUVIIO</a>
+        <a href="/" class="text-sm font-serif tracking-[0.2em] uppercase text-white hover:text-luviio-gold sys-transition">LUVIIO</a>
         <div class="flex items-center gap-6">
             {% if user %}
             <a href="/dashboard" class="text-xs uppercase tracking-widest font-bold text-gray-400 hover:text-luviio-gold sys-transition">Dashboard</a>
@@ -57,32 +24,21 @@
         </div>
     </div>
 </nav>
-    {{ render_collection_header() }}
 
-    {{ render_product_grid(products) }}
+{{ render_collection_header() }}
+{{ render_product_grid(products) }}
+{% endblock %}
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-    <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            gsap.to(".dash-anim", {
-                y: 0,
-                opacity: 1,
-                duration: 1,
-                stagger: 0.15,
-                ease: "power3.out"
-            });
+{% block extra_scripts %}
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        gsap.to(".dash-anim", {
+            y: 0,
+            opacity: 1,
+            duration: 1,
+            stagger: 0.15,
+            ease: "power3.out"
         });
-    </script>
-    
-    
-    
-    
-    
-    {{ render_cart_drawer() }}
-
-    {{ render_toast() }}
-    
-    
-    
-</body>
-</html>
+    });
+</script>
+{% endblock %}

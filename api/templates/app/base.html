@@ -1,7 +1,5 @@
-
 {% from "app/macros/shared/toast.html" import render_toast %}
 {% from "app/macros/shared/cart_drawer.html" import render_cart_drawer %}
-
 
 <!DOCTYPE html>
 <html lang="en">
@@ -240,26 +238,15 @@
     </style>
 </head>
 
-<body class="relative bg-luviio-stone">
+<body class="{% block body_class %}relative bg-luviio-stone text-luviio-charcoal{% endblock %}">
     
     <div id="cursor" class="hidden md:block"></div>
     
     {% block content %}
     {% endblock %}
     
-    
-    
-    
-    <!-- macros ka  tags end. -->
-    
-    {{ render_toast() }}
-    
     {{ render_cart_drawer() }}
-    
-    
-    
-    
-    
+    {{ render_toast() }}
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
