@@ -1,0 +1,26 @@
+{% macro render_gallery() %}
+<section id="galleryWrapper" class="py-24 md:py-40 bg-white relative w-full overflow-hidden border-b border-luviio-sand">
+  <div class="max-w-[1600px] mx-auto px-6 md:px-16 flex flex-col md:flex-row gap-16 relative">
+    <div class="md:w-5/12 flex flex-col md:h-[100dvh] md:sticky top-0 justify-center pb-12 md:pb-0 z-10 bg-white/80 md:bg-transparent backdrop-blur-sm md:backdrop-blur-none">
+      <span class="text-luviio-gold text-[10px] uppercase tracking-[0.4em] font-sans font-bold mb-4">The Gallery</span>
+      <h2 class="text-4xl md:text-6xl lg:text-7xl font-serif text-luviio-charcoal mb-8 leading-tight">Curated for<br><span class="italic text-gray-400">Eternity.</span></h2>
+      <p class="text-gray-500 font-sans leading-relaxed max-w-sm text-sm">Every curve, every texture is meticulously selected. We source only the finest global bathware to transform your spaces into sanctuaries of absolute luxury.</p>
+      <button class="mt-10 w-max border-b border-luviio-charcoal pb-1 text-[10px] uppercase tracking-widest font-bold hover-target sys-transition hover:text-luviio-gold hover:border-luviio-gold">Explore Collection</button>
+    </div>
+    <div class="md:w-7/12 grid grid-cols-2 gap-4 md:gap-8 h-[70vh] md:h-[150vh] overflow-hidden gallery-container relative">
+      <div class="flex flex-col gap-4 md:gap-8 gallery-col-1 gpu-target w-full">
+        <img src="https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&q=80&w=800" class="w-full h-[30vh] md:h-[50vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+        <img src="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&q=80&w=800" class="w-full h-[40vh] md:h-[60vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+        <img src="https://images.unsplash.com/photo-1595515106969-1ce29566ff1c?auto=format&fit=crop&q=80&w=800" class="w-full h-[30vh] md:h-[40vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+      </div>
+      <div class="flex flex-col gap-4 md:gap-8 gallery-col-2 gpu-target w-full mt-24 md:mt-48">
+        <img src="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&q=80&w=800" class="w-full h-[40vh] md:h-[60vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+        <img src="https://images.unsplash.com/photo-1584622781564-1d987f7333c1?auto=format&fit=crop&q=80&w=800" class="w-full h-[30vh] md:h-[45vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+        <img src="https://images.unsplash.com/photo-1507652313651-74ff74d3ca9e?auto=format&fit=crop&q=80&w=800" class="w-full h-[40vh] md:h-[50vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+      </div>
+      <div class="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white to-transparent pointer-events-none"></div>
+      <div class="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white to-transparent pointer-events-none"></div>
+    </div>
+  </div>
+</section>
+{% endmacro %}

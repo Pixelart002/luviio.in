@@ -1,0 +1,30 @@
+{% macro render_testimonials() %}
+<section class="py-24 md:py-32 bg-luviio-charcoal dark-swiper overflow-hidden relative border-y border-white/5">
+  <div class="max-w-5xl mx-auto px-6 relative z-10 text-white">
+    <div class="text-center mb-10 md:mb-16">
+      <i class="ri-double-quotes-l text-4xl md:text-6xl text-luviio-gold/30 mb-4 block"></i>
+      <span class="text-luviio-gold text-[10px] md:text-xs uppercase tracking-[0.4em] font-sans font-bold">Client Voices</span>
+    </div>
+    
+    <div class="swiper homeSwiper pb-16">
+      <div class="swiper-wrapper">
+        <div class="swiper-slide h-auto">
+          <div class="text-center px-2 md:px-12">
+            <p class="text-xl md:text-4xl font-serif leading-relaxed mb-8">"The quality of the ceramic basins we ordered was beyond expectations. It transformed our master bathroom into a literal spa."</p>
+            <h4 class="font-sans font-bold text-[10px] md:text-xs uppercase tracking-widest text-luviio-gold">Ananya Sharma</h4>
+            <p class="text-[8px] md:text-[10px] text-gray-500 font-sans mt-2 tracking-widest uppercase">Verified Buyer</p>
+          </div>
+        </div>
+        <div class="swiper-slide h-auto">
+          <div class="text-center px-2 md:px-12">
+            <p class="text-xl md:text-4xl font-serif leading-relaxed mb-8">"We sourced Luviio for an entire boutique hotel project. Their minimalist designs and matte finishes are unmatched in the market."</p>
+            <h4 class="font-sans font-bold text-[10px] md:text-xs uppercase tracking-widest text-luviio-gold">Design Element Co.</h4>
+            <p class="text-[8px] md:text-[10px] text-gray-500 font-sans mt-2 tracking-widest uppercase">Trade Partner</p>
+          </div>
+        </div>
+      </div>
+      <div class="swiper-pagination mt-6 relative"></div>
+    </div>
+  </div>
+</section>
+{% endmacro %}

@@ -1,45 +1,169 @@
 {% extends "app/base.html" %}
 
-
-/api/templates/macros/shared/navbar.html
-
+{% from "app/macros/index_page/splash.html" import render_splash %}
 {% from "app/macros/shared/navbar.html" import render_navbar %}
 {% from "app/macros/index_page/hero.html" import render_hero %}
 {% from "app/macros/index_page/branding.html" import render_branding %}
+{% from "app/macros/index_page/gallery.html" import render_gallery %}
+{% from "app/macros/index_page/showcase.html" import render_showcase %}
+{% from "app/macros/index_page/testimonials.html" import render_testimonials %}
 {% from "app/macros/index_page/pricing.html" import render_pricing %}
+{% from "app/macros/shared/footer.html" import render_footer %}
 
 {% block content %}
-{{ render_navbar(user) }}
-
-{{ render_hero() }}
-
-{{ render_branding() }}
-
-{{ render_pricing() }}
-
-<footer class="py-20 bg-luviio-charcoal text-center text-white">
-    <h2 class="font-serif italic text-4xl">LUVIIO</h2>
-    <p class="text-[10px] tracking-widest mt-4 uppercase opacity-40">&copy; 2026 Designed for Luxury</p>
-</footer>
+    {{ render_splash() }}
+    
+    {{ render_navbar(user) }}
+    
+    <main id="mainContent" class="opacity-0 hidden bg-luviio-stone">
+        {{ render_hero() }}
+        {{ render_branding() }}
+        {{ render_gallery() }}
+        {{ render_showcase() }}
+        {{ render_testimonials() }}
+        {{ render_pricing() }}
+        {{ render_footer() }}
+    </main>
 {% endblock %}
 
 {% block extra_scripts %}
 <script type="module">
     document.addEventListener("DOMContentLoaded", () => {
         gsap.registerPlugin(ScrollTrigger);
+        gsap.config({ force3D: true });
+        let lenis;
         
-        // Simple entry animation
-        document.getElementById('mainContent').classList.remove('hidden');
-        gsap.to("#mainContent", { opacity: 1, duration: 1 });
+        gsap.to("#splashLogo", { opacity: 1, scale: 1, filter: "blur(0px)", duration: 2, ease: "power3.out" });
         
-        // Hero Animations
-        gsap.to(".hero-text", { y: "0%", duration: 1.5, stagger: 0.2, ease: "power4.out" });
-        gsap.to(".hero-image-wrapper", { clipPath: "polygon(0 0%, 100% 0%, 100% 100%, 0 100%)", opacity: 1, duration: 2, ease: "expo.inOut" });
-        gsap.to("#heroImage", { scale: 1, filter: "blur(0px)", duration: 2.5, ease: "power3.out" });
+        const hideSplashTl = gsap.timeline({
+            paused: true,
+            onStart: () => { document.getElementById('mainContent').classList.remove('hidden'); },
+            onComplete: () => {
+                document.getElementById('splashScreen').style.display = 'none';
+                initMainAnimations();
+            }
+        });
         
-        // Cursor Logic
-        const cursor = document.getElementById('cursor');
-        window.addEventListener('mousemove', (e) => { gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.1 }); });
+        hideSplashTl.to("#splashProgress", { opacity: 0, duration: 0.3 })
+            .to("#splashScreen", { yPercent: -100, duration: 1.5, ease: "expo.inOut", delay: 0.2 })
+            .to("#mainContent", { opacity: 1, duration: 0.8 }, "-=0.8")
+            .to("#mainHeader", { y: 0, duration: 1.2, ease: "power4.out" }, "-=0.5");
+        
+        const splashLogoImage = new Image();
+        splashLogoImage.src = "/api/static/images/logo.png";
+        
+        function completeSplash() {
+            gsap.to("#splashProgress", { width: "100%", duration: 1.5, ease: "power3.inOut", onComplete: () => setTimeout(() => hideSplashTl.play(), 400) });
+        }
+        if (splashLogoImage.complete) { completeSplash(); } else { splashLogoImage.onload = completeSplash;
+            splashLogoImage.onerror = completeSplash; }
+        
+        function initMainAnimations() {
+            lenis = new Lenis({ duration: 1.5, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smooth: true, smoothTouch: false });
+            lenis.on('scroll', ScrollTrigger.update);
+            gsap.ticker.add((time) => { lenis.raf(time * 1000); });
+            gsap.ticker.lagSmoothing(0, 0);
+            
+            // Initializing Swiper for Testimonials
+            new Swiper(".homeSwiper", {
+                slidesPerView: 1,
+                spaceBetween: 30,
+                loop: true,
+                grabCursor: true,
+                autoplay: { delay: 4000, disableOnInteraction: true },
+                pagination: { el: ".swiper-pagination", clickable: true }
+            });
+            
+            const cursor = document.getElementById('cursor');
+            if (window.innerWidth >= 768) {
+                window.addEventListener('mousemove', (e) => { gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.15, ease: "power2.out" }); });
+                document.querySelectorAll('.hover-target').forEach(target => {
+                    target.addEventListener('mouseenter', () => cursor.classList.add('hover-active'));
+                    target.addEventListener('mouseleave', () => cursor.classList.remove('hover-active'));
+                });
+            }
+            
+            const heroTl = gsap.timeline({ delay: 0.3 });
+            heroTl.to(".hero-text", { y: "0%", rotateZ: 0, duration: 1.8, stagger: 0.2, ease: "power4.out" })
+                .to(".hero-image-wrapper", { clipPath: "polygon(0 0%, 100% 0%, 100% 100%, 0 100%)", opacity: 1, duration: 2, ease: "expo.inOut" }, "-=1.2")
+                .to("#heroImage", { scale: 1, filter: "blur(0px)", duration: 3, ease: "power3.out" }, "-=1.5");
+            gsap.to("#heroImage", { yPercent: 10, ease: "none", scrollTrigger: { trigger: ".hero-image-wrapper", start: "top bottom", end: "bottom top", scrub: true } });
+            
+            const brandTl = gsap.timeline({ scrollTrigger: { trigger: "#brandSection", start: "top 65%" } });
+            gsap.to(".brand-img", { yPercent: 15, ease: "none", scrollTrigger: { trigger: "#brandSection", start: "top bottom", end: "bottom top", scrub: true } });
+            brandTl.to(".brand-anim", { y: "0%", opacity: 1, rotateZ: 0, duration: 1.2, stagger: 0.1, ease: "power4.out" });
+            
+            const drawerContent = document.getElementById('drawerContent');
+            const drawerOverlay = document.getElementById('drawerOverlay');
+            let isDrawerOpen = false;
+            let isAccountView = false;
+            
+            function toggleDrawer() {
+                isDrawerOpen = !isDrawerOpen;
+                if (isDrawerOpen) {
+                    drawerOverlay.classList.remove('opacity-0', 'pointer-events-none');
+                    drawerOverlay.classList.add('active');
+                    drawerContent.classList.remove('translate-x-full');
+                    gsap.fromTo(".clip-text", { y: "100%" }, { y: "0%", duration: 1, stagger: 0.05, delay: 0.2, ease: "power4.out" });
+                    lenis.stop();
+                } else {
+                    drawerOverlay.classList.add('opacity-0', 'pointer-events-none');
+                    drawerOverlay.classList.remove('active');
+                    drawerContent.classList.add('translate-x-full');
+                    lenis.start();
+                    setTimeout(() => { if (isAccountView) toggleView(); }, 600);
+                }
+            }
+            
+            function toggleView() {
+                isAccountView = !isAccountView;
+                if (isAccountView) {
+                    document.getElementById('menuState').classList.add('opacity-0', 'scale-95', 'pointer-events-none');
+                    document.getElementById('menuState').classList.remove('opacity-100', 'scale-100');
+                    document.getElementById('accountState').classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
+                    document.getElementById('accountState').classList.add('opacity-100', 'scale-100');
+                    gsap.to("#profileTrigger i", { rotation: -180, opacity: 0, duration: 0.3, onComplete: () => { document.getElementById('profileTrigger').innerHTML = '<i class="ri-arrow-left-line text-2xl"></i>';
+                            gsap.fromTo("#profileTrigger i", { rotation: 180, opacity: 0 }, { rotation: 0, opacity: 1, duration: 0.3 }); } });
+                } else {
+                    document.getElementById('accountState').classList.add('opacity-0', 'scale-95', 'pointer-events-none');
+                    document.getElementById('accountState').classList.remove('opacity-100', 'scale-100');
+                    document.getElementById('menuState').classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
+                    document.getElementById('menuState').classList.add('opacity-100', 'scale-100');
+                    gsap.to("#profileTrigger i", { rotation: 180, opacity: 0, duration: 0.3, onComplete: () => { document.getElementById('profileTrigger').innerHTML = '<i class="ri-user-3-line text-xl"></i>';
+                            gsap.fromTo("#profileTrigger i", { rotation: -180, opacity: 0 }, { rotation: 0, opacity: 1, duration: 0.3 }); } });
+                }
+            }
+            
+            document.getElementById('menuTrigger').addEventListener('click', toggleDrawer);
+            document.getElementById('closeDrawer').addEventListener('click', toggleDrawer);
+            drawerOverlay.addEventListener('click', toggleDrawer);
+            document.getElementById('profileTrigger').addEventListener('click', toggleView);
+            
+            gsap.to(".gallery-col-1", { yPercent: -20, ease: "none", scrollTrigger: { trigger: ".gallery-container", start: "top bottom", end: "bottom top", scrub: 1 } });
+            gsap.to(".gallery-col-2", { yPercent: -40, ease: "none", scrollTrigger: { trigger: ".gallery-container", start: "top bottom", end: "bottom top", scrub: 1.5 } });
+            
+            // Text Reveal for the Marquee replacement 
+            gsap.to("#showcaseTitle", { scrollTrigger: { trigger: "#showcaseWrapper", start: "top 80%" }, y: 0, duration: 1.5, ease: "expo.out" });
+            
+            const track = document.getElementById("horizontalTrack");
+            
+            function getScrollAmount() { return -(track.scrollWidth - window.innerWidth + (window.innerWidth > 768 ? 128 : 48)); }
+            ScrollTrigger.create({ trigger: "#showcaseWrapper", start: "top top", end: () => `+=${Math.abs(getScrollAmount())}`, pin: true, animation: gsap.to(track, { x: getScrollAmount, ease: "none" }), scrub: 1, invalidateOnRefresh: true });
+            gsap.utils.toArray('.showcase-img').forEach((img) => { gsap.to(img, { xPercent: 15, ease: "none", scrollTrigger: { trigger: "#showcaseWrapper", start: "top top", end: () => `+=${Math.abs(getScrollAmount())}`, scrub: 1 } }); });
+            
+          // FIXED: Pricing Animations (Using fromTo to guarantee visibility)
+            gsap.to(".pricing-header", { 
+                y: 0, opacity: 1, duration: 1.2, ease: "power3.out", 
+                scrollTrigger: { trigger: "#pricingSection", start: "top 80%" } 
+            });
+            
+            gsap.to(".pricing-card", {
+                y: 0, opacity: 1, rotationX: 0, duration: 1, stagger: 0.15, ease: "power3.out",
+                scrollTrigger: { trigger: "#pricingGrid", start: "top 75%" }
+            });
+        }
+        
+        window.addEventListener('beforeunload', () => { if (lenis) lenis.destroy(); });
     });
 </script>
 {% endblock %}

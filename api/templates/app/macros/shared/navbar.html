@@ -1,5 +1,5 @@
 {% macro render_navbar(user) %}
-<header class="fixed w-full top-0 z-50 transition-transform duration-700" id="mainHeader">
+<header class="fixed w-full top-0 z-50 transition-transform duration-700" id="mainHeader" style="transform: translateY(-100%);">
   <div class="bg-luviio-stone/80 backdrop-blur-xl flex justify-between items-center px-6 md:px-10 py-4 relative z-10 border-b border-luviio-sand/50">
     <div class="flex items-center gap-3 hover-target cursor-pointer group">
       <div class="w-6 h-6 md:w-8 md:h-8 flex items-center justify-center overflow-hidden">
@@ -11,18 +11,98 @@
     <div class="flex items-center gap-6 md:gap-10">
       <div class="hidden md:flex items-center gap-5 border-r border-luviio-sand/80 pr-8">
         {% if user %}
-        <a href="/dashboard" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-2.5 rounded-full hover:bg-luviio-gold sys-transition">Dashboard</a>
+        <a href="/dashboard" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-2.5 rounded-full hover:bg-luviio-gold hover:shadow-[0_10px_20px_rgba(197,160,89,0.2)] sys-transition hover-target">Dashboard</a>
+        <a href="/logout" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-red-800 hover:text-red-500 sys-transition hover-target ml-2">Logout</a>
         {% else %}
-        <a href="/login" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-luviio-charcoal hover:text-luviio-gold sys-transition">Sign In</a>
+        <a href="/login" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-luviio-charcoal hover:text-luviio-gold sys-transition hover-target">Sign In</a>
+        <a href="/register" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-luviio-charcoal hover:text-luviio-gold sys-transition hover-target">Sign Up</a>
         <div class="w-[1px] h-4 bg-luviio-sand mx-2"></div>
-        <a href="/partner" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-2.5 rounded-full hover:bg-luviio-gold sys-transition">Partner Portal</a>
+        <a href="/partner" class="text-[10px] font-sans font-bold uppercase tracking-[0.2em] bg-luviio-charcoal text-white px-6 py-2.5 rounded-full hover:bg-luviio-gold hover:shadow-[0_10px_20px_rgba(197,160,89,0.2)] sys-transition hover-target">Partner Portal</a>
         {% endif %}
       </div>
-      <button id="menuTrigger" class="text-2xl text-luviio-charcoal sys-transition hover:text-luviio-gold flex gap-2 items-center">
+      
+      <button id="menuTrigger" class="text-2xl md:text-3xl text-luviio-charcoal sys-transition hover:text-luviio-gold hover:scale-105 p-2 hover-target outline-none flex gap-2 items-center">
         <span class="text-[10px] uppercase tracking-[0.2em] font-sans font-bold hidden md:block mt-1">Menu</span>
         <i class="ri-menu-3-line"></i>
       </button>
     </div>
   </div>
 </header>
+
+<div id="drawerOverlay" class="fixed inset-0 bg-luviio-charcoal/40 glass-overlay z-[60] opacity-0 pointer-events-none transition-opacity duration-700"></div>
+
+<div id="drawerContent" class="fixed top-0 right-0 h-full w-full md:w-[450px] glass-menu z-[70] transform translate-x-full transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col overflow-hidden shadow-2xl">
+  <div class="flex justify-between items-center px-10 py-8 z-20 relative bg-transparent border-b border-luviio-sand/50">
+    <button id="profileTrigger" class="w-10 h-10 flex items-center justify-start text-luviio-charcoal sys-transition hover:scale-110 hover:text-luviio-gold hover-target outline-none bg-transparent" title="Account"><i class="ri-user-3-line text-xl"></i></button>
+    <button id="closeDrawer" class="w-10 h-10 flex items-center justify-end text-luviio-charcoal sys-transition hover:scale-110 hover:text-luviio-gold hover-target outline-none bg-transparent"><i class="ri-close-line text-2xl"></i></button>
+  </div>
+  
+  <div class="relative flex-grow overflow-hidden z-10 flex flex-col">
+    
+    <div id="menuState" class="absolute inset-0 px-10 pb-12 pt-8 flex flex-col justify-between transition-all duration-500 transform translate-x-0 opacity-100 ease-[cubic-bezier(0.16,1,0.3,1)]">
+      <div class="flex flex-col gap-6 mt-4">
+        <div class="clip-mask"><a href="#" class="clip-text drawer-link text-4xl md:text-5xl font-serif italic text-gray-400 sys-transition hover:text-luviio-charcoal hover:translate-x-4 hover-target">Collection.</a></div>
+        <div class="clip-mask"><a href="#" class="clip-text drawer-link text-4xl md:text-5xl font-serif italic text-gray-400 sys-transition hover:text-luviio-charcoal hover:translate-x-4 hover-target">Pricing.</a></div>
+        <div class="clip-mask"><a href="#" class="clip-text drawer-link text-4xl md:text-5xl font-serif italic text-gray-400 sys-transition hover:text-luviio-charcoal hover:translate-x-4 hover-target">Gallery.</a></div>
+        <div class="clip-mask"><a href="#" class="clip-text drawer-link text-4xl md:text-5xl font-serif italic text-gray-400 sys-transition hover:text-luviio-charcoal hover:translate-x-4 hover-target">Our Story.</a></div>
+      </div>
+      
+      <div class="mt-auto pt-8 border-t border-luviio-sand/50">
+        <div class="flex flex-col gap-3 mb-8">
+          {% if user %}
+          <div class="clip-mask w-full"><a href="/dashboard" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-gold sys-transition">Dashboard</a></div>
+          <div class="clip-mask w-full"><a href="/logout" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl border border-red-900/50 text-red-800 font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-red-900 hover:text-white sys-transition">Logout</a></div>
+          {% else %}
+          <div class="flex gap-3 clip-mask w-full">
+            <a href="/login" class="clip-text drawer-btn w-1/2 block text-center py-3.5 rounded-xl border border-luviio-charcoal text-luviio-charcoal font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-charcoal hover:text-white sys-transition">Sign In</a>
+            <a href="/register" class="clip-text drawer-btn w-1/2 block text-center py-3.5 rounded-xl border border-luviio-charcoal text-luviio-charcoal font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-charcoal hover:text-white sys-transition">Sign Up</a>
+          </div>
+          <div class="clip-mask w-full mt-1">
+            <a href="/partner" class="clip-text drawer-btn w-full block text-center py-4 rounded-xl bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase hover:bg-luviio-gold sys-transition">Partner Portal</a>
+          </div>
+          {% endif %}
+        </div>
+        <div class="flex gap-6 clip-mask">
+          <a href="#" class="clip-text drawer-social text-luviio-charcoal sys-transition hover:text-luviio-gold hover-target text-xl"><i class="ri-instagram-line"></i></a>
+          <a href="#" class="clip-text drawer-social text-luviio-charcoal sys-transition hover:text-luviio-gold hover-target text-xl"><i class="ri-linkedin-fill"></i></a>
+        </div>
+      </div>
+    </div>
+    
+    <div id="accountState" class="absolute inset-0 px-10 pb-24 pt-12 flex flex-col transition-all duration-500 transform scale-95 opacity-0 pointer-events-none ease-[cubic-bezier(0.16,1,0.3,1)]">
+      {% if user %}
+      <div class="mt-4">
+        <div class="flex flex-col items-center text-center gap-4 mb-12">
+          <div class="w-24 h-24 bg-luviio-charcoal rounded-full flex items-center justify-center text-luviio-gold text-4xl shadow-2xl sys-transition hover:scale-105"><i class="ri-vip-diamond-line"></i></div>
+          <div>
+            <h3 class="font-serif italic text-3xl text-luviio-charcoal">{{ user.name | default("Premium User") }}</h3>
+            <p class="text-xs text-gray-500 mt-2 font-sans tracking-widest uppercase">{{ user.email | default("user@example.com") }}</p>
+          </div>
+        </div>
+        <div class="space-y-4 w-full">
+          <a href="/dashboard" class="w-full block text-center py-4 bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase rounded-xl hover-target sys-transition hover:bg-luviio-gold">Access Dashboard</a>
+          <a href="/settings" class="w-full block text-center py-4 border border-luviio-charcoal text-luviio-charcoal sys-transition hover:bg-luviio-charcoal hover:text-white font-sans text-[10px] tracking-widest uppercase font-bold hover-target rounded-xl">Account Settings</a>
+        </div>
+      </div>
+      {% else %}
+      <div class="mt-4 flex flex-col h-full">
+        <h3 class="font-serif text-3xl text-luviio-charcoal mb-2">Welcome Back.</h3>
+        <p class="text-xs text-gray-500 font-sans tracking-wide mb-10">Sign in to track your orders.</p>
+        
+        <form action="/login" method="POST" class="space-y-6 w-full mb-8">
+          <input type="email" name="email" placeholder="Email Address" class="w-full border-b border-luviio-charcoal/30 pb-3 outline-none font-sans text-sm bg-transparent focus:border-luviio-gold sys-transition" required>
+          <input type="password" name="password" placeholder="Password" class="w-full border-b border-luviio-charcoal/30 pb-3 outline-none font-sans text-sm bg-transparent focus:border-luviio-gold sys-transition" required>
+          <button type="submit" class="w-full mt-4 py-4 bg-luviio-charcoal text-white font-sans text-[10px] font-bold tracking-widest uppercase rounded-xl hover-target sys-transition hover:bg-luviio-gold">Sign In</button>
+        </form>
+        
+        <div class="mt-auto border-t border-luviio-sand/50 pt-6">
+          <p class="text-xs text-gray-500 font-sans text-center mb-3">Don't have an account? <a href="/register" class="text-luviio-charcoal font-bold hover:text-luviio-gold hover-target">Sign Up</a></p>
+          <p class="text-xs text-gray-500 font-sans text-center">Are you a dealer? <a href="/partner" class="text-luviio-charcoal font-bold hover:text-luviio-gold hover-target border-b border-luviio-charcoal pb-0.5">Partner Portal</a></p>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    
+  </div>
+</div>
 {% endmacro %}
