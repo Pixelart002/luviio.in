@@ -1,0 +1,17 @@
+{% macro render_pricing() %}
+<section id="pricingSection" class="py-20 md:py-40 bg-luviio-charcoal relative w-full text-white overflow-hidden border-t border-white/5">
+  <div class="max-w-7xl mx-auto px-6 relative z-10">
+    <div class="text-center mb-12 md:mb-24">
+      <span class="text-luviio-gold text-[10px] uppercase tracking-[0.4em] font-sans font-bold">Partnerships</span>
+      <h2 class="text-3xl md:text-6xl font-serif mt-4">Trade & <span class="italic text-gray-500">Retail.</span></h2>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8" id="pricingGrid">
+      <div class="pricing-card bg-[#161616] border border-gray-800 rounded-3xl p-8 flex flex-col hover:border-luviio-gold sys-transition">
+        <h3 class="text-xl font-serif text-gray-300 mb-2">Trade Partner</h3>
+        <div class="text-4xl font-serif mb-6 text-white">35% <span class="text-xs font-sans text-gray-500 uppercase">Margin</span></div>
+        <a href="/partner" class="w-full text-center py-4 rounded-xl bg-luviio-gold text-black text-[10px] font-bold uppercase tracking-widest">Become Partner</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endmacro %}
