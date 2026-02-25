@@ -3,17 +3,13 @@
   <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
     <a href="/" class="text-sm font-serif tracking-[0.2em] uppercase text-white hover:text-luviio-gold sys-transition">LUVIIO</a>
     <div class="flex items-center gap-6">
-    <a href="/collection" class="text-xs uppercase tracking-widest font-bold text-gray-400 hover:text-white sys-transition">Collection</a>
-    {% if user %}
-        <a href="/dashboard" class="text-xs uppercase tracking-widest font-bold text-gray-400 hover:text-luviio-gold sys-transition">Dashboard</a>
-    {% else %}
-        <a href="/login" class="text-xs uppercase tracking-widest font-bold text-luviio-gold">Sign In</a>
-    {% endif %}
-    
-    <button onclick="window.openCart()" class="text-xl text-white hover:text-luviio-gold sys-transition outline-none">
-        <i class="ri-shopping-bag-3-line"></i>
-    </button>
-</div>
+      <a href="/collection" class="text-xs uppercase tracking-widest font-bold text-gray-400 hover:text-white sys-transition">Collection</a>
+      {% if user %}
+      <a href="/dashboard" class="text-xs uppercase tracking-widest font-bold text-gray-400 hover:text-luviio-gold sys-transition">Dashboard</a>
+      {% else %}
+      <a href="/login" class="text-xs uppercase tracking-widest font-bold text-luviio-gold">Sign In</a>
+      {% endif %}
+    </div>
   </div>
 </nav>
 {% endmacro %}

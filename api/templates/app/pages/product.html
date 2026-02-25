@@ -1,6 +1,11 @@
+
+
+
 {% from "app/macros/shared/toast.html" import render_toast %}
 {% from "app/macros/product_page/navbar.html" import render_product_navbar %}
 {% from "app/macros/product_page/details.html" import render_product_details %}
+{% from "app/macros/shared/cart_drawer.html" import render_cart_drawer %}
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -99,5 +104,10 @@
     });
 </script>
     {{ render_toast() }}
+    
+    
+    
+    
+    {{ render_cart_drawer() }}
 </body>
 </html>
