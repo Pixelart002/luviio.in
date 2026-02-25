@@ -1,14 +1,22 @@
-<!DOCTYPE html>
-<html>
-
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title></title>
-</head>
-
-<body>
-  
-</body>
-
-</html>
+{% macro render_footer() %}
+<footer class="bg-luviio-charcoal text-luviio-stone relative z-50 pt-24 md:pt-40 overflow-hidden w-full border-t border-luviio-gold/10">
+  <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl opacity-[0.03] pointer-events-none z-0">
+    <img src="/api/static/images/lotus.png" class="w-full h-full object-contain anim-float filter sepia hue-rotate-180" alt="Lotus Decor" loading="lazy">
+  </div>
+  <div class="max-w-4xl mx-auto px-6 pb-12 text-center relative z-10 w-full">
+    <div class="flex justify-center items-center mb-10">
+      <img src="/api/static/images/logo.png" alt="Luviio Logo" class="w-12 h-12 object-contain invert opacity-60" loading="lazy">
+    </div>
+    <h2 class="text-4xl md:text-7xl font-serif italic mb-10 md:mb-16 tracking-wide text-white">Redefine your space.</h2>
+    <div class="flex flex-col md:flex-row justify-center items-center gap-0 max-w-lg mx-auto mb-24 relative group w-full">
+      <input type="email" placeholder="Email address" class="bg-transparent border-b border-gray-600 px-4 py-4 w-full focus:outline-none focus:border-luviio-gold sys-transition text-white placeholder-gray-500 font-sans text-sm rounded-none tracking-wide">
+      <button class="text-luviio-gold font-sans font-bold sys-transition hover:text-white md:absolute right-0 bottom-4 tracking-[0.2em] text-[10px] uppercase mt-6 md:mt-0 hover-target">Subscribe</button>
+    </div>
+    <div class="text-gray-500 text-[9px] md:text-[10px] font-sans flex flex-col sm:flex-row justify-between items-center gap-6 border-t border-gray-800 pt-10 uppercase tracking-[0.3em]">
+      <p>&copy; 2026 Luviio Bathware.</p>
+      <p>Designed for Luxury.</p>
+    </div>
+  </div>
+  <h1 class="absolute -bottom-4 md:-bottom-12 left-0 text-[20vw] md:text-[15vw] font-serif font-bold text-white/[0.02] leading-none pointer-events-none select-none text-center w-full">LUVIIO</h1>
+</footer>
+{% endmacro %}
