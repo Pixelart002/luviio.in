@@ -1,3 +1,6 @@
+{% from "app/macros/toast.html" import render_toast %}
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -100,9 +103,9 @@
             </div>
 
             <div class="flex flex-col sm:flex-row gap-4">
-                <button class="flex-1 bg-white text-black px-8 py-4 rounded-sm text-xs uppercase tracking-[0.2em] font-bold hover:bg-luviio-gold sys-transition flex items-center justify-center gap-3">
-                    <i class="ri-shopping-bag-3-line text-lg"></i> Add to Cart
-                </button>
+                <button id="addToCartBtn" data-product-id="{{ product.id }}" class="flex-1 bg-white text-black px-8 py-4 rounded-sm text-xs uppercase tracking-[0.2em] font-bold hover:bg-luviio-gold sys-transition flex items-center justify-center gap-3">
+    <i class="ri-shopping-bag-3-line text-lg"></i> <span id="btnText">Add to Cart</span>
+</button>
                 <button class="px-8 py-4 rounded-sm text-xs uppercase tracking-[0.2em] font-bold border border-white/20 text-white hover:border-white sys-transition flex items-center justify-center gap-3">
                     <i class="ri-heart-3-line text-lg"></i> Save
                 </button>
@@ -130,5 +133,54 @@
             });
         });
     </script>
+    
+    
+    
+    <script>
+        document.getElementById('addToCartBtn').addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const btnText = document.getElementById('btnText');
+            const productId = btn.getAttribute('data-product-id');
+            const originalText = btnText.innerText;
+            
+            // Loading state
+            btnText.innerText = 'Adding...';
+            btn.disabled = true;
+            btn.classList.add('opacity-70');
+
+            try {
+                const response = await fetch('/api/cart/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_id: productId, quantity: 1 })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    // Ye hamare macro ka function hai jo humne pehle banaya tha
+                    showToast(result.message, false);
+                    btnText.innerText = 'Added ✓';
+                    setTimeout(() => { btnText.innerText = originalText; btn.disabled = false; btn.classList.remove('opacity-70'); }, 2000);
+                } else {
+                    if (response.status === 401) {
+                        window.location.href = '/login?error=invalid_session';
+                    } else {
+                        showToast(result.message, true);
+                        btnText.innerText = originalText;
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-70');
+                    }
+                }
+            } catch (error) {
+                showToast("Network error occurred.", true);
+                btnText.innerText = originalText;
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
+            }
+        });
+    </script>
+
+    {{ render_toast() }}
 </body>
 </html>

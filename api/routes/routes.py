@@ -343,3 +343,53 @@ async def product_detail_page(request: Request, product_id: str):
         page_response.set_cookie(key="access_token", value=new_access_token, httponly=True, secure=True, samesite="strict", max_age=1800)
         
     return page_response
+    
+    
+    
+    from fastapi.responses import JSONResponse
+
+# ==========================================
+# 8. CART API (AJAX endpoints)
+# ==========================================
+
+@router.post("/api/cart/add")
+async def add_to_cart(request: Request):
+    payload, _ = manage_session(request)
+    
+    # 1. Check if user is logged in
+    if not payload or payload == "expired":
+        return JSONResponse({"status": "error", "message": "Please log in to add items."}, status_code=401)
+        
+    user_id = payload.get("sub") # User ya Partner ka UUID
+    
+    # 2. Get data from frontend
+    try:
+        data = await request.json()
+        product_id = data.get("product_id")
+        quantity = int(data.get("quantity", 1))
+    except:
+        return JSONResponse({"status": "error", "message": "Invalid request data."}, status_code=400)
+
+    admin_db = get_admin_db()
+    
+    try:
+        # 3. Check if product already exists in cart
+        existing_item = admin_db.table("cart_items").select("*").eq("user_id", user_id).eq("product_id", product_id).execute()
+        
+        if len(existing_item.data) > 0:
+            # Agar pehle se hai, toh quantity badha do
+            new_qty = existing_item.data[0]["quantity"] + quantity
+            admin_db.table("cart_items").update({"quantity": new_qty}).eq("id", existing_item.data[0]["id"]).execute()
+        else:
+            # Naya item insert karo
+            admin_db.table("cart_items").insert({
+                "user_id": user_id,
+                "product_id": product_id,
+                "quantity": quantity
+            }).execute()
+            
+        return JSONResponse({"status": "success", "message": "Item added to cart!"})
+        
+    except Exception as e:
+        print(f"Cart Error: {e}")
+        return JSONResponse({"status": "error", "message": "Could not add item to cart."}, status_code=500)
