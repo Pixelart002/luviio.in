@@ -68,7 +68,7 @@
         html.lenis,
         html.lenis body {
             height: auto;
-            width: 100vw;
+            width: 100%;
             overflow-x: hidden;
         }
         
@@ -248,7 +248,11 @@
     </style>
 </head>
 
-<body class="{% block body_class %}relative bg-luviio-stone text-luviio-charcoal{% endblock %}">
+<body class="overflow-x-hidden {% block body_class %}relative bg-luviio-stone text-luviio-charcoal{% endblock %}">
+    
+    
+    
+    
     
     <div id="cursor" class="hidden md:block"></div>
     
