@@ -155,9 +155,10 @@
     
     <div id="cursor" class="hidden md:block"></div>
     
+    <div class="relative w-full overflow-x-hidden">
     {% block content %}
     {% endblock %}
-    
+</div>
     {{ render_cart_drawer() }}
     {{ render_toast() }}
     
