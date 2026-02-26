@@ -17,7 +17,7 @@ if ROOT_DIR not in sys.path:
 
 from api.routes.routes import router as luviio_router
 from api.routes.cart import router as cart_router
-from config.ui_config import UI_CONFIG  # Ab yeh Vercel pe nahi phatega!
+from api.config.ui_config import UI_CONFIG  # Ab yeh Vercel pe nahi phatega!
 
 # Directory paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
