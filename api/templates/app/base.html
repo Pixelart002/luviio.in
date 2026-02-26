@@ -48,13 +48,7 @@
     </script>
     
     <style>
-    
-    *{
-        max-width: 100% !important;
-    }
-    
-    
-    
+        /* 🔥 THE NUCLEAR SCROLL FIXES */
         html,
         body {
             -webkit-font-smoothing: antialiased;
@@ -62,64 +56,30 @@
             text-rendering: optimizeLegibility;
             background-color: #F5F5F0;
             color: #111111;
-            /* 🔥 SCROLL FIX 1 */
             overflow-x: hidden !important;
             width: 100%;
-            position:relative;
+            max-width: 100vw !important;
+            position: relative;
+            margin: 0;
+            padding: 0;
         }
         
         html.lenis,
         html.lenis body {
             height: auto;
-            /* 🔥 SCROLL FIX 2: 100vw ki jagah 100% */
-            width: 100%; 
+            width: 100%;
+            max-width: 100vw !important;
             overflow-x: hidden !important;
         }
         
-        .lenis.lenis-smooth {
-            scroll-behavior: auto !important;
-        }
-        
-        .lenis.lenis-smooth [data-lenis-prevent] {
-            overscroll-behavior: contain;
-        }
-        
-        .lenis.lenis-stopped {
-            overflow: hidden;
-        }
+        .lenis.lenis-smooth { scroll-behavior: auto !important; }
+        .lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+        .lenis.lenis-stopped { overflow: hidden; }
         
         @media (min-width: 768px) {
-            body,
-            a,
-            button,
-            input {
-                cursor: none;
-            }
-            
-            #cursor {
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 16px;
-                height: 16px;
-                background: #C5A059;
-                border-radius: 50%;
-                pointer-events: none;
-                z-index: 9999;
-                mix-blend-mode: difference;
-                transform: translate(-50%, -50%);
-                transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), height 0.4s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.4s;
-                will-change: transform;
-            }
-            
-            #cursor.hover-active {
-                width: 80px;
-                height: 80px;
-                background: rgba(255, 255, 255, 0.1);
-                backdrop-filter: blur(4px);
-                mix-blend-mode: normal;
-                border: 1px solid rgba(255, 255, 255, 0.3);
-            }
+            body, a, button, input { cursor: none; }
+            #cursor { position: fixed; top: 0; left: 0; width: 16px; height: 16px; background: #C5A059; border-radius: 50%; pointer-events: none; z-index: 9999; mix-blend-mode: difference; transform: translate(-50%, -50%); transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), height 0.4s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.4s; will-change: transform; }
+            #cursor.hover-active { width: 80px; height: 80px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(4px); mix-blend-mode: normal; border: 1px solid rgba(255, 255, 255, 0.3); }
         }
         
         .text-marble { background-image: url('https://images.unsplash.com/photo-1558055620-1e5b8823f666?q=80&w=1200&auto=format&fit=crop'); background-size: cover; background-position: center; -webkit-background-clip: text; -webkit-text-fill-color: transparent; color: transparent; display: inline-block; filter: contrast(1.2) brightness(0.9); }
@@ -151,14 +111,16 @@
     </style>
 </head>
 
-<body class="overflow-x-hidden w-full max-w-full {% block body_class %}relative bg-luviio-stone text-luviio-charcoal{% endblock %}">
+<body class="overflow-x-hidden w-full max-w-[100vw] {% block body_class %}relative bg-luviio-stone text-luviio-charcoal{% endblock %}">
     
-    <div id="cursor" class="hidden md:block"></div>
-    
-    <div class="relative w-full overflow-x-hidden">
-    {% block content %}
-    {% endblock %}
-</div>
+    <div class="relative w-full max-w-[100vw] overflow-hidden min-h-screen flex flex-col">
+        
+        <div id="cursor" class="hidden md:block"></div>
+        
+        {% block content %}
+        {% endblock %}
+        
+    </div> 
     {{ render_cart_drawer() }}
     {{ render_toast() }}
     
