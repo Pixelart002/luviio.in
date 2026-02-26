@@ -13,7 +13,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from api.routes.routes import router as luviio_router
 from api.routes.cart import router as cart_router
-
+from config.ui_config import UI_CONFIG
 
 
 
@@ -25,7 +25,7 @@ TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 
-
+template.env.globals['ui_config'] = UI_CONFIG
 
 
 limiter = Limiter(key_func=get_remote_address)
