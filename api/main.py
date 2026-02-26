@@ -12,6 +12,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 
 from api.routes.routes import router as luviio_router
+from api.routes.cart import router as cart_router
 
 
 
@@ -71,3 +72,4 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 app.include_router(luviio_router)
+app.include_router(cart_router)
