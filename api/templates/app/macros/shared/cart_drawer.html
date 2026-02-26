@@ -1,8 +1,7 @@
-
 {% macro render_cart_drawer() %}
 <div id="cartOverlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] opacity-0 pointer-events-none transition-opacity duration-500"></div>
 
-<div id="cartDrawer" class="fixed top-0 right-0 h-[100dvh] w-full md:w-[450px] bg-luviio-panel border-l border-white/5 z-[110] transform translate-x-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col shadow-2xl">
+<div id="cartDrawer" class="hidden fixed top-0 right-0 h-[100dvh] w-full md:w-[450px] bg-luviio-panel border-l border-white/5 z-[110] transform translate-x-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col shadow-2xl">
     
     <div class="h-20 px-8 flex items-center justify-between border-b border-white/5 shrink-0">
         <h2 class="font-serif text-xl text-white tracking-wide flex items-center gap-3">
@@ -25,11 +24,8 @@
     </div>
 
     <div id="cartContent" class="hidden flex-1 overflow-y-auto px-8 py-8 cart-scrollbar flex flex-col gap-6">
-        
         <div id="cartItemsList" class="flex flex-col gap-6"></div>
-
         <div id="cartSponsoredSection" class="mt-auto pt-8 border-t border-white/5"></div>
-
     </div>
 
     <div id="cartFooter" class="hidden p-8 border-t border-white/5 bg-black/40 shrink-0">
@@ -52,71 +48,64 @@
 </style>
 
 <script>
-    // Making it Global so any page can call it
     window.openCart = function() {
         const cartDrawer = document.getElementById('cartDrawer');
         const cartOverlay = document.getElementById('cartOverlay');
-        cartOverlay.classList.remove('opacity-0', 'pointer-events-none');
-        cartDrawer.classList.remove('translate-x-full');
-        document.body.style.overflow = 'hidden'; 
         
-        // 🔥 JAISE HI DRAWER KHULE, DATA FETCH KARO!
+        // 🔥 FIX: Pehle display block karo (hidden hatao), phir slight delay ke baad animate karo
+        cartDrawer.classList.remove('hidden');
+        cartOverlay.classList.remove('opacity-0', 'pointer-events-none');
+        
+        requestAnimationFrame(() => {
+            cartDrawer.classList.remove('translate-x-full');
+        });
+        
+        document.body.style.overflow = 'hidden'; 
         fetchAndRenderCart();
     }
 
     window.closeCart = function() {
         const cartDrawer = document.getElementById('cartDrawer');
         const cartOverlay = document.getElementById('cartOverlay');
+        
         cartOverlay.classList.add('opacity-0', 'pointer-events-none');
         cartDrawer.classList.add('translate-x-full');
         document.body.style.overflow = ''; 
+        
+        // 🔥 FIX: Animation khatam hone ke baad (500ms), drawer ko layout se nikal do
+        setTimeout(() => {
+            cartDrawer.classList.add('hidden');
+        }, 500);
     }
 
-    // 🔥 THE MASTER API CALL (Using Axios)
+    // --- (Baaki sab fetchAndRenderCart, renderCartItems, etc. pehle jaisa same hai) ---
     async function fetchAndRenderCart() {
         const loader = document.getElementById('cartLoader');
         const emptyState = document.getElementById('cartEmptyState');
         const cartContent = document.getElementById('cartContent');
         const cartFooter = document.getElementById('cartFooter');
-        
-        // Show loader, hide everything else initially
-        loader.classList.remove('hidden');
-        emptyState.classList.add('hidden');
-        cartContent.classList.add('hidden');
-        cartFooter.classList.add('hidden');
+        loader.classList.remove('hidden'); emptyState.classList.add('hidden'); cartContent.classList.add('hidden'); cartFooter.classList.add('hidden');
 
         try {
-            // Axios magic directly gives us JSON parsed data
             const response = await axios.get('/api/cart/');
             const result = response.data;
-            
             if (result.status === 'success') {
                 const data = result.data;
                 document.getElementById('cartItemCount').innerText = data.total_items;
-                
                 if (data.items.length === 0) {
-                    // State: Empty Cart
                     emptyState.classList.remove('hidden');
                 } else {
-                    // State: Filled Cart
                     renderCartItems(data.items);
                     document.getElementById('cartSubtotal').innerText = '₹' + data.subtotal.toLocaleString('en-IN');
                     renderSponsoredItem(data.sponsored);
-                    
-                    cartContent.classList.remove('hidden');
-                    cartFooter.classList.remove('hidden');
+                    cartContent.classList.remove('hidden'); cartFooter.classList.remove('hidden');
                 }
             }
         } catch (error) {
-            console.error("Cart Error:", error);
-            showToast("Failed to load your collection.", true);
-            emptyState.classList.remove('hidden'); // Fallback to empty state on error
-        } finally {
-            loader.classList.add('hidden'); // Always hide loader at the end
-        }
+            console.error("Cart Error:", error); showToast("Failed to load your collection.", true); emptyState.classList.remove('hidden');
+        } finally { loader.classList.add('hidden'); }
     }
 
-    // Component: Render Items Loop
     function renderCartItems(items) {
         const container = document.getElementById('cartItemsList');
         container.innerHTML = items.map(item => `
@@ -143,11 +132,9 @@
         `).join('');
     }
 
-    // Component: Render Sponsored Item
     function renderSponsoredItem(sponsored) {
         const container = document.getElementById('cartSponsoredSection');
         if(!sponsored) { container.innerHTML = ''; return; }
-        
         container.innerHTML = `
             <div class="flex items-center justify-between mb-4">
                 <span class="text-[9px] uppercase tracking-widest text-gray-400 font-bold">Frequently Bought Together</span>
@@ -169,23 +156,13 @@
         `;
     }
 
-    // Future API connections for UI Buttons
-    async function updateQty(itemId, change) {
-        showToast("Updating quantity...", false);
-        // Kal ko yahan PATCH API aayegi: axios.patch('/api/cart/update', {id: itemId, qty: change})
-    }
-    
-    async function removeCartItem(itemId) {
-        showToast("Removing item...", false);
-        // Kal ko yahan DELETE API aayegi: axios.delete('/api/cart/remove')
-    }
-
+    async function updateQty(itemId, change) { showToast("Updating quantity...", false); }
+    async function removeCartItem(itemId) { showToast("Removing item...", false); }
     async function quickAddSponsored(productId) {
         showToast("Adding sponsored item...", false);
         try {
             await axios.post('/api/cart/add', { product_id: productId, quantity: 1 });
-            fetchAndRenderCart(); // Refresh cart UI immediately!
-            showToast("Added to collection ✓", false);
+            fetchAndRenderCart(); showToast("Added to collection ✓", false);
         } catch(e) { showToast("Failed to add item.", true); }
     }
 

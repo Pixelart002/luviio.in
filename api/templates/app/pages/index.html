@@ -1,35 +1,3 @@
-{% extends "app/base.html" %}
-
-{% from "app/macros/index_page/splash.html" import render_splash %}
-{% from "app/macros/shared/navbar.html" import render_navbar %}
-{% from "app/macros/index_page/hero.html" import render_hero %}
-{% from "app/macros/index_page/branding.html" import render_branding %}
-{% from "app/macros/index_page/gallery.html" import render_gallery %}
-{% from "app/macros/index_page/showcase.html" import render_showcase %}
-{% from "app/macros/index_page/testimonials.html" import render_testimonials %}
-{% from "app/macros/index_page/pricing.html" import render_pricing %}
-{% from "app/macros/shared/footer.html" import render_footer %}
-
-{% block title %}LUVIIO - Premium Bathware{% endblock %}
-
-{% block body_class %}relative bg-luviio-stone{% endblock %}
-
-{% block content %}
-    {{ render_splash() }}
-    
-    {{ render_navbar(user) }}
-    
-    <main id="mainContent" class="opacity-0 hidden bg-luviio-stone">
-        {{ render_hero() }}
-        {{ render_branding() }}
-        {{ render_gallery() }}
-        {{ render_showcase() }}
-        {{ render_testimonials() }}
-        {{ render_pricing() }}
-        {{ render_footer() }}
-    </main>
-{% endblock %}
-
 {% block extra_scripts %}
 <script>
     document.addEventListener("DOMContentLoaded", () => {
@@ -68,10 +36,7 @@
             gsap.ticker.lagSmoothing(0, 0);
             
             new Swiper(".homeSwiper", {
-                slidesPerView: 1,
-                spaceBetween: 30,
-                loop: true,
-                grabCursor: true,
+                slidesPerView: 1, spaceBetween: 30, loop: true, grabCursor: true,
                 autoplay: { delay: 4000, disableOnInteraction: true },
                 pagination: { el: ".swiper-pagination", clickable: true }
             });
@@ -100,12 +65,21 @@
             let isDrawerOpen = false;
             let isAccountView = false;
             
+            // 🔥 FIXED: Menu Drawer Logic - Removing from DOM when closed
+            // HTML me jakar manually '<div id="drawerContent" class="... hidden ..."' add kar dena
+            drawerContent.classList.add('hidden'); // Initially hidden 
+            
             function toggleDrawer() {
                 isDrawerOpen = !isDrawerOpen;
                 if (isDrawerOpen) {
+                    drawerContent.classList.remove('hidden'); // Show layout first
                     drawerOverlay.classList.remove('opacity-0', 'pointer-events-none');
                     drawerOverlay.classList.add('active');
-                    drawerContent.classList.remove('translate-x-full');
+                    
+                    requestAnimationFrame(() => {
+                        drawerContent.classList.remove('translate-x-full');
+                    });
+                    
                     gsap.fromTo(".clip-text", { y: "100%" }, { y: "0%", duration: 1, stagger: 0.05, delay: 0.2, ease: "power4.out" });
                     lenis.stop();
                 } else {
@@ -113,7 +87,11 @@
                     drawerOverlay.classList.remove('active');
                     drawerContent.classList.add('translate-x-full');
                     lenis.start();
+                    
                     setTimeout(() => { if (isAccountView) toggleView(); }, 600);
+                    
+                    // Hide completely after transition (700ms)
+                    setTimeout(() => { drawerContent.classList.add('hidden'); }, 700);
                 }
             }
             
@@ -147,7 +125,6 @@
             gsap.to("#showcaseTitle", { scrollTrigger: { trigger: "#showcaseWrapper", start: "top 80%" }, y: 0, duration: 1.5, ease: "expo.out" });
             
             const track = document.getElementById("horizontalTrack");
-            
             function getScrollAmount() { return -(track.scrollWidth - window.innerWidth + (window.innerWidth > 768 ? 128 : 48)); }
             ScrollTrigger.create({ trigger: "#showcaseWrapper", start: "top top", end: () => `+=${Math.abs(getScrollAmount())}`, pin: true, animation: gsap.to(track, { x: getScrollAmount, ease: "none" }), scrub: 1, invalidateOnRefresh: true });
             gsap.utils.toArray('.showcase-img').forEach((img) => { gsap.to(img, { xPercent: 15, ease: "none", scrollTrigger: { trigger: "#showcaseWrapper", start: "top top", end: () => `+=${Math.abs(getScrollAmount())}`, scrub: 1 } }); });
