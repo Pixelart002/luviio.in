@@ -59,7 +59,7 @@
             width: 100%;
             max-width: 100%;
             overflow-x: hidden !important;
-            overscroll-behavior-x: none !important; /* Prevents mobile bounce */
+            overscroll-behavior-x: none !important;
             margin: 0;
             padding: 0;
         }
@@ -99,7 +99,7 @@
         ::-webkit-scrollbar { width: 0px; background: transparent; }
         .sys-transition { transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
         
-        .pricing-glow::before { content: ''; position: absolute; inset: -2px; background: linear-gradient(45deg, #C5A059, transparent, #C5A059); z-index: -1; filter: blur(15px); opacity: 0; transition: opacity 0.5s ease; }
+        .pricing-glow::before { content: ''; position: absolute; inset: -2px; background: linear-gradient(45deg, #C5A059, transparent, #C5A059); z-10; filter: blur(15px); opacity: 0; transition: opacity 0.5s ease; }
         .pricing-card:hover .pricing-glow::before { opacity: 0.6; }
         
         .swiper-pagination-bullet { background-color: rgba(0, 0, 0, 0.3) !important; }
@@ -114,12 +114,10 @@
 <body class="w-full max-w-full overflow-x-hidden {% block body_class %}relative bg-luviio-stone text-luviio-charcoal{% endblock %}">
     
     <div class="relative w-full overflow-hidden" style="clip-path: inset(0);">
-        
         <div id="cursor" class="hidden md:block"></div>
         
         {% block content %}
         {% endblock %}
-        
     </div> 
 
     {{ render_cart_drawer() }}
@@ -129,6 +127,119 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
     <script src="https://unpkg.com/@studio-freight/lenis@1.0.33/dist/lenis.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+    
+    <script>
+        // --- 1. LENIS SMOOTH SCROLL ---
+        const lenis = new Lenis();
+        window.lenis = lenis;
+        function raf(time) { lenis.raf(time); requestAnimationFrame(raf); }
+        requestAnimationFrame(raf);
+
+        // --- 2. CUSTOM CURSOR ---
+        const cursor = document.getElementById('cursor');
+        if (cursor) {
+            document.addEventListener('mousemove', (e) => {
+                gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.1 });
+            });
+            document.querySelectorAll('a, button').forEach(el => {
+                el.addEventListener('mouseenter', () => cursor.classList.add('hover-active'));
+                el.addEventListener('mouseleave', () => cursor.classList.remove('hover-active'));
+            });
+        }
+
+        // --- 3. THE CART ENGINE (Scoped to Window for global access) ---
+        window.openCart = function() {
+            const drawer = document.getElementById('drawerContent');
+            const overlay = document.getElementById('drawerOverlay');
+            if(!drawer || !overlay) return;
+            
+            drawer.classList.remove('translate-x-full');
+            drawer.classList.remove('hidden'); 
+            overlay.classList.add('active');
+            overlay.classList.remove('pointer-events-none', 'opacity-0');
+            
+            window.refreshCart(); 
+            lenis.stop(); 
+        };
+
+        window.closeCart = function() {
+            const drawer = document.getElementById('drawerContent');
+            const overlay = document.getElementById('drawerOverlay');
+            if(!drawer || !overlay) return;
+
+            drawer.classList.add('translate-x-full');
+            overlay.classList.remove('active');
+            overlay.classList.add('pointer-events-none', 'opacity-0');
+            lenis.start();
+        };
+
+        window.refreshCart = async function() {
+            const list = document.getElementById('cartItemsList');
+            const subtotalEl = document.getElementById('cartSubtotal');
+            if(!list) return;
+
+            try {
+                const res = await fetch('/api/cart/');
+                const result = await res.json();
+                
+                if (result.status !== 'success' || !result.data.items || result.data.items.length === 0) {
+                    list.innerHTML = `
+                        <div class="py-20 text-center opacity-40">
+                            <i class="ri-archive-line text-4xl mb-4 block"></i>
+                            <p class="text-[10px] uppercase tracking-widest font-bold">Your collection is empty</p>
+                        </div>`;
+                    if(subtotalEl) subtotalEl.innerText = '₹0';
+                    return;
+                }
+
+                // Render items based on backend keys: id, image, qty, price
+                list.innerHTML = result.data.items.map(item => `
+                    <div class="flex gap-6 items-center group py-4 border-b border-black/5">
+                        <div class="w-16 h-20 bg-white rounded-sm overflow-hidden border border-black/5 shrink-0">
+                            <img src="${item.image || ''}" class="w-full h-full object-cover">
+                        </div>
+                        <div class="flex-grow">
+                            <h4 class="text-[11px] font-bold uppercase tracking-widest text-luviio-charcoal mb-1">${item.name}</h4>
+                            <p class="text-[9px] text-gray-500 uppercase tracking-widest">
+                                Qty: ${item.qty} &bull; ₹${(item.price || 0).toLocaleString()}
+                            </p>
+                        </div>
+                        <button onclick="window.removeItem(${item.id})" class="text-gray-400 hover:text-red-500 sys-transition p-2">
+                            <i class="ri-delete-bin-line"></i>
+                        </button>
+                    </div>
+                `).join('');
+
+                if(subtotalEl) subtotalEl.innerText = `₹${result.data.subtotal.toLocaleString()}`;
+
+            } catch (err) {
+                console.error("Cart Refresh Error:", err);
+            }
+        };
+
+        window.removeItem = async function(id) {
+            const res = await fetch(`/api/cart/remove/${id}`, { method: 'DELETE' });
+            if(res.ok) window.refreshCart();
+        };
+
+        window.handleCheckout = function() {
+            const isLoggedIn = document.cookie.includes('access_token');
+            if (!isLoggedIn) {
+                showToast("Please sign in for checkout", true);
+                setTimeout(() => window.location.href = '/login?checkout=true', 1200);
+            } else {
+                window.location.href = '/checkout';
+            }
+        };
+
+        // Close drawer handlers
+        document.addEventListener('click', (e) => {
+            if(e.target.id === 'drawerOverlay' || e.target.closest('#closeDrawer')) {
+                window.closeCart();
+            }
+        });
+
+    </script>
     
     {% block extra_scripts %}
     {% endblock %}
