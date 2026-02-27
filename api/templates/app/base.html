@@ -131,6 +131,75 @@
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
     
     {% block extra_scripts %}
+    
+    
+    
+    <script> // Add these inside your existing <script type="module"> in base.html
+
+// Attach to window to make them global
+window.openCart = function() {
+    const drawer = document.getElementById('drawerContent');
+    const overlay = document.getElementById('drawerOverlay');
+    if(!drawer || !overlay) return;
+    
+    drawer.classList.remove('translate-x-full');
+    drawer.classList.remove('hidden'); // Fail-safe
+    overlay.classList.add('active');
+    overlay.classList.remove('pointer-events-none', 'opacity-0');
+    
+    window.refreshCart(); // Load items immediately
+    if(window.lenis) window.lenis.stop();
+};
+
+window.refreshCart = async function() {
+    const list = document.getElementById('cartItemsList');
+    const subtotalEl = document.getElementById('cartSubtotal');
+    if(!list) return;
+
+    try {
+        const res = await fetch('/api/cart/');
+        const result = await res.json();
+        
+        if (result.status !== 'success' || !result.data.items || result.data.items.length === 0) {
+            list.innerHTML = `<div class="py-20 text-center opacity-40"><i class="ri-archive-line text-4xl mb-4 block"></i><p class="text-[10px] uppercase tracking-widest font-bold">Your cart is empty</p></div>`;
+            if(subtotalEl) subtotalEl.innerText = '₹0';
+            return;
+        }
+
+        list.innerHTML = result.data.items.map(item => `
+            <div class="flex gap-6 items-center group animate-fade-in">
+                <div class="w-16 h-20 bg-[#111] rounded-sm overflow-hidden border border-white/5">
+                    <img src="${item.image}" class="w-full h-full object-cover">
+                </div>
+                <div class="flex-grow">
+                    <h4 class="text-[11px] font-bold text-white uppercase tracking-wider mb-1">${item.name}</h4>
+                    <p class="text-[9px] text-gray-500 uppercase tracking-widest">Qty: ${item.qty} &bull; ₹${item.price.toLocaleString()}</p>
+                </div>
+                <button onclick="window.removeItem(${item.id})" class="text-gray-600 hover:text-red-500 sys-transition"><i class="ri-delete-bin-line"></i></button>
+            </div>
+        `).join('');
+
+        if(subtotalEl) subtotalEl.innerText = `₹${result.data.subtotal.toLocaleString()}`;
+
+    } catch (err) {
+        console.error("Cart Refresh Error:", err);
+    }
+};
+
+window.removeItem = async function(id) {
+    const res = await fetch(`/api/cart/remove/${id}`, { method: 'DELETE' });
+    if(res.ok) window.refreshCart();
+};
+
+window.handleCheckout = function() {
+    const isLoggedIn = document.cookie.includes('access_token');
+    if (!isLoggedIn) {
+        showToast("Please sign in for checkout", true);
+        setTimeout(() => window.location.href = '/login?checkout=true', 1200);
+    } else {
+        window.location.href = '/checkout';
+    }
+};</script>
     {% endblock %}
 </body>
 
