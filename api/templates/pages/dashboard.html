@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - {{ ui_config.branding.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    body {
+        background-color: #0a0a0a !important;
+        color: #ffffff;
+        overflow: hidden !important; 
+        height: 100dvh;
+    }
+    
+    .glass-panel { background: rgba(18, 18, 18, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
+    
+    /* Custom Scrollbar for Dashboard */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: #C5A059; }
+
+    .nav-item.active { background: rgba(197, 160, 89, 0.1); border-right: 2px solid #C5A059; color: #C5A059; }
+    
+    .tier-badge {
+        background: linear-gradient(135deg, rgba(197,160,89,0.2) 0%, rgba(197,160,89,0.05) 100%);
+        border: 1px solid rgba(197,160,89,0.3);
+        color: #C5A059;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex h-[100dvh] w-full bg-[#0a0a0a] relative">
+
+    <div id="sidebarOverlay" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 hidden opacity-0 transition-opacity duration-300 md:hidden" onclick="toggleSidebar()"></div>
+
+    <aside id="mainSidebar" class="fixed md:relative top-0 left-0 z-50 h-full w-64 flex flex-col border-r border-white/5 bg-[#050505] transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out">
+        
+        <button onclick="toggleSidebar()" class="md:hidden absolute top-5 right-5 text-gray-500 hover:text-white sys-transition">
+            <i class="ri-close-line text-2xl"></i>
+        </button>
+
+        <div class="h-20 md:h-24 flex items-center px-8 border-b border-white/5 shrink-0">
+            <a href="/" class="flex items-center gap-3 group">
+                <img src="{{ ui_config.branding.logo_url }}" alt="Logo" class="w-6 h-6 object-contain invert sys-transition group-hover:scale-110">
+                <h1 class="text-sm font-serif tracking-[0.2em] uppercase leading-none mt-1 text-white">{{ ui_config.branding.name }}</h1>
+            </a>
+        </div>
+
+        <nav class="flex-1 py-8 flex flex-col gap-2 overflow-y-auto hide-scrollbar">
+            <a href="/dashboard" class="nav-item active px-8 py-3 flex items-center gap-4 text-xs uppercase tracking-widest font-bold sys-transition hover:text-[#C5A059] group">
+                <i class="ri-dashboard-line text-lg group-hover:scale-110 sys-transition"></i> Overview
+            </a>
+            <a href="#" class="nav-item px-8 py-3 flex items-center gap-4 text-xs uppercase tracking-widest font-bold text-gray-500 sys-transition hover:text-[#C5A059] group">
+                <i class="ri-shopping-bag-3-line text-lg group-hover:scale-110 sys-transition"></i> Orders
+            </a>
+            <a href="/collection" class="nav-item px-8 py-3 flex items-center gap-4 text-xs uppercase tracking-widest font-bold text-gray-500 sys-transition hover:text-[#C5A059] group">
+                <i class="ri-layout-grid-line text-lg group-hover:scale-110 sys-transition"></i> Catalog
+            </a>
+            <a href="#" class="nav-item px-8 py-3 flex items-center gap-4 text-xs uppercase tracking-widest font-bold text-gray-500 sys-transition hover:text-[#C5A059] group">
+                <i class="ri-settings-3-line text-lg group-hover:scale-110 sys-transition"></i> Settings
+            </a>
+        </nav>
+
+        <div class="p-6 md:p-8 border-t border-white/5 shrink-0">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 rounded-full bg-[#C5A059]/20 flex items-center justify-center text-[#C5A059] font-serif text-lg">
+                    {{ user.name[0] | upper if user.name else 'U' }}
+                </div>
+                <div class="overflow-hidden">
+                    <p class="text-xs font-bold text-white truncate w-32">{{ user.name | default("Premium User") }}</p>
+                    <p class="text-[9px] text-gray-500 uppercase tracking-widest truncate w-32">{{ user.email }}</p>
+                </div>
+            </div>
+            <a href="/logout" class="flex items-center gap-3 text-xs uppercase tracking-widest font-bold text-red-500/80 hover:text-red-500 sys-transition">
+                <i class="ri-logout-box-r-line text-lg"></i> Sign Out
+            </a>
+        </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col h-full min-w-0">
+        
+        <header class="md:hidden shrink-0 w-full h-16 bg-[#050505]/90 backdrop-blur-md border-b border-white/5 z-30 flex items-center justify-between px-6">
+            <div class="flex items-center gap-4">
+                <button onclick="toggleSidebar()" class="text-white hover:text-[#C5A059] sys-transition outline-none">
+                    <i class="ri-menu-2-line text-2xl"></i>
+                </button>
+            </div>
+            <a href="/" class="flex items-center gap-2 absolute left-1/2 transform -translate-x-1/2">
+                <img src="{{ ui_config.branding.logo_url }}" alt="Logo" class="w-5 h-5 invert">
+                <span class="text-xs font-serif tracking-[0.2em] uppercase text-white mt-1">{{ ui_config.branding.name }}</span>
+            </a>
+            <a href="/logout" class="text-red-500/80 hover:text-red-500"><i class="ri-logout-box-r-line text-xl"></i></a>
+        </header>
+
+        <main class="flex-1 overflow-y-auto relative bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#121212] via-[#0a0a0a] to-black">
+            
+            <div class="max-w-6xl mx-auto p-6 md:p-12">
+                
+                <div class="mb-10 md:mb-12 dash-anim opacity-0 translate-y-4">
+                    <div class="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                        <div>
+                            <span class="text-gray-400 text-[10px] uppercase tracking-[0.3em] font-bold font-sans">Welcome Back</span>
+                            <h2 class="text-3xl md:text-5xl font-serif mt-2 text-white">Hello, <span class="italic">{{ user.name.split(' ')[0] if user.name else 'Curator' }}</span>.</h2>
+                        </div>
+                        <div class="tier-badge px-4 py-2 rounded-full flex items-center gap-2 w-max">
+                            <i class="ri-vip-crown-line"></i>
+                            <span class="text-[9px] uppercase tracking-[0.2em] font-bold">{{ user.tier | replace('_', ' ') | default('Standard') }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-10 md:mb-12">
+                    <div class="glass-panel p-6 rounded-2xl dash-anim opacity-0 translate-y-4 hover:-translate-y-1 hover:border-[#C5A059]/40 sys-transition">
+                        <i class="ri-shopping-bag-3-line text-2xl text-gray-500 mb-4 block"></i>
+                        <h4 class="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-bold mb-1">Total Orders</h4>
+                        <p class="text-3xl font-serif text-white">0</p>
+                    </div>
+                    <div class="glass-panel p-6 rounded-2xl dash-anim opacity-0 translate-y-4 hover:-translate-y-1 hover:border-[#C5A059]/40 sys-transition">
+                        <i class="ri-building-line text-2xl text-gray-500 mb-4 block"></i>
+                        <h4 class="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-bold mb-1">Active Projects</h4>
+                        <p class="text-3xl font-serif text-white">0</p>
+                    </div>
+                    <div class="glass-panel p-6 rounded-2xl dash-anim opacity-0 translate-y-4 hover:-translate-y-1 hover:border-[#C5A059]/40 sys-transition">
+                        <i class="ri-percent-line text-2xl text-[#C5A059] mb-4 block"></i>
+                        <h4 class="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-bold mb-1">Current Margin</h4>
+                        <p class="text-2xl md:text-3xl font-serif text-[#C5A059]">
+                            {% if user.type == 'partner' %} Up to 35% {% else %} Standard {% endif %}
+                        </p>
+                    </div>
+                </div>
+
+                <div class="glass-panel rounded-2xl md:rounded-[2rem] p-6 md:p-10 dash-anim opacity-0 translate-y-4 overflow-hidden w-full">
+                    <div class="flex justify-between items-end mb-6 md:mb-8">
+                        <h3 class="text-xl md:text-2xl font-serif text-white">Recent Orders</h3>
+                        <a href="#" class="text-[9px] md:text-[10px] uppercase tracking-widest font-bold text-[#C5A059] hover:text-white sys-transition">View All</a>
+                    </div>
+
+                    <div class="overflow-x-auto w-full pb-4">
+                        <table class="w-full text-left border-collapse min-w-[500px]">
+                            <thead>
+                                <tr class="border-b border-white/10 text-[9px] uppercase tracking-[0.2em] text-gray-500 font-bold">
+                                    <th class="pb-4 font-normal">Order ID</th>
+                                    <th class="pb-4 font-normal">Date</th>
+                                    <th class="pb-4 font-normal">Status</th>
+                                    <th class="pb-4 font-normal text-right">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-sm font-sans">
+                                <tr>
+                                    <td colspan="4" class="py-12 text-center text-gray-500">
+                                        <div class="flex flex-col items-center justify-center">
+                                            <i class="ri-inbox-archive-line text-4xl mb-3 opacity-20"></i>
+                                            <p class="text-[10px] md:text-xs tracking-wider uppercase">No recent orders found.</p>
+                                            <a href="/collection" class="mt-4 px-6 py-2 border border-[#C5A059] text-[#C5A059] text-[9px] uppercase tracking-[0.2em] font-bold rounded-full hover:bg-[#C5A059] hover:text-black sys-transition">Start Browsing</a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="mt-8 md:mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 dash-anim opacity-0 translate-y-4">
+                    <div class="border border-white/10 rounded-2xl p-5 md:p-6 flex items-center justify-between group hover:bg-white/5 cursor-pointer sys-transition">
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/5 flex items-center justify-center text-white group-hover:bg-[#C5A059] group-hover:text-black sys-transition shrink-0">
+                                <i class="ri-download-cloud-2-line text-lg md:text-xl"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-bold text-white mb-1">2026 Catalog</h4>
+                                <p class="text-[9px] md:text-[10px] text-gray-500 uppercase tracking-widest">Download PDF</p>
+                            </div>
+                        </div>
+                        <i class="ri-arrow-right-line text-gray-500 group-hover:text-white sys-transition group-hover:translate-x-1"></i>
+                    </div>
+
+                    <div class="border border-white/10 rounded-2xl p-5 md:p-6 flex items-center justify-between group hover:bg-white/5 cursor-pointer sys-transition">
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/5 flex items-center justify-center text-white group-hover:bg-[#C5A059] group-hover:text-black sys-transition shrink-0">
+                                <i class="ri-customer-service-2-line text-lg md:text-xl"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-bold text-white mb-1">Account Manager</h4>
+                                <p class="text-[9px] md:text-[10px] text-gray-500 uppercase tracking-widest">Request Support</p>
+                            </div>
+                        </div>
+                        <i class="ri-arrow-right-line text-gray-500 group-hover:text-white sys-transition group-hover:translate-x-1"></i>
+                    </div>
+                </div>
+
+                <div class="h-12 md:h-0"></div>
+
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Make toggleSidebar global so inline onclick="" can access it
+    window.isSidebarOpen = false;
+    window.toggleSidebar = function() {
+        const sidebar = document.getElementById('mainSidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        window.isSidebarOpen = !window.isSidebarOpen;
+        
+        if (window.isSidebarOpen) {
+            sidebar.classList.remove('-translate-x-full');
+            overlay.classList.remove('hidden');
+            setTimeout(() => { overlay.classList.remove('opacity-0'); }, 10);
+        } else {
+            sidebar.classList.add('-translate-x-full');
+            overlay.classList.add('opacity-0');
+            setTimeout(() => { overlay.classList.add('hidden'); }, 300); 
+        }
+    };
+
+    window.initPageAnimations = function() {
+        // Destroy lenis scroll from base.html to prevent conflict with dashboard overflow
+        if(window.lenis) {
+            window.lenis.destroy();
+        }
+
+        gsap.to(".dash-anim", {
+            y: 0,
+            opacity: 1,
+            duration: 0.8,
+            stagger: 0.1,
+            ease: "power3.out",
+            delay: 0.1
+        });
+    }
+</script>
+{% endblock %}

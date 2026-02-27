@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Trade Partnership - {{ ui_config.branding.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Page specific overrides matching login/register vibe */
+    body {
+        background-color: #0a0a0a !important;
+        color: #ffffff;
+        overflow: hidden !important;
+        height: 100dvh; 
+    }
+    
+    .input-group { position: relative; margin-bottom: 1.75rem; } 
+    .input-group input {
+        width: 100%; padding: 6px 0; font-size: 0.875rem; color: #fff;
+        background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.15);
+        outline: none; transition: border-color 0.3s;
+    }
+    .input-group input:focus { border-bottom: 1px solid #C5A059; }
+    .input-group label {
+        position: absolute; top: 6px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.6);
+        pointer-events: none; transition: 0.3s ease all; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
+    }
+    .input-group input:focus ~ label,
+    .input-group input:valid ~ label {
+        top: -14px; font-size: 0.55rem; color: #C5A059;
+    }
+
+    .custom-checkbox {
+        appearance: none; background-color: transparent; margin: 0; font: inherit; color: currentColor;
+        width: 12px; height: 12px; border: 1px solid rgba(255,255,255,0.4); border-radius: 1px;
+        display: grid; place-content: center; cursor: pointer;
+    }
+    .custom-checkbox::before {
+        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform ease-in-out;
+        box-shadow: inset 1em 1em #C5A059; background-color: #C5A059; transform-origin: center;
+        clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+    }
+    .custom-checkbox:checked::before { transform: scale(1); }
+    .custom-checkbox:checked { border-color: #C5A059; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex h-[100dvh] w-full">
+
+    <div class="hidden md:flex md:w-1/2 h-full relative overflow-hidden bg-black">
+        <img src="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&q=80&w=1200" id="authImage" class="absolute inset-0 w-full h-full object-cover opacity-50 scale-[1.2] gpu-target grayscale-[30%]" alt="Luxury Architecture">
+        <div class="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-[#0a0a0a]/40"></div>
+        
+        <div class="absolute bottom-16 left-16 z-10 auth-anim opacity-0 translate-y-8 border-l-2 border-[#C5A059] pl-6">
+            <h2 class="text-5xl font-serif mb-4 text-white leading-tight">Trade & <br><span class="italic text-[#C5A059]">Retail.</span></h2>
+            <p class="text-xs font-sans text-gray-400 tracking-wider max-w-sm leading-relaxed">Join our exclusive network of architects, developers, and dealers. Elevate your projects with our premium curation.</p>
+        </div>
+    </div>
+
+    <div class="w-full md:w-1/2 h-full flex flex-col justify-center items-center px-8 sm:px-16 lg:px-24 bg-[#0a0a0a] relative">
+        
+        <a href="/" class="absolute top-8 left-8 text-gray-400 hover:text-white sys-transition flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold z-10 auth-anim opacity-0">
+            <i class="ri-arrow-left-line text-sm"></i> Home
+        </a>
+
+        <div class="w-full max-w-[320px]">
+            <div class="flex justify-center mb-6 auth-anim opacity-0 -translate-y-4">
+                <div class="w-12 h-12 flex items-center justify-center p-2 border border-[#C5A059]/30 rounded-sm bg-[#C5A059]/5">
+                    <img src="{{ ui_config.branding.logo_url }}" alt="{{ ui_config.branding.name }} Logo" class="w-full h-full object-contain invert opacity-90">
+                </div>
+            </div>
+
+            <div class="text-center mb-8 auth-anim opacity-0 translate-y-4">
+                <h1 class="text-[26px] font-serif mb-2 tracking-wide">Trade Partnership</h1>
+                <p class="text-[8px] text-[#C5A059] uppercase tracking-[0.2em] font-sans font-semibold">Apply for wholesale access</p>
+            </div>
+
+            <form action="/partner/apply" method="POST" class="w-full">
+                
+                <div class="input-group auth-anim opacity-0 translate-y-4">
+                    <input type="text" name="company_name" id="company_name" required autocomplete="organization">
+                    <label for="company_name">Company Name</label>
+                </div>
+
+                <div class="input-group auth-anim opacity-0 translate-y-4">
+                    <input type="text" name="business_id" id="business_id" required>
+                    <label for="business_id">Business ID / GSTIN</label>
+                </div>
+
+                <div class="input-group auth-anim opacity-0 translate-y-4">
+                    <input type="email" name="email" id="email" required autocomplete="email">
+                    <label for="email">Business Email</label>
+                </div>
+
+                <div class="input-group auth-anim opacity-0 translate-y-4 mb-6">
+                    <input type="password" name="password" id="password" required autocomplete="new-password">
+                    <label for="password">Create Password</label>
+                </div>
+
+                <div class="flex items-center mb-8 auth-anim opacity-0 w-full">
+                    <label class="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" class="custom-checkbox" required>
+                        <span class="text-[8px] text-gray-400 uppercase tracking-wider font-bold sys-transition pt-0.5 group-hover:text-white">Verify trade credentials</span>
+                    </label>
+                </div>
+
+                <button type="submit" class="w-full py-3.5 bg-transparent border border-[#C5A059] text-[#C5A059] rounded-sm font-bold uppercase tracking-[0.15em] text-[9px] hover:bg-[#C5A059] hover:text-black sys-transition auth-anim opacity-0 translate-y-4 shadow-[0_0_15px_rgba(197,160,89,0.1)]">
+                    Submit Application
+                </button>
+            </form>
+
+            <div class="mt-8 text-center auth-anim opacity-0 flex flex-col items-center gap-4">
+                <p class="text-[9px] text-gray-500 font-sans tracking-wide">Already a partner? <a href="/login" class="text-white font-bold hover:text-[#C5A059] sys-transition border-b border-gray-600 pb-[1px] ml-1">Sign In here</a></p>
+                
+                <div class="flex items-center justify-center gap-3 w-32 opacity-60">
+                    <div class="h-[1px] flex-1 bg-gray-700"></div>
+                    <p class="text-[7px] text-gray-500 uppercase tracking-[0.3em] font-bold mt-[1px]">OR</p>
+                    <div class="h-[1px] flex-1 bg-gray-700"></div>
+                </div>
+                
+                <p class="text-[9px] text-gray-500 font-sans tracking-wide">Looking to shop? <a href="/collection" class="text-[#C5A059] font-bold hover:text-white sys-transition border-b border-[#C5A059]/40 pb-[1px] ml-1">Browse Catalog</a></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    window.initPageAnimations = function() {
+        // Slow cinematic zoom on the background image
+        gsap.to("#authImage", {
+            scale: 1,
+            duration: 12, // Slightly slower for this architectural image
+            ease: "power1.out"
+        });
+
+        // Staggered reveal for form elements
+        gsap.to(".auth-anim", {
+            y: 0,
+            opacity: 1,
+            duration: 1,
+            stagger: 0.08,
+            ease: "power3.out",
+            delay: 0.2
+        });
+
+        // Error handling via Toast (Toast component is globally included via base.html)
+        const urlParams = new URLSearchParams(window.location.search);
+        if(urlParams.has('error')) {
+            let errorMsg = "Application failed.";
+            if(urlParams.get('error') === 'application_failed') errorMsg = "Could not submit application. Please try again.";
+            
+            setTimeout(() => { showToast(errorMsg, true); }, 1000);
+        }
+    };
+</script>
+{% endblock %}

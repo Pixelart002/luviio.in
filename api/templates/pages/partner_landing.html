@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block title %}Partner Network - {{ ui_config.branding.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Partner Page Specific Styles */
+    body {
+        background-color: #0a0a0a !important;
+        color: #ffffff;
+    }
+
+    .hover-3d { transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.5s ease; }
+    .hover-3d:hover { transform: translateY(-10px) scale(1.02); border-color: #C5A059; }
+    .progress-line { transform-origin: top; transform: scaleY(0); }
+</style>
+{% endblock %}
+
+{% block content %}
+
+    <header class="fixed w-full top-0 z-50 transition-transform duration-700 bg-[#0a0a0a]/80 backdrop-blur-xl border-b border-white/5" id="mainHeader" style="transform: translateY(-100%);">
+        <div class="flex justify-between items-center px-4 md:px-12 py-4 md:py-5">
+            <a href="/" class="flex items-center gap-3 group">
+                <img src="{{ ui_config.branding.logo_url }}" alt="Logo" class="w-6 h-6 md:w-8 md:h-8 object-contain invert sys-transition group-hover:scale-110">
+                <div class="flex items-center gap-2">
+                    <h1 class="text-sm md:text-lg font-serif tracking-[0.2em] uppercase leading-none m-0">{{ ui_config.branding.name }}</h1>
+                    <span class="text-[#C5A059] text-[7px] md:text-[9px] font-sans font-bold uppercase tracking-[0.2em] ">Trade</span>
+                </div>
+            </a>
+            
+            <div class="flex gap-4 md:gap-6 items-center">
+                <a href="/login" class="hidden md:block text-[10px] font-sans font-bold uppercase tracking-widest text-gray-400 hover:text-white sys-transition">Partner Login</a>
+                <a href="/partner/apply" class="text-[8px] md:text-[10px] font-sans font-bold uppercase tracking-widest bg-[#C5A059] text-black px-4 md:px-6 py-2 md:py-3 rounded-sm hover:bg-white sys-transition shadow-sm">Apply Now</a>
+            </div>
+        </div>
+    </header>
+
+    <main id="mainContent" class="opacity-0 hidden">
+        
+        <section class="h-[100dvh] relative flex flex-col justify-end md:justify-center px-6 md:px-16 overflow-hidden bg-black pb-12 md:pb-0">
+            <img src="https://images.unsplash.com/photo-1600566753086-00f18efc2295?auto=format&fit=crop&q=80&w=2000" id="heroImage" class="absolute inset-0 w-full h-full object-cover opacity-40 scale-[1.2] gpu-target grayscale-[30%]" alt="Luxury Architecture">
+            <div class="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent"></div>
+            <div class="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/40 to-transparent md:bg-none"></div>
+            
+            <div class="relative z-10 max-w-5xl">
+                <div class="clip-mask mb-4 md:mb-6"><span class="clip-text hero-anim text-[#C5A059] text-[9px] md:text-xs uppercase tracking-[0.4em] font-sans font-bold">Exclusive Trade Network</span></div>
+                
+                <h1 class="text-[12vw] leading-[1] md:text-[7rem] font-serif tracking-tight text-white mb-6 md:mb-8">
+                    <div class="clip-mask"><span class="clip-text hero-anim">Empowering the</span></div><br>
+                    <div class="clip-mask"><span class="clip-text hero-anim italic text-[#C5A059]">Visionaries.</span></div>
+                </h1>
+                
+                <div class="clip-mask mb-8 md:mb-12"><p class="clip-text hero-anim text-xs md:text-lg font-sans text-gray-400 max-w-xl leading-relaxed">Join an elite network of architects, developers, and premium showrooms. Access wholesale pricing, priority logistics, and unparalleled ceramic craftsmanship.</p></div>
+                
+                <div class="clip-mask">
+                    <div class="clip-text hero-anim flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+                        <a href="#perksGrid" class="px-8 py-3.5 md:py-4 bg-transparent border border-gray-600 text-white text-[9px] md:text-[10px] uppercase tracking-[0.2em] font-bold hover:border-[#C5A059] hover:text-[#C5A059] sys-transition flex items-center justify-center gap-3 w-full sm:w-auto">
+                            Discover the Perks <i class="ri-arrow-down-line"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="philosophy" class="py-24 md:py-48 bg-[#0a0a0a] relative px-6 md:px-16 border-b border-white/5">
+            <div class="max-w-4xl mx-auto text-center">
+                <div class="clip-mask mb-8"><i class="clip-text phil-anim ri-vip-diamond-line text-3xl md:text-4xl text-[#C5A059]"></i></div>
+                <h2 class="text-3xl md:text-5xl lg:text-6xl font-serif leading-tight mb-8 md:mb-10">
+                    <div class="clip-mask"><span class="clip-text phil-anim">We don't just supply products.</span></div>
+                    <div class="clip-mask"><span class="clip-text phil-anim italic text-gray-400">We supply a legacy.</span></div>
+                </h2>
+                <div class="clip-mask"><p class="clip-text phil-anim text-gray-500 font-sans text-xs md:text-base max-w-2xl mx-auto leading-loose">Your clients demand perfection. Our partner program ensures you deliver exactly that, while maximizing your profitability. A partnership with {{ ui_config.branding.name }} means seamless execution from procurement to installation.</p></div>
+            </div>
+        </section>
+
+        <section id="statsSection" class="py-16 md:py-20 bg-[#121212] relative z-10 border-b border-white/5">
+            <div class="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-12 text-center divide-y md:divide-y-0 md:divide-x divide-white/10">
+                <div class="pt-8 md:pt-0">
+                    <div class="text-5xl md:text-8xl font-serif text-[#C5A059] mb-2"><span class="counter" data-target="35">0</span>%</div>
+                    <p class="text-[10px] md:text-xs uppercase tracking-[0.3em] text-gray-400 font-sans font-bold">Partner Margins</p>
+                </div>
+                <div class="pt-8 md:pt-0">
+                    <div class="text-5xl md:text-8xl font-serif text-[#C5A059] mb-2"><span class="counter" data-target="48">0</span>H</div>
+                    <p class="text-[10px] md:text-xs uppercase tracking-[0.3em] text-gray-400 font-sans font-bold">Express Dispatch</p>
+                </div>
+                <div class="pt-8 md:pt-0">
+                    <div class="text-5xl md:text-8xl font-serif text-[#C5A059] mb-2"><span class="counter" data-target="200">0</span>+</div>
+                    <p class="text-[10px] md:text-xs uppercase tracking-[0.3em] text-gray-400 font-sans font-bold">Active Projects</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="py-24 md:py-40 bg-[#0a0a0a] px-6 md:px-16" id="perksGrid">
+            <div class="max-w-7xl mx-auto">
+                <h2 class="text-3xl md:text-5xl font-serif mb-12 md:mb-16 text-center">Exclusive <span class="italic text-[#C5A059]">Advantages.</span></h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 perspective-1000">
+                    <div class="perk-card bg-[#121212] border border-white/5 p-8 md:p-12 rounded-2xl md:rounded-[2rem] hover-3d">
+                        <i class="ri-money-dollar-circle-line text-3xl md:text-4xl text-[#C5A059] mb-4 md:mb-6 block"></i>
+                        <h3 class="text-xl md:text-2xl font-serif mb-3 md:mb-4">Tiered Wholesale Pricing</h3>
+                        <p class="text-xs md:text-sm text-gray-400 leading-relaxed font-sans">Unlock immediate partner discounts. As your order volume grows, your margins expand automatically through our intelligent B2B portal.</p>
+                    </div>
+                    <div class="perk-card bg-[#121212] border border-white/5 p-8 md:p-12 rounded-2xl md:rounded-[2rem] hover-3d">
+                        <i class="ri-truck-line text-3xl md:text-4xl text-[#C5A059] mb-4 md:mb-6 block"></i>
+                        <h3 class="text-xl md:text-2xl font-serif mb-3 md:mb-4">White-Glove Logistics</h3>
+                        <p class="text-xs md:text-sm text-gray-400 leading-relaxed font-sans">Direct-to-site delivery with a 100% zero-breakage guarantee. We handle the supply chain so you can focus on the architecture.</p>
+                    </div>
+                    <div class="perk-card bg-[#121212] border border-white/5 p-8 md:p-12 rounded-2xl md:rounded-[2rem] hover-3d">
+                        <i class="ri-box-3-line text-3xl md:text-4xl text-[#C5A059] mb-4 md:mb-6 block"></i>
+                        <h3 class="text-xl md:text-2xl font-serif mb-3 md:mb-4">3D CAD & Asset Library</h3>
+                        <p class="text-xs md:text-sm text-gray-400 leading-relaxed font-sans">Full access to our digital library. Download high-res textures and 3D models for seamless integration into your client pitches and renders.</p>
+                    </div>
+                    <div class="perk-card bg-[#121212] border border-white/5 p-8 md:p-12 rounded-2xl md:rounded-[2rem] hover-3d">
+                        <i class="ri-customer-service-2-line text-3xl md:text-4xl text-[#C5A059] mb-4 md:mb-6 block"></i>
+                        <h3 class="text-xl md:text-2xl font-serif mb-3 md:mb-4">Dedicated Concierge</h3>
+                        <p class="text-xs md:text-sm text-gray-400 leading-relaxed font-sans">Skip the queue. Every partner gets a dedicated account manager for instant inventory checks, custom orders, and priority support.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="horizontalShowcase" class="bg-[#050505] py-20 md:py-24 overflow-hidden border-y border-white/5">
+            <div class="px-6 md:px-16 mb-10 md:mb-12">
+                <span class="text-[#C5A059] text-[9px] md:text-[10px] uppercase tracking-[0.4em] font-sans font-bold">The Catalog</span>
+                <h2 class="text-3xl md:text-5xl font-serif mt-3 md:mt-4">What you'll be <span class="italic text-gray-500">Curating.</span></h2>
+            </div>
+            
+            <div class="flex gap-6 md:gap-8 px-6 md:px-16 w-max" id="scrollTrack">
+                <img src="https://images.unsplash.com/photo-1584622781564-1d987f7333c1?auto=format&fit=crop&q=80&w=800" class="w-[70vw] md:w-[500px] h-[40vh] md:h-[50vh] object-cover rounded-2xl md:rounded-3xl opacity-80 hover:opacity-100 sys-transition">
+                <img src="https://images.unsplash.com/photo-1507652313651-74ff74d3ca9e?auto=format&fit=crop&q=80&w=800" class="w-[70vw] md:w-[500px] h-[40vh] md:h-[50vh] object-cover rounded-2xl md:rounded-3xl opacity-80 hover:opacity-100 sys-transition">
+                <img src="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&q=80&w=800" class="w-[70vw] md:w-[500px] h-[40vh] md:h-[50vh] object-cover rounded-2xl md:rounded-3xl opacity-80 hover:opacity-100 sys-transition">
+                <img src="https://images.unsplash.com/photo-1595515106969-1ce29566ff1c?auto=format&fit=crop&q=80&w=800" class="w-[70vw] md:w-[500px] h-[40vh] md:h-[50vh] object-cover rounded-2xl md:rounded-3xl opacity-80 hover:opacity-100 sys-transition">
+            </div>
+        </section>
+
+        <section class="py-24 md:py-40 bg-[#0a0a0a] px-6 md:px-16 relative border-b border-white/5">
+            <div class="max-w-4xl mx-auto flex gap-6 md:gap-10">
+                <div class="w-[2px] md:w-1 bg-white/10 rounded-full relative overflow-hidden hidden sm:block">
+                    <div class="absolute top-0 w-full bg-[#C5A059] progress-line h-full" id="timelineLine"></div>
+                </div>
+                
+                <div class="flex flex-col gap-16 md:gap-24 py-10" id="timelineContent">
+                    <div class="step-item opacity-20 transition-opacity duration-500">
+                        <span class="text-[#C5A059] font-serif text-3xl md:text-5xl mb-2 md:mb-4 block">01.</span>
+                        <h3 class="text-xl md:text-3xl font-serif mb-2 md:mb-4">Submit Credentials</h3>
+                        <p class="text-gray-400 font-sans text-xs md:text-base">Fill out our secure application form with your Business ID / GSTIN and company profile.</p>
+                    </div>
+                    <div class="step-item opacity-20 transition-opacity duration-500">
+                        <span class="text-[#C5A059] font-serif text-3xl md:text-5xl mb-2 md:mb-4 block">02.</span>
+                        <h3 class="text-xl md:text-3xl font-serif mb-2 md:mb-4">Verification</h3>
+                        <p class="text-gray-400 font-sans text-xs md:text-base">Our team reviews your portfolio within 24 hours to ensure brand alignment and exclusivity.</p>
+                    </div>
+                    <div class="step-item opacity-20 transition-opacity duration-500">
+                        <span class="text-[#C5A059] font-serif text-3xl md:text-5xl mb-2 md:mb-4 block">03.</span>
+                        <h3 class="text-xl md:text-3xl font-serif mb-2 md:mb-4">Portal Access</h3>
+                        <p class="text-gray-400 font-sans text-xs md:text-base">Get instant access to your customized B2B dashboard, wholesale pricing, and digital assets.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="py-24 md:py-32 bg-[#121212] overflow-hidden relative">
+            <div class="absolute inset-0 z-0 pointer-events-none opacity-20" style="background-image: radial-gradient(circle at center, rgba(255, 255, 255, 0.2) 1px, transparent 1px); background-size: 32px 32px;"></div>
+            
+            <div class="max-w-5xl mx-auto px-6 relative z-10">
+                <div class="text-center mb-10 md:mb-16">
+                     <i class="ri-double-quotes-l text-4xl md:text-6xl text-[#C5A059]/30 mb-4 block"></i>
+                     <span class="text-[#C5A059] text-[10px] md:text-xs uppercase tracking-[0.4em] font-sans font-bold">Partner Voices</span>
+                </div>
+
+                <div class="swiper reviewSwiper pb-16">
+                    <div class="swiper-wrapper">
+                        <div class="swiper-slide h-auto">
+                            <div class="text-center px-2 md:px-12">
+                                <p class="text-xl md:text-4xl font-serif leading-relaxed mb-8 text-white">"Switching to {{ ui_config.branding.name }}'s partner program was a game-changer for our studio. The quality is flawless, and the priority logistics saved us weeks on our latest villa project."</p>
+                                <h4 class="font-sans font-bold text-[10px] md:text-xs uppercase tracking-widest text-[#C5A059]">Rohan Mehta</h4>
+                                <p class="text-[8px] md:text-[10px] text-gray-500 font-sans mt-2 tracking-widest uppercase">Principal Architect, RM Studios</p>
+                            </div>
+                        </div>
+                        <div class="swiper-slide h-auto">
+                            <div class="text-center px-2 md:px-12">
+                                <p class="text-xl md:text-4xl font-serif leading-relaxed mb-8 text-white">"Their B2B wholesale platform is seamless. We ordered 50 ceramic units for a commercial build, and the tiered margins provided incredible value to our bottom line."</p>
+                                <h4 class="font-sans font-bold text-[10px] md:text-xs uppercase tracking-widest text-[#C5A059]">Aisha Khan</h4>
+                                <p class="text-[8px] md:text-[10px] text-gray-500 font-sans mt-2 tracking-widest uppercase">Procurement Head, Horizon Builds</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="swiper-pagination mt-6 relative"></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="py-32 md:py-60 relative overflow-hidden bg-black flex items-center justify-center text-center px-6 border-t border-white/10">
+            <img src="https://images.unsplash.com/photo-1558055620-1e5b8823f666?q=80&w=2000" class="absolute inset-0 w-full h-full object-cover opacity-20 scale-110 gpu-target" id="ctaImage">
+            <div class="absolute inset-0 bg-[#0a0a0a]/80 backdrop-blur-sm"></div>
+            
+            <div class="relative z-10">
+                <h2 class="text-4xl md:text-8xl font-serif mb-6 md:mb-8 text-white tracking-tighter">Ready to <span class="italic text-[#C5A059]">Elevate?</span></h2>
+                <p class="text-gray-400 mb-10 md:mb-12 font-sans max-w-lg mx-auto text-xs md:text-base">Join the ranks of premium curators. Application takes 2 minutes.</p>
+                <div class="flex flex-col sm:flex-row gap-4 md:gap-6 justify-center">
+                    <a href="/partner/apply" class="px-10 md:px-12 py-4 md:py-5 bg-[#C5A059] text-black text-[9px] md:text-xs font-sans uppercase tracking-[0.2em] font-bold rounded-sm hover-target hover:bg-white sys-transition shadow-[0_0_30px_rgba(197,160,89,0.3)]">Start Application</a>
+                    <a href="/login" class="px-10 md:px-12 py-4 md:py-5 border border-gray-600 text-white text-[9px] md:text-xs font-sans uppercase tracking-[0.2em] font-bold rounded-sm hover-target hover:border-white sys-transition">Partner Login</a>
+                </div>
+            </div>
+        </section>
+
+        {% include "components/footer.html" %}
+
+    </main>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    window.initPageAnimations = function() {
+        // Hero Section scroll effect
+        gsap.to("#heroImage", { yPercent: 15, ease: "none", scrollTrigger: { trigger: "#mainContent", start: "top top", end: "bottom top", scrub: true }});
+
+        // Philosophy section reveal
+        gsap.fromTo(".phil-anim", { y: "110%" }, {
+            y: "0%", duration: 1.2, stagger: 0.1, ease: "power4.out",
+            scrollTrigger: { trigger: "#philosophy", start: "top 65%" }
+        });
+
+        // Stats Counters
+        const counters = document.querySelectorAll('.counter');
+        counters.forEach(counter => {
+            const target = +counter.getAttribute('data-target');
+            ScrollTrigger.create({
+                trigger: "#statsSection",
+                start: "top 80%",
+                once: true,
+                onEnter: () => {
+                    let obj = { val: 0 };
+                    gsap.to(obj, { val: target, duration: 2, ease: "power3.out", onUpdate: () => { counter.innerText = Math.ceil(obj.val); } });
+                }
+            });
+        });
+
+        // Perks Grid Animation
+        gsap.from(".perk-card", {
+            y: 100, rotationX: 15, opacity: 0, duration: 1.2, stagger: 0.15, ease: "power3.out", transformOrigin: "top center",
+            scrollTrigger: { trigger: "#perksGrid", start: "top 70%" }
+        });
+
+        // Horizontal Showcase
+        const track = document.getElementById("scrollTrack");
+        if(track) {
+            function getScroll() { return -(track.scrollWidth - window.innerWidth + (window.innerWidth > 768 ? 128 : 48)); }
+            ScrollTrigger.create({
+                trigger: "#horizontalShowcase",
+                start: "top top",
+                end: () => `+=${Math.abs(getScroll())}`,
+                pin: true,
+                animation: gsap.to(track, { x: getScroll, ease: "none" }),
+                scrub: 1,
+                invalidateOnRefresh: true
+            });
+        }
+
+        // Timeline Scroll Logic
+        gsap.to("#timelineLine", {
+            scaleY: 1, ease: "none",
+            scrollTrigger: { trigger: "#timelineContent", start: "top 50%", end: "bottom 80%", scrub: true }
+        });
+        const steps = gsap.utils.toArray('.step-item');
+        steps.forEach((step, i) => {
+            ScrollTrigger.create({
+                trigger: step,
+                start: "top 70%",
+                onEnter: () => gsap.to(step, { opacity: 1, duration: 0.5 }),
+                onLeaveBack: () => gsap.to(step, { opacity: 0.2, duration: 0.5 })
+            });
+        });
+
+        // CTA Parallax
+        gsap.to("#ctaImage", { yPercent: 20, ease: "none", scrollTrigger: { trigger: "#ctaImage", start: "top bottom", end: "bottom top", scrub: true }});
+    }
+</script>
+{% endblock %}
