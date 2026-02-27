@@ -1,0 +1,103 @@
+{% macro render_gallery() %}
+<section id="galleryWrapper" class="py-24 md:py-40 bg-white relative w-full overflow-hidden border-b border-[#E5E5DF]">
+  <div class="max-w-[1600px] mx-auto px-6 md:px-16 flex flex-col md:flex-row gap-16 relative">
+    <div class="md:w-5/12 flex flex-col md:h-[100dvh] md:sticky top-0 justify-center pb-12 md:pb-0 z-10 bg-white/80 md:bg-transparent backdrop-blur-sm md:backdrop-blur-none">
+      <span class="text-[#C5A059] text-[10px] uppercase tracking-[0.4em] font-sans font-bold mb-4">The Gallery</span>
+      <h2 class="text-4xl md:text-6xl lg:text-7xl font-serif text-[#111] mb-8 leading-tight">Curated for<br><span class="italic text-gray-400">Eternity.</span></h2>
+      <p class="text-gray-500 font-sans leading-relaxed max-w-sm text-sm">Every curve, every texture is meticulously selected. We source only the finest global bathware to transform your spaces into sanctuaries of absolute luxury.</p>
+      <button class="mt-10 w-max border-b border-[#111] pb-1 text-[10px] uppercase tracking-widest font-bold hover-target sys-transition hover:text-[#C5A059] hover:border-[#C5A059]">Explore Collection</button>
+    </div>
+    <div class="md:w-7/12 grid grid-cols-2 gap-4 md:gap-8 h-[70vh] md:h-[150vh] overflow-hidden gallery-container relative">
+      <div class="flex flex-col gap-4 md:gap-8 gallery-col-1 gpu-target w-full">
+        <img src="https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&q=80&w=800" class="w-full h-[30vh] md:h-[50vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+        <img src="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&q=80&w=800" class="w-full h-[40vh] md:h-[60vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+        <img src="https://images.unsplash.com/photo-1595515106969-1ce29566ff1c?auto=format&fit=crop&q=80&w=800" class="w-full h-[30vh] md:h-[40vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+      </div>
+      <div class="flex flex-col gap-4 md:gap-8 gallery-col-2 gpu-target w-full mt-24 md:mt-48">
+        <img src="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&q=80&w=800" class="w-full h-[40vh] md:h-[60vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+        <img src="https://images.unsplash.com/photo-1584622781564-1d987f7333c1?auto=format&fit=crop&q=80&w=800" class="w-full h-[30vh] md:h-[45vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+        <img src="https://images.unsplash.com/photo-1507652313651-74ff74d3ca9e?auto=format&fit=crop&q=80&w=800" class="w-full h-[40vh] md:h-[50vh] object-cover rounded-2xl md:rounded-[2rem]" loading="lazy">
+      </div>
+      <div class="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white to-transparent pointer-events-none"></div>
+      <div class="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white to-transparent pointer-events-none"></div>
+    </div>
+  </div>
+</section>
+{% endmacro %}
+
+{% macro render_testimonials() %}
+<section class="py-24 md:py-32 bg-[#111] dark-swiper overflow-hidden relative border-y border-white/5">
+  <div class="max-w-5xl mx-auto px-6 relative z-10 text-white">
+    <div class="text-center mb-10 md:mb-16">
+      <i class="ri-double-quotes-l text-4xl md:text-6xl text-[#C5A059]/30 mb-4 block"></i>
+      <span class="text-[#C5A059] text-[10px] md:text-xs uppercase tracking-[0.4em] font-sans font-bold">Client Voices</span>
+    </div>
+    <div class="swiper homeSwiper pb-16">
+      <div class="swiper-wrapper">
+        <div class="swiper-slide h-auto">
+          <div class="text-center px-2 md:px-12">
+            <p class="text-xl md:text-4xl font-serif leading-relaxed mb-8">"The quality of the ceramic basins we ordered was beyond expectations. It transformed our master bathroom into a literal spa."</p>
+            <h4 class="font-sans font-bold text-[10px] md:text-xs uppercase tracking-widest text-[#C5A059]">Ananya Sharma</h4>
+            <p class="text-[8px] md:text-[10px] text-gray-500 font-sans mt-2 tracking-widest uppercase">Verified Buyer</p>
+          </div>
+        </div>
+        <div class="swiper-slide h-auto">
+          <div class="text-center px-2 md:px-12">
+            <p class="text-xl md:text-4xl font-serif leading-relaxed mb-8">"We sourced Luviio for an entire boutique hotel project. Their minimalist designs and matte finishes are unmatched in the market."</p>
+            <h4 class="font-sans font-bold text-[10px] md:text-xs uppercase tracking-widest text-[#C5A059]">Design Element Co.</h4>
+            <p class="text-[8px] md:text-[10px] text-gray-500 font-sans mt-2 tracking-widest uppercase">Trade Partner</p>
+          </div>
+        </div>
+      </div>
+      <div class="swiper-pagination mt-6 relative"></div>
+    </div>
+  </div>
+</section>
+{% endmacro %}
+
+{% macro render_pricing() %}
+<section id="pricingSection" class="py-20 md:py-40 bg-[#111] relative w-full text-white overflow-hidden border-t border-white/5">
+  <div class="absolute inset-0 z-0 pointer-events-none opacity-[0.03]" style="background-image: radial-gradient(circle at center, rgba(197, 160, 89, 1) 1px, transparent 1px); background-size: 24px 24px;"></div>
+  <div class="max-w-7xl mx-auto px-6 relative z-10">
+    <div class="text-center mb-12 md:mb-24 pricing-header opacity-0 translate-y-8">
+      <span class="text-[#C5A059] text-[10px] uppercase tracking-[0.4em] font-sans font-bold">Partnerships</span>
+      <h2 class="text-3xl md:text-6xl font-serif mt-4">Trade & <span class="italic text-gray-500">Retail.</span></h2>
+      <p class="mt-4 text-gray-400 font-sans text-xs md:text-sm max-w-lg mx-auto">Join our exclusive network of dealers and architects to access premium bathware at wholesale rates.</p>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 perspective-1000" id="pricingGrid">
+      <div class="pricing-card bg-[#161616] border border-gray-800 rounded-3xl p-6 md:p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-600 gpu-target relative overflow-hidden opacity-0 translate-y-12">
+        <h3 class="text-xl md:text-2xl font-serif text-gray-300 mb-2 relative z-10">Standard Retail</h3>
+        <p class="text-[10px] md:text-xs text-gray-500 font-sans tracking-wide mb-6 md:mb-8 relative z-10">For individual showrooms.</p>
+        <div class="text-3xl md:text-4xl font-serif mb-6 md:mb-8 text-white relative z-10">15% <span class="text-[9px] md:text-[10px] font-sans text-gray-500 tracking-widest uppercase align-middle">Margin</span></div>
+        <ul class="space-y-4 md:space-y-5 mb-8 md:mb-10 flex-1 relative z-10">
+          <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-[#C5A059] text-lg"></i> Standard Catalog Access</li>
+          <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-[#C5A059] text-lg"></i> Basic Marketing Kit</li>
+        </ul>
+        <a href="/partner" class="w-full text-center py-3.5 md:py-4 rounded-xl border border-gray-700 text-[9px] md:text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10 block">Apply Now</a>
+      </div>
+      <div class="pricing-card pricing-glow relative bg-[#0a0a0a] border border-[#C5A059]/40 rounded-3xl p-6 md:p-8 flex flex-col transform md:-translate-y-4 shadow-[0_20px_40px_rgba(197,160,89,0.1)] gpu-target z-10 opacity-0 translate-y-12">
+        <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-[#C5A059] text-black px-4 py-1.5 rounded-full text-[7px] md:text-[8px] font-bold uppercase tracking-[0.3em]">Most Popular</div>
+        <h3 class="text-xl md:text-2xl font-serif text-[#C5A059] mb-2 relative z-10">Trade Partner</h3>
+        <p class="text-[10px] md:text-xs text-gray-400 font-sans tracking-wide mb-6 md:mb-8 relative z-10">For architects & developers.</p>
+        <div class="text-3xl md:text-4xl font-serif mb-6 md:mb-8 text-white relative z-10">35% <span class="text-[9px] md:text-[10px] font-sans text-gray-400 tracking-widest uppercase align-middle">Margin</span></div>
+        <ul class="space-y-4 md:space-y-5 mb-8 md:mb-10 flex-1 relative z-10">
+          <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-[#C5A059] text-lg"></i> Priority Bulk Pricing</li>
+          <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-[#C5A059] text-lg"></i> Dedicated Account Manager</li>
+          <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-[#C5A059] text-lg"></i> Express Logistics</li>
+        </ul>
+        <a href="/partner" class="w-full text-center py-3.5 md:py-4 rounded-xl bg-[#C5A059] text-black text-[9px] md:text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white sys-transition hover-target relative z-10 block">Become Partner</a>
+      </div>
+      <div class="pricing-card bg-[#161616] border border-gray-800 rounded-3xl p-6 md:p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-600 gpu-target relative overflow-hidden opacity-0 translate-y-12">
+        <h3 class="text-xl md:text-2xl font-serif text-gray-300 mb-2 relative z-10">Dealership</h3>
+        <p class="text-[10px] md:text-xs text-gray-500 font-sans tracking-wide mb-6 md:mb-8 relative z-10">State-level exclusivity.</p>
+        <div class="text-3xl md:text-4xl font-serif mb-6 md:mb-8 text-white relative z-10">Custom</div>
+        <ul class="space-y-4 md:space-y-5 mb-8 md:mb-10 flex-1 relative z-10">
+          <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-[#C5A059] text-lg"></i> Territorial Monopoly</li>
+          <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-[#C5A059] text-lg"></i> Premium Display Setup</li>
+        </ul>
+        <a href="/partner" class="w-full text-center py-3.5 md:py-4 rounded-xl border border-gray-700 text-[9px] md:text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10 block">Contact Us</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endmacro %}
