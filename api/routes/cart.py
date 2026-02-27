@@ -1,119 +1,75 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from typing import Optional, List
+import uuid
 
-# Yahan tumhara supabase client import hoga jahan bhi tumne usko initialize kiya hai
-# Example: from api.database import supabase 
+# Database aur Security functions import karein
+from api.db.database import get_db, get_admin_db
+from api.utils.security import verify_token
 
 router = APIRouter(prefix="/api/cart", tags=["Cart"])
 
-# 1. Validation Schema (Strict Backend Validation)
+# 1. Validation Schema
 class CartItemAdd(BaseModel):
     product_id: str
-    quantity: int = Field(default=1, gt=0, description="Quantity must be at least 1")
+    quantity: int = Field(default=1, gt=0)
 
-# ==========================================
-# POST: ADD TO CART
-# ==========================================
-@router.post("/add")
-async def add_to_cart(request_data: CartItemAdd, request: Request):
-    # 1. Authentication Check (Fail Fast)
-    # Using getattr to safely check if user exists in state
-    user = getattr(request.state, "user", None)
+# --- Helper to get User Identity (Guest or Logged In) ---
+def get_user_context(request: Request):
+    # 1. Logged in check
+    access_token = request.cookies.get("access_token")
+    if access_token:
+        payload = verify_token(access_token, "access")
+        if payload and payload != "expired":
+            return str(payload.get("sub")), "user"
     
-    if not user:
-        raise HTTPException(status_code=401, detail="Session expired. Please login.")
-
-    user_id = user.get("id")
+    # 2. Guest check
+    guest_id = request.cookies.get("guest_id")
+    if guest_id:
+        return guest_id, "guest"
     
-    try:
-        # 2. Check if product already exists in cart
-        existing_item = supabase.table("cart_items").select("*").eq("user_id", user_id).eq("product_id", request_data.product_id).execute()
-        
-        if existing_item.data:
-            # Agar pehle se hai, toh sirf quantity badhao
-            new_qty = existing_item.data[0]['quantity'] + request_data.quantity
-            supabase.table("cart_items").update({"quantity": new_qty}).eq("id", existing_item.data[0]['id']).execute()
-        else:
-            # Naya item hai toh insert karo
-            supabase.table("cart_items").insert({
-                "user_id": user_id,
-                "product_id": request_data.product_id,
-                "quantity": request_data.quantity
-            }).execute()
-
-        return {"status": "success", "message": "Added to your collection"}
-        
-    except Exception as e:
-        print(f"Cart Add Error: {e}")
-        raise HTTPException(status_code=500, detail="Could not add item to cart")
+    return None, None
 
 # ==========================================
-# GET: FETCH CART (With Sponsored Item)
+# GET: FETCH CART (FIXED)
 # ==========================================
 @router.get("/")
-async def get_cart(request: Request):
-    user = getattr(request.state, "user", None)
-    if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    user_id = user.get("id")
+async def get_cart(request: Request, response: Response):
+    user_id, user_type = get_user_context(request)
+    db = get_db()
+    
+    # Agar user pehchan mein nahi aa raha, toh naya guest banado
+    if not user_id:
+        user_id = f"guest_{uuid.uuid4().hex}"
+        response.set_cookie(key="guest_id", value=user_id, httponly=True, secure=True, max_age=2592000)
+        return {"status": "success", "data": {"items": [], "subtotal": 0, "total_items": 0}}
 
     try:
-        # Fetch Cart Items with Product Details
-        cart_response = supabase.table("cart_items").select(
-            "id, quantity, products(id, name, image_url, display_price, original_mrp, material_finish)"
+        # Fetching items with join on products
+        cart_res = db.table("cart_items").select(
+            "id, quantity, products(id, name, image_url, mrp)"
         ).eq("user_id", user_id).execute()
 
-        items = cart_response.data
-
-        # 🔥 SPONSORED PRODUCT LOGIC
-        # Real-world mein yeh DB se aayega, abhi hum isko statically pass kar rahe hain
-        sponsored_item = {
-            "product_id": "SPON-001",
-            "name": "Onyx Liquid Dispenser",
-            "image_url": "https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=200",
-            "price": 2499,
-            "material_finish": "Matte Black"
-        }
-
-        # 3. NULL IS A STATE (Empty Cart Handle Karo)
-        if not items:
-            return {
-                "status": "success",
-                "message": "Cart is empty",
-                "data": {
-                    "items": [],
-                    "subtotal": 0,
-                    "total_items": 0,
-                    "sponsored": sponsored_item  # Empty cart me bhi upsell karenge!
-                }
-            }
-
-        # Calculate Subtotal & Formatting
+        items = cart_res.data or []
         subtotal = 0
         total_items = 0
         formatted_items = []
 
         for item in items:
-            product = item.get("products")
-            if not product:
-                continue # Fail-safe
-                
-            qty = item.get("quantity")
-            price = product.get("display_price", 0)
+            p = item.get("products")
+            if not p: continue
+            
+            qty = item.get("quantity", 0)
+            price = p.get("mrp", 0) # MRP use kar rahe hain default
             
             subtotal += (price * qty)
             total_items += qty
-            
             formatted_items.append({
-                "cart_item_id": item.get("id"),
-                "product_id": product.get("id"),
-                "name": product.get("name"),
-                "image_url": product.get("image_url"),
+                "cart_item_id": item["id"],
+                "product_id": p["id"],
+                "name": p["name"],
+                "image_url": p["image_url"],
                 "price": price,
-                "original_mrp": product.get("original_mrp"),
-                "material_finish": product.get("material_finish"),
                 "quantity": qty
             })
 
@@ -122,11 +78,40 @@ async def get_cart(request: Request):
             "data": {
                 "items": formatted_items,
                 "subtotal": subtotal,
-                "total_items": total_items,
-                "sponsored": sponsored_item # Filled cart me bhi upsell
+                "total_items": total_items
             }
         }
-
     except Exception as e:
-        print(f"Cart Fetch Error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch cart")
+        print(f"DEBUG: Cart Fetch Error -> {e}")
+        raise HTTPException(status_code=500, detail="Database connection error")
+
+# ==========================================
+# POST: ADD TO CART (FIXED)
+# ==========================================
+@router.post("/add")
+async def add_to_cart(data: CartItemAdd, request: Request, response: Response):
+    user_id, user_type = get_user_context(request)
+    db = get_db()
+
+    if not user_id:
+        user_id = f"guest_{uuid.uuid4().hex}"
+        response.set_cookie(key="guest_id", value=user_id, httponly=True, secure=True, max_age=2592000)
+
+    try:
+        # Existing item check
+        existing = db.table("cart_items").select("*").eq("user_id", user_id).eq("product_id", data.product_id).execute()
+        
+        if existing.data:
+            new_qty = existing.data[0]['quantity'] + data.quantity
+            db.table("cart_items").update({"quantity": new_qty}).eq("id", existing.data[0]['id']).execute()
+        else:
+            db.table("cart_items").insert({
+                "user_id": user_id,
+                "product_id": data.product_id,
+                "quantity": data.quantity
+            }).execute()
+
+        return {"status": "success", "message": "Added to cart"}
+    except Exception as e:
+        print(f"DEBUG: Cart Add Error -> {e}")
+        raise HTTPException(status_code=500, detail="Failed to add item")
