@@ -2,104 +2,41 @@
 {% from "app/macros/shared/cart_drawer.html" import render_cart_drawer %}
 
 <!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
-
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{% block title %}LUVIIO - Premium Bathware{% endblock %}</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <link rel="preload" as="image" href="/api/static/images/logo.png">
-    
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
-    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
     
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    colors: {
-                        luviio: {
-                            stone: '#F5F5F0',
-                            charcoal: '#111111',
-                            gold: '#C5A059',
-                            sand: '#E5E5DF'
-                        }
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        serif: ['Playfair Display', 'serif'],
-                    }
+                    colors: { luviio: { stone: '#F5F5F0', charcoal: '#111111', gold: '#C5A059' } },
+                    fontFamily: { sans: ['Inter', 'sans-serif'], serif: ['Playfair Display', 'serif'] }
                 }
             }
         }
     </script>
-    
+
     <style>
-        /* 🔥 THE ULTIMATE RESPONSIVE & ALIGNMENT FIX */
-        html, body {
-            background-color: #F5F5F0;
-            color: #111111;
-            width: 100%;
-            margin: 0;
-            padding: 0;
-            /* Prevents horizontal overflow across all devices */
-            overflow-x: hidden !important; 
-            position: relative;
-            -webkit-font-smoothing: antialiased;
+        html, body { 
+            background-color: #F5F5F0; color: #111111; width: 100%; 
+            margin: 0; padding: 0; overflow-x: hidden !important; 
         }
-
-        /* Center alignment wrapper for all screen sizes */
-        #mainWrapper {
-            width: 100%;
-            max-width: 100vw;
-            min-height: 100dvh;
-            display: flex;
-            flex-direction: column;
-            align-items: center; /* Horizontally centers content */
-            justify-content: flex-start;
-            margin: 0 auto;
-        }
-
-        /* Responsive Container for page content */
-        .content-container {
-            width: 100%;
-            max-width: 1440px; /* Optional: caps width for ultra-wide screens */
-            margin: 0 auto;
-            position: relative;
-        }
-
-        /* Custom Cursor - Strictly Desktop Only */
-        @media (min-width: 1024px) {
-            body { cursor: none; }
-            #cursor { 
-                position: fixed; top: 0; left: 0; width: 14px; height: 14px; 
-                background: #C5A059; border-radius: 50%; pointer-events: none; 
-                z-index: 9999; mix-blend-mode: difference; transform: translate(-50%, -50%); 
-                transition: width 0.3s, height 0.3s;
-            }
-            .cursor-hover:hover #cursor { width: 60px; height: 60px; background: rgba(255,255,255,0.1); }
-        }
-
-        /* Lenis Smooth Scroll Fixes */
-        html.lenis { height: auto; }
-        .lenis.lenis-smooth { scroll-behavior: auto !important; }
-        .lenis.lenis-stopped { overflow: hidden; }
-
-        .sys-transition { transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
-        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        #mainWrapper { width: 100%; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; }
+        .content-container { width: 100%; max-width: 1440px; margin: 0 auto; position: relative; }
+        @media (min-width: 1024px) { body { cursor: none; } #cursor { position: fixed; top: 0; left: 0; width: 14px; height: 14px; background: #C5A059; border-radius: 50%; pointer-events: none; z-index: 9999; mix-blend-mode: difference; transform: translate(-50%, -50%); } }
+        .glass-menu { background: rgba(245, 245, 240, 0.98); backdrop-filter: blur(20px); border-left: 1px solid rgba(0,0,0,0.05); }
+        ::-webkit-scrollbar { width: 0px; }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 
 <body class="{% block body_class %}bg-luviio-stone text-luviio-charcoal{% endblock %}">
-    
     <div id="cursor" class="hidden lg:block"></div>
 
     <div id="mainWrapper">
@@ -110,114 +47,74 @@
 
     {{ render_cart_drawer() }}
     {{ render_toast() }}
-    
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src="https://unpkg.com/@studio-freight/lenis@1.0.33/dist/lenis.min.js"></script>
     
     <script>
-        // --- 1. LENIS SMOOTH SCROLL (Responsive friendly) ---
-        const lenis = new Lenis({
-            lerp: 0.1,
-            wheelMultiplier: 0.9,
-            gestureOrientation: 'vertical',
-            normalizeWheel: true,
-            smoothWheel: true
-        });
-        window.lenis = lenis;
+        const lenis = new Lenis();
         function raf(time) { lenis.raf(time); requestAnimationFrame(raf); }
         requestAnimationFrame(raf);
 
-        // --- 2. CURSOR ENGINE (Desktop Only) ---
         const cursor = document.getElementById('cursor');
-        if (cursor && window.innerWidth >= 1024) {
-            document.addEventListener('mousemove', (e) => {
-                gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.15, ease: "power2.out" });
-            });
-        }
+        if (cursor) document.addEventListener('mousemove', (e) => gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.1 }));
 
-        // --- 3. GLOBAL CART HANDLERS ---
         window.openCart = function() {
-            const drawer = document.getElementById('drawerContent');
-            const overlay = document.getElementById('drawerOverlay');
-            if(!drawer || !overlay) return;
-            
-            overlay.classList.remove('hidden');
+            const drw = document.getElementById('drawerContent');
+            const ovl = document.getElementById('drawerOverlay');
+            if(!drw || !ovl) return;
+            ovl.classList.remove('hidden');
             setTimeout(() => {
-                overlay.style.opacity = "1";
-                overlay.style.pointerEvents = "auto";
-                drawer.classList.remove('translate-x-full');
+                ovl.style.opacity = "1";
+                ovl.style.pointerEvents = "auto";
+                drw.classList.remove('translate-x-full');
             }, 10);
-            
-            window.refreshCart(); 
-            lenis.stop(); 
+            window.refreshCart();
+            lenis.stop();
         };
 
         window.closeCart = function() {
-            const drawer = document.getElementById('drawerContent');
-            const overlay = document.getElementById('drawerOverlay');
-            if(!drawer || !overlay) return;
-
-            drawer.classList.add('translate-x-full');
-            overlay.style.opacity = "0";
-            overlay.style.pointerEvents = "none";
-            
-            setTimeout(() => {
-                overlay.classList.add('hidden');
-                lenis.start();
-            }, 500);
+            const drw = document.getElementById('drawerContent');
+            const ovl = document.getElementById('drawerOverlay');
+            drw.classList.add('translate-x-full');
+            ovl.style.opacity = "0";
+            ovl.style.pointerEvents = "none";
+            setTimeout(() => { ovl.classList.add('hidden'); lenis.start(); }, 500);
         };
 
         window.refreshCart = async function() {
             const list = document.getElementById('cartItemsList');
-            const subtotalEl = document.getElementById('cartSubtotal');
+            const sub = document.getElementById('cartSubtotal');
             if(!list) return;
+            const res = await fetch('/api/cart/');
+            const result = await res.json();
+            
+            if (result.status !== 'success' || !result.data.items.length) {
+                list.innerHTML = `<div class="py-20 text-center opacity-30"><p class="text-[10px] font-bold uppercase">Empty Collection</p></div>`;
+                if(sub) sub.innerText = '₹0';
+                return;
+            }
 
-            try {
-                const res = await fetch('/api/cart/');
-                const result = await res.json();
-                
-                if (result.status !== 'success' || !result.data.items || result.data.items.length === 0) {
-                    list.innerHTML = `
-                        <div class="py-20 text-center opacity-30">
-                            <i class="ri-shopping-bag-line text-4xl mb-4 block"></i>
-                            <p class="text-[10px] uppercase tracking-widest font-bold">Empty Collection</p>
-                        </div>`;
-                    if(subtotalEl) subtotalEl.innerText = '₹0';
-                    return;
-                }
-
-                list.innerHTML = result.data.items.map(item => `
-                    <div class="flex gap-4 items-center py-4 border-b border-black/5 group">
-                        <div class="w-14 h-18 bg-white rounded-sm overflow-hidden border border-black/5 shrink-0">
-                            <img src="${item.image}" class="w-full h-full object-cover">
-                        </div>
-                        <div class="flex-grow min-w-0">
-                            <h4 class="text-[10px] font-bold uppercase tracking-widest text-luviio-charcoal truncate mb-1">${item.name}</h4>
-                            <p class="text-[9px] text-gray-500 uppercase tracking-widest">Qty: ${item.qty} &bull; ₹${(item.price || 0).toLocaleString()}</p>
-                        </div>
-                        <button onclick="window.removeItem(${item.id})" class="text-gray-300 hover:text-red-500 sys-transition p-2">
-                            <i class="ri-delete-bin-line"></i>
-                        </button>
+            list.innerHTML = result.data.items.map(item => `
+                <div class="flex gap-4 items-center py-4 border-b border-black/5">
+                    <img src="${item.image}" class="w-16 h-20 object-cover bg-white border border-black/5">
+                    <div class="flex-grow min-w-0">
+                        <h4 class="text-[10px] font-bold uppercase truncate">${item.name}</h4>
+                        <p class="text-[9px] text-gray-500">Qty: ${item.qty} &bull; ₹${item.price.toLocaleString()}</p>
                     </div>
-                `).join('');
-
-                if(subtotalEl) subtotalEl.innerText = `₹${result.data.subtotal.toLocaleString()}`;
-            } catch (err) { console.error("Cart Error:", err); }
+                    <button onclick="window.removeItem(${item.id})" class="text-gray-300 hover:text-red-500"><i class="ri-delete-bin-line"></i></button>
+                </div>
+            `).join('');
+            if(sub) sub.innerText = `₹${result.data.subtotal.toLocaleString()}`;
         };
 
         window.removeItem = async function(id) {
-            const res = await fetch(`/api/cart/remove/${id}`, { method: 'DELETE' });
-            if(res.ok) window.refreshCart();
+            await fetch(`/api/cart/remove/${id}`, { method: 'DELETE' });
+            window.refreshCart();
         };
 
-        // Close on overlay click
-        document.addEventListener('click', (e) => {
-            if(e.target.id === 'drawerOverlay') window.closeCart();
-        });
-
+        document.addEventListener('click', (e) => { if(e.target.id === 'drawerOverlay') window.closeCart(); });
     </script>
-    
     {% block extra_scripts %}{% endblock %}
 </body>
-
 </html>
