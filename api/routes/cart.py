@@ -24,7 +24,6 @@ def get_user_id(request: Request):
     if token:
         payload = verify_token(token, "access")
         if payload and payload != "expired":
-            # Login user ki ID Supabase me UUID string hoti hai
             return str(payload.get("sub")), True
     
     # 2. Check Guest ID from Cookie
@@ -35,31 +34,27 @@ def get_user_id(request: Request):
     return None, False
 
 # ==========================================
-# GET: FETCH CART
+# GET: FETCH CART (Fixed Keys for Frontend)
 # ==========================================
 @router.get("/")
 async def get_cart(request: Request, response: Response):
     user_id, is_logged_in = get_user_id(request)
     db = get_db()
     
-    # Agar user pehli baar aaya hai (bina login, bina guest_id)
     if not user_id:
-        # Naya ID generate karo taaki session start ho jaye
         user_id = f"guest_{uuid.uuid4().hex}"
-        # Cookie set karo: Lax use kar rahe hain taaki cross-request me block na ho
         response.set_cookie(
             key="guest_id", 
             value=user_id, 
             httponly=True, 
             secure=True, 
             samesite="lax", 
-            max_age=2592000 # 30 days
+            max_age=2592000 
         )
         return {"status": "success", "data": {"items": [], "subtotal": 0, "total_items": 0}}
 
     try:
-        # DB Query: 'products' table ke saath join karke details laao
-        # Note: Ensure karein ki 'cart_items' me 'product_id' foreign key hai
+        # DB Query with Join
         cart_res = db.table("cart_items").select(
             "id, quantity, products(id, name, image_url, mrp)"
         ).eq("user_id", user_id).execute()
@@ -72,7 +67,7 @@ async def get_cart(request: Request, response: Response):
         for item in items:
             p = item.get("products")
             if not p:
-                continue # Fail-safe: agar product DB se delete ho gaya ho
+                continue
                 
             qty = item.get("quantity", 0)
             price = p.get("mrp", 0)
@@ -80,13 +75,14 @@ async def get_cart(request: Request, response: Response):
             subtotal += (price * qty)
             total_items += qty
             
+            # 🔥 KEY FIX: Backend keys now match Frontend JS expectation
             formatted_items.append({
-                "cart_item_id": item["id"],
+                "id": item["id"],           # frontend: item.id
                 "product_id": p["id"],
                 "name": p["name"],
-                "image_url": p["image_url"],
+                "image": p["image_url"],    # frontend: item.image
                 "price": price,
-                "quantity": qty
+                "qty": qty                  # frontend: item.qty
             })
 
         return {
@@ -109,7 +105,6 @@ async def add_to_cart(data: CartItemAdd, request: Request, response: Response):
     user_id, _ = get_user_id(request)
     db = get_db()
     
-    # Agar Guest ID nahi hai, toh add karte waqt generate karo
     if not user_id:
         user_id = f"guest_{uuid.uuid4().hex}"
         response.set_cookie(
@@ -122,15 +117,12 @@ async def add_to_cart(data: CartItemAdd, request: Request, response: Response):
         )
 
     try:
-        # 1. Check karein ki item pehle se cart me hai ya nahi
         existing = db.table("cart_items").select("id, quantity").eq("user_id", user_id).eq("product_id", data.product_id).execute()
         
         if existing.data:
-            # Sirf quantity badhao
             new_qty = existing.data[0]['quantity'] + data.quantity
             db.table("cart_items").update({"quantity": new_qty}).eq("id", existing.data[0]['id']).execute()
         else:
-            # Naya item insert karo
             db.table("cart_items").insert({
                 "user_id": user_id, 
                 "product_id": data.product_id, 
