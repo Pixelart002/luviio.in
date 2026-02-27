@@ -1,11 +1,18 @@
+import sys
 import os
+
+# ==========================================
+# 🔥 1. VERCEL PATH FIX (SABSE UPAR)
+# ==========================================
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
 from fastapi import APIRouter, Request, Form, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import JSONResponse
 
 from api.db.database import get_db, get_admin_db
-# Dhyan do: ab hum 'create_tokens' import kar rahe hain
 from api.utils.security import hash_password, verify_password, create_tokens, verify_token
 
 from slowapi import Limiter
@@ -17,9 +24,14 @@ router = APIRouter()
 db = get_db()
 limiter = Limiter(key_func=get_remote_address)
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
-TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
+# ==========================================
+# 🔥 2. TEMPLATES & GLOBAL CONFIG SETUP
+# ==========================================
+TEMPLATE_DIR = os.path.join(ROOT_DIR, "templates")
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
+
+# MAGIC TRICK: Is ek line se ui_config har page (login, dashboard, home) me automatically chala jayega!
+templates.env.globals['ui_config'] = UI_CONFIG
 
 
 # --- HELPER FUNCTION FOR SESSION MANAGEMENT ---
@@ -73,10 +85,8 @@ async def home_route(request: Request):
             "type": payload.get("type")
         }
 
-    response = templates.TemplateResponse("app/pages/index.html", {"request": request, "user": current_user,
-        "ui_config":UI_CONFIG})
+    response = templates.TemplateResponse("app/pages/index.html", {"request": request, "user": current_user})
     
-    # Agar naya access token bana hai backend me, toh use cookie me set kar do
     if new_access_token:
         response.set_cookie(key="access_token", value=new_access_token, httponly=True, secure=True, samesite="strict", max_age=1800)
         
@@ -92,7 +102,7 @@ async def redirect_to_index():
 # ==========================================
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    if request.cookies.get("refresh_token"): # Refresh token hai matlab banda logged in hai
+    if request.cookies.get("refresh_token"): 
         return RedirectResponse(url="/dashboard", status_code=303)
     return templates.TemplateResponse("app/pages/login.html", {"request": request})
 
@@ -126,15 +136,10 @@ async def process_login(request: Request, email: str = Form(...), password: str 
         "tier": account.get("tier")
     }
     
-    # --- 2-TOKEN SYSTEM START ---
     access_token, refresh_token = create_tokens(token_payload)
     
     response = RedirectResponse(url="/dashboard", status_code=303)
-    
-    # Set Access Token Cookie (30 mins = 1800 seconds)
     response.set_cookie(key="access_token", value=access_token, httponly=True, secure=True, samesite="strict", max_age=1800)
-    
-    # Set Refresh Token Cookie (7 Days = 604800 seconds)
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=True, samesite="strict", max_age=604800)
     
     return response
@@ -142,14 +147,13 @@ async def process_login(request: Request, email: str = Form(...), password: str 
 @router.get("/logout")
 async def logout_user():
     response = RedirectResponse(url="/", status_code=303)
-    # Dono cookies delete kardo
     response.delete_cookie(key="access_token")
     response.delete_cookie(key="refresh_token")
     return response
 
 
 # ==========================================
-# 3. REGISTRATION ROUTES (Same as before)
+# 3. REGISTRATION ROUTES
 # ==========================================
 @router.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
@@ -170,7 +174,7 @@ async def process_register(request: Request, name: str = Form(...), email: str =
 
 
 # ==========================================
-# 4. PARTNER ROUTES (Same as before)
+# 4. PARTNER ROUTES
 # ==========================================
 @router.get("/partner", response_class=HTMLResponse)
 async def partner_landing_page(request: Request):
@@ -195,13 +199,12 @@ async def process_partner(request: Request, company_name: str = Form(...), busin
 
 
 # ==========================================
-# 5. SECURE DASHBOARD (Protected with Refresh Logic)
+# 5. SECURE DASHBOARD
 # ==========================================
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     payload, new_access_token = manage_session(request)
     
-    # Agar donu token kachra nikle, toh kick out karo
     if not payload or payload == "expired":
         response = RedirectResponse(url="/login?error=invalid_session", status_code=303)
         response.delete_cookie(key="access_token")
@@ -217,21 +220,15 @@ async def dashboard_page(request: Request):
     
     response = templates.TemplateResponse("app/pages/dashboard.html", {"request": request, "user": current_user})
     
-    # Agar 30 minute poore ho gaye the aur backend ne chup-chaap naya token banaya hai, toh use browser me update kardo
     if new_access_token:
         response.set_cookie(key="access_token", value=new_access_token, httponly=True, secure=True, samesite="strict", max_age=1800)
         
     return response
 
 
-
-
-
-
 # ==========================================
-# 7. CONTENT PAGES (Collection, Gallery, Story)
+# 6. CONTENT PAGES (Collection, Gallery, Story)
 # ==========================================
-
 @router.get("/collection", response_class=HTMLResponse)
 async def collection_page(request: Request):
     payload, new_access_token = manage_session(request)
@@ -239,7 +236,6 @@ async def collection_page(request: Request):
     current_user = None
     discount_percentage = 0
     
-    # 1. User/Partner Check
     if payload and payload != "expired":
         current_user = {
             "name": payload.get("name"), 
@@ -247,11 +243,9 @@ async def collection_page(request: Request):
             "tier": payload.get("tier"),
             "type": payload.get("type")
         }
-        # RULE ENGINE: Agar partner hai, toh 35% wholesale discount do
         if current_user["type"] == "partner":
             discount_percentage = 35 
 
-    # 2. Database se active products laao
     admin_db = get_admin_db()
     try:
         product_response = admin_db.table("products").select("*").eq("is_active", True).execute()
@@ -260,20 +254,16 @@ async def collection_page(request: Request):
         print(f"DB Error: {e}")
         products = []
 
-    # 3. Dynamic Price Calculation
     for product in products:
         mrp = product["mrp"]
         if discount_percentage > 0:
-            # Partner Price
             discounted_price = mrp - (mrp * (discount_percentage / 100))
             product["display_price"] = int(discounted_price)
             product["original_mrp"] = int(mrp)
         else:
-            # Normal B2C Price
             product["display_price"] = int(mrp)
             product["original_mrp"] = None
 
-    # 4. Render Template
     response = templates.TemplateResponse(
         "app/pages/collection.html", 
         {
@@ -283,16 +273,10 @@ async def collection_page(request: Request):
         }
     )
     
-    # Session refresh logic
     if new_access_token:
         response.set_cookie(key="access_token", value=new_access_token, httponly=True, secure=True, samesite="strict", max_age=1800)
         
     return response
-    
-    
-    
-    
-    
     
     
 @router.get("/product/{product_id}", response_class=HTMLResponse)
@@ -301,7 +285,6 @@ async def product_detail_page(request: Request, product_id: str):
     current_user = None
     discount_percentage = 0
     
-    # 1. User/Partner check for pricing
     if payload and payload != "expired":
         current_user = {
             "name": payload.get("name"), 
@@ -312,7 +295,6 @@ async def product_detail_page(request: Request, product_id: str):
         if current_user["type"] == "partner":
             discount_percentage = 35 
 
-    # 2. Database se specific product laao
     admin_db = get_admin_db()
     try:
         response = admin_db.table("products").select("*").eq("id", product_id).eq("is_active", True).execute()
@@ -323,7 +305,6 @@ async def product_detail_page(request: Request, product_id: str):
         print(f"DB Error: {e}")
         return RedirectResponse(url="/collection?error=product_not_found", status_code=303)
 
-    # 3. Dynamic Price Calculation
     mrp = product["mrp"]
     if discount_percentage > 0:
         product["display_price"] = int(mrp - (mrp * (discount_percentage / 100)))
@@ -332,7 +313,6 @@ async def product_detail_page(request: Request, product_id: str):
         product["display_price"] = int(mrp)
         product["original_mrp"] = None
 
-    # 4. Render Template
     page_response = templates.TemplateResponse(
         "app/pages/product.html", 
         {
@@ -342,31 +322,24 @@ async def product_detail_page(request: Request, product_id: str):
         }
     )
     
-    # Session refresh logic
     if new_access_token:
         page_response.set_cookie(key="access_token", value=new_access_token, httponly=True, secure=True, samesite="strict", max_age=1800)
         
     return page_response
-    
-    
-    
-    from fastapi.responses import JSONResponse
+
 
 # ==========================================
-# 8. CART API (AJAX endpoints)
+# 7. CART API (AJAX endpoints)
 # ==========================================
-
 @router.post("/api/cart/add")
 async def add_to_cart(request: Request):
     payload, _ = manage_session(request)
     
-    # 1. Check if user is logged in
     if not payload or payload == "expired":
         return JSONResponse({"status": "error", "message": "Please log in to add items."}, status_code=401)
         
-    user_id = payload.get("sub") # User ya Partner ka UUID
+    user_id = payload.get("sub") 
     
-    # 2. Get data from frontend
     try:
         data = await request.json()
         product_id = data.get("product_id")
@@ -377,15 +350,12 @@ async def add_to_cart(request: Request):
     admin_db = get_admin_db()
     
     try:
-        # 3. Check if product already exists in cart
         existing_item = admin_db.table("cart_items").select("*").eq("user_id", user_id).eq("product_id", product_id).execute()
         
         if len(existing_item.data) > 0:
-            # Agar pehle se hai, toh quantity badha do
             new_qty = existing_item.data[0]["quantity"] + quantity
             admin_db.table("cart_items").update({"quantity": new_qty}).eq("id", existing_item.data[0]["id"]).execute()
         else:
-            # Naya item insert karo
             admin_db.table("cart_items").insert({
                 "user_id": user_id,
                 "product_id": product_id,
