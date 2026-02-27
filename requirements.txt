@@ -11,4 +11,6 @@ PyJWT
 slowapi
 pydantic
 python-jose[cryptography]
+passlib
+
 
