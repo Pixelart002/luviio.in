@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% include "components/header.html" %}
+
+{% include "components/drawer.html" %}
+
+<main id="mainContent" class="pt-24 bg-[#F5F5F0]">
+  
+  <div class="text-center py-20">
+    <h2 class="text-5xl md:text-7xl font-serif text-[#111]">{{ ui_config.branding.tagline }}</h2>
+  </div>
+  
+  {% from "pages/sections.html" import render_gallery, render_testimonials, render_pricing %}
+  
+  {{ render_gallery() }}
+  
+  {% if ui_config.feature_flags.show_testimonials %}
+  {{ render_testimonials() }}
+  {% endif %}
+  
+  {% if ui_config.feature_flags.show_pricing_section %}
+  {{ render_pricing() }}
+  {% endif %}
+  
+</main>
+
+{% include "components/footer.html" %}
+{% endblock %}

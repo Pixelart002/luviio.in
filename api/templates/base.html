@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{% block title %}{{ ui_config.branding.name }}{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <style>
+        /* Strict Scroll Fixes */
+        html, body {
+            width: 100%; max-width: 100%; overflow-x: hidden !important; overscroll-behavior-x: none;
+            background-color: #F5F5F0; color: #111111; margin: 0; padding: 0;
+        }
+        .sys-transition { transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+        .glass-overlay { backdrop-filter: blur(0px); transition: backdrop-filter 0.8s; }
+        .glass-overlay.active { backdrop-filter: blur(16px); }
+        {% block extra_css %}{% endblock %}
+    </style>
+</head>
+<body class="w-full max-w-full overflow-x-hidden relative bg-[#F5F5F0]">
+    
+    <div class="relative w-full overflow-hidden" style="clip-path: inset(0);">
+        {% block content %}{% endblock %}
+    </div>
+
+    {% include "components/toast.html" %}
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    <script src="https://unpkg.com/@studio-freight/lenis@1.0.33/dist/lenis.min.js"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
