@@ -1,113 +1,99 @@
 {% extends "app/base.html" %}
 
-{% block title %}Sign In - LUVIIO Luxury{% endblock %}
+{% block title %}Identity Access - LUVIIO Luxury{% endblock %}
 
-{% block body_class %}bg-[#050505] text-white selection:bg-luviio-gold/30{% endblock %}
+{% block body_class %}bg-[#030303] text-stone-200 selection:bg-luviio-gold/30{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* Aceternity UI Inspired Glowing Mesh Background */
-    .mesh-bg {
-        position: fixed;
-        top: 0; left: 0; width: 100%; height: 100%;
-        background: 
-            radial-gradient(circle at 0% 0%, rgba(197, 160, 89, 0.05) 0%, transparent 50%),
-            radial-gradient(circle at 100% 100%, rgba(197, 160, 89, 0.05) 0%, transparent 50%);
-        z-index: -1;
+    /* Mouse hilaane par jo glow aayega uski setting */
+    .spotlight {
+        background: radial-gradient(circle at var(--x) var(--y), rgba(197, 160, 89, 0.15) 0%, transparent 40%);
+        pointer-events: none; position: fixed; inset: 0; z-index: 10;
     }
 
-    /* Minimalist Input Group */
-    .input-field {
-        @apply w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm transition-all duration-300 outline-none;
-    }
-    .input-field:focus {
-        @apply border-luviio-gold/50 bg-white/10 ring-1 ring-luviio-gold/20;
+    /* Peeche jo halki si grid dikhegi architectural feel ke liye */
+    .grid-bg {
+        background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
+                          linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);
+        background-size: 40px 40px;
+        mask-image: radial-gradient(ellipse at center, black, transparent 80%);
     }
 
-    /* Aceternity Style Moving Border Button Effect */
-    .btn-glow {
-        position: relative;
-        overflow: hidden;
-        transition: all 0.3s ease;
+    /* Inputs ko chamkane ke liye */
+    .glass-input {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        @apply w-full px-5 py-4 rounded-xl text-sm transition-all duration-500 outline-none;
     }
-    .btn-glow::after {
-        content: '';
-        position: absolute;
-        top: -50%; left: -50%; width: 200%; height: 200%;
-        background: conic-gradient(from 0deg, transparent, #C5A059, transparent 30%);
-        animation: rotate 4s linear infinite;
-        z-index: -1;
+    .glass-input:focus {
+        border-color: #C5A059;
+        background: rgba(255, 255, 255, 0.07);
+        box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);
     }
-    @keyframes rotate { 100% { transform: rotate(360deg); } }
 
-    .auth-card {
-        background: rgba(255, 255, 255, 0.02);
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-    }
+    /* Pehle se gayab rakho taaki animation se reveal ho sake */
+    .reveal { opacity: 0; transform: translateY(30px); }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="mesh-bg"></div>
+<div class="spotlight" id="spotlight"></div>
+<div class="fixed inset-0 grid-bg z-0"></div>
 
-<main class="min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
+<main class="relative z-20 min-h-screen flex items-center justify-center p-4">
     
-    <div class="absolute top-1/4 -left-20 w-64 h-64 bg-luviio-gold/10 rounded-full blur-[120px] animate-pulse"></div>
-    <div class="absolute bottom-1/4 -right-20 w-64 h-64 bg-luviio-gold/10 rounded-full blur-[120px] animate-pulse delay-700"></div>
-
-    <div class="w-full max-w-[1100px] flex flex-col md:flex-row rounded-3xl overflow-hidden auth-card shadow-2xl">
+    <div class="w-full max-w-[1000px] flex flex-col md:flex-row bg-white/[0.02] backdrop-blur-3xl rounded-[2.5rem] border border-white/5 shadow-2xl overflow-hidden">
         
-        <div class="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-black group">
-            <img src="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&q=80&w=1200" 
-                 id="authImage" class="absolute inset-0 w-full h-full object-cover opacity-60 scale-[1.1] transition-transform duration-[10s] group-hover:scale-100" alt="Luxury">
-            <div class="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"></div>
+        <div class="hidden lg:block lg:w-1/2 relative min-h-[600px]">
+            <img src="https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=1200" 
+                 id="authHero" class="absolute inset-0 w-full h-full object-cover opacity-70 scale-110">
             
-            <div class="absolute bottom-12 left-12 z-10 auth-reveal">
-                <p class="text-[10px] uppercase tracking-[0.4em] text-luviio-gold font-bold mb-4">Established 2026</p>
-                <h2 class="text-5xl font-serif text-white leading-tight mb-4">Curated for<br><span class="italic text-luviio-gold">Eternity.</span></h2>
-                <div class="w-12 h-[1px] bg-luviio-gold/50"></div>
+            <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent p-16 flex flex-col justify-end">
+                <div class="reveal">
+                    <h2 class="text-5xl font-serif text-white leading-tight mb-4 italic">Uncompromising Elegance.</h2>
+                    <p class="text-xs text-stone-400 font-sans tracking-widest uppercase">The Vault Access &mdash; LUVIIO Private</p>
+                </div>
             </div>
         </div>
 
-        <div class="w-full lg:w-1/2 flex flex-col justify-center px-8 py-16 sm:px-16 lg:px-20 bg-black/40">
+        <div class="w-full lg:w-1/2 flex flex-col justify-center items-center px-8 py-16">
             
-            <div class="w-full max-w-[340px] mx-auto">
-                <div class="flex justify-start mb-12 auth-reveal">
-                    <img src="/api/static/images/logo.png" alt="Luviio" class="w-10 h-10 object-contain invert opacity-90">
-                </div>
+            <div class="w-full max-w-[340px]">
+                <header class="text-center mb-12">
+                    <div class="flex justify-center mb-6 reveal">
+                        <img src="/api/static/images/logo.png" class="w-10 h-10 invert" alt="Logo">
+                    </div>
+                    <h1 class="text-3xl font-serif text-white mb-2 reveal">Welcome Back</h1>
+                    <p class="text-[9px] text-stone-500 uppercase tracking-[0.3em] font-bold reveal">Secure Identity Authorization</p>
+                </header>
 
-                <div class="mb-10 auth-reveal">
-                    <h1 class="text-3xl font-serif text-white mb-2">Welcome back</h1>
-                    <p class="text-xs text-gray-500 font-sans">Enter your credentials to access the gallery.</p>
-                </div>
-
-                <form action="/login" method="POST" class="space-y-6 auth-reveal">
-                    <div>
-                        <label class="block text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2">Email Address</label>
-                        <input type="email" name="email" required placeholder="name@domain.com" class="input-field">
+                <form action="/login" method="POST" class="space-y-6">
+                    <div class="reveal">
+                        <label class="block text-[10px] uppercase tracking-widest text-stone-500 mb-2 font-bold">Vault Email</label>
+                        <input type="email" name="email" class="glass-input" required placeholder="name@domain.com">
                     </div>
 
-                    <div>
-                        <div class="flex justify-between mb-2">
-                            <label class="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Password</label>
-                            <a href="#" class="text-[9px] text-luviio-gold hover:text-white transition-colors uppercase font-bold tracking-widest">Forgot?</a>
+                    <div class="reveal">
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="block text-[10px] uppercase tracking-widest text-stone-500 font-bold">Secret Key</label>
+                            <a href="#" class="text-[8px] text-luviio-gold uppercase font-bold tracking-widest">Forgot?</a>
                         </div>
-                        <input type="password" name="password" required placeholder="••••••••" class="input-field">
+                        <input type="password" name="password" class="glass-input" required placeholder="••••••••">
                     </div>
 
-                    <div class="pt-4">
-                        <button type="submit" class="w-full py-4 bg-white text-black font-bold uppercase tracking-[0.2em] text-[10px] rounded-lg hover:bg-luviio-gold hover:text-white transition-all duration-500 shadow-xl shadow-white/5 active:scale-[0.98]">
-                            Secure Sign In
+                    <div class="pt-4 reveal">
+                        <button type="submit" class="w-full py-4 bg-white text-black font-bold uppercase tracking-[0.2em] text-[10px] rounded-xl hover:bg-luviio-gold hover:text-white transition-all duration-500 active:scale-[0.98]">
+                            Authorize Entry
                         </button>
                     </div>
                 </form>
 
-                <div class="mt-12 pt-8 border-t border-white/5 text-center auth-reveal">
-                    <p class="text-[10px] text-gray-500 tracking-wide font-medium">
-                        Not a member? <a href="/register" class="text-white hover:text-luviio-gold transition-colors ml-1 font-bold border-b border-white/20 pb-0.5">Create Account</a>
+                <footer class="mt-12 pt-8 border-t border-white/5 text-center reveal">
+                    <p class="text-[10px] text-stone-500 font-medium">
+                        New here? <a href="/register" class="text-white font-bold ml-1 border-b border-white/20 pb-0.5 hover:text-luviio-gold">Request Access</a>
                     </p>
-                </div>
+                </footer>
             </div>
         </div>
     </div>
@@ -117,23 +103,17 @@
 {% block extra_scripts %}
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        // Aceternity Reveal Animation
-        gsap.set(".auth-reveal", { y: 30, opacity: 0 });
-        
-        gsap.to(".auth-reveal", {
-            y: 0,
-            opacity: 1,
-            duration: 1.2,
-            stagger: 0.15,
-            ease: "power4.out",
-            delay: 0.4
+        // Spotlight Movement (Bohot zaroori hai Aceternity feel ke liye)
+        const spotlight = document.getElementById('spotlight');
+        document.addEventListener('mousemove', (e) => {
+            spotlight.style.setProperty('--x', `${e.clientX}px`);
+            spotlight.style.setProperty('--y', `${e.clientY}px`);
         });
 
-        // Parallax Effect for Background Elements
-        document.addEventListener("mousemove", (e) => {
-            const x = (e.clientX / window.innerWidth) * 20;
-            const y = (e.clientY / window.innerHeight) * 20;
-            gsap.to(".mesh-bg", { x: x, y: y, duration: 2, ease: "power2.out" });
+        // Content Reveal Animation
+        gsap.to(".reveal", {
+            opacity: 1, y: 0, duration: 1.2,
+            stagger: 0.1, ease: "power4.out", delay: 0.2
         });
     });
 </script>
