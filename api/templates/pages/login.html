@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Sign In - {{ ui_config.branding.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Page specific overrides */
+    body {
+        background-color: #0a0a0a !important;
+        color: #ffffff;
+        overflow: hidden !important;
+        height: 100dvh; 
+    }
+    
+    .input-group { position: relative; margin-bottom: 2.5rem; }
+    .input-group input {
+        width: 100%; padding: 8px 0; font-size: 0.875rem; color: #fff;
+        background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.15);
+        outline: none; transition: border-color 0.3s;
+    }
+    .input-group input:focus { border-bottom: 1px solid #C5A059; }
+    .input-group label {
+        position: absolute; top: 8px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.6);
+        pointer-events: none; transition: 0.3s ease all; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
+    }
+    .input-group input:focus ~ label,
+    .input-group input:valid ~ label {
+        top: -16px; font-size: 0.55rem; color: #C5A059;
+    }
+
+    .custom-checkbox {
+        appearance: none;
+        background-color: transparent;
+        margin: 0;
+        font: inherit;
+        color: currentColor;
+        width: 12px;
+        height: 12px;
+        border: 1px solid rgba(255,255,255,0.4);
+        border-radius: 1px;
+        display: grid;
+        place-content: center;
+    }
+    .custom-checkbox::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        transform: scale(0);
+        transition: 120ms transform ease-in-out;
+        box-shadow: inset 1em 1em #C5A059;
+        background-color: #C5A059;
+        transform-origin: center;
+        clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+    }
+    .custom-checkbox:checked::before { transform: scale(1); }
+    .custom-checkbox:checked { border-color: #C5A059; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex h-[100dvh] w-full">
+
+    <div class="hidden md:flex md:w-1/2 h-full relative overflow-hidden bg-black">
+        <img src="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&q=80&w=1200" id="authImage" class="absolute inset-0 w-full h-full object-cover opacity-60 scale-[1.2] gpu-target" alt="Luxury Bathware">
+        <div class="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-[#0a0a0a]/30"></div>
+        
+        <div class="absolute bottom-16 left-16 z-10 auth-anim opacity-0 translate-y-8">
+            <h2 class="text-5xl font-serif mb-4 text-white leading-tight">Curated for<br><span class="italic text-[#C5A059]">Eternity.</span></h2>
+            <p class="text-xs font-sans text-gray-400 tracking-wider max-w-xs leading-relaxed">Access your exclusive dashboard to explore premium collections and manage orders.</p>
+        </div>
+    </div>
+
+    <div class="w-full md:w-1/2 h-full flex flex-col justify-center items-center px-8 sm:px-16 lg:px-24 bg-[#0a0a0a] relative">
+        
+        <a href="/" class="absolute top-8 left-8 text-gray-400 hover:text-white sys-transition flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold z-10 auth-anim opacity-0">
+            <i class="ri-arrow-left-line text-sm"></i> Home
+        </a>
+
+        <div class="w-full max-w-[320px]">
+            <div class="flex justify-center mb-8 auth-anim opacity-0 -translate-y-4">
+                <div class="w-14 h-14 flex items-center justify-center p-2 border border-white/10 rounded-sm">
+                    <img src="{{ ui_config.branding.logo_url }}" alt="{{ ui_config.branding.name }}" class="w-full h-full object-contain invert opacity-90">
+                </div>
+            </div>
+
+            <div class="text-center mb-12 auth-anim opacity-0 translate-y-4">
+                <h1 class="text-[28px] font-serif mb-3 tracking-wide">Welcome Back</h1>
+                <p class="text-[8px] text-gray-500 uppercase tracking-[0.2em] font-sans font-semibold">Sign in to continue</p>
+            </div>
+
+            <form action="/login" method="POST" class="w-full">
+                <div class="input-group auth-anim opacity-0 translate-y-4">
+                    <input type="email" name="email" id="email" required autocomplete="email">
+                    <label for="email">Email Address</label>
+                </div>
+
+                <div class="input-group auth-anim opacity-0 translate-y-4 mb-6">
+                    <input type="password" name="password" id="password" required autocomplete="current-password">
+                    <label for="password">Password</label>
+                </div>
+
+                <div class="flex justify-between items-center mb-10 auth-anim opacity-0 w-full">
+                    <label class="flex items-center gap-2 cursor-pointer group">
+                        <input type="checkbox" class="custom-checkbox">
+                        <span class="text-[8px] text-white uppercase tracking-widest font-bold sys-transition pt-0.5">Remember me</span>
+                    </label>
+                    <a href="#" class="text-[8px] text-gray-400 uppercase tracking-widest font-bold hover:text-[#C5A059] sys-transition pt-0.5">Forgot Password?</a>
+                </div>
+
+                <button type="submit" class="w-full py-3.5 bg-[#C5A059] text-black rounded-sm font-bold uppercase tracking-[0.15em] text-[9px] hover:bg-white sys-transition auth-anim opacity-0 translate-y-4 shadow-sm">
+                    Secure Sign In
+                </button>
+            </form>
+
+            <div class="mt-10 text-center auth-anim opacity-0 flex flex-col items-center gap-4">
+                <p class="text-[9px] text-gray-500 font-sans tracking-wide">New to {{ ui_config.branding.name }}? <a href="/register" class="text-white font-bold hover:text-[#C5A059] sys-transition border-b border-gray-600 pb-[1px] ml-1">Create an account</a></p>
+                
+                {% if ui_config.feature_flags.enable_partner_portal %}
+                <div class="flex items-center justify-center gap-3 w-32 opacity-60">
+                    <div class="h-[1px] flex-1 bg-gray-700"></div>
+                    <p class="text-[7px] text-gray-500 uppercase tracking-[0.3em] font-bold mt-[1px]">OR</p>
+                    <div class="h-[1px] flex-1 bg-gray-700"></div>
+                </div>
+                
+                <p class="text-[9px] text-gray-500 font-sans tracking-wide">Are you a dealer? <a href="/partner" class="text-[#C5A059] font-bold hover:text-white sys-transition border-b border-[#C5A059]/40 pb-[1px] ml-1">Partner Portal</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endendblock %}
+
+{% block extra_scripts %}
+<script>
+    window.initPageAnimations = function() {
+        gsap.to("#authImage", { scale: 1, duration: 10, ease: "power1.out" });
+        gsap.to(".auth-anim", { y: 0, opacity: 1, duration: 1, stagger: 0.08, ease: "power3.out", delay: 0.2 });
+
+        // Logic to catch URL errors and show them in Toast
+        const urlParams = new URLSearchParams(window.location.search);
+        if(urlParams.has('error')) {
+            let errorMsg = "Login failed.";
+            if(urlParams.get('error') === 'user_not_found') errorMsg = "Account not found.";
+            if(urlParams.get('error') === 'invalid_password') errorMsg = "Incorrect password.";
+            if(urlParams.get('error') === 'invalid_session') errorMsg = "Session expired. Please log in again.";
+            
+            setTimeout(() => { showToast(errorMsg, true); }, 1000);
+        }
+        if(urlParams.has('msg')) {
+            let successMsg = "Success!";
+            if(urlParams.get('msg') === 'account_created') successMsg = "Account created successfully. Please sign in.";
+            if(urlParams.get('msg') === 'partner_application_received') successMsg = "Application received. We will review it soon.";
+            
+            setTimeout(() => { showToast(successMsg, false); }, 1000);
+        }
+    };
+</script>
+{% endblock %}
