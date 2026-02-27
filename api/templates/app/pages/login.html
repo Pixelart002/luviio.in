@@ -5,10 +5,39 @@
 
 {% block title %}Sign In - LUVIIO{% endblock %}
 
-{% block body_class %}flex h-[100dvh] w-full bg-black text-white overflow-hidden{% endblock %}
+{# Body classes fixed for absolute responsiveness #}
+{% block body_class %}bg-black text-white overflow-hidden relative w-full h-[100dvh]{% endblock %}
 
 {% block extra_css %}
 <style>
+    /* 🔥 RESPONSIVE WRAPPER: Prevents layout breaking on small screens */
+    #authWrapper {
+        display: flex;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    @media (max-width: 1024px) {
+        #authWrapper {
+            flex-direction: column;
+            overflow-y: auto; /* Allow scroll only on mobile if needed */
+            background: #000;
+        }
+        
+        /* Macro containers typically need this override for mobile */
+        #authBannerContainer { 
+            display: none !important; 
+        }
+        
+        #loginFormContainer {
+            width: 100% !important;
+            padding: 2rem !important;
+            justify-content: center !important;
+        }
+    }
+
+    /* Form UI Spacing & Transitions */
     .input-group { position: relative; margin-bottom: 2.5rem; }
     .input-group input {
         width: 100%; padding: 8px 0; font-size: 0.875rem; color: #fff;
@@ -35,19 +64,44 @@
     }
     .custom-checkbox:checked::before { transform: scale(1); }
     .custom-checkbox:checked { border-color: #C5A059; }
+
+    /* Animation initial state */
+    .auth-anim { opacity: 0; }
 </style>
 {% endblock %}
 
 {% block content %}
+<main id="authWrapper">
     {{ render_auth_banner() }}
     {{ render_login_form() }}
+</main>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        gsap.to("#authImage", { scale: 1, duration: 10, ease: "power1.out" });
-        gsap.to(".auth-anim", { y: 0, opacity: 1, duration: 1, stagger: 0.08, ease: "power3.out", delay: 0.2 });
+        // 1. Disable Lenis for Auth Page (Fixed height pages don't need smooth scroll)
+        if(window.lenis) window.lenis.destroy();
+
+        // 2. Cursor blend mode for dark background
+        const cursor = document.getElementById('cursor');
+        if(cursor) cursor.style.mixBlendMode = "difference";
+
+        // 3. Banner Image Zoom
+        const authImg = document.querySelector("#authImage");
+        if(authImg) {
+            gsap.to(authImg, { scale: 1, duration: 10, ease: "power1.out" });
+        }
+
+        // 4. Staggered Entrance
+        gsap.to(".auth-anim", { 
+            y: 0, 
+            opacity: 1, 
+            duration: 1, 
+            stagger: 0.08, 
+            ease: "power3.out", 
+            delay: 0.2 
+        });
     });
 </script>
 {% endblock %}
