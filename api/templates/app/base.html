@@ -1,11 +1,19 @@
+{% from "app/macros/shared/toast.html" import render_toast %}
+{% from "app/macros/shared/cart_drawer.html" import render_cart_drawer %}
+
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{% block title %}{{ ui_config.branding.name }} - Premium Bathware{% endblock %}</title>
+    <title>{% block title %}LUVIIO - Premium Bathware{% endblock %}</title>
     
-    <link rel="preload" as="image" href="{{ ui_config.branding.logo_url }}">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    
+    <link rel="preload" as="image" href="/api/static/images/logo.png">
+    <link rel="preload" as="image" href="https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=2000">
+    
     <link rel="preconnect" href="https://images.unsplash.com">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,10 +29,18 @@
             theme: {
                 extend: {
                     colors: {
-                        luviio: { stone: '#F5F5F0', charcoal: '#111111', gold: '#C5A059', sand: '#E5E5DF', panel: '#121212' }
+                        luviio: {
+                            stone: '#F5F5F0',
+                            charcoal: '#111111',
+                            gold: '#C5A059',
+                            sand: '#E5E5DF',
+                            panel: '#121212'
+                        }
                     },
                     fontFamily: {
-                        sans: ['Inter', 'sans-serif'], serif: ['Playfair Display', 'serif'], signature: ['Great Vibes', 'cursive'],
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif'],
+                        signature: ['Great Vibes', 'cursive'],
                     }
                 }
             }
@@ -32,8 +48,30 @@
     </script>
     
     <style>
-        html, body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; background-color: #F5F5F0; color: #111111; margin:0; padding:0; }
-        html.lenis, html.lenis body { height: auto; width: 100vw; overflow-x: hidden; }
+        /* 🔥 THE ULTIMATE SCROLL FIX */
+        html,
+        body {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+            background-color: #F5F5F0;
+            color: #111111;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: hidden !important;
+            overscroll-behavior-x: none !important; /* Prevents mobile bounce */
+            margin: 0;
+            padding: 0;
+        }
+        
+        html.lenis,
+        html.lenis body {
+            height: auto;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: hidden !important;
+        }
+        
         .lenis.lenis-smooth { scroll-behavior: auto !important; }
         .lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
         .lenis.lenis-stopped { overflow: hidden; }
@@ -60,25 +98,40 @@
         .anim-float { animation: float-subtle 8s ease-in-out infinite; }
         ::-webkit-scrollbar { width: 0px; background: transparent; }
         .sys-transition { transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+        
         .pricing-glow::before { content: ''; position: absolute; inset: -2px; background: linear-gradient(45deg, #C5A059, transparent, #C5A059); z-index: -1; filter: blur(15px); opacity: 0; transition: opacity 0.5s ease; }
         .pricing-card:hover .pricing-glow::before { opacity: 0.6; }
+        
         .swiper-pagination-bullet { background-color: rgba(0, 0, 0, 0.3) !important; }
         .swiper-pagination-bullet-active { background-color: #C5A059 !important; }
         .dark-swiper .swiper-pagination-bullet { background-color: rgba(255, 255, 255, 0.3) !important; }
         .dark-swiper .swiper-pagination-bullet-active { background-color: #C5A059 !important; }
+        
+        {% block extra_css %}{% endblock %}
     </style>
 </head>
-<body class="relative bg-luviio-stone">
 
-    <div id="cursor" class="hidden md:block"></div>
+<body class="w-full max-w-full overflow-x-hidden {% block body_class %}relative bg-luviio-stone text-luviio-charcoal{% endblock %}">
+    
+    <div class="relative w-full overflow-hidden" style="clip-path: inset(0);">
+        
+        <div id="cursor" class="hidden md:block"></div>
+        
+        {% block content %}
+        {% endblock %}
+        
+    </div> 
 
-    {% block content %}{% endblock %}
-
+    {{ render_cart_drawer() }}
+    {{ render_toast() }}
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
     <script src="https://unpkg.com/@studio-freight/lenis@1.0.33/dist/lenis.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
     
-    {% block extra_scripts %}{% endblock %}
+    {% block extra_scripts %}
+    {% endblock %}
 </body>
+
 </html>

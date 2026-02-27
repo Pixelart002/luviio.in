@@ -1,0 +1,76 @@
+{% extends "app/base.html" %}
+
+{% from "app/macros/dashboard/sidebar.html" import render_sidebar %}
+{% from "app/macros/dashboard/topbar.html" import render_topbar %}
+{% from "app/macros/dashboard/content.html" import render_dashboard_content %}
+
+{% block title %}Dashboard - LUVIIO{% endblock %}
+
+{% block body_class %}flex h-[100dvh] w-full bg-luviio-charcoal text-white relative overflow-hidden{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Specific Dashboard Styles */
+    .glass-panel { background: rgba(18, 18, 18, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
+    
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: #C5A059; }
+
+    .nav-item.active { background: rgba(197, 160, 89, 0.1); border-right: 2px solid #C5A059; color: #C5A059; }
+    
+    .tier-badge {
+        background: linear-gradient(135deg, rgba(197,160,89,0.2) 0%, rgba(197,160,89,0.05) 100%);
+        border: 1px solid rgba(197,160,89,0.3);
+        color: #C5A059;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    {{ render_sidebar(user) }}
+
+    <div class="flex-1 flex flex-col h-full min-w-0">
+        
+        {{ render_topbar() }}
+
+        <main class="flex-1 overflow-y-auto relative bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-luviio-panel via-luviio-charcoal to-black">
+            {{ render_dashboard_content(user) }}
+        </main>
+        
+    </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Making toggle globally accessible for onclick events in macros
+    window.toggleSidebar = function() {
+        const sidebar = document.getElementById('mainSidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        let isSidebarOpen = !sidebar.classList.contains('-translate-x-full');
+        
+        if (!isSidebarOpen) {
+            sidebar.classList.remove('-translate-x-full');
+            overlay.classList.remove('hidden');
+            setTimeout(() => { overlay.classList.remove('opacity-0'); }, 10);
+        } else {
+            sidebar.classList.add('-translate-x-full');
+            overlay.classList.add('opacity-0');
+            setTimeout(() => { overlay.classList.add('hidden'); }, 300); 
+        }
+    }
+
+    // Dashboard Elements Entrance Animation
+    document.addEventListener("DOMContentLoaded", () => {
+        gsap.to(".dash-anim", {
+            y: 0,
+            opacity: 1,
+            duration: 0.8,
+            stagger: 0.1,
+            ease: "power3.out",
+            delay: 0.1
+        });
+    });
+</script>
+{% endblock %}

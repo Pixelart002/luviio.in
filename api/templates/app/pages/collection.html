@@ -1,0 +1,44 @@
+{% extends "app/base.html" %}
+
+{% from "app/macros/collection_page/header.html" import render_collection_header %}
+{% from "app/macros/collection_page/product_grid.html" import render_product_grid %}
+
+{% block title %}The Collection - LUVIIO{% endblock %}
+
+{% block body_class %}bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1a1a1a] via-[#0a0a0a] to-black min-h-screen text-white{% endblock %}
+
+{% block content %}
+<nav class="fixed top-0 w-full z-50 glass-panel border-b border-luviio-border">
+    <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+        <a href="/" class="text-sm font-serif tracking-[0.2em] uppercase text-white hover:text-luviio-gold sys-transition">LUVIIO</a>
+        <div class="flex items-center gap-6">
+            {% if user %}
+            <a href="/dashboard" class="text-xs uppercase tracking-widest font-bold text-gray-400 hover:text-luviio-gold sys-transition">Dashboard</a>
+            {% else %}
+            <a href="/login" class="text-xs uppercase tracking-widest font-bold text-luviio-gold">Sign In</a>
+            {% endif %}
+            
+            <button onclick="window.openCart()" class="text-xl text-white hover:text-luviio-gold sys-transition outline-none">
+                <i class="ri-shopping-bag-3-line"></i>
+            </button>
+        </div>
+    </div>
+</nav>
+
+{{ render_collection_header() }}
+{{ render_product_grid(products) }}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        gsap.to(".dash-anim", {
+            y: 0,
+            opacity: 1,
+            duration: 1,
+            stagger: 0.15,
+            ease: "power3.out"
+        });
+    });
+</script>
+{% endblock %}

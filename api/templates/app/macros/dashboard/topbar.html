@@ -1,0 +1,14 @@
+{% macro render_topbar() %}
+<header class="md:hidden shrink-0 w-full h-16 bg-[#050505]/90 backdrop-blur-md border-b border-luviio-border z-30 flex items-center justify-between px-6">
+  <div class="flex items-center gap-4">
+    <button onclick="toggleSidebar()" class="text-white hover:text-luviio-gold sys-transition outline-none">
+      <i class="ri-menu-2-line text-2xl"></i>
+    </button>
+  </div>
+  <a href="/" class="flex items-center gap-2 absolute left-1/2 transform -translate-x-1/2">
+    <img src="/api/static/images/logo.png" alt="Logo" class="w-5 h-5 invert">
+    <span class="text-xs font-serif tracking-[0.2em] uppercase text-white mt-1">LUVIIO</span>
+  </a>
+  <a href="/logout" class="text-red-500/80 hover:text-red-500"><i class="ri-logout-box-r-line text-xl"></i></a>
+</header>
+{% endmacro %}

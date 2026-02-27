@@ -9,8 +9,3 @@ python-dotenv
 bcrypt
 PyJWT
 slowapi
-pydantic
-python-jose[cryptography]
-passlib
-
-

@@ -1,0 +1,197 @@
+
+{% macro render_cart_drawer() %}
+<div id="cartOverlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] opacity-0 pointer-events-none transition-opacity duration-500"></div>
+
+<div id="cartDrawer" class="fixed top-0 right-0 h-[100dvh] w-full md:w-[450px] bg-luviio-panel border-l border-white/5 z-[110] transform translate-x-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col shadow-2xl">
+    
+    <div class="h-20 px-8 flex items-center justify-between border-b border-white/5 shrink-0">
+        <h2 class="font-serif text-xl text-white tracking-wide flex items-center gap-3">
+            <i class="ri-shopping-bag-3-line text-luviio-gold"></i> Your Cart (<span id="cartItemCount">0</span>)
+        </h2>
+        <button id="closeCartBtn" class="text-gray-500 hover:text-luviio-gold sys-transition outline-none">
+            <i class="ri-close-line text-2xl"></i>
+        </button>
+    </div>
+
+    <div id="cartLoader" class="flex-1 flex items-center justify-center">
+        <i class="ri-loader-4-line text-3xl text-luviio-gold animate-spin"></i>
+    </div>
+
+    <div id="cartEmptyState" class="hidden flex-1 flex-col items-center justify-center text-center opacity-70 pb-10 px-8">
+        <i class="ri-shopping-bag-line text-5xl mb-4 text-gray-600"></i>
+        <p class="text-[10px] tracking-[0.2em] uppercase font-bold text-gray-400 mb-2">Your collection is empty</p>
+        <p class="text-xs text-gray-500 mb-6">Discover our masterpieces to elevate your space.</p>
+        <button onclick="window.closeCart()" class="border-b border-gray-600 pb-1 text-[9px] uppercase tracking-widest hover:text-luviio-gold hover:border-luviio-gold sys-transition">Continue Browsing</button>
+    </div>
+
+    <div id="cartContent" class="hidden flex-1 overflow-y-auto px-8 py-8 cart-scrollbar flex flex-col gap-6">
+        
+        <div id="cartItemsList" class="flex flex-col gap-6"></div>
+
+        <div id="cartSponsoredSection" class="mt-auto pt-8 border-t border-white/5"></div>
+
+    </div>
+
+    <div id="cartFooter" class="hidden p-8 border-t border-white/5 bg-black/40 shrink-0">
+        <div class="flex justify-between items-center mb-6">
+            <span class="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Subtotal</span>
+            <span id="cartSubtotal" class="text-2xl font-serif text-white">₹0</span>
+        </div>
+        <p class="text-[9px] text-gray-500 mb-6 tracking-wide uppercase">Shipping & taxes calculated at checkout.</p>
+        <a href="/checkout" class="w-full bg-luviio-gold text-black py-4 rounded-sm text-[10px] uppercase tracking-[0.2em] font-bold hover:bg-white sys-transition flex justify-center items-center gap-3 hover-target block text-center">
+            Proceed to Checkout <i class="ri-arrow-right-line text-lg"></i>
+        </a>
+    </div>
+</div>
+
+<style>
+    .cart-scrollbar::-webkit-scrollbar { width: 3px; }
+    .cart-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .cart-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+    .cart-scrollbar::-webkit-scrollbar-thumb:hover { background: #C5A059; }
+</style>
+
+<script>
+    // Making it Global so any page can call it
+    window.openCart = function() {
+        const cartDrawer = document.getElementById('cartDrawer');
+        const cartOverlay = document.getElementById('cartOverlay');
+        cartOverlay.classList.remove('opacity-0', 'pointer-events-none');
+        cartDrawer.classList.remove('translate-x-full');
+        document.body.style.overflow = 'hidden'; 
+        
+        // 🔥 JAISE HI DRAWER KHULE, DATA FETCH KARO!
+        fetchAndRenderCart();
+    }
+
+    window.closeCart = function() {
+        const cartDrawer = document.getElementById('cartDrawer');
+        const cartOverlay = document.getElementById('cartOverlay');
+        cartOverlay.classList.add('opacity-0', 'pointer-events-none');
+        cartDrawer.classList.add('translate-x-full');
+        document.body.style.overflow = ''; 
+    }
+
+    // 🔥 THE MASTER API CALL (Using Axios)
+    async function fetchAndRenderCart() {
+        const loader = document.getElementById('cartLoader');
+        const emptyState = document.getElementById('cartEmptyState');
+        const cartContent = document.getElementById('cartContent');
+        const cartFooter = document.getElementById('cartFooter');
+        
+        // Show loader, hide everything else initially
+        loader.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+        cartContent.classList.add('hidden');
+        cartFooter.classList.add('hidden');
+
+        try {
+            // Axios magic directly gives us JSON parsed data
+            const response = await axios.get('/api/cart/');
+            const result = response.data;
+            
+            if (result.status === 'success') {
+                const data = result.data;
+                document.getElementById('cartItemCount').innerText = data.total_items;
+                
+                if (data.items.length === 0) {
+                    // State: Empty Cart
+                    emptyState.classList.remove('hidden');
+                } else {
+                    // State: Filled Cart
+                    renderCartItems(data.items);
+                    document.getElementById('cartSubtotal').innerText = '₹' + data.subtotal.toLocaleString('en-IN');
+                    renderSponsoredItem(data.sponsored);
+                    
+                    cartContent.classList.remove('hidden');
+                    cartFooter.classList.remove('hidden');
+                }
+            }
+        } catch (error) {
+            console.error("Cart Error:", error);
+            showToast("Failed to load your collection.", true);
+            emptyState.classList.remove('hidden'); // Fallback to empty state on error
+        } finally {
+            loader.classList.add('hidden'); // Always hide loader at the end
+        }
+    }
+
+    // Component: Render Items Loop
+    function renderCartItems(items) {
+        const container = document.getElementById('cartItemsList');
+        container.innerHTML = items.map(item => `
+            <div class="flex gap-5 group">
+                <div class="w-20 h-24 bg-[#111] rounded-lg overflow-hidden shrink-0 border border-white/5 relative">
+                    <img src="${item.image_url}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 sys-transition" alt="${item.name}">
+                </div>
+                <div class="flex flex-col justify-center flex-1 py-1">
+                    <div class="flex justify-between items-start mb-1">
+                        <h4 class="text-sm font-serif text-white truncate pr-2">${item.name}</h4>
+                        <button onclick="removeCartItem('${item.cart_item_id}')" class="text-gray-600 hover:text-red-500 sys-transition outline-none shrink-0"><i class="ri-delete-bin-line"></i></button>
+                    </div>
+                    <p class="text-[9px] uppercase tracking-widest text-gray-500 mb-3">${item.material_finish || 'Standard'}</p>
+                    <div class="flex justify-between items-center mt-auto">
+                        <div class="flex items-center gap-3 border border-white/10 rounded-sm px-2 py-1 bg-black/50">
+                            <button onclick="updateQty('${item.cart_item_id}', -1)" class="text-gray-500 hover:text-white outline-none"><i class="ri-subtract-line text-xs"></i></button>
+                            <span class="text-[10px] font-sans w-4 text-center text-white">${item.quantity}</span>
+                            <button onclick="updateQty('${item.cart_item_id}', 1)" class="text-gray-500 hover:text-white outline-none"><i class="ri-add-line text-xs"></i></button>
+                        </div>
+                        <p class="text-sm font-sans font-medium text-luviio-gold">₹${item.price.toLocaleString('en-IN')}</p>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Component: Render Sponsored Item
+    function renderSponsoredItem(sponsored) {
+        const container = document.getElementById('cartSponsoredSection');
+        if(!sponsored) { container.innerHTML = ''; return; }
+        
+        container.innerHTML = `
+            <div class="flex items-center justify-between mb-4">
+                <span class="text-[9px] uppercase tracking-widest text-gray-400 font-bold">Frequently Bought Together</span>
+                <span class="text-[8px] uppercase tracking-widest bg-luviio-gold/10 text-luviio-gold px-2 py-0.5 rounded border border-luviio-gold/20">Sponsored</span>
+            </div>
+            <div class="flex gap-4 p-3 rounded-lg bg-[#0f0f0f] border border-white/5 hover:border-luviio-gold/30 sys-transition group">
+                <div class="w-16 h-16 bg-[#111] rounded overflow-hidden shrink-0 relative">
+                    <img src="${sponsored.image_url}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 sys-transition" alt="${sponsored.name}">
+                </div>
+                <div class="flex flex-col justify-center flex-1 min-w-0">
+                    <h4 class="text-xs font-serif text-white truncate">${sponsored.name}</h4>
+                    <p class="text-[9px] text-gray-500 uppercase tracking-widest mt-0.5">${sponsored.material_finish || 'Standard'}</p>
+                    <p class="text-xs font-sans font-medium text-luviio-gold mt-1">₹${sponsored.price.toLocaleString('en-IN')}</p>
+                </div>
+                <button onclick="quickAddSponsored('${sponsored.product_id}')" class="w-8 h-8 rounded-full bg-white/5 text-gray-400 flex items-center justify-center self-center hover:bg-luviio-gold hover:text-black sys-transition outline-none shrink-0 group-hover:bg-white/10">
+                    <i class="ri-add-line text-lg"></i>
+                </button>
+            </div>
+        `;
+    }
+
+    // Future API connections for UI Buttons
+    async function updateQty(itemId, change) {
+        showToast("Updating quantity...", false);
+        // Kal ko yahan PATCH API aayegi: axios.patch('/api/cart/update', {id: itemId, qty: change})
+    }
+    
+    async function removeCartItem(itemId) {
+        showToast("Removing item...", false);
+        // Kal ko yahan DELETE API aayegi: axios.delete('/api/cart/remove')
+    }
+
+    async function quickAddSponsored(productId) {
+        showToast("Adding sponsored item...", false);
+        try {
+            await axios.post('/api/cart/add', { product_id: productId, quantity: 1 });
+            fetchAndRenderCart(); // Refresh cart UI immediately!
+            showToast("Added to collection ✓", false);
+        } catch(e) { showToast("Failed to add item.", true); }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        document.getElementById('closeCartBtn').addEventListener('click', window.closeCart);
+        document.getElementById('cartOverlay').addEventListener('click', window.closeCart);
+    });
+</script>
+{% endmacro %}

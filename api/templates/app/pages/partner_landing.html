@@ -1,0 +1,109 @@
+{% extends "app/base.html" %}
+
+{% from "app/macros/index_page/splash.html" import render_splash %}
+{% from "app/macros/partner_page/hero_section.html" import render_partner_header, render_partner_hero %}
+{% from "app/macros/partner_page/benefits.html" import render_philosophy, render_stats, render_perks %}
+{% from "app/macros/partner_page/content.html" import render_horizontal_showcase, render_timeline, render_partner_voices, render_partner_cta %}
+
+{% block title %}Partner Network - LUVIIO{% endblock %}
+
+{% block body_class %}relative bg-[#0a0a0a] text-white{% endblock %}
+
+{% block extra_css %}
+<style>
+    .clip-mask { overflow: hidden; display: inline-block; padding-bottom: 0.1em; vertical-align: bottom; }
+    .clip-text { display: inline-block; transform: translateY(110%); transform-origin: top left; will-change: transform; }
+    .hover-3d { transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.5s ease; }
+    .hover-3d:hover { transform: translateY(-10px) scale(1.02); border-color: #C5A059; }
+    .progress-line { transform-origin: top; transform: scaleY(0); }
+</style>
+{% endblock %}
+
+{% block content %}
+    {{ render_splash() }}
+    {{ render_partner_header() }}
+
+    <main id="mainContent" class="opacity-0 hidden">
+        {{ render_partner_hero() }}
+        {{ render_philosophy() }}
+        {{ render_stats() }}
+        {{ render_perks() }}
+        {{ render_horizontal_showcase() }}
+        {{ render_timeline() }}
+        {{ render_partner_voices() }}
+        {{ render_partner_cta() }}
+    </main>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        let lenis;
+        const logoImage = new Image();
+        logoImage.src = "/api/static/images/logo.png";
+
+        const tl = gsap.timeline({
+            paused: true,
+            onStart: () => { document.getElementById('mainContent').classList.remove('hidden'); },
+            onComplete: () => {
+                document.getElementById('splashScreen').style.display = 'none';
+                initAnimations();
+            }
+        });
+
+        gsap.to("#splashLogo", { opacity: 1, scale: 1, filter: "blur(0px)", duration: 1.5, ease: "power3.out" });
+
+        tl.to("#splashProgress", { width: "100%", duration: 1, ease: "power3.inOut" })
+          .to("#splashScreen", { yPercent: -100, duration: 1.2, ease: "expo.inOut" })
+          .to("#mainContent", { opacity: 1, duration: 0.5 }, "-=0.8")
+          .to("#mainHeader", { y: 0, duration: 1, ease: "power4.out" }, "-=0.5")
+          .fromTo(".hero-anim", { y: "110%" }, { y: "0%", duration: 1.5, stagger: 0.1, ease: "power4.out" }, "-=0.5")
+          .to("#heroImage", { scale: 1, filter: "blur(0px)", opacity: 0.6, duration: 3, ease: "power3.out" }, "-=1.5");
+
+        function checkImageAndPlay() {
+            if (logoImage.complete) { setTimeout(() => tl.play(), 300); } 
+            else { logoImage.onload = () => tl.play(); logoImage.onerror = () => tl.play(); }
+        }
+        checkImageAndPlay();
+
+        function initAnimations() {
+            lenis = new Lenis({ duration: 1.2, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smooth: true });
+            lenis.on('scroll', ScrollTrigger.update);
+            gsap.ticker.add((time) => { lenis.raf(time * 1000); });
+            gsap.ticker.lagSmoothing(0, 0);
+
+            new Swiper(".reviewSwiper", { slidesPerView: 1, spaceBetween: 30, loop: true, grabCursor: true, autoplay: { delay: 4000, disableOnInteraction: true }, pagination: { el: ".swiper-pagination", clickable: true } });
+
+            gsap.to("#heroImage", { yPercent: 15, ease: "none", scrollTrigger: { trigger: "#mainContent", start: "top top", end: "bottom top", scrub: true }});
+
+            gsap.fromTo(".phil-anim", { y: "110%" }, { y: "0%", duration: 1.2, stagger: 0.1, ease: "power4.out", scrollTrigger: { trigger: "#philosophy", start: "top 65%" } });
+
+            const counters = document.querySelectorAll('.counter');
+            counters.forEach(counter => {
+                const target = +counter.getAttribute('data-target');
+                ScrollTrigger.create({
+                    trigger: "#statsSection", start: "top 80%", once: true,
+                    onEnter: () => {
+                        let obj = { val: 0 };
+                        gsap.to(obj, { val: target, duration: 2, ease: "power3.out", onUpdate: () => { counter.innerText = Math.ceil(obj.val); } });
+                    }
+                });
+            });
+
+            gsap.from(".perk-card", { y: 100, rotationX: 15, opacity: 0, duration: 1.2, stagger: 0.15, ease: "power3.out", transformOrigin: "top center", scrollTrigger: { trigger: "#perksGrid", start: "top 70%" } });
+
+            const track = document.getElementById("scrollTrack");
+            function getScroll() { return -(track.scrollWidth - window.innerWidth + (window.innerWidth > 768 ? 128 : 48)); }
+            ScrollTrigger.create({ trigger: "#horizontalShowcase", start: "top top", end: () => `+=${Math.abs(getScroll())}`, pin: true, animation: gsap.to(track, { x: getScroll, ease: "none" }), scrub: 1, invalidateOnRefresh: true });
+
+            gsap.to("#timelineLine", { scaleY: 1, ease: "none", scrollTrigger: { trigger: "#timelineContent", start: "top 50%", end: "bottom 80%", scrub: true } });
+            const steps = gsap.utils.toArray('.step-item');
+            steps.forEach((step) => {
+                ScrollTrigger.create({ trigger: step, start: "top 70%", onEnter: () => gsap.to(step, { opacity: 1, duration: 0.5 }), onLeaveBack: () => gsap.to(step, { opacity: 0.2, duration: 0.5 }) });
+            });
+
+            gsap.to("#ctaImage", { yPercent: 20, ease: "none", scrollTrigger: { trigger: "#ctaImage", start: "top bottom", end: "bottom top", scrub: true }});
+        }
+    });
+</script>
+{% endblock %}

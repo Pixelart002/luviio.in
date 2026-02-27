@@ -1,57 +1,75 @@
 import os
-import sys
-
-# ==========================================
-# 🔥 VERCEL & MODULE PATH FIX
-# ==========================================
-# Yeh ensure karta hai ki 'api' folder ke andar ke modules asani se mil jayein
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if ROOT_DIR not in sys.path:
-    sys.path.insert(0, ROOT_DIR)
-
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from fastapi.middleware.gzip import GZipMiddleware
 
-# --- ROUTER IMPORTS ---
-from api.routes.pages import router as pages_router
+
+
+from api.routes.routes import router as luviio_router
 from api.routes.cart import router as cart_router
 
-app = FastAPI(
-    title="LUVIIO - Modular Bathware Engine",
-    description="Premium backend architecture for luxury e-commerce",
-    version="2.0.0"
-)
 
-# ==========================================
-# 📂 STATIC FILES MOUNTING
-# ==========================================
-# Isse tumhare HTML me /api/static/images/logo.png jaise paths kaam karenge
+
+
+
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
+# 2. Static directory ka path define karo:
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-if os.path.exists(STATIC_DIR):
-    app.mount("/api/static", StaticFiles(directory=STATIC_DIR), name="static")
-else:
-    print(f"Warning: Static directory not found at {STATIC_DIR}")
 
-# ==========================================
-# 🚀 ROUTER INCLUSION
-# ==========================================
 
-# 1. Cart API Router (Pehle API endpoints ko rakhte hain)
+
+
+limiter = Limiter(key_func=get_remote_address)
+
+
+app = FastAPI(title="Luviio.in | Static Version")
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded,_rate_limit_exceeded_handler)
+
+
+
+
+
+# 3. Yahan StaticFiles ko mount karo:
+app.mount("/api/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+templates = Jinja2Templates(directory=TEMPLATE_DIR)
+
+
+
+# --- AI DEBUGGER (optional) ---
+async def get_ai_solution(error_msg: str):
+    url = f"https://mistral-ai-three.vercel.app/?id=Luviio_Vercel&question=Fix: {error_msg}"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(url)
+            return res.text if res.status_code == 200 else "AI unavailable"
+    except:
+        return "Debugger Timeout"
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_detail = str(exc)
+    ai_fix = await get_ai_solution(error_detail)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "message": error_detail,
+            "ai_suggestion": ai_fix[:200]
+        }
+    )
+
+app.include_router(luviio_router)
 app.include_router(cart_router)
-
-# 2. HTML Pages Router (Isme home, login, register sab hai)
-app.include_router(pages_router)
-
-# ==========================================
-# 🛠️ GLOBAL EXCEPTION HANDLERS (Optional but Recommended)
-# ==========================================
-@app.on_event("startup")
-async def startup_event():
-    print("LUVIIO Backend Engine is starting up...")
-
-@app.get("/health")
-async def health_check():
-    """Vercel monitoring ke liye"""
-    return {"status": "online", "engine": "modular_v2"}

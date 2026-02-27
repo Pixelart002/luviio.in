@@ -1,0 +1,99 @@
+{% macro render_horizontal_showcase() %}
+<section id="horizontalShowcase" class="bg-[#050505] py-20 md:py-24 overflow-hidden border-y border-white/5">
+  <div class="px-6 md:px-16 mb-10 md:mb-12">
+    <span class="text-luviio-gold text-[9px] md:text-[10px] uppercase tracking-[0.4em] font-sans font-bold">The Catalog</span>
+    <h2 class="text-3xl md:text-5xl font-serif mt-3 md:mt-4">What you'll be <span class="italic text-gray-500">Curating.</span></h2>
+  </div>
+  
+  <div class="flex gap-6 md:gap-8 px-6 md:px-16 w-max" id="scrollTrack">
+    <img src="https://images.unsplash.com/photo-1584622781564-1d987f7333c1?auto=format&fit=crop&q=80&w=800" class="w-[70vw] md:w-[500px] h-[40vh] md:h-[50vh] object-cover rounded-2xl md:rounded-3xl opacity-80 hover:opacity-100 sys-transition">
+    <img src="https://images.unsplash.com/photo-1507652313651-74ff74d3ca9e?auto=format&fit=crop&q=80&w=800" class="w-[70vw] md:w-[500px] h-[40vh] md:h-[50vh] object-cover rounded-2xl md:rounded-3xl opacity-80 hover:opacity-100 sys-transition">
+    <img src="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&q=80&w=800" class="w-[70vw] md:w-[500px] h-[40vh] md:h-[50vh] object-cover rounded-2xl md:rounded-3xl opacity-80 hover:opacity-100 sys-transition">
+    <img src="https://images.unsplash.com/photo-1595515106969-1ce29566ff1c?auto=format&fit=crop&q=80&w=800" class="w-[70vw] md:w-[500px] h-[40vh] md:h-[50vh] object-cover rounded-2xl md:rounded-3xl opacity-80 hover:opacity-100 sys-transition">
+  </div>
+</section>
+{% endmacro %}
+
+{% macro render_timeline() %}
+<section class="py-24 md:py-40 bg-luviio-charcoal px-6 md:px-16 relative border-b border-white/5">
+  <div class="max-w-4xl mx-auto flex gap-6 md:gap-10">
+    <div class="w-[2px] md:w-1 bg-white/10 rounded-full relative overflow-hidden hidden sm:block">
+      <div class="absolute top-0 w-full bg-luviio-gold progress-line h-full" id="timelineLine"></div>
+    </div>
+    
+    <div class="flex flex-col gap-16 md:gap-24 py-10" id="timelineContent">
+      <div class="step-item opacity-20 transition-opacity duration-500">
+        <span class="text-luviio-gold font-serif text-3xl md:text-5xl mb-2 md:mb-4 block">01.</span>
+        <h3 class="text-xl md:text-3xl font-serif mb-2 md:mb-4">Submit Credentials</h3>
+        <p class="text-gray-400 font-sans text-xs md:text-base">Fill out our secure application form with your Business ID / GSTIN and company profile.</p>
+      </div>
+      <div class="step-item opacity-20 transition-opacity duration-500">
+        <span class="text-luviio-gold font-serif text-3xl md:text-5xl mb-2 md:mb-4 block">02.</span>
+        <h3 class="text-xl md:text-3xl font-serif mb-2 md:mb-4">Verification</h3>
+        <p class="text-gray-400 font-sans text-xs md:text-base">Our team reviews your portfolio within 24 hours to ensure brand alignment and exclusivity.</p>
+      </div>
+      <div class="step-item opacity-20 transition-opacity duration-500">
+        <span class="text-luviio-gold font-serif text-3xl md:text-5xl mb-2 md:mb-4 block">03.</span>
+        <h3 class="text-xl md:text-3xl font-serif mb-2 md:mb-4">Portal Access</h3>
+        <p class="text-gray-400 font-sans text-xs md:text-base">Get instant access to your customized B2B dashboard, wholesale pricing, and digital assets.</p>
+      </div>
+    </div>
+  </div>
+</section>
+{% endmacro %}
+
+{% macro render_partner_voices() %}
+<section class="py-24 md:py-32 bg-luviio-panel overflow-hidden relative">
+  <div class="absolute inset-0 z-0 pointer-events-none opacity-20" style="background-image: radial-gradient(circle at center, rgba(255, 255, 255, 0.2) 1px, transparent 1px); background-size: 32px 32px;"></div>
+  
+  <div class="max-w-5xl mx-auto px-6 relative z-10">
+    <div class="text-center mb-10 md:mb-16">
+      <i class="ri-double-quotes-l text-4xl md:text-6xl text-luviio-gold/30 mb-4 block"></i>
+      <span class="text-luviio-gold text-[10px] md:text-xs uppercase tracking-[0.4em] font-sans font-bold">Partner Voices</span>
+    </div>
+    
+    <div class="swiper reviewSwiper pb-16">
+      <div class="swiper-wrapper">
+        <div class="swiper-slide h-auto">
+          <div class="text-center px-2 md:px-12">
+            <p class="text-xl md:text-4xl font-serif leading-relaxed mb-8 text-white">"Switching to Luviio's partner program was a game-changer for our studio. The quality is flawless, and the priority logistics saved us weeks on our latest villa project."</p>
+            <h4 class="font-sans font-bold text-[10px] md:text-xs uppercase tracking-widest text-luviio-gold">Rohan Mehta</h4>
+            <p class="text-[8px] md:text-[10px] text-gray-500 font-sans mt-2 tracking-widest uppercase">Principal Architect, RM Studios</p>
+          </div>
+        </div>
+        <div class="swiper-slide h-auto">
+          <div class="text-center px-2 md:px-12">
+            <p class="text-xl md:text-4xl font-serif leading-relaxed mb-8 text-white">"Their B2B wholesale platform is seamless. We ordered 50 ceramic units for a commercial build, and the tiered margins provided incredible value to our bottom line."</p>
+            <h4 class="font-sans font-bold text-[10px] md:text-xs uppercase tracking-widest text-luviio-gold">Aisha Khan</h4>
+            <p class="text-[8px] md:text-[10px] text-gray-500 font-sans mt-2 tracking-widest uppercase">Procurement Head, Horizon Builds</p>
+          </div>
+        </div>
+        <div class="swiper-slide h-auto">
+          <div class="text-center px-2 md:px-12">
+            <p class="text-xl md:text-4xl font-serif leading-relaxed mb-8 text-white">"The 3D CAD assets available on the dashboard made our client presentations 10x better. Luviio actually understands what modern designers need."</p>
+            <h4 class="font-sans font-bold text-[10px] md:text-xs uppercase tracking-widest text-luviio-gold">Vikram Patel</h4>
+            <p class="text-[8px] md:text-[10px] text-gray-500 font-sans mt-2 tracking-widest uppercase">Lead Interior Designer</p>
+          </div>
+        </div>
+      </div>
+      <div class="swiper-pagination mt-6 relative"></div>
+    </div>
+  </div>
+</section>
+{% endmacro %}
+
+{% macro render_partner_cta() %}
+<section class="py-32 md:py-60 relative overflow-hidden bg-black flex items-center justify-center text-center px-6 border-t border-white/10">
+  <img src="https://images.unsplash.com/photo-1558055620-1e5b8823f666?q=80&w=2000" class="absolute inset-0 w-full h-full object-cover opacity-20 scale-110 gpu-target" id="ctaImage">
+  <div class="absolute inset-0 bg-luviio-charcoal/80 backdrop-blur-sm"></div>
+  
+  <div class="relative z-10">
+    <h2 class="text-4xl md:text-8xl font-serif mb-6 md:mb-8 text-white tracking-tighter">Ready to <span class="italic text-luviio-gold">Elevate?</span></h2>
+    <p class="text-gray-400 mb-10 md:mb-12 font-sans max-w-lg mx-auto text-xs md:text-base">Join the ranks of premium curators. Application takes 2 minutes.</p>
+    <div class="flex flex-col sm:flex-row gap-4 md:gap-6 justify-center">
+      <a href="/partner/apply" class="px-10 md:px-12 py-4 md:py-5 bg-luviio-gold text-black text-[9px] md:text-xs font-sans uppercase tracking-[0.2em] font-bold rounded-sm hover-target hover:bg-white sys-transition shadow-[0_0_30px_rgba(197,160,89,0.3)]">Start Application</a>
+      <a href="/login" class="px-10 md:px-12 py-4 md:py-5 border border-gray-600 text-white text-[9px] md:text-xs font-sans uppercase tracking-[0.2em] font-bold rounded-sm hover-target hover:border-white sys-transition">Partner Login</a>
+    </div>
+  </div>
+</section>
+{% endmacro %}

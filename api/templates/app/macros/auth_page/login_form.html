@@ -1,0 +1,57 @@
+{% macro render_login_form() %}
+<div class="w-full md:w-1/2 h-full flex flex-col justify-center items-center px-8 sm:px-16 lg:px-24 bg-luviio-charcoal relative">
+  
+  <a href="/" class="absolute top-8 left-8 text-gray-400 hover:text-white sys-transition flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold z-10 auth-anim opacity-0">
+    <i class="ri-arrow-left-line text-sm"></i> Home
+  </a>
+  
+  <div class="w-full max-w-[320px]">
+    <div class="flex justify-center mb-8 auth-anim opacity-0 -translate-y-4">
+      <div class="w-14 h-14 flex items-center justify-center p-2 border border-white/10 rounded-sm">
+        <img src="/api/static/images/logo.png" alt="Luviio Lotus" class="w-full h-full object-contain invert opacity-90">
+      </div>
+    </div>
+    
+    <div class="text-center mb-12 auth-anim opacity-0 translate-y-4">
+      <h1 class="text-[28px] font-serif mb-3 tracking-wide">Welcome Back</h1>
+      <p class="text-[8px] text-gray-500 uppercase tracking-[0.2em] font-sans font-semibold">Sign in to continue</p>
+    </div>
+    
+    <form action="/login" method="POST" class="w-full">
+      <div class="input-group auth-anim opacity-0 translate-y-4">
+        <input type="email" name="email" id="email" required autocomplete="email">
+        <label for="email">Email Address</label>
+      </div>
+      
+      <div class="input-group auth-anim opacity-0 translate-y-4 mb-6">
+        <input type="password" name="password" id="password" required autocomplete="current-password">
+        <label for="password">Password</label>
+      </div>
+      
+      <div class="flex justify-between items-center mb-10 auth-anim opacity-0 w-full">
+        <label class="flex items-center gap-2 cursor-pointer group">
+          <input type="checkbox" class="custom-checkbox">
+          <span class="text-[8px] text-white uppercase tracking-widest font-bold sys-transition pt-0.5">Remember me</span>
+        </label>
+        <a href="#" class="text-[8px] text-gray-400 uppercase tracking-widest font-bold hover:text-luviio-gold sys-transition pt-0.5">Forgot Password?</a>
+      </div>
+      
+      <button type="submit" class="w-full py-3.5 bg-[#C5A059] text-black rounded-sm font-bold uppercase tracking-[0.15em] text-[9px] hover:bg-white sys-transition auth-anim opacity-0 translate-y-4 shadow-sm">
+        Secure Sign In
+      </button>
+    </form>
+    
+    <div class="mt-10 text-center auth-anim opacity-0 flex flex-col items-center gap-4">
+      <p class="text-[9px] text-gray-500 font-sans tracking-wide">New to Luviio? <a href="/register" class="text-white font-bold hover:text-luviio-gold sys-transition border-b border-gray-600 pb-[1px] ml-1">Create an account</a></p>
+      
+      <div class="flex items-center justify-center gap-3 w-32 opacity-60">
+        <div class="h-[1px] flex-1 bg-gray-700"></div>
+        <p class="text-[7px] text-gray-500 uppercase tracking-[0.3em] font-bold mt-[1px]">OR</p>
+        <div class="h-[1px] flex-1 bg-gray-700"></div>
+      </div>
+      
+      <p class="text-[9px] text-gray-500 font-sans tracking-wide">Are you a dealer? <a href="/partner" class="text-luviio-gold font-bold hover:text-white sys-transition border-b border-luviio-gold/40 pb-[1px] ml-1">Partner Portal</a></p>
+    </div>
+  </div>
+</div>
+{% endmacro %}

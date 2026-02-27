@@ -1,0 +1,50 @@
+{% macro render_pricing() %}
+<section id="pricingSection" class="py-20 md:py-40 bg-luviio-charcoal relative w-full text-white overflow-hidden border-t border-white/5">
+  <div class="absolute inset-0 z-0 pointer-events-none opacity-[0.03]" style="background-image: radial-gradient(circle at center, rgba(197, 160, 89, 1) 1px, transparent 1px); background-size: 24px 24px;"></div>
+  
+  <div class="max-w-7xl mx-auto px-6 relative z-10">
+    <div class="text-center mb-12 md:mb-24 pricing-header opacity-0 translate-y-8">
+      <span class="text-luviio-gold text-[10px] uppercase tracking-[0.4em] font-sans font-bold">Partnerships</span>
+      <h2 class="text-3xl md:text-6xl font-serif mt-4">Trade & <span class="italic text-gray-500">Retail.</span></h2>
+      <p class="mt-4 text-gray-400 font-sans text-xs md:text-sm max-w-lg mx-auto">Join our exclusive network of dealers and architects to access premium bathware at wholesale rates.</p>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 perspective-1000" id="pricingGrid">
+      <div class="pricing-card bg-[#161616] border border-gray-800 rounded-3xl p-6 md:p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-600 gpu-target relative overflow-hidden opacity-0 translate-y-12">
+        <h3 class="text-xl md:text-2xl font-serif text-gray-300 mb-2 relative z-10">Standard Retail</h3>
+        <p class="text-[10px] md:text-xs text-gray-500 font-sans tracking-wide mb-6 md:mb-8 relative z-10">For individual showrooms.</p>
+        <div class="text-3xl md:text-4xl font-serif mb-6 md:mb-8 text-white relative z-10">15% <span class="text-[9px] md:text-[10px] font-sans text-gray-500 tracking-widest uppercase align-middle">Margin</span></div>
+        <ul class="space-y-4 md:space-y-5 mb-8 md:mb-10 flex-1 relative z-10">
+          <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Standard Catalog Access</li>
+          <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Basic Marketing Kit</li>
+        </ul>
+        <a href="/partner" class="w-full text-center py-3.5 md:py-4 rounded-xl border border-gray-700 text-[9px] md:text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10 block">Apply Now</a>
+      </div>
+      
+      <div class="pricing-card pricing-glow relative bg-[#0a0a0a] border border-luviio-gold/40 rounded-3xl p-6 md:p-8 flex flex-col transform md:-translate-y-4 shadow-[0_20px_40px_rgba(197,160,89,0.1)] gpu-target z-10 opacity-0 translate-y-12">
+        <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-luviio-gold text-black px-4 py-1.5 rounded-full text-[7px] md:text-[8px] font-bold uppercase tracking-[0.3em]">Most Popular</div>
+        <h3 class="text-xl md:text-2xl font-serif text-luviio-gold mb-2 relative z-10">Trade Partner</h3>
+        <p class="text-[10px] md:text-xs text-gray-400 font-sans tracking-wide mb-6 md:mb-8 relative z-10">For architects & developers.</p>
+        <div class="text-3xl md:text-4xl font-serif mb-6 md:mb-8 text-white relative z-10">35% <span class="text-[9px] md:text-[10px] font-sans text-gray-400 tracking-widest uppercase align-middle">Margin</span></div>
+        <ul class="space-y-4 md:space-y-5 mb-8 md:mb-10 flex-1 relative z-10">
+          <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Priority Bulk Pricing</li>
+          <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Dedicated Account Manager</li>
+          <li class="text-xs text-gray-300 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Express Logistics</li>
+        </ul>
+        <a href="/partner" class="w-full text-center py-3.5 md:py-4 rounded-xl bg-luviio-gold text-black text-[9px] md:text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white sys-transition hover-target relative z-10 block">Become Partner</a>
+      </div>
+      
+      <div class="pricing-card bg-[#161616] border border-gray-800 rounded-3xl p-6 md:p-8 flex flex-col sys-transition hover:-translate-y-2 hover:border-gray-600 gpu-target relative overflow-hidden opacity-0 translate-y-12">
+        <h3 class="text-xl md:text-2xl font-serif text-gray-300 mb-2 relative z-10">Dealership</h3>
+        <p class="text-[10px] md:text-xs text-gray-500 font-sans tracking-wide mb-6 md:mb-8 relative z-10">State-level exclusivity.</p>
+        <div class="text-3xl md:text-4xl font-serif mb-6 md:mb-8 text-white relative z-10">Custom</div>
+        <ul class="space-y-4 md:space-y-5 mb-8 md:mb-10 flex-1 relative z-10">
+          <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Territorial Monopoly</li>
+          <li class="text-xs text-gray-400 font-sans flex items-center gap-3"><i class="ri-check-line text-luviio-gold text-lg"></i> Premium Display Setup</li>
+        </ul>
+        <a href="/partner" class="w-full text-center py-3.5 md:py-4 rounded-xl border border-gray-700 text-[9px] md:text-[10px] tracking-[0.2em] uppercase font-bold hover:bg-white hover:text-black sys-transition hover-target relative z-10 block">Contact Us</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endmacro %}

@@ -1,40 +1,33 @@
-{% extends "base.html" %}
+{% extends "app/base.html" %}
+
+{% from "app/macros/index_page/splash.html" import render_splash %}
+{% from "app/macros/shared/navbar.html" import render_navbar %}
+{% from "app/macros/index_page/hero.html" import render_hero %}
+{% from "app/macros/index_page/branding.html" import render_branding %}
+{% from "app/macros/index_page/gallery.html" import render_gallery %}
+{% from "app/macros/index_page/showcase.html" import render_showcase %}
+{% from "app/macros/index_page/testimonials.html" import render_testimonials %}
+{% from "app/macros/index_page/pricing.html" import render_pricing %}
+{% from "app/macros/shared/footer.html" import render_footer %}
+
+{% block title %}LUVIIO - Premium Bathware{% endblock %}
+
+{% block body_class %}relative bg-luviio-stone{% endblock %}
 
 {% block content %}
-    <div id="splashScreen" class="fixed inset-0 z-[999] bg-luviio-charcoal flex flex-col items-center justify-center text-white origin-bottom">
-        <div class="overflow-hidden mb-8">
-            <h1 id="splashLogo" class="text-4xl md:text-6xl font-serif tracking-[0.2em] flex items-center gap-4 opacity-0 scale-110" style="filter: blur(10px);">
-                <img src="{{ ui_config.branding.logo_url }}" alt="Luviio Logo" class="w-12 h-12 md:w-16 md:h-16 object-contain invert" fetchpriority="high"> {{ ui_config.branding.name }}
-            </h1>
-        </div>
-        <div class="w-48 h-[1px] bg-white/10 overflow-hidden relative">
-            <div id="splashProgress" class="absolute top-0 left-0 h-full bg-luviio-gold w-0 shadow-[0_0_10px_#C5A059]"></div>
-        </div>
-    </div>
-
-    {% include "components/header.html" %}
-    {% include "components/drawer.html" %}
-
+    {{ render_splash() }}
+    
+    {{ render_navbar(user) }}
+    
     <main id="mainContent" class="opacity-0 hidden bg-luviio-stone">
-        
-        {% from "pages/sections.html" import render_hero, render_branding, render_gallery, render_showcase, render_testimonials, render_pricing %}
-        
         {{ render_hero() }}
         {{ render_branding() }}
         {{ render_gallery() }}
         {{ render_showcase() }}
-        
-        {% if ui_config.feature_flags.show_testimonials %}
-            {{ render_testimonials() }}
-        {% endif %}
-        
-        {% if ui_config.feature_flags.show_pricing_section %}
-            {{ render_pricing() }}
-        {% endif %}
-
+        {{ render_testimonials() }}
+        {{ render_pricing() }}
+        {{ render_footer() }}
     </main>
-
-    {% include "components/footer.html" %}
 {% endblock %}
 
 {% block extra_scripts %}
@@ -61,7 +54,7 @@
             .to("#mainHeader", { y: 0, duration: 1.2, ease: "power4.out" }, "-=0.5");
         
         const splashLogoImage = new Image();
-        splashLogoImage.src = "{{ ui_config.branding.logo_url }}";
+        splashLogoImage.src = "/api/static/images/logo.png";
         
         function completeSplash() {
             gsap.to("#splashProgress", { width: "100%", duration: 1.5, ease: "power3.inOut", onComplete: () => setTimeout(() => hideSplashTl.play(), 400) });
@@ -74,16 +67,17 @@
             gsap.ticker.add((time) => { lenis.raf(time * 1000); });
             gsap.ticker.lagSmoothing(0, 0);
             
-            if(document.querySelector('.homeSwiper')) {
-                new Swiper(".homeSwiper", {
-                    slidesPerView: 1, spaceBetween: 30, loop: true, grabCursor: true,
-                    autoplay: { delay: 4000, disableOnInteraction: true },
-                    pagination: { el: ".swiper-pagination", clickable: true }
-                });
-            }
+            new Swiper(".homeSwiper", {
+                slidesPerView: 1,
+                spaceBetween: 30,
+                loop: true,
+                grabCursor: true,
+                autoplay: { delay: 4000, disableOnInteraction: true },
+                pagination: { el: ".swiper-pagination", clickable: true }
+            });
             
             const cursor = document.getElementById('cursor');
-            if (window.innerWidth >= 768 && cursor) {
+            if (window.innerWidth >= 768) {
                 window.addEventListener('mousemove', (e) => { gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.15, ease: "power2.out" }); });
                 document.querySelectorAll('.hover-target').forEach(target => {
                     target.addEventListener('mouseenter', () => cursor.classList.add('hover-active'));
@@ -109,14 +103,9 @@
             function toggleDrawer() {
                 isDrawerOpen = !isDrawerOpen;
                 if (isDrawerOpen) {
-                    drawerContent.classList.remove('hidden'); 
                     drawerOverlay.classList.remove('opacity-0', 'pointer-events-none');
                     drawerOverlay.classList.add('active');
-                    
-                    requestAnimationFrame(() => {
-                        drawerContent.classList.remove('translate-x-full');
-                    });
-                    
+                    drawerContent.classList.remove('translate-x-full');
                     gsap.fromTo(".clip-text", { y: "100%" }, { y: "0%", duration: 1, stagger: 0.05, delay: 0.2, ease: "power4.out" });
                     lenis.stop();
                 } else {
@@ -125,7 +114,6 @@
                     drawerContent.classList.add('translate-x-full');
                     lenis.start();
                     setTimeout(() => { if (isAccountView) toggleView(); }, 600);
-                    setTimeout(() => { drawerContent.classList.add('hidden'); }, 700); 
                 }
             }
             
@@ -159,14 +147,13 @@
             gsap.to("#showcaseTitle", { scrollTrigger: { trigger: "#showcaseWrapper", start: "top 80%" }, y: 0, duration: 1.5, ease: "expo.out" });
             
             const track = document.getElementById("horizontalTrack");
+            
             function getScrollAmount() { return -(track.scrollWidth - window.innerWidth + (window.innerWidth > 768 ? 128 : 48)); }
             ScrollTrigger.create({ trigger: "#showcaseWrapper", start: "top top", end: () => `+=${Math.abs(getScrollAmount())}`, pin: true, animation: gsap.to(track, { x: getScrollAmount, ease: "none" }), scrub: 1, invalidateOnRefresh: true });
             gsap.utils.toArray('.showcase-img').forEach((img) => { gsap.to(img, { xPercent: 15, ease: "none", scrollTrigger: { trigger: "#showcaseWrapper", start: "top top", end: () => `+=${Math.abs(getScrollAmount())}`, scrub: 1 } }); });
             
-            if(document.querySelector('.pricing-header')) {
-                gsap.to(".pricing-header", { y: 0, opacity: 1, duration: 1.2, ease: "power3.out", scrollTrigger: { trigger: "#pricingSection", start: "top 80%" } });
-                gsap.to(".pricing-card", { y: 0, opacity: 1, rotationX: 0, duration: 1, stagger: 0.15, ease: "power3.out", scrollTrigger: { trigger: "#pricingGrid", start: "top 75%" } });
-            }
+            gsap.to(".pricing-header", { y: 0, opacity: 1, duration: 1.2, ease: "power3.out", scrollTrigger: { trigger: "#pricingSection", start: "top 80%" } });
+            gsap.to(".pricing-card", { y: 0, opacity: 1, rotationX: 0, duration: 1, stagger: 0.15, ease: "power3.out", scrollTrigger: { trigger: "#pricingGrid", start: "top 75%" } });
         }
         
         window.addEventListener('beforeunload', () => { if (lenis) lenis.destroy(); });
