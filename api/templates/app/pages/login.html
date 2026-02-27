@@ -1,112 +1,140 @@
 {% extends "app/base.html" %}
 
-{% from "app/macros/auth_page/auth_banner.html" import render_auth_banner %}
-{% from "app/macros/auth_page/login_form.html" import render_login_form %}
+{% block title %}Sign In - LUVIIO Luxury{% endblock %}
 
-{% block title %}Sign In - LUVIIO{% endblock %}
-
-{# Body ko center align karne ke liye flex classes update ki hain #}
-{% block body_class %}bg-black text-white min-h-[100dvh] w-full flex items-center justify-center overflow-x-hidden{% endblock %}
+{% block body_class %}bg-[#050505] text-white selection:bg-luviio-gold/30{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* 🔥 ULTRA RESPONSIVE WRAPPER */
-    #authWrapper {
-        display: flex;
-        flex-direction: column;
-        width: 100%;
-        min-height: 100dvh;
-        align-items: center;
-        justify-content: center;
+    /* Aceternity UI Inspired Glowing Mesh Background */
+    .mesh-bg {
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: 
+            radial-gradient(circle at 0% 0%, rgba(197, 160, 89, 0.05) 0%, transparent 50%),
+            radial-gradient(circle at 100% 100%, rgba(197, 160, 89, 0.05) 0%, transparent 50%);
+        z-index: -1;
     }
 
-    @media (min-width: 768px) {
-        #authWrapper {
-            flex-direction: row;
-            height: 100dvh;
-        }
+    /* Minimalist Input Group */
+    .input-field {
+        @apply w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm transition-all duration-300 outline-none;
+    }
+    .input-field:focus {
+        @apply border-luviio-gold/50 bg-white/10 ring-1 ring-luviio-gold/20;
     }
 
-    /* Form Side Centering */
-    #loginFormContainer {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        width: 100%;
-        padding: 2rem;
+    /* Aceternity Style Moving Border Button Effect */
+    .btn-glow {
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s ease;
     }
+    .btn-glow::after {
+        content: '';
+        position: absolute;
+        top: -50%; left: -50%; width: 200%; height: 200%;
+        background: conic-gradient(from 0deg, transparent, #C5A059, transparent 30%);
+        animation: rotate 4s linear infinite;
+        z-index: -1;
+    }
+    @keyframes rotate { 100% { transform: rotate(360deg); } }
 
-    /* Input Group Styles */
-    .input-group { position: relative; margin-bottom: 2.5rem; width: 100%; }
-    .input-group input {
-        width: 100%; padding: 8px 0; font-size: 0.875rem; color: #fff;
-        background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.15);
-        outline: none; transition: border-color 0.3s;
+    .auth-card {
+        background: rgba(255, 255, 255, 0.02);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.05);
     }
-    .input-group input:focus { border-bottom: 1px solid #C5A059; }
-    .input-group label {
-        position: absolute; top: 8px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.6);
-        pointer-events: none; transition: 0.3s ease all; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
-    }
-    .input-group input:focus ~ label,
-    .input-group input:valid ~ label { top: -16px; font-size: 0.55rem; color: #C5A059; }
-    
-    /* Custom Checkbox */
-    .custom-checkbox {
-        appearance: none; background-color: transparent; margin: 0; font: inherit; color: currentColor;
-        width: 12px; height: 12px; border: 1px solid rgba(255,255,255,0.4); border-radius: 1px;
-        display: grid; place-content: center; cursor: pointer;
-    }
-    .custom-checkbox::before {
-        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform ease-in-out;
-        box-shadow: inset 1em 1em #C5A059; background-color: #C5A059; transform-origin: center;
-        clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
-    }
-    .custom-checkbox:checked::before { transform: scale(1); }
-    .custom-checkbox:checked { border-color: #C5A059; }
-
-    .auth-anim { opacity: 0; transform: translateY(20px); }
 </style>
 {% endblock %}
 
 {% block content %}
-<main id="authWrapper">
-    <div class="hidden md:flex md:w-1/2 h-full overflow-hidden">
-        {{ render_auth_banner() }}
-    </div>
+<div class="mesh-bg"></div>
 
-    <div class="w-full md:w-1/2 flex items-center justify-center p-6 sm:p-12 lg:p-24 bg-[#0a0a0a]">
-        <div class="w-full max-w-[340px]">
-            {{ render_login_form() }}
+<main class="min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
+    
+    <div class="absolute top-1/4 -left-20 w-64 h-64 bg-luviio-gold/10 rounded-full blur-[120px] animate-pulse"></div>
+    <div class="absolute bottom-1/4 -right-20 w-64 h-64 bg-luviio-gold/10 rounded-full blur-[120px] animate-pulse delay-700"></div>
+
+    <div class="w-full max-w-[1100px] flex flex-col md:flex-row rounded-3xl overflow-hidden auth-card shadow-2xl">
+        
+        <div class="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-black group">
+            <img src="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&q=80&w=1200" 
+                 id="authImage" class="absolute inset-0 w-full h-full object-cover opacity-60 scale-[1.1] transition-transform duration-[10s] group-hover:scale-100" alt="Luxury">
+            <div class="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"></div>
+            
+            <div class="absolute bottom-12 left-12 z-10 auth-reveal">
+                <p class="text-[10px] uppercase tracking-[0.4em] text-luviio-gold font-bold mb-4">Established 2026</p>
+                <h2 class="text-5xl font-serif text-white leading-tight mb-4">Curated for<br><span class="italic text-luviio-gold">Eternity.</span></h2>
+                <div class="w-12 h-[1px] bg-luviio-gold/50"></div>
+            </div>
+        </div>
+
+        <div class="w-full lg:w-1/2 flex flex-col justify-center px-8 py-16 sm:px-16 lg:px-20 bg-black/40">
+            
+            <div class="w-full max-w-[340px] mx-auto">
+                <div class="flex justify-start mb-12 auth-reveal">
+                    <img src="/api/static/images/logo.png" alt="Luviio" class="w-10 h-10 object-contain invert opacity-90">
+                </div>
+
+                <div class="mb-10 auth-reveal">
+                    <h1 class="text-3xl font-serif text-white mb-2">Welcome back</h1>
+                    <p class="text-xs text-gray-500 font-sans">Enter your credentials to access the gallery.</p>
+                </div>
+
+                <form action="/login" method="POST" class="space-y-6 auth-reveal">
+                    <div>
+                        <label class="block text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2">Email Address</label>
+                        <input type="email" name="email" required placeholder="name@domain.com" class="input-field">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-2">
+                            <label class="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Password</label>
+                            <a href="#" class="text-[9px] text-luviio-gold hover:text-white transition-colors uppercase font-bold tracking-widest">Forgot?</a>
+                        </div>
+                        <input type="password" name="password" required placeholder="••••••••" class="input-field">
+                    </div>
+
+                    <div class="pt-4">
+                        <button type="submit" class="w-full py-4 bg-white text-black font-bold uppercase tracking-[0.2em] text-[10px] rounded-lg hover:bg-luviio-gold hover:text-white transition-all duration-500 shadow-xl shadow-white/5 active:scale-[0.98]">
+                            Secure Sign In
+                        </button>
+                    </div>
+                </form>
+
+                <div class="mt-12 pt-8 border-t border-white/5 text-center auth-reveal">
+                    <p class="text-[10px] text-gray-500 tracking-wide font-medium">
+                        Not a member? <a href="/register" class="text-white hover:text-luviio-gold transition-colors ml-1 font-bold border-b border-white/20 pb-0.5">Create Account</a>
+                    </p>
+                </div>
+            </div>
         </div>
     </div>
 </main>
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        // Background Image Parallax Zoom
-        const authImg = document.querySelector("#authImage");
-        if(authImg) {
-            gsap.to(authImg, { scale: 1, duration: 10, ease: "power1.out" });
-        }
-
-        // Entrance Animation: Strictly justified and smooth
-        gsap.to(".auth-anim", { 
-            y: 0, 
-            opacity: 1, 
-            duration: 1.2, 
-            stagger: 0.1, 
-            ease: "power4.out", 
-            delay: 0.3 
+        // Aceternity Reveal Animation
+        gsap.set(".auth-reveal", { y: 30, opacity: 0 });
+        
+        gsap.to(".auth-reveal", {
+            y: 0,
+            opacity: 1,
+            duration: 1.2,
+            stagger: 0.15,
+            ease: "power4.out",
+            delay: 0.4
         });
 
-        // Mix-blend-mode update for cursor if present in base.html
-        const cursor = document.getElementById('cursor');
-        if(cursor) cursor.style.mixBlendMode = "difference";
+        // Parallax Effect for Background Elements
+        document.addEventListener("mousemove", (e) => {
+            const x = (e.clientX / window.innerWidth) * 20;
+            const y = (e.clientY / window.innerHeight) * 20;
+            gsap.to(".mesh-bg", { x: x, y: y, duration: 2, ease: "power2.out" });
+        });
     });
 </script>
 {% endblock %}
