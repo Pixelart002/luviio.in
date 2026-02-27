@@ -129,6 +129,74 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
     <script src="https://unpkg.com/@studio-freight/lenis@1.0.33/dist/lenis.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+   
+   
+   
+   
+   
+   
+   <script>// --- SECURE CART ENGINE ---
+
+window.handleCheckout = function() {
+    // 1. Check Login via Cookie
+    const isLoggedIn = document.cookie.includes('access_token');
+    
+    if (!isLoggedIn) {
+        // Show Luxury Popup / Toast
+        if(typeof showToast === 'function') {
+            showToast("🔒 Secure Checkout: Please Sign In First", true);
+        } else {
+            alert("Please Sign In to proceed to Secure Checkout");
+        }
+        
+        // Redirect after small delay
+        setTimeout(() => {
+            window.location.href = '/login?next=checkout';
+        }, 1500);
+    } else {
+        // Secure Redirect with Tracking
+        const cartTrackingId = btoa(Date.now().toString()); // Simple obfuscation
+        window.location.href = `/checkout?ref=${cartTrackingId}`;
+    }
+};
+
+window.refreshCart = async function() {
+    const list = document.getElementById('cartItemsList');
+    const subtotalEl = document.getElementById('cartSubtotal');
+    if(!list) return;
+
+    try {
+        const res = await fetch('/api/cart/');
+        const result = await res.json();
+        const data = result.data;
+
+        if (!data.items.length) {
+            list.innerHTML = `<div class="py-20 text-center opacity-30"><p class="text-[9px] uppercase font-bold tracking-[0.2em]">Securing Collection...</p></div>`;
+            if(subtotalEl) subtotalEl.innerText = '₹0';
+            return;
+        }
+
+        // Render with secure keys
+        list.innerHTML = data.items.map(item => `
+            <div class="flex gap-4 items-center py-4 border-b border-black/5" data-tracking="${item.tracking_id}">
+                <div class="w-14 h-18 bg-white border border-black/5 shrink-0">
+                    <img src="${item.image}" class="w-full h-full object-cover">
+                </div>
+                <div class="flex-grow min-w-0">
+                    <h4 class="text-[10px] font-bold uppercase truncate">${item.name}</h4>
+                    <p class="text-[9px] opacity-50">Ref: ${item.slug}</p>
+                    <p class="text-[9px] font-bold mt-1">₹${item.price.toLocaleString()} x ${item.qty}</p>
+                </div>
+                <button onclick="window.removeItem(${item.cart_id})" class="text-gray-300 hover:text-red-500"><i class="ri-delete-bin-line"></i></button>
+            </div>
+        `).join('');
+
+        if(subtotalEl) subtotalEl.innerText = `₹${data.subtotal.toLocaleString()}`;
+
+    } catch (err) {
+        console.error("Security Error:", err);
+    }
+};</script>
     
     {% block extra_scripts %}
     {% endblock %}

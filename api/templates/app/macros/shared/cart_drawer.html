@@ -1,0 +1,20 @@
+{% macro render_cart_drawer() %}
+<div id="drawerOverlay" class="fixed inset-0 bg-black/60 z-[60] opacity-0 pointer-events-none transition-opacity duration-500 hidden"></div>
+<div id="drawerContent" class="fixed top-0 right-0 h-full w-full md:w-[400px] bg-luviio-stone z-[70] translate-x-full transition-transform duration-700 ease-in-out flex flex-col shadow-2xl">
+  <div class="p-8 border-b border-black/5 flex justify-between items-center">
+    <h3 class="font-serif text-xl uppercase tracking-widest">Cart</h3>
+    <button onclick="window.closeCart()" class="text-2xl"><i class="ri-close-line"></i></button>
+  </div>
+  <div id="cartItemsList" class="flex-grow overflow-y-auto p-8 flex flex-col gap-6">
+  </div>
+  <div class="p-8 border-t border-black/5 bg-white/30">
+    <div class="flex justify-between mb-6">
+      <span class="text-[10px] uppercase font-bold tracking-widest opacity-50">Subtotal</span>
+      <span id="cartSubtotal" class="font-serif text-lg">₹0</span>
+    </div>
+    <button onclick="window.handleCheckout()" class="w-full py-4 bg-luviio-charcoal text-white text-[10px] uppercase font-bold tracking-[0.2em] hover:bg-luviio-gold transition-colors">
+      Proceed to Checkout
+    </button>
+  </div>
+</div>
+{% endmacro %}
