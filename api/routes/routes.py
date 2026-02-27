@@ -11,6 +11,8 @@ from api.utils.security import hash_password, verify_password, create_tokens, ve
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from config.ui_config import UI_CONFIG
+
 router = APIRouter()
 db = get_db()
 limiter = Limiter(key_func=get_remote_address)
@@ -71,7 +73,8 @@ async def home_route(request: Request):
             "type": payload.get("type")
         }
 
-    response = templates.TemplateResponse("app/pages/index.html", {"request": request, "user": current_user})
+    response = templates.TemplateResponse("app/pages/index.html", {"request": request, "user": current_user,
+        "ui_config":UI_CONFIG})
     
     # Agar naya access token bana hai backend me, toh use cookie me set kar do
     if new_access_token:
