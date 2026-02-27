@@ -1,101 +1,81 @@
 {% extends "app/base.html" %}
 
-{% block title %}Identity Access - LUVIIO Luxury{% endblock %}
+{% from "app/macros/auth_page/auth_banner.html" import render_auth_banner %}
+{% from "app/macros/auth_page/login_form.html" import render_login_form %}
 
-{% block body_class %}bg-[#030303] text-stone-200 selection:bg-luviio-gold/30{% endblock %}
+{% block title %}Sign In - LUVIIO Luxury{% endblock %}
+
+{% block body_class %}bg-[#030303] text-stone-200 selection:bg-luviio-gold/30 overflow-x-hidden{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* Mouse hilaane par jo glow aayega uski setting */
-    .spotlight {
-        background: radial-gradient(circle at var(--x) var(--y), rgba(197, 160, 89, 0.15) 0%, transparent 40%);
+    /* Aceternity UI Spotlight logic */
+    #spotlight {
+        background: radial-gradient(circle at var(--x) var(--y), rgba(197, 160, 89, 0.12) 0%, transparent 40%);
         pointer-events: none; position: fixed; inset: 0; z-index: 10;
     }
 
-    /* Peeche jo halki si grid dikhegi architectural feel ke liye */
+    /* Architectural Grid Background */
     .grid-bg {
-        background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
-                          linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);
-        background-size: 40px 40px;
-        mask-image: radial-gradient(ellipse at center, black, transparent 80%);
+        background-image: linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+                          linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+        background-size: 50px 50px;
+        mask-image: radial-gradient(ellipse at center, black, transparent 90%);
     }
 
-    /* Inputs ko chamkane ke liye */
-    .glass-input {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        @apply w-full px-5 py-4 rounded-xl text-sm transition-all duration-500 outline-none;
+    /* Input Styling (Floating Label Sync) */
+    .input-group { position: relative; margin-bottom: 2.5rem; width: 100%; }
+    .input-group input {
+        width: 100%; padding: 10px 0; font-size: 0.875rem; color: #fff;
+        background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.1);
+        outline: none; transition: border-color 0.4s ease;
     }
-    .glass-input:focus {
-        border-color: #C5A059;
-        background: rgba(255, 255, 255, 0.07);
-        box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);
+    .input-group input:focus { border-bottom: 1px solid #C5A059; }
+    .input-group label {
+        position: absolute; top: 10px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.5);
+        pointer-events: none; transition: 0.4s cubic-bezier(0.16, 1, 0.3, 1) all; 
+        text-transform: uppercase; letter-spacing: 0.2em; font-weight: 700;
+    }
+    .input-group input:focus ~ label,
+    .input-group input:valid ~ label { top: -18px; font-size: 0.55rem; color: #C5A059; opacity: 1; }
+
+    /* Layout Positioning */
+    #authWrapper {
+        display: flex; flex-direction: column; width: 100%; min-height: 100dvh;
+    }
+    @media (min-width: 1024px) {
+        #authWrapper { flex-direction: row; height: 100dvh; overflow: hidden; }
     }
 
-    /* Pehle se gayab rakho taaki animation se reveal ho sake */
-    .reveal { opacity: 0; transform: translateY(30px); }
+    /* Initial state for GSAP Reveal */
+    .auth-anim { opacity: 0; transform: translateY(25px); }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="spotlight" id="spotlight"></div>
+<div id="spotlight"></div>
 <div class="fixed inset-0 grid-bg z-0"></div>
 
-<main class="relative z-20 min-h-screen flex items-center justify-center p-4">
-    
-    <div class="w-full max-w-[1000px] flex flex-col md:flex-row bg-white/[0.02] backdrop-blur-3xl rounded-[2.5rem] border border-white/5 shadow-2xl overflow-hidden">
+<main id="authWrapper" class="relative z-20">
+    <div class="w-full lg:w-1/2 h-[35vh] lg:h-full relative overflow-hidden bg-black">
+        {{ render_auth_banner(
+            heading_1="Curated for", 
+            heading_2="Eternity.", 
+            subheading="Access your private vault and manage your premium architectural selections."
+        ) }}
+    </div>
+
+    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center px-8 py-16 sm:px-16 lg:px-24 bg-[#050505]/80 backdrop-blur-xl relative">
         
-        <div class="hidden lg:block lg:w-1/2 relative min-h-[600px]">
-            <img src="https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=1200" 
-                 id="authHero" class="absolute inset-0 w-full h-full object-cover opacity-70 scale-110">
-            
-            <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent p-16 flex flex-col justify-end">
-                <div class="reveal">
-                    <h2 class="text-5xl font-serif text-white leading-tight mb-4 italic">Uncompromising Elegance.</h2>
-                    <p class="text-xs text-stone-400 font-sans tracking-widest uppercase">The Vault Access &mdash; LUVIIO Private</p>
-                </div>
-            </div>
+        <a href="/" class="absolute top-10 left-10 text-stone-500 hover:text-white transition-all duration-500 flex items-center gap-3 text-[9px] uppercase tracking-[0.3em] font-bold z-30 auth-anim">
+            <i class="ri-arrow-left-s-line text-lg"></i> Back to Gallery
+        </a>
+
+        <div class="w-full max-w-[340px] flex flex-col items-center justify-center">
+            {{ render_login_form() }}
         </div>
 
-        <div class="w-full lg:w-1/2 flex flex-col justify-center items-center px-8 py-16">
-            
-            <div class="w-full max-w-[340px]">
-                <header class="text-center mb-12">
-                    <div class="flex justify-center mb-6 reveal">
-                        <img src="/api/static/images/logo.png" class="w-10 h-10 invert" alt="Logo">
-                    </div>
-                    <h1 class="text-3xl font-serif text-white mb-2 reveal">Welcome Back</h1>
-                    <p class="text-[9px] text-stone-500 uppercase tracking-[0.3em] font-bold reveal">Secure Identity Authorization</p>
-                </header>
-
-                <form action="/login" method="POST" class="space-y-6">
-                    <div class="reveal">
-                        <label class="block text-[10px] uppercase tracking-widest text-stone-500 mb-2 font-bold">Vault Email</label>
-                        <input type="email" name="email" class="glass-input" required placeholder="name@domain.com">
-                    </div>
-
-                    <div class="reveal">
-                        <div class="flex justify-between items-center mb-2">
-                            <label class="block text-[10px] uppercase tracking-widest text-stone-500 font-bold">Secret Key</label>
-                            <a href="#" class="text-[8px] text-luviio-gold uppercase font-bold tracking-widest">Forgot?</a>
-                        </div>
-                        <input type="password" name="password" class="glass-input" required placeholder="••••••••">
-                    </div>
-
-                    <div class="pt-4 reveal">
-                        <button type="submit" class="w-full py-4 bg-white text-black font-bold uppercase tracking-[0.2em] text-[10px] rounded-xl hover:bg-luviio-gold hover:text-white transition-all duration-500 active:scale-[0.98]">
-                            Authorize Entry
-                        </button>
-                    </div>
-                </form>
-
-                <footer class="mt-12 pt-8 border-t border-white/5 text-center reveal">
-                    <p class="text-[10px] text-stone-500 font-medium">
-                        New here? <a href="/register" class="text-white font-bold ml-1 border-b border-white/20 pb-0.5 hover:text-luviio-gold">Request Access</a>
-                    </p>
-                </footer>
-            </div>
-        </div>
+        <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-luviio-gold/5 rounded-full blur-[120px] pointer-events-none"></div>
     </div>
 </main>
 {% endblock %}
@@ -103,17 +83,37 @@
 {% block extra_scripts %}
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        // Spotlight Movement (Bohot zaroori hai Aceternity feel ke liye)
+        // 1. Aceternity Spotlight Movement
         const spotlight = document.getElementById('spotlight');
-        document.addEventListener('mousemove', (e) => {
-            spotlight.style.setProperty('--x', `${e.clientX}px`);
-            spotlight.style.setProperty('--y', `${e.clientY}px`);
+        if(spotlight) {
+            document.addEventListener('mousemove', (e) => {
+                spotlight.style.setProperty('--x', `${e.clientX}px`);
+                spotlight.style.setProperty('--y', `${e.clientY}px`);
+            });
+        }
+
+        // 2. Cinematic Image Animation
+        if(document.querySelector("#authImage")) {
+            gsap.to("#authImage", {
+                scale: 1, duration: 12, ease: "power1.inOut"
+            });
+        }
+
+        // 3. Staggered Reveal (Strictly Centered & Smooth)
+        gsap.to(".auth-anim", {
+            y: 0,
+            opacity: 1,
+            duration: 1.2,
+            stagger: 0.1,
+            ease: "power4.out",
+            delay: 0.3
         });
 
-        // Content Reveal Animation
-        gsap.to(".reveal", {
-            opacity: 1, y: 0, duration: 1.2,
-            stagger: 0.1, ease: "power4.out", delay: 0.2
+        // 4. Force scroll fix for mobile input focus
+        window.addEventListener('resize', () => {
+            if(window.innerWidth < 1024) {
+                document.body.style.height = 'auto';
+            }
         });
     });
 </script>
