@@ -5,76 +5,76 @@
 
 {% block title %}Sign In - LUVIIO{% endblock %}
 
-{% block body_class %}bg-[#0a0a0a] text-white antialiased{% endblock %}
-
 {% block extra_css %}
 <style>
-    /* 🔥 Force pure black background globally */
+    /* 1. Global Reset to kill white gaps */
     html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
         background-color: #0a0a0a !important;
-        overscroll-behavior: none; /* Stops pull-to-refresh bounce on mobile */
+        overflow: hidden !important; 
     }
 
-    /* Form Input Styles */
+    /* 2. Isolated Fullscreen Wrapper */
+    .auth-wrapper {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: #0a0a0a;
+        z-index: 9999; /* completely hides base.html elements */
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    @media (min-width: 1024px) {
+        .auth-wrapper {
+            flex-direction: row;
+            overflow: hidden; /* lock scroll on desktop */
+        }
+        .auth-right {
+            overflow-y: auto; /* allow form to scroll independently */
+        }
+    }
+
+    /* 3. Form Inputs */
     .input-group { position: relative; margin-bottom: 2rem; width: 100%; }
-    
     .input-group input {
-        width: 100%; 
-        padding: 10px 0; 
-        /* 🔥 STRICT FIX: 16px prevents iOS Safari from auto-zooming and breaking layout */
-        font-size: 16px; 
-        color: #fff;
-        background: transparent; 
-        border: none; 
-        border-bottom: 1px solid rgba(255,255,255,0.15);
-        outline: none; 
-        transition: border-color 0.3s ease; 
-        border-radius: 0;
+        width: 100%; padding: 10px 0; font-size: 16px; color: #fff;
+        background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.15);
+        outline: none; transition: border-color 0.3s ease; border-radius: 0;
     }
     .input-group input:focus { border-bottom: 1px solid #C5A059; }
-    
     .input-group label {
-        position: absolute; 
-        top: 10px; 
-        left: 0; 
-        font-size: 0.65rem; 
-        color: rgba(255,255,255,0.5);
-        pointer-events: none; 
-        transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) all;
-        text-transform: uppercase; 
-        letter-spacing: 0.15em; 
-        font-weight: 600;
+        position: absolute; top: 10px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.5);
+        pointer-events: none; transition: 0.3s ease all; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
     }
-    
     .input-group input:focus ~ label,
-    .input-group input:valid ~ label { 
-        top: -16px; 
-        font-size: 0.55rem; 
-        color: #C5A059; 
-        opacity: 1; 
-    }
+    .input-group input:valid ~ label { top: -16px; font-size: 0.55rem; color: #C5A059; opacity: 1; }
 
-    /* Custom Checkbox */
+    /* 4. Checkbox */
     .custom-checkbox {
-        appearance: none; background-color: transparent; margin: 0; width: 14px; height: 14px;
+        appearance: none; background: transparent; margin: 0; width: 14px; height: 14px;
         border: 1px solid rgba(255,255,255,0.4); border-radius: 1px; display: grid; place-content: center; cursor: pointer;
     }
     .custom-checkbox::before {
-        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform ease-in-out;
+        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform;
         box-shadow: inset 1em 1em #C5A059; background-color: #C5A059; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
     }
     .custom-checkbox:checked::before { transform: scale(1); }
     .custom-checkbox:checked { border-color: #C5A059; }
 
-    /* Initial state for animations */
     .auth-anim { opacity: 0; transform: translateY(15px); }
+    ::-webkit-scrollbar { width: 0px; background: transparent; }
 </style>
 {% endblock %}
 
 {% block content %}
-<main class="fixed inset-0 z-[100] flex flex-col lg:flex-row bg-[#0a0a0a] overflow-x-hidden overflow-y-auto lg:overflow-hidden">
+<div class="auth-wrapper text-white antialiased">
     
-    <div class="hidden lg:block lg:w-1/2 relative h-full bg-black overflow-hidden shrink-0">
+    <div class="hidden lg:flex lg:w-1/2 relative bg-black shrink-0 items-center justify-center overflow-hidden">
         {{ render_auth_banner(
             heading_1="Welcome", 
             heading_2="Back.", 
@@ -82,40 +82,29 @@
         ) }}
     </div>
 
-    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center px-6 py-12 sm:px-12 lg:px-24 min-h-full lg:h-full lg:overflow-y-auto bg-[#0a0a0a]">
-        
-        <div class="w-full max-w-[360px] flex flex-col items-center justify-center m-auto pb-8 lg:pb-0 z-10">
+    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 sm:p-12 lg:p-24 auth-right min-h-[100dvh] lg:min-h-full">
+        <div class="w-full max-w-sm flex flex-col justify-center items-center m-auto pb-10">
             {{ render_login_form() }}
         </div>
-
     </div>
 
-</main>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        // Destroy smooth scroll here so it doesn't conflict with fixed viewport
-        if(typeof window.lenis !== 'undefined' && window.lenis) {
-            window.lenis.destroy();
-        }
+        // Destroy Lenis smooth scroll globally for this page
+        if(window.lenis) { window.lenis.destroy(); }
 
-        // Cinematic Background Zoom
-        const img = document.querySelector("#authImage");
-        if(img) {
-            gsap.to(img, { scale: 1, duration: 15, ease: "power1.inOut" });
-        }
+        // Hero Image GSAP
+        const heroImg = document.querySelector("#authImage");
+        if(heroImg) { gsap.to(heroImg, { scale: 1, duration: 12, ease: "power1.inOut" }); }
 
-        // Smooth Form Reveal
+        // Form elements GSAP
         gsap.to(".auth-anim", {
-            y: 0,
-            opacity: 1,
-            duration: 1,
-            stagger: 0.08,
-            ease: "power3.out",
-            delay: 0.1
+            y: 0, opacity: 1, duration: 1, stagger: 0.08, ease: "power3.out", delay: 0.1
         });
     });
 </script>
