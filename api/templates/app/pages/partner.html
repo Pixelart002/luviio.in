@@ -9,41 +9,47 @@
 
 {% block extra_css %}
 <style>
-    /* Global Reset to prevent layout shifts */
+    /* 1. Strict Layout Isolation */
     html, body {
         background-color: #0a0a0a !important;
-        margin: 0 !important; padding: 0 !important;
-        height: 100%; width: 100%; overscroll-behavior: none;
+        margin: 0 !important; 
+        padding: 0 !important;
+        height: 100% !important;
+        width: 100% !important;
+        overscroll-behavior: none; 
     }
 
-    /* Enterprise Input Standards */
+    /* 2. Enterprise Input Architecture */
     .input-group { position: relative; margin-bottom: 2rem; width: 100%; }
     .input-group input {
-        width: 100%; padding: 12px 0; color: #fff; font-size: 16px;
+        width: 100%; padding: 10px 0; color: #fff;
+        font-size: 16px; /* Prevents mobile auto-zoom */
         background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.15);
         outline: none; transition: border-color 0.3s ease; border-radius: 0;
+        appearance: none;
     }
-    .input-group input:focus { border-bottom-color: #C5A059; }
+    .input-group input:focus { border-bottom: 1px solid #C5A059; }
     .input-group label {
-        position: absolute; top: 12px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.5);
-        pointer-events: none; transition: 0.3s all cubic-bezier(0.4, 0, 0.2, 1);
+        position: absolute; top: 10px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.5);
+        pointer-events: none; transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) all;
         text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
     }
     .input-group input:focus ~ label,
     .input-group input:valid ~ label { top: -16px; font-size: 0.55rem; color: #C5A059; opacity: 1; }
 
-    /* Custom Checkbox Engine */
+    /* 3. Custom Checkbox */
     .custom-checkbox {
-        appearance: none; background: transparent; width: 14px; height: 14px;
-        border: 1px solid rgba(255,255,255,0.3); border-radius: 1px; display: grid; place-content: center; cursor: pointer;
+        appearance: none; background: transparent; margin: 0; width: 14px; height: 14px;
+        border: 1px solid rgba(255,255,255,0.4); border-radius: 1px; display: grid; place-content: center; cursor: pointer;
     }
     .custom-checkbox::before {
-        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform ease;
-        background-color: #C5A059; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform ease-in-out;
+        box-shadow: inset 1em 1em #C5A059; background-color: #C5A059; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
     }
     .custom-checkbox:checked::before { transform: scale(1); }
 
     ::-webkit-scrollbar { width: 0px; background: transparent; }
+    .auth-anim { will-change: transform, opacity; }
 </style>
 {% endblock %}
 
@@ -52,16 +58,15 @@
     
     <div class="hidden lg:block lg:w-1/2 relative h-full bg-black shrink-0">
         {{ render_auth_banner(
-            image_url="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?q=80&w=1200",
+            image_url="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&q=80&w=1200",
             heading_1="Trade &", 
             heading_2="Retail.", 
-            subheading="Join our exclusive network of architects and developers. Elevate your projects with LUVIIO curation."
+            subheading="Join our exclusive network of architects, developers, and dealers. Elevate your projects with our premium curation."
         ) }}
     </div>
 
-    <div class="w-full lg:w-1/2 h-full flex flex-col items-center justify-center p-6 sm:p-12 lg:p-24 overflow-y-auto bg-[#0a0a0a]">
-        <div class="w-full max-w-[360px] m-auto py-10 z-10">
-            {# Standard Jinja 3.1.3 Call #}
+    <div class="w-full lg:w-1/2 h-full flex flex-col items-center justify-center p-6 sm:p-12 lg:p-24 overflow-y-auto relative bg-[#0a0a0a]">
+        <div class="w-full max-w-[360px] m-auto py-8 z-10 flex flex-col">
             {{ render_partner_auth_form() }}
         </div>
     </div>
@@ -73,15 +78,19 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        if(window.lenis) window.lenis.destroy();
+        // Prevent scroll hijacking
+        if(typeof window.lenis !== 'undefined' && window.lenis) { 
+            window.lenis.destroy(); 
+        }
 
-        // GSAP Enterprise Stagger
+        // Native Visibility Stagger
         gsap.from(".auth-anim", {
-            y: 20,
-            opacity: 0,
-            duration: 0.8,
-            stagger: 0.05,
-            ease: "power2.out",
+            y: 20, 
+            opacity: 0, 
+            duration: 1, 
+            stagger: 0.08, 
+            ease: "power3.out", 
+            delay: 0.1,
             clearProps: "all"
         });
     });
