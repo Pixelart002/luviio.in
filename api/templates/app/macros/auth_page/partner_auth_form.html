@@ -1,72 +1,69 @@
 {% macro render_partner_auth_form() %}
-<div class="w-full flex flex-col justify-center items-center relative z-10">
+<div class="w-full flex flex-col">
   
-  <div class="w-full flex justify-start mb-8 lg:absolute lg:-top-16 lg:-left-12 lg:mb-0 auth-anim">
-    <a href="/" class="text-gray-500 hover:text-white transition-colors flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold">
-      <i class="ri-arrow-left-line text-lg"></i> Home
-    </a>
+  <a href="/" class="auth-anim flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-gray-500 hover:text-white transition-colors mb-10">
+    <i class="ri-arrow-left-line text-lg"></i> Home
+  </a>
+  
+  <div class="auth-anim flex justify-center mb-6">
+    <div class="w-14 h-14 flex items-center justify-center p-2 border border-white/10 rounded-sm">
+      <img src="/api/static/images/logo.png" alt="Logo" class="w-full h-full object-contain invert opacity-80">
+    </div>
   </div>
   
-  <div class="w-full max-w-[340px]">
-    <div class="flex justify-center mb-8 auth-anim">
-      <div class="w-14 h-14 flex items-center justify-center p-2 border border-[#C5A059]/20 rounded-sm bg-[#C5A059]/5">
-        <img src="/api/static/images/logo.png" alt="LUVIIO" class="w-full h-full object-contain invert opacity-90">
-      </div>
-    </div>
-    
-    <div class="text-center mb-10 auth-anim">
-      <h1 class="text-3xl font-serif mb-3 tracking-wide text-white">Trade Partnership</h1>
-      <p class="text-[9px] text-[#C5A059] uppercase tracking-[0.25em] font-sans font-bold">Official Application Portal</p>
-    </div>
-    
-    <form action="/partner" method="POST" class="w-full space-y-2">
-      <div class="input-group auth-anim">
-        <input type="text" name="company_name" id="company_name" required autocomplete="organization">
-        <label for="company_name">Company Name</label>
-      </div>
-      
-      <div class="input-group auth-anim">
-        <input type="text" name="business_id" id="business_id" required>
-        <label for="business_id">Business ID / GSTIN</label>
-      </div>
-      
-      <div class="input-group auth-anim">
-        <input type="email" name="email" id="email" required autocomplete="email">
-        <label for="email">Business Email</label>
-      </div>
-      
-      <div class="input-group auth-anim mb-6">
-        <input type="password" name="password" id="password" required autocomplete="new-password">
-        <label for="password">Create Password</label>
-      </div>
-      
-      <div class="flex items-center py-4 auth-anim w-full">
-        <label class="flex items-start gap-3 cursor-pointer group">
-          <input type="checkbox" class="custom-checkbox mt-[2px]" required>
-          <span class="text-[9px] text-gray-500 uppercase tracking-widest font-bold leading-tight group-hover:text-gray-300 transition-colors">Verify trade credentials</span>
-        </label>
-      </div>
-      
-      <button type="submit" class="w-full py-4 bg-transparent border border-[#C5A059] text-[#C5A059] rounded-sm font-bold uppercase tracking-[0.2em] text-[10px] hover:bg-[#C5A059] hover:text-black transition-all duration-500 auth-anim shadow-[0_0_20px_rgba(197,160,89,0.05)] active:scale-[0.98]">
-        Submit Application
-      </button>
-    </form>
-    
-    <div class="mt-10 text-center auth-anim flex flex-col items-center gap-6">
-      <p class="text-[10px] text-gray-500 font-sans tracking-widest uppercase">
-        Already a partner? <a href="/login" class="text-white font-bold hover:text-[#C5A059] transition-colors border-b border-gray-700 pb-[2px] ml-1">Sign In</a>
-      </p>
-      
-      <div class="flex items-center justify-center gap-4 w-full opacity-30">
-        <div class="h-[1px] flex-1 bg-gradient-to-r from-transparent to-gray-500"></div>
-        <p class="text-[8px] text-gray-400 uppercase tracking-[0.4em] font-bold">OR</p>
-        <div class="h-[1px] flex-1 bg-gradient-to-l from-transparent to-gray-500"></div>
-      </div>
-      
-      <p class="text-[10px] text-gray-500 font-sans tracking-widest uppercase">
-        Looking to shop? <a href="/" class="text-[#C5A059] font-bold hover:text-white transition-colors border-b border-[#C5A059]/30 pb-[2px] ml-1">Browse Catalog</a>
-      </p>
-    </div>
+  <div class="auth-anim text-center mb-10">
+    <h1 class="text-3xl font-serif mb-2 text-white">Trade Partnership</h1>
+    <p class="text-[9px] text-[#C5A059] uppercase tracking-[0.2em] font-bold">Apply for Wholesale Access</p>
   </div>
+  
+  <form action="/partner" method="POST" class="w-full">
+    <div class="input-group auth-anim">
+      <input type="text" name="company_name" id="company_name" required>
+      <label for="company_name">Company Name</label>
+    </div>
+    
+    <div class="input-group auth-anim">
+      <input type="text" name="business_id" id="business_id" required>
+      <label for="business_id">Business ID / GSTIN</label>
+    </div>
+    
+    <div class="input-group auth-anim">
+      <input type="email" name="email" id="email" required>
+      <label for="email">Business Email</label>
+    </div>
+    
+    <div class="input-group auth-anim mb-6">
+      <input type="password" name="password" id="password" required>
+      <label for="password">Create Password</label>
+    </div>
+    
+    <div class="auth-anim flex items-start gap-3 mb-8">
+      <input type="checkbox" class="custom-checkbox mt-1" required>
+      <span class="text-[9px] text-gray-400 uppercase tracking-widest font-bold leading-tight">
+        Verify trade credentials
+      </span>
+    </div>
+    
+    <button type="submit" class="auth-anim w-full py-4 bg-transparent border border-[#C5A059] text-[#C5A059] rounded-sm font-bold uppercase tracking-widest text-[10px] hover:bg-[#C5A059] hover:text-black transition-all duration-300">
+      Submit Application
+    </button>
+  </form>
+  
+  <div class="auth-anim mt-10 flex flex-col items-center gap-6">
+    <p class="text-[10px] text-gray-500 tracking-wide">
+      Already a partner? <a href="/login" class="text-white font-bold hover:text-[#C5A059] border-b border-gray-700 pb-[2px] ml-1">Sign In</a>
+    </p>
+    
+    <div class="flex items-center justify-center gap-4 w-full opacity-20">
+      <div class="h-[1px] flex-1 bg-white"></div>
+      <p class="text-[8px] text-white uppercase tracking-widest font-bold">OR</p>
+      <div class="h-[1px] flex-1 bg-white"></div>
+    </div>
+    
+    <p class="text-[10px] text-gray-500 tracking-wide">
+      Looking to shop? <a href="/" class="text-[#C5A059] font-bold hover:text-white border-b border-[#C5A059]/30 pb-[2px] ml-1">Browse Catalog</a>
+    </p>
+  </div>
+  
 </div>
 {% endmacro %}
