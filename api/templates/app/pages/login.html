@@ -5,15 +5,15 @@
 
 {% block title %}Sign In - LUVIIO{% endblock %}
 
-{% block body_class %}bg-[#0a0a0a] text-white selection:bg-luviio-gold/30 antialiased{% endblock %}
+{% block body_class %}bg-[#0a0a0a] text-white antialiased{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* 🔥 FIX 1: Force Dark Background globally to prevent the white gap at the bottom */
+    /* 🔥 FIX 1: Force absolute dark background globally to kill the white gap */
     html, body {
         background-color: #0a0a0a !important;
-        min-height: 100%;
-        overflow-x: hidden;
+        margin: 0; padding: 0;
+        width: 100%; height: 100%;
     }
 
     /* Form Input Styles */
@@ -50,15 +50,15 @@
 {% endblock %}
 
 {% block content %}
-<main class="flex flex-col lg:flex-row w-full min-h-[100dvh] bg-[#0a0a0a]">
+<main class="absolute inset-0 z-50 flex flex-col lg:flex-row w-full h-[100dvh] bg-[#0a0a0a] overflow-hidden">
     
-    <div class="hidden lg:block lg:w-1/2 relative min-h-screen overflow-hidden bg-black shrink-0">
+    <div class="hidden lg:flex lg:w-1/2 relative h-full bg-black shrink-0 items-center justify-center overflow-hidden">
         {{ render_auth_banner() }}
     </div>
 
-    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center px-6 py-12 lg:p-24 relative flex-1 min-h-[100dvh]">
+    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center px-6 py-10 lg:px-24 h-full bg-[#0a0a0a] flex-1 overflow-y-auto">
         
-        <div class="w-full max-w-[360px] flex flex-col z-10">
+        <div class="w-full max-w-[360px] flex flex-col items-center justify-center z-10 pb-10">
             {{ render_login_form() }}
         </div>
 
@@ -71,7 +71,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        // Stop Lenis smooth scrolling here so it doesn't break mobile 100vh logic
+        // Destroy Lenis smooth scroll on this page to prevent any weird jumping on mobile
         if(typeof window.lenis !== 'undefined' && window.lenis) {
             window.lenis.destroy();
         }
