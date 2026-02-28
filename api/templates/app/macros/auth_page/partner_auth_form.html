@@ -1,75 +1,67 @@
 {% macro render_partner_auth_form() %}
-<div class="w-full flex flex-col justify-center items-center relative z-10">
+<div class="w-full md:w-1/2 h-full flex flex-col justify-center items-center px-8 sm:px-16 lg:px-24 bg-luviio-charcoal relative">
   
-  <div class="w-full flex justify-start mb-6 px-4 sm:px-0 lg:absolute lg:-top-12 lg:-left-12 lg:mb-0 auth-anim">
-    <a href="/" class="text-gray-400 hover:text-white transition-colors duration-300 flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold">
-      <i class="ri-arrow-left-line text-lg"></i> Home
-    </a>
-  </div>
+  <a href="/" class="absolute top-8 left-8 text-gray-400 hover:text-white sys-transition flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold z-10 auth-anim opacity-0">
+    <i class="ri-arrow-left-line text-sm"></i> Home
+  </a>
   
-  <div class="w-full max-w-[340px] px-4 sm:px-0">
-    
-    <div class="flex justify-center mb-6 auth-anim">
-      <div class="w-12 h-12 flex items-center justify-center p-2 border border-[#C5A059]/30 rounded-sm bg-[#C5A059]/5">
+  <div class="w-full max-w-[320px]">
+    <div class="flex justify-center mb-6 auth-anim opacity-0 -translate-y-4">
+      <div class="w-12 h-12 flex items-center justify-center p-2 border border-luviio-gold/30 rounded-sm bg-luviio-gold/5">
         <img src="/api/static/images/logo.png" alt="Luviio Lotus" class="w-full h-full object-contain invert opacity-90">
       </div>
     </div>
     
-    <div class="text-center mb-8 auth-anim">
-      <h1 class="text-[26px] font-serif mb-2 tracking-wide text-white">Trade Partnership</h1>
-      <p class="text-[8px] text-[#C5A059] uppercase tracking-[0.2em] font-sans font-semibold">Apply for wholesale access</p>
+    <div class="text-center mb-8 auth-anim opacity-0 translate-y-4">
+      <h1 class="text-[26px] font-serif mb-2 tracking-wide">Trade Partnership</h1>
+      <p class="text-[8px] text-luviio-gold uppercase tracking-[0.2em] font-sans font-semibold">Apply for wholesale access</p>
     </div>
     
     <form action="/partner" method="POST" class="w-full">
       
-      <div class="input-group auth-anim">
+      <div class="input-group auth-anim opacity-0 translate-y-4">
         <input type="text" name="company_name" id="company_name" required autocomplete="organization">
         <label for="company_name">Company Name</label>
       </div>
       
-      <div class="input-group auth-anim">
+      <div class="input-group auth-anim opacity-0 translate-y-4">
         <input type="text" name="business_id" id="business_id" required>
         <label for="business_id">Business ID / GSTIN</label>
       </div>
       
-      <div class="input-group auth-anim">
+      <div class="input-group auth-anim opacity-0 translate-y-4">
         <input type="email" name="email" id="email" required autocomplete="email">
         <label for="email">Business Email</label>
       </div>
       
-      <div class="input-group auth-anim mb-6">
+      <div class="input-group auth-anim opacity-0 translate-y-4 mb-6">
         <input type="password" name="password" id="password" required autocomplete="new-password">
         <label for="password">Create Password</label>
       </div>
       
-      <div class="flex items-center mb-8 auth-anim w-full">
-        <label class="flex items-start gap-3 cursor-pointer group">
-          <input type="checkbox" class="custom-checkbox mt-[2px]" required>
-          <span class="text-[8px] text-gray-400 uppercase tracking-widest font-bold transition-colors leading-tight group-hover:text-white">Verify trade credentials</span>
+      <div class="flex items-center mb-8 auth-anim opacity-0 w-full">
+        <label class="flex items-center gap-3 cursor-pointer group">
+          <input type="checkbox" class="custom-checkbox" required>
+          <span class="text-[8px] text-gray-400 uppercase tracking-wider font-bold sys-transition pt-0.5 group-hover:text-white">Verify trade credentials</span>
         </label>
       </div>
       
-      <button type="submit" class="w-full py-4 bg-transparent border border-[#C5A059] text-[#C5A059] rounded-sm font-bold uppercase tracking-[0.15em] text-[10px] hover:bg-[#C5A059] hover:text-black transition-all duration-300 auth-anim shadow-[0_0_15px_rgba(197,160,89,0.1)] active:scale-[0.98]">
+      <button type="submit" class="w-full py-3.5 bg-transparent border border-luviio-gold text-luviio-gold rounded-sm font-bold uppercase tracking-[0.15em] text-[9px] hover:bg-luviio-gold hover:text-black sys-transition auth-anim opacity-0 translate-y-4 shadow-[0_0_15px_rgba(197,160,89,0.1)]">
         Submit Application
       </button>
     </form>
     
-    <div class="mt-8 text-center auth-anim flex flex-col items-center gap-5">
-      <p class="text-[10px] text-gray-500 font-sans tracking-wide">
-        Already a partner? <a href="/login" class="text-white font-bold hover:text-[#C5A059] transition-colors border-b border-gray-600 pb-[1px] ml-1">Sign In here</a>
-      </p>
+    <div class="mt-8 text-center auth-anim opacity-0 flex flex-col items-center gap-4">
+      <p class="text-[9px] text-gray-500 font-sans tracking-wide">Already a partner? <a href="/login" class="text-white font-bold hover:text-luviio-gold sys-transition border-b border-gray-600 pb-[1px] ml-1">Sign In here</a></p>
       
-      <div class="flex items-center justify-center gap-3 w-32 opacity-40">
-        <div class="h-[1px] flex-1 bg-gray-600"></div>
-        <p class="text-[8px] text-gray-400 uppercase tracking-[0.3em] font-bold mt-[1px]">OR</p>
-        <div class="h-[1px] flex-1 bg-gray-600"></div>
+      <div class="flex items-center justify-center gap-3 w-32 opacity-60">
+        <div class="h-[1px] flex-1 bg-gray-700"></div>
+        <p class="text-[7px] text-gray-500 uppercase tracking-[0.3em] font-bold mt-[1px]">OR</p>
+        <div class="h-[1px] flex-1 bg-gray-700"></div>
       </div>
       
-      <p class="text-[10px] text-gray-500 font-sans tracking-wide">
-        Looking to shop? <a href="/" class="text-[#C5A059] font-bold hover:text-white transition-colors border-b border-[#C5A059]/40 pb-[1px] ml-1">Browse Catalog</a>
-      </p>
+      <p class="text-[9px] text-gray-500 font-sans tracking-wide">Looking to shop? <a href="/" class="text-luviio-gold font-bold hover:text-white sys-transition border-b border-luviio-gold/40 pb-[1px] ml-1">Browse Catalog</a></p>
     </div>
-    
   </div>
 </div>
 {% endmacro %}
