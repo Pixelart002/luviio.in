@@ -46,6 +46,43 @@
 
     /* 4. Animation Setup */
     .auth-anim { opacity: 0; transform: translateY(15px); }
+
+    /* ===== RESPONSIVE FIXES (added without altering any existing classes) ===== */
+    @media screen and (max-width: 400px) {
+        /* Prevent horizontal overflow on very small devices */
+        .w-full.max-w-\[360px\] {
+            max-width: 100%;
+            padding-left: 12px;
+            padding-right: 12px;
+        }
+        /* Adjust input spacing for tiny screens */
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+        .input-group input {
+            font-size: 15px;
+            padding: 8px 0;
+        }
+        .input-group label {
+            font-size: 0.6rem;
+        }
+        /* Reduce container padding if needed */
+        .p-6.sm\:p-12.lg\:p-24 {
+            padding: 1.5rem 1rem;
+        }
+    }
+
+    /* Improve safe area handling on modern mobile browsers */
+    .min-h-\[100dvh\] {
+        min-height: 100vh;  /* fallback for older browsers */
+        min-height: 100dvh; /* dynamic viewport height */
+    }
+
+    /* Ensure the banner image container never overflows */
+    .hidden.lg\:flex.lg\:w-1\/2 {
+        max-height: 100dvh;
+        overflow: hidden;
+    }
 </style>
 {% endblock %}
 
