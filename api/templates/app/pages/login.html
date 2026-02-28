@@ -5,7 +5,7 @@
 
 {% block title %}Sign In - LUVIIO Luxury{% endblock %}
 
-{% block body_class %}bg-[#030303] text-stone-200 selection:bg-luviio-gold/30 overflow-x-hidden{% endblock %}
+{% block body_class %}bg-[#030303] text-stone-200 selection:bg-luviio-gold/30 antialiased{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -29,6 +29,7 @@
         width: 100%; padding: 10px 0; font-size: 0.875rem; color: #fff;
         background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.1);
         outline: none; transition: border-color 0.4s ease;
+        border-radius: 0; /* Prevents iOS rounding */
     }
     .input-group input:focus { border-bottom: 1px solid #C5A059; }
     .input-group label {
@@ -39,13 +40,18 @@
     .input-group input:focus ~ label,
     .input-group input:valid ~ label { top: -18px; font-size: 0.55rem; color: #C5A059; opacity: 1; }
 
-    /* Layout Positioning */
+    /* 🔥 STRICTLY RESPONSIVE LAYOUT ENGINE */
     #authWrapper {
         display: flex; flex-direction: column; width: 100%; min-height: 100dvh;
     }
+    
     @media (min-width: 1024px) {
         #authWrapper { flex-direction: row; height: 100dvh; overflow: hidden; }
+        .auth-scroll-area { overflow-y: auto; } /* Allows scrolling only on the form side if desktop is very short */
     }
+
+    /* Hide scrollbar for cleaner look */
+    ::-webkit-scrollbar { width: 0px; background: transparent; }
 
     /* Initial state for GSAP Reveal */
     .auth-anim { opacity: 0; transform: translateY(25px); }
@@ -53,11 +59,12 @@
 {% endblock %}
 
 {% block content %}
-<div id="spotlight"></div>
-<div class="fixed inset-0 grid-bg z-0"></div>
+<div id="spotlight" class="hidden lg:block"></div>
+<div class="fixed inset-0 grid-bg z-0 pointer-events-none"></div>
 
 <main id="authWrapper" class="relative z-20">
-    <div class="w-full lg:w-1/2 h-[35vh] lg:h-full relative overflow-hidden bg-black">
+    
+    <div class="w-full lg:w-1/2 min-h-[30vh] lg:min-h-full relative overflow-hidden bg-black shrink-0">
         {{ render_auth_banner(
             heading_1="Curated for", 
             heading_2="Eternity.", 
@@ -65,13 +72,13 @@
         ) }}
     </div>
 
-    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center px-8 py-16 sm:px-16 lg:px-24 bg-[#050505]/80 backdrop-blur-xl relative">
+    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center px-6 py-12 sm:px-16 lg:px-24 bg-[#050505]/80 backdrop-blur-xl relative flex-1 auth-scroll-area">
         
-        <a href="/" class="absolute top-10 left-10 text-stone-500 hover:text-white transition-all duration-500 flex items-center gap-3 text-[9px] uppercase tracking-[0.3em] font-bold z-30 auth-anim">
+        <a href="/" class="absolute top-6 left-6 lg:top-10 lg:left-10 text-stone-500 hover:text-white transition-all duration-500 flex items-center gap-2 text-[9px] uppercase tracking-[0.3em] font-bold z-30 auth-anim">
             <i class="ri-arrow-left-s-line text-lg"></i> Back to Gallery
         </a>
 
-        <div class="w-full max-w-[340px] flex flex-col items-center justify-center">
+        <div class="w-full max-w-[340px] flex flex-col items-center justify-center mt-8 lg:mt-0 z-10 relative">
             {{ render_login_form() }}
         </div>
 
@@ -83,9 +90,9 @@
 {% block extra_scripts %}
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        // 1. Aceternity Spotlight Movement
+        // 1. Aceternity Spotlight Movement (Desktop only for performance)
         const spotlight = document.getElementById('spotlight');
-        if(spotlight) {
+        if(spotlight && window.innerWidth >= 1024) {
             document.addEventListener('mousemove', (e) => {
                 spotlight.style.setProperty('--x', `${e.clientX}px`);
                 spotlight.style.setProperty('--y', `${e.clientY}px`);
@@ -99,21 +106,14 @@
             });
         }
 
-        // 3. Staggered Reveal (Strictly Centered & Smooth)
+        // 3. Staggered Reveal 
         gsap.to(".auth-anim", {
             y: 0,
             opacity: 1,
             duration: 1.2,
             stagger: 0.1,
             ease: "power4.out",
-            delay: 0.3
-        });
-
-        // 4. Force scroll fix for mobile input focus
-        window.addEventListener('resize', () => {
-            if(window.innerWidth < 1024) {
-                document.body.style.height = 'auto';
-            }
+            delay: 0.2
         });
     });
 </script>
