@@ -1,69 +1,64 @@
 {% macro render_register_form() %}
-<div class="w-full flex flex-col justify-center items-center relative z-10">
+<div class="w-full flex flex-col">
   
-  <div class="w-full flex justify-start mb-6 lg:absolute lg:-top-12 lg:-left-12 lg:mb-0 auth-anim">
-    <a href="/" class="text-gray-400 hover:text-white transition-colors duration-300 flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold">
-      <i class="ri-arrow-left-line text-lg"></i> Home
-    </a>
+  <a href="/" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold mb-8">
+    <i class="ri-arrow-left-line text-lg"></i> Home
+  </a>
+  
+  <div class="flex justify-center mb-6">
+    <div class="w-14 h-14 flex items-center justify-center p-2 border border-white/10 rounded-sm">
+      <img src="/api/static/images/logo.png" alt="Luviio Logo" class="w-full h-full object-contain invert opacity-90">
+    </div>
   </div>
   
-  <div class="w-full max-w-[340px]">
-    
-    <div class="flex justify-center mb-6 auth-anim">
-      <div class="w-14 h-14 flex items-center justify-center p-2 border border-white/10 rounded-sm">
-        <img src="/api/static/images/logo.png" alt="Luviio Lotus" class="w-full h-full object-contain invert opacity-90">
-      </div>
-    </div>
-    
-    <div class="text-center mb-10 auth-anim">
-      <h1 class="text-3xl font-serif mb-3 tracking-wide text-white">Create Account</h1>
-      <p class="text-[9px] text-gray-500 uppercase tracking-[0.2em] font-sans font-semibold">Start your luxury journey</p>
-    </div>
-    
-    <form action="/register" method="POST" class="w-full">
-      <div class="input-group auth-anim">
-        <input type="text" name="name" id="name" required autocomplete="name">
-        <label for="name">Full Name</label>
-      </div>
-      
-      <div class="input-group auth-anim">
-        <input type="email" name="email" id="email" required autocomplete="email">
-        <label for="email">Email Address</label>
-      </div>
-      
-      <div class="input-group auth-anim mb-6">
-        <input type="password" name="password" id="password" required autocomplete="new-password">
-        <label for="password">Password</label>
-      </div>
-      
-      <div class="flex items-center mb-8 auth-anim w-full">
-        <label class="flex items-start gap-3 cursor-pointer group">
-          <input type="checkbox" class="custom-checkbox mt-[2px]" required>
-          <span class="text-[8px] text-gray-400 uppercase tracking-widest font-bold transition-colors leading-tight group-hover:text-white">I agree to the Terms & Privacy Policy</span>
-        </label>
-      </div>
-      
-      <button type="submit" class="w-full py-4 bg-[#C5A059] text-black rounded-sm font-bold uppercase tracking-[0.2em] text-[10px] hover:bg-white transition-colors duration-300 auth-anim shadow-sm active:scale-[0.98]">
-        Create Account
-      </button>
-    </form>
-    
-    <div class="mt-8 text-center auth-anim flex flex-col items-center gap-5">
-      <p class="text-[10px] text-gray-500 font-sans tracking-wide">
-        Already have an account? <a href="/login" class="text-white font-bold hover:text-[#C5A059] transition-colors border-b border-gray-600 pb-[1px] ml-1">Sign In</a>
-      </p>
-      
-      <div class="flex items-center justify-center gap-3 w-32 opacity-40">
-        <div class="h-[1px] flex-1 bg-gray-600"></div>
-        <p class="text-[8px] text-gray-400 uppercase tracking-[0.3em] font-bold mt-[1px]">OR</p>
-        <div class="h-[1px] flex-1 bg-gray-600"></div>
-      </div>
-      
-      <p class="text-[10px] text-gray-500 font-sans tracking-wide">
-        Are you a dealer? <a href="/partner" class="text-[#C5A059] font-bold hover:text-white transition-colors border-b border-[#C5A059]/40 pb-[1px] ml-1">Partner Portal</a>
-      </p>
-    </div>
-    
+  <div class="text-center mb-10">
+    <h1 class="text-3xl font-serif mb-2 text-white">Create Account</h1>
+    <p class="text-[9px] text-gray-500 uppercase tracking-widest font-sans font-semibold">Start your luxury journey</p>
   </div>
+  
+  <form action="/register" method="POST" class="w-full">
+    <div class="input-group">
+      <input type="text" name="name" id="name" required autocomplete="name">
+      <label for="name">Full Name</label>
+    </div>
+    
+    <div class="input-group">
+      <input type="email" name="email" id="email" required autocomplete="email">
+      <label for="email">Email Address</label>
+    </div>
+    
+    <div class="input-group mb-6">
+      <input type="password" name="password" id="password" required autocomplete="new-password">
+      <label for="password">Password</label>
+    </div>
+    
+    <div class="flex items-start gap-3 mb-8">
+      <input type="checkbox" class="custom-checkbox mt-1" required>
+      <span class="text-[9px] text-gray-400 uppercase tracking-widest font-bold leading-tight">
+        I agree to the <a href="#" class="text-white hover:text-[#C5A059] transition-colors">Terms</a> & <a href="#" class="text-white hover:text-[#C5A059] transition-colors">Privacy Policy</a>
+      </span>
+    </div>
+    
+    <button type="submit" class="w-full py-4 bg-[#C5A059] text-black rounded-sm font-bold uppercase tracking-widest text-[10px] hover:bg-white transition-colors shadow-sm">
+      Create Account
+    </button>
+  </form>
+  
+  <div class="mt-8 flex flex-col items-center gap-5">
+    <p class="text-[10px] text-gray-500 tracking-wide">
+      Already have an account? <a href="/login" class="text-white font-bold hover:text-[#C5A059] transition-colors border-b border-gray-600 pb-[1px] ml-1">Sign In</a>
+    </p>
+    
+    <div class="flex items-center justify-center gap-3 w-full max-w-[120px] opacity-40">
+      <div class="h-[1px] flex-1 bg-gray-600"></div>
+      <p class="text-[8px] text-gray-400 uppercase tracking-widest font-bold mt-[1px]">OR</p>
+      <div class="h-[1px] flex-1 bg-gray-600"></div>
+    </div>
+    
+    <p class="text-[10px] text-gray-500 tracking-wide">
+      Are you a dealer? <a href="/partner" class="text-[#C5A059] font-bold hover:text-white transition-colors border-b border-[#C5A059]/40 pb-[1px] ml-1">Partner Portal</a>
+    </p>
+  </div>
+  
 </div>
 {% endmacro %}
