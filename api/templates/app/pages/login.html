@@ -5,41 +5,19 @@
 
 {% block title %}Sign In - LUVIIO{% endblock %}
 
+{% block body_class %}bg-[#0a0a0a] text-white antialiased{% endblock %}
+
 {% block extra_css %}
 <style>
-    /* 1. Global Reset to kill white gaps */
+    /* 1. Global Background Lock */
     html, body {
-        margin: 0 !important;
-        padding: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
         background-color: #0a0a0a !important;
-        overflow: hidden !important; 
-    }
-
-    /* 2. Isolated Fullscreen Wrapper */
-    .auth-wrapper {
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background-color: #0a0a0a;
-        z-index: 9999; /* completely hides base.html elements */
-        display: flex;
-        flex-direction: column;
-        overflow-y: auto;
+        margin: 0; padding: 0;
+        min-height: 100vh;
         overflow-x: hidden;
     }
 
-    @media (min-width: 1024px) {
-        .auth-wrapper {
-            flex-direction: row;
-            overflow: hidden; /* lock scroll on desktop */
-        }
-        .auth-right {
-            overflow-y: auto; /* allow form to scroll independently */
-        }
-    }
-
-    /* 3. Form Inputs */
+    /* 2. Form Inputs */
     .input-group { position: relative; margin-bottom: 2rem; width: 100%; }
     .input-group input {
         width: 100%; padding: 10px 0; font-size: 16px; color: #fff;
@@ -54,7 +32,7 @@
     .input-group input:focus ~ label,
     .input-group input:valid ~ label { top: -16px; font-size: 0.55rem; color: #C5A059; opacity: 1; }
 
-    /* 4. Checkbox */
+    /* 3. Checkbox */
     .custom-checkbox {
         appearance: none; background: transparent; margin: 0; width: 14px; height: 14px;
         border: 1px solid rgba(255,255,255,0.4); border-radius: 1px; display: grid; place-content: center; cursor: pointer;
@@ -66,43 +44,39 @@
     .custom-checkbox:checked::before { transform: scale(1); }
     .custom-checkbox:checked { border-color: #C5A059; }
 
+    /* 4. Animation Setup */
     .auth-anim { opacity: 0; transform: translateY(15px); }
-    ::-webkit-scrollbar { width: 0px; background: transparent; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="auth-wrapper text-white antialiased">
+<main class="flex flex-col lg:flex-row w-full min-h-[100dvh] bg-[#0a0a0a] m-0 p-0">
     
-    <div class="hidden lg:flex lg:w-1/2 relative bg-black shrink-0 items-center justify-center overflow-hidden">
-        {{ render_auth_banner(
-            heading_1="Welcome", 
-            heading_2="Back.", 
-            subheading="Sign in to your exclusive LUVIIO dashboard to manage your collections."
-        ) }}
+    <div class="hidden lg:flex lg:w-1/2 relative bg-black shrink-0 items-center justify-center overflow-hidden min-h-screen">
+        {{ render_auth_banner() }}
     </div>
 
-    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 sm:p-12 lg:p-24 auth-right min-h-[100dvh] lg:min-h-full">
-        <div class="w-full max-w-sm flex flex-col justify-center items-center m-auto pb-10">
+    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 sm:p-12 lg:p-24 min-h-[100dvh]">
+        <div class="w-full max-w-[360px] flex flex-col justify-center items-center m-auto pb-8 z-10">
             {{ render_login_form() }}
         </div>
     </div>
 
-</div>
+</main>
 {% endblock %}
 
 {% block extra_scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        // Destroy Lenis smooth scroll globally for this page
+        // Stop smooth scrolling from interfering with fixed heights
         if(window.lenis) { window.lenis.destroy(); }
 
         // Hero Image GSAP
         const heroImg = document.querySelector("#authImage");
         if(heroImg) { gsap.to(heroImg, { scale: 1, duration: 12, ease: "power1.inOut" }); }
 
-        // Form elements GSAP
+        // Form elements GSAP (Fallbacks added so screen never stays blank)
         gsap.to(".auth-anim", {
             y: 0, opacity: 1, duration: 1, stagger: 0.08, ease: "power3.out", delay: 0.1
         });
