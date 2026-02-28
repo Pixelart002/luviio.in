@@ -5,55 +5,58 @@
 
 {% block title %}Create Account - LUVIIO{% endblock %}
 
-{% block body_class %}bg-[#0a0a0a] text-white antialiased{% endblock %}
+{% block body_class %}bg-[#0a0a0a] text-white antialiased overflow-hidden{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* 1. Global Background Lock to kill white gaps */
+    /* 1. Strict Global Reset */
     html, body {
         background-color: #0a0a0a !important;
-        margin: 0; padding: 0;
-        min-height: 100vh;
-        overflow-x: hidden;
+        margin: 0 !important; 
+        padding: 0 !important;
+        overscroll-behavior: none; /* Prevents mobile rubber-band scrolling */
     }
 
-    /* 2. Form Inputs */
+    /* 2. Form Inputs with iOS Zoom Prevention */
     .input-group { position: relative; margin-bottom: 2rem; width: 100%; }
     .input-group input {
         width: 100%; padding: 10px 0; color: #fff;
-        font-size: 16px; /* Strict Fix: Stops iOS from zooming in and breaking the layout */
+        font-size: 16px; /* Strict Fix: 16px prevents iOS Safari from auto-zooming */
         background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.15);
         outline: none; transition: border-color 0.3s ease; border-radius: 0;
+        appearance: none;
     }
     .input-group input:focus { border-bottom: 1px solid #C5A059; }
     .input-group label {
         position: absolute; top: 10px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.5);
-        pointer-events: none; transition: 0.3s ease all; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
+        pointer-events: none; transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) all;
+        text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
     }
     .input-group input:focus ~ label,
     .input-group input:valid ~ label { top: -16px; font-size: 0.55rem; color: #C5A059; opacity: 1; }
 
-    /* 3. Checkbox */
+    /* 3. Custom Checkbox */
     .custom-checkbox {
         appearance: none; background: transparent; margin: 0; width: 14px; height: 14px;
         border: 1px solid rgba(255,255,255,0.4); border-radius: 1px; display: grid; place-content: center; cursor: pointer;
     }
     .custom-checkbox::before {
-        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform;
+        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform ease-in-out;
         box-shadow: inset 1em 1em #C5A059; background-color: #C5A059; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
     }
     .custom-checkbox:checked::before { transform: scale(1); }
     .custom-checkbox:checked { border-color: #C5A059; }
 
-    /* 4. Animation Setup */
-    .auth-anim { opacity: 0; transform: translateY(15px); }
+    /* 4. Utilities */
+    ::-webkit-scrollbar { width: 0px; background: transparent; }
+    .auth-anim { opacity: 0; transform: translateY(15px); will-change: transform, opacity; }
 </style>
 {% endblock %}
 
 {% block content %}
-<main class="flex flex-col lg:flex-row w-full min-h-[100dvh] bg-[#0a0a0a] m-0 p-0">
+<main class="fixed inset-0 z-[100] flex flex-col lg:flex-row bg-[#0a0a0a] overflow-hidden">
     
-    <div class="hidden lg:flex lg:w-1/2 relative bg-black shrink-0 items-center justify-center overflow-hidden min-h-screen">
+    <div class="hidden lg:block lg:w-1/2 relative h-full bg-black shrink-0">
         {{ render_auth_banner(
             heading_1="Crafted for", 
             heading_2="Perfection.", 
@@ -61,10 +64,12 @@
         ) }}
     </div>
 
-    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 sm:p-12 lg:p-24 min-h-[100dvh]">
-        <div class="w-full max-w-[360px] flex flex-col justify-center items-center m-auto pb-8 z-10">
+    <div class="w-full lg:w-1/2 h-full flex flex-col items-center justify-center p-6 sm:p-12 lg:p-24 overflow-y-auto relative bg-[#0a0a0a]">
+        
+        <div class="w-full max-w-[360px] m-auto py-8 z-10 flex flex-col">
             {{ render_register_form() }}
         </div>
+        
     </div>
 
 </main>
@@ -74,16 +79,26 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        // Destroy smooth scroll here to stop it from fighting with fixed heights
-        if(window.lenis) { window.lenis.destroy(); }
+        // Destroy global Lenis instance to prevent interference with the fixed layout scrolling
+        if(typeof window.lenis !== 'undefined' && window.lenis) { 
+            window.lenis.destroy(); 
+        }
 
-        // Hero Image GSAP
+        // Cinematic Image Zoom
         const heroImg = document.querySelector("#authImage");
-        if(heroImg) { gsap.to(heroImg, { scale: 1, duration: 12, ease: "power1.inOut" }); }
+        if(heroImg) { 
+            gsap.to(heroImg, { scale: 1, duration: 15, ease: "power1.inOut" }); 
+        }
 
-        // Form Reveal
+        // Staggered Form Reveal
         gsap.to(".auth-anim", {
-            y: 0, opacity: 1, duration: 1, stagger: 0.08, ease: "power3.out", delay: 0.1
+            y: 0, 
+            opacity: 1, 
+            duration: 1, 
+            stagger: 0.08, 
+            ease: "power3.out", 
+            delay: 0.1,
+            clearProps: "transform"
         });
     });
 </script>
