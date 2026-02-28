@@ -5,73 +5,85 @@
 
 {% block title %}Create Account - LUVIIO{% endblock %}
 
-{% block body_class %}flex h-[100dvh] w-full bg-[#0a0a0a] text-white overflow-hidden{% endblock %}
+{% block body_class %}bg-[#0a0a0a] text-white antialiased{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* Custom Input Styling (Floating effect) */
-    .input-group { position: relative; margin-bottom: 2rem; } 
+    /* 1. Global Background Lock to kill white gaps */
+    html, body {
+        background-color: #0a0a0a !important;
+        margin: 0; padding: 0;
+        min-height: 100vh;
+        overflow-x: hidden;
+    }
+
+    /* 2. Form Inputs */
+    .input-group { position: relative; margin-bottom: 2rem; width: 100%; }
     .input-group input {
-        width: 100%; padding: 8px 0; font-size: 0.875rem; color: #fff;
+        width: 100%; padding: 10px 0; color: #fff;
+        font-size: 16px; /* Strict Fix: Stops iOS from zooming in and breaking the layout */
         background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.15);
-        outline: none; transition: border-color 0.3s;
+        outline: none; transition: border-color 0.3s ease; border-radius: 0;
     }
     .input-group input:focus { border-bottom: 1px solid #C5A059; }
     .input-group label {
-        position: absolute; top: 8px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.6);
+        position: absolute; top: 10px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.5);
         pointer-events: none; transition: 0.3s ease all; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
     }
     .input-group input:focus ~ label,
-    .input-group input:valid ~ label {
-        top: -16px; font-size: 0.55rem; color: #C5A059;
-    }
-    
-    /* Custom Checkbox */
+    .input-group input:valid ~ label { top: -16px; font-size: 0.55rem; color: #C5A059; opacity: 1; }
+
+    /* 3. Checkbox */
     .custom-checkbox {
-        appearance: none; background-color: transparent; margin: 0; font: inherit; color: currentColor;
-        width: 12px; height: 12px; border: 1px solid rgba(255,255,255,0.4); border-radius: 1px;
-        display: grid; place-content: center; cursor: pointer;
+        appearance: none; background: transparent; margin: 0; width: 14px; height: 14px;
+        border: 1px solid rgba(255,255,255,0.4); border-radius: 1px; display: grid; place-content: center; cursor: pointer;
     }
     .custom-checkbox::before {
-        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform ease-in-out;
-        box-shadow: inset 1em 1em #C5A059; background-color: #C5A059; transform-origin: center;
-        clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform;
+        box-shadow: inset 1em 1em #C5A059; background-color: #C5A059; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
     }
     .custom-checkbox:checked::before { transform: scale(1); }
     .custom-checkbox:checked { border-color: #C5A059; }
+
+    /* 4. Animation Setup */
+    .auth-anim { opacity: 0; transform: translateY(15px); }
 </style>
 {% endblock %}
 
 {% block content %}
-    {{ render_auth_banner(
-        heading_1="Crafted for", 
-        heading_2="Perfection.", 
-        subheading="Join LUVIIO to discover our exclusive collections and curate your perfect space."
-    ) }}
+<main class="flex flex-col lg:flex-row w-full min-h-[100dvh] bg-[#0a0a0a] m-0 p-0">
+    
+    <div class="hidden lg:flex lg:w-1/2 relative bg-black shrink-0 items-center justify-center overflow-hidden min-h-screen">
+        {{ render_auth_banner(
+            heading_1="Crafted for", 
+            heading_2="Perfection.", 
+            subheading="Join LUVIIO to discover our exclusive collections and curate your perfect space."
+        ) }}
+    </div>
 
-    {{ render_register_form() }}
+    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 sm:p-12 lg:p-24 min-h-[100dvh]">
+        <div class="w-full max-w-[360px] flex flex-col justify-center items-center m-auto pb-8 z-10">
+            {{ render_register_form() }}
+        </div>
+    </div>
+
+</main>
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        gsap.config({ force3D: true });
+        // Destroy smooth scroll here to stop it from fighting with fixed heights
+        if(window.lenis) { window.lenis.destroy(); }
 
-        // Slow cinematic zoom on the background image
-        gsap.to("#authImage", {
-            scale: 1,
-            duration: 10,
-            ease: "power1.out"
-        });
+        // Hero Image GSAP
+        const heroImg = document.querySelector("#authImage");
+        if(heroImg) { gsap.to(heroImg, { scale: 1, duration: 12, ease: "power1.inOut" }); }
 
-        // Staggered reveal for form elements
+        // Form Reveal
         gsap.to(".auth-anim", {
-            y: 0,
-            opacity: 1,
-            duration: 1,
-            stagger: 0.08,
-            ease: "power3.out",
-            delay: 0.2
+            y: 0, opacity: 1, duration: 1, stagger: 0.08, ease: "power3.out", delay: 0.1
         });
     });
 </script>
