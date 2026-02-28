@@ -8,8 +8,11 @@
 {% block body_class %}bg-[#0a0a0a] text-white antialiased overflow-hidden{% endblock %}
 
 {% block extra_css %}
+<!-- Remix Icon CDN added for the arrow icon -->
+<link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet"/>
+
 <style>
-    /* Strict Reset for Enterprise Stability */
+    /* 1. Strict Global Reset */
     html, body {
         background-color: #0a0a0a !important;
         margin: 0 !important; 
@@ -17,13 +20,14 @@
         overscroll-behavior: none; 
     }
 
-    /* Standard Input Architecture */
+    /* 2. Form Inputs with iOS Zoom Prevention */
     .input-group { position: relative; margin-bottom: 2rem; width: 100%; }
     .input-group input {
         width: 100%; padding: 10px 0; color: #fff;
-        font-size: 16px; /* Prevents iOS auto-zoom layout breaks */
+        font-size: 16px; /* Prevents iOS auto-zoom */
         background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.15);
         outline: none; transition: border-color 0.3s ease; border-radius: 0;
+        appearance: none;
     }
     .input-group input:focus { border-bottom: 1px solid #C5A059; }
     .input-group label {
@@ -34,18 +38,22 @@
     .input-group input:focus ~ label,
     .input-group input:valid ~ label { top: -16px; font-size: 0.55rem; color: #C5A059; opacity: 1; }
 
-    /* Native Custom Checkbox */
+    /* 3. Custom Checkbox */
     .custom-checkbox {
-        appearance: none; background: transparent; width: 14px; height: 14px;
+        appearance: none; background: transparent; margin: 0; width: 14px; height: 14px;
         border: 1px solid rgba(255,255,255,0.4); border-radius: 1px; display: grid; place-content: center; cursor: pointer;
     }
     .custom-checkbox::before {
-        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform;
-        background-color: #C5A059; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform ease-in-out;
+        box-shadow: inset 1em 1em #C5A059; background-color: #C5A059; 
+        clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
     }
     .custom-checkbox:checked::before { transform: scale(1); }
+    .custom-checkbox:checked { border-color: #C5A059; }
 
-    .auth-anim { will-change: transform, opacity; }
+    /* 4. Utilities */
+    ::-webkit-scrollbar { width: 0px; background: transparent; }
+    .auth-anim { opacity: 0; transform: translateY(15px); will-change: transform, opacity; }
 </style>
 {% endblock %}
 
@@ -61,10 +69,12 @@
         ) }}
     </div>
 
-    <div class="w-full lg:w-1/2 h-full flex flex-col items-center justify-center p-6 sm:p-12 lg:p-24 overflow-y-auto bg-[#0a0a0a]">
-        <div class="w-full max-w-[360px] m-auto py-8 z-10">
+    <div class="w-full lg:w-1/2 h-full flex flex-col items-center justify-center p-6 sm:p-12 lg:p-24 overflow-y-auto relative bg-[#0a0a0a]">
+        
+        <div class="w-full max-w-[360px] m-auto py-8 z-10 flex flex-col">
             {{ render_partner_auth_form() }}
         </div>
+        
     </div>
 
 </main>
@@ -74,24 +84,28 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        if(typeof window.lenis !== 'undefined' && window.lenis) { 
+        // Destroy any previous Lenis instance (safe check)
+        if (typeof window.lenis !== 'undefined' && window.lenis && typeof window.lenis.destroy === 'function') { 
             window.lenis.destroy(); 
         }
 
+        // Cinematic Image Zoom (only if element exists)
         const heroImg = document.querySelector("#authImage");
-        if(heroImg) { 
+        if (heroImg) { 
             gsap.to(heroImg, { scale: 1, duration: 15, ease: "power1.inOut" }); 
+        } else {
+            console.warn('Element #authImage not found – zoom animation skipped');
         }
 
-        // Smooth GSAP reveal
-        gsap.from(".auth-anim", {
-            y: 20, 
-            opacity: 0, 
+        // Staggered Form Reveal (safe – elements with .auth-anim exist in the macro)
+        gsap.to(".auth-anim", {
+            y: 0, 
+            opacity: 1, 
             duration: 1, 
             stagger: 0.08, 
             ease: "power3.out", 
             delay: 0.1,
-            clearProps: "all"
+            clearProps: "transform"
         });
     });
 </script>
