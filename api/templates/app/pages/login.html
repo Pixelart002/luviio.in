@@ -3,92 +3,117 @@
 {% from "app/macros/auth_page/auth_banner.html" import render_auth_banner %}
 {% from "app/macros/auth_page/login_form.html" import render_login_form %}
 
-{% block title %}Sign In - LUVIIO{% endblock %}
+{% block title %}Sign In - LUVIIO Luxury{% endblock %}
 
-{% block body_class %}bg-[#0a0a0a] text-white antialiased{% endblock %}
+{% block body_class %}bg-[#030303] text-stone-200 selection:bg-luviio-gold/30 antialiased{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* 🔥 FIX 1: Force absolute dark background globally to kill the white gap */
-    html, body {
-        background-color: #0a0a0a !important;
-        margin: 0; padding: 0;
-        width: 100%; height: 100%;
+    /* Aceternity UI Spotlight logic */
+    #spotlight {
+        background: radial-gradient(circle at var(--x) var(--y), rgba(197, 160, 89, 0.12) 0%, transparent 40%);
+        pointer-events: none; position: fixed; inset: 0; z-index: 10;
     }
 
-    /* Form Input Styles */
-    .input-group { position: relative; margin-bottom: 2rem; width: 100%; }
+    /* Architectural Grid Background */
+    .grid-bg {
+        background-image: linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+                          linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+        background-size: 50px 50px;
+        mask-image: radial-gradient(ellipse at center, black, transparent 90%);
+    }
+
+    /* Input Styling (Floating Label Sync) */
+    .input-group { position: relative; margin-bottom: 2.5rem; width: 100%; }
     .input-group input {
         width: 100%; padding: 10px 0; font-size: 0.875rem; color: #fff;
-        background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.15);
-        outline: none; transition: border-color 0.3s ease; border-radius: 0;
+        background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.1);
+        outline: none; transition: border-color 0.4s ease;
+        border-radius: 0; /* Prevents iOS rounding */
     }
     .input-group input:focus { border-bottom: 1px solid #C5A059; }
     .input-group label {
         position: absolute; top: 10px; left: 0; font-size: 0.65rem; color: rgba(255,255,255,0.5);
-        pointer-events: none; transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) all;
-        text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
+        pointer-events: none; transition: 0.4s cubic-bezier(0.16, 1, 0.3, 1) all; 
+        text-transform: uppercase; letter-spacing: 0.2em; font-weight: 700;
     }
     .input-group input:focus ~ label,
-    .input-group input:valid ~ label { top: -16px; font-size: 0.55rem; color: #C5A059; opacity: 1; }
+    .input-group input:valid ~ label { top: -18px; font-size: 0.55rem; color: #C5A059; opacity: 1; }
 
-    /* Custom Checkbox */
-    .custom-checkbox {
-        appearance: none; background-color: transparent; margin: 0; width: 14px; height: 14px;
-        border: 1px solid rgba(255,255,255,0.4); border-radius: 1px; display: grid; place-content: center; cursor: pointer;
+    /* 🔥 STRICTLY RESPONSIVE LAYOUT ENGINE */
+    #authWrapper {
+        display: flex; flex-direction: column; width: 100%; min-height: 100dvh;
     }
-    .custom-checkbox::before {
-        content: ""; width: 8px; height: 8px; transform: scale(0); transition: 120ms transform ease-in-out;
-        box-shadow: inset 1em 1em #C5A059; background-color: #C5A059; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+    
+    @media (min-width: 1024px) {
+        #authWrapper { flex-direction: row; height: 100dvh; overflow: hidden; }
+        .auth-scroll-area { overflow-y: auto; } /* Allows scrolling only on the form side if desktop is very short */
     }
-    .custom-checkbox:checked::before { transform: scale(1); }
-    .custom-checkbox:checked { border-color: #C5A059; }
 
-    /* Animation starting point */
-    .auth-anim { opacity: 0; transform: translateY(15px); }
+    /* Hide scrollbar for cleaner look */
+    ::-webkit-scrollbar { width: 0px; background: transparent; }
+
+    /* Initial state for GSAP Reveal */
+    .auth-anim { opacity: 0; transform: translateY(25px); }
 </style>
 {% endblock %}
 
 {% block content %}
-<main class="absolute inset-0 z-50 flex flex-col lg:flex-row w-full h-[100dvh] bg-[#0a0a0a] overflow-hidden">
+<div id="spotlight" class="hidden lg:block"></div>
+<div class="fixed inset-0 grid-bg z-0 pointer-events-none"></div>
+
+<main id="authWrapper" class="relative z-20">
     
-    <div class="hidden lg:flex lg:w-1/2 relative h-full bg-black shrink-0 items-center justify-center overflow-hidden">
-        {{ render_auth_banner() }}
+    <div class="w-full lg:w-1/2 min-h-[30vh] lg:min-h-full relative overflow-hidden bg-black shrink-0">
+        {{ render_auth_banner(
+            heading_1="Curated for", 
+            heading_2="Eternity.", 
+            subheading="Access your private vault and manage your premium architectural selections."
+        ) }}
     </div>
 
-    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center px-6 py-10 lg:px-24 h-full bg-[#0a0a0a] flex-1 overflow-y-auto">
+    <div class="w-full lg:w-1/2 flex flex-col justify-center items-center px-6 py-12 sm:px-16 lg:px-24 bg-[#050505]/80 backdrop-blur-xl relative flex-1 auth-scroll-area">
         
-        <div class="w-full max-w-[360px] flex flex-col items-center justify-center z-10 pb-10">
+        <a href="/" class="absolute top-6 left-6 lg:top-10 lg:left-10 text-stone-500 hover:text-white transition-all duration-500 flex items-center gap-2 text-[9px] uppercase tracking-[0.3em] font-bold z-30 auth-anim">
+            <i class="ri-arrow-left-s-line text-lg"></i> Back to Gallery
+        </a>
+
+        <div class="w-full max-w-[340px] flex flex-col items-center justify-center mt-8 lg:mt-0 z-10 relative">
             {{ render_login_form() }}
         </div>
 
+        <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-luviio-gold/5 rounded-full blur-[120px] pointer-events-none"></div>
     </div>
-
 </main>
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        // Destroy Lenis smooth scroll on this page to prevent any weird jumping on mobile
-        if(typeof window.lenis !== 'undefined' && window.lenis) {
-            window.lenis.destroy();
+        // 1. Aceternity Spotlight Movement (Desktop only for performance)
+        const spotlight = document.getElementById('spotlight');
+        if(spotlight && window.innerWidth >= 1024) {
+            document.addEventListener('mousemove', (e) => {
+                spotlight.style.setProperty('--x', `${e.clientX}px`);
+                spotlight.style.setProperty('--y', `${e.clientY}px`);
+            });
         }
 
-        // Cinematic Image Zoom
+        // 2. Cinematic Image Animation
         if(document.querySelector("#authImage")) {
-            gsap.to("#authImage", { scale: 1, duration: 12, ease: "power1.inOut" });
+            gsap.to("#authImage", {
+                scale: 1, duration: 12, ease: "power1.inOut"
+            });
         }
 
-        // Staggered Form Reveal
+        // 3. Staggered Reveal 
         gsap.to(".auth-anim", {
             y: 0,
             opacity: 1,
-            duration: 1,
-            stagger: 0.08,
-            ease: "power3.out",
-            delay: 0.1
+            duration: 1.2,
+            stagger: 0.1,
+            ease: "power4.out",
+            delay: 0.2
         });
     });
 </script>
