@@ -1,11 +1,24 @@
-{% macro render_auth_banner(image_url="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&q=80&w=1200", heading_1="Curated for", heading_2="Eternity.", subheading="Access your exclusive dashboard to explore premium collections and manage orders.") %}
-<div class="hidden md:flex md:w-1/2 h-full relative overflow-hidden bg-black">
-  <img src="{{ image_url }}" id="authImage" class="absolute inset-0 w-full h-full object-cover opacity-60 scale-[1.2] gpu-target" alt="Luxury Bathware">
-  <div class="absolute inset-0 bg-gradient-to-t from-luviio-charcoal via-transparent to-luviio-charcoal/30"></div>
+{% macro render_auth_banner(
+    image_url="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&q=80&w=1200", 
+    heading_1="Curated for", 
+    heading_2="Eternity.", 
+    subheading="Access your exclusive dashboard to explore premium collections and manage orders."
+) %}
+<div class="w-full h-full relative overflow-hidden bg-black flex flex-col justify-end">
   
-  <div class="absolute bottom-16 left-16 z-10 auth-anim opacity-0 translate-y-8">
-    <h2 class="text-5xl font-serif mb-4 text-white leading-tight">{{ heading_1 }}<br><span class="italic text-luviio-gold">{{ heading_2 }}</span></h2>
-    <p class="text-xs font-sans text-gray-400 tracking-wider max-w-xs leading-relaxed">{{ subheading }}</p>
+  <img src="{{ image_url }}" id="authImage" class="absolute inset-0 w-full h-full object-cover opacity-60 scale-[1.2]" alt="Luxury Bathware">
+  
+  <div class="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/40 to-transparent pointer-events-none"></div>
+  
+  <div class="relative z-10 p-10 lg:p-16 w-full auth-anim opacity-0 translate-y-8">
+    <h2 class="text-4xl lg:text-5xl font-serif mb-4 text-white leading-tight">
+      {{ heading_1 }}<br>
+      <span class="italic text-[#C5A059]">{{ heading_2 }}</span>
+    </h2>
+    <p class="text-[10px] lg:text-xs font-sans text-gray-400 tracking-widest max-w-sm leading-relaxed uppercase">
+      {{ subheading }}
+    </p>
   </div>
+  
 </div>
 {% endmacro %}
