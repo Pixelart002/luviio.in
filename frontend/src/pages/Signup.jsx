@@ -1,21 +1,34 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { api } from '../api/axios';
+import { supabase } from '../api/supabase';
 
 export default function Signup() {
     const [formData, setFormData] = useState({ name: '', email: '', password: '' });
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        try {
-            await api.post('/auth/register', formData);
-            alert("Signup successful! Please login.");
+        setLoading(true);
+        setError('');
+        
+        // Supabase ka built-in secure signup
+        const { data, error } = await supabase.auth.signUp({
+            email: formData.email,
+            password: formData.password,
+            options: {
+                data: { name: formData.name } // Name save karne ke liye
+            }
+        });
+
+        if (error) {
+            setError(error.message);
+        } else {
+            alert("Signup successful! You can now login.");
             navigate('/login');
-        } catch (err) {
-            setError(err.response?.data?.error || "Signup failed");
         }
+        setLoading(false);
     };
 
     return (
@@ -26,7 +39,9 @@ export default function Signup() {
                 <input type="text" placeholder="Name" required onChange={(e) => setFormData({...formData, name: e.target.value})} />
                 <input type="email" placeholder="Email" required onChange={(e) => setFormData({...formData, email: e.target.value})} />
                 <input type="password" placeholder="Password" required onChange={(e) => setFormData({...formData, password: e.target.value})} />
-                <button type="submit" style={{ padding: '10px', background: '#28a745', color: 'white', border: 'none', borderRadius: '5px' }}>Register</button>
+                <button type="submit" disabled={loading} style={{ padding: '10px', background: '#28a745', color: 'white', border: 'none', borderRadius: '5px' }}>
+                    {loading ? 'Signing up...' : 'Register'}
+                </button>
             </form>
             <p>Already have an account? <Link to="/login">Login</Link></p>
         </div>

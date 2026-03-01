@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api/axios';
+import { supabase } from '../api/supabase';
 
 export default function Dashboard() {
     const [user, setUser] = useState(null);
@@ -8,26 +8,23 @@ export default function Dashboard() {
     const navigate = useNavigate();
 
     useEffect(() => {
-        const fetchUser = async () => {
-            try {
-                const res = await api.get('/auth/me');
-                setUser(res.data.user);
-            } catch (err) {
-                navigate('/login'); // Token nahi hai ya expire ho gaya toh wapas login pe
-            } finally {
-                setLoading(false);
+        const checkUser = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (!session) {
+                navigate('/login');
+            } else {
+                setUser(session.user);
             }
+            setLoading(false);
         };
-        fetchUser();
+        
+        checkUser();
     }, [navigate]);
 
     const handleLogout = async () => {
-        try {
-            await api.post('/auth/logout');
-            navigate('/login');
-        } catch (err) {
-            console.error("Logout failed", err);
-        }
+        await supabase.auth.signOut();
+        navigate('/login');
     };
 
     if (loading) return <h2>Loading...</h2>;
@@ -35,8 +32,8 @@ export default function Dashboard() {
     return (
         <div style={{ padding: '50px', fontFamily: 'sans-serif' }}>
             <h1>Dashboard 🛡️</h1>
-            <h3>Welcome back, {user?.name || user?.email}!</h3>
-            <p>This is a protected route. Only logged-in users can see this.</p>
+            <h3>Welcome back, {user?.user_metadata?.name || user?.email}!</h3>
+            <p>You are logged in directly via Supabase inside React.</p>
             <button onClick={handleLogout} style={{ padding: '10px 20px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '5px' }}>Logout</button>
         </div>
     );
