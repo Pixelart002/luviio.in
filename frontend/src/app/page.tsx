@@ -25,7 +25,7 @@ export default function LandingPage() {
         </div>
         
         <p className="text-sm text-slate-400 mt-8">
-          © 2026 Luviio.in. Secure Portal.
+          © 2026 Luviio.in.. Secure Portal.
         </p>
       </div>
     </div>
