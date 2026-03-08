@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base HTML setup for a clean ERP feel */
+@layer base {
+ body {
+  @apply bg-surface-muted text-slate-800 antialiased;
+ }
+}
