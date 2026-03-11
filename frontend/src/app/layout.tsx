@@ -1,19 +1,22 @@
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import './globals.css'
+// src/app/layout.tsx
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
 
-// Optimize font loading with Next.js
+// 🚀 Naye modular components import kar rahe hain
+import Header from '@/components/layouts/Header';
+import Footer from '@/components/layouts/Footer';
+
 const inter = Inter({
  subsets: ['latin'],
  variable: '--font-inter',
  display: 'swap',
-})
+});
 
-// SEO & Metadata (Next.js 14 Native)
 export const metadata: Metadata = {
- title: 'Enterprise ERP System',
+ title: 'Luviio | Premium E-commerce',
  description: 'Next-gen scalable ERP built with Next.js and FastAPI',
-}
+};
 
 export default function RootLayout({
  children,
@@ -22,15 +25,20 @@ export default function RootLayout({
 }) {
  return (
   <html lang="en" className={inter.variable}>
-      {/* h-full aur min-h-screen ensure karte hain ki sidebar aur main content 
-        height stretch karein, jo ERP layouts (Dashboards) ke liye zaruri hai.
-      */}
-      <body className="h-full min-h-screen flex flex-col">
-        {/* Yahan future mein hum Navbar aur Sidebar layouts inject karenge */}
-        <main className="flex-1">
+      <body className="h-full min-h-screen flex flex-col bg-surface-light">
+        
+        {/* 1. Global Header (Jiske andar apne aap desktop aur mobile menu hain) */}
+        <Header />
+
+        {/* 2. Main Page Content (Hero section, forms, etc.) */}
+        <main className="flex-1 flex flex-col">
           {children}
         </main>
+
+        {/* 3. Global Footer */}
+        <Footer />
+        
       </body>
     </html>
- )
+ );
 }
