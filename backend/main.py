@@ -1,5 +1,12 @@
 # backend/main.py
+
+
+
+import sys
 import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
