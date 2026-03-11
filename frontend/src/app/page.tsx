@@ -1,6 +1,6 @@
 // src/app/page.tsx
 import { Button } from '@/components/ui/Button';
-import Link from 'next/Link' ;
+import Link from 'next/link' ;
 
 export default function StoreFront() {
   return (
