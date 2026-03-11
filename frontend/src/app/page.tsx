@@ -1,6 +1,6 @@
 // src/app/page.tsx
 import { Button } from '@/components/ui/Button';
-import Link from 'next/link' ;
+import Link from 'next/link';
 
 export default function StoreFront() {
   return (
@@ -13,11 +13,11 @@ export default function StoreFront() {
         </div>
         <div className="flex gap-4">
           <Button variant="ghost" size="sm">Cart (0)</Button>
-          <Button variant="primary" size="sm">Login</Button>
-        
-           <Link href="/login">
-  <Button variant="primary" size="sm">Login</Button>
-</Link>
+          
+          {/* ✅ Sirf ek sahi Link wala Login Button */}
+          <Link href="/login">
+            <Button variant="primary" size="sm">Login</Button>
+          </Link>
         </div>
       </nav>
 
