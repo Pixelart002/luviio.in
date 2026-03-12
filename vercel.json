@@ -5,7 +5,8 @@
       "src": "backend/main.py",
       "use": "@vercel/python",
       "config": {
-        "runtime": "python3.11"
+        "runtime": "python3.11",
+        "maxLambdaSize": "50mb"
       }
     },
     {
@@ -13,14 +14,14 @@
       "use": "@vercel/next"
     }
   ],
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/v1/(.*)",
-      "destination": "/backend/main.py"
+      "src": "/api/v1/(.*)",
+      "dest": "/backend/main.py"
     },
     {
-      "source": "/(.*)",
-      "destination": "/frontend/$1"
+      "src": "/(.*)",
+      "dest": "/frontend/$1"
     }
   ],
   "env": {
