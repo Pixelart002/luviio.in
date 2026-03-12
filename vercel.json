@@ -3,7 +3,10 @@
   "builds": [
     {
       "src": "backend/main.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "runtime": "python3.11"
+      }
     },
     {
       "src": "frontend/package.json",
@@ -19,5 +22,8 @@
       "source": "/(.*)",
       "destination": "/frontend/$1"
     }
-  ]
+  ],
+  "env": {
+    "NEXT_PUBLIC_API_BASE_URL": "@api_base_url"
+  }
 }

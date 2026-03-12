@@ -1,40 +1,70 @@
 // src/app/(auth)/login/page.tsx
-'use client'; // Client Component kyunki hume user input (state) capture karna hai
+'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function LoginPage() {
- // TypeScript aur State: TS ko pata hai yeh string hain
- const [email, setEmail] = useState < string > ('');
- const [password, setPassword] = useState < string > ('');
- const [isLoading, setIsLoading] = useState < boolean > (false);
- 
- // Form Submit Handler (TS Event typing)
- const handleLogin = async (e: React.FormEvent < HTMLFormElement > ) => {
-  e.preventDefault(); // Page refresh hone se roko
-  setIsLoading(true);
+  // TypeScript and State
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [successMessage, setSuccessMessage] = useState<string>('');
   
-  // Abhi ke liye hum sirf console mein check kar rahe hain. 
-  // Baad mein yahan FastAPI ko request jayegi!
-  console.log("Login Request Sent:", { email, password });
-  
-  // Fake delay to show loading button animation
-  setTimeout(() => {
-   setIsLoading(false);
-   alert(`Login attempt for ${email}`);
-  }, 1500);
- };
- 
- return (
-  <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
+  // Use the auth hook for login functionality
+  const { isLoading, error, login } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Show success message if coming from signup
+  useEffect(() => {
+    const signupSuccess = searchParams.get('signup');
+    if (signupSuccess === 'success') {
+      setSuccessMessage('Account created successfully! Please sign in.');
+    }
+  }, [searchParams]);
+
+  // Form Submit Handler
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setSuccessMessage('');
+
+    try {
+      // Call the login function from useAuth hook
+      await login(email, password);
+      
+      // On successful login, redirect to dashboard
+      router.push('/dashboard');
+    } catch (err: any) {
+      // Error is already set in the auth hook
+      console.error('Login error:', err);
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
       <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-md border border-slate-200">
         
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Welcome Back</h1>
           <p className="text-slate-500 mt-2">Sign in to your Luviio Store</p>
         </div>
+
+        {/* Success Message */}
+        {successMessage && (
+          <div className="mb-4 p-3 bg-green-50 text-green-600 border border-green-200 rounded-md text-sm text-center">
+            {successMessage}
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 text-red-600 border border-red-200 rounded-md text-sm text-center">
+            {error}
+          </div>
+        )}
 
         {/* Form connected to React State */}
         <form onSubmit={handleLogin} className="space-y-6">
@@ -43,10 +73,11 @@ export default function LoginPage() {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)} // State update
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-colors"
               placeholder="you@example.com"
               required
+              disabled={isLoading}
             />
           </div>
 
@@ -55,20 +86,22 @@ export default function LoginPage() {
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)} // State update
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-colors"
               placeholder="••••••••"
               required
+              disabled={isLoading}
             />
           </div>
 
-          {/* Hamara CDUI Button with Loading state */}
+          {/* Sign In Button */}
           <Button 
             type="submit" 
             variant="primary" 
             className="w-full" 
             size="lg"
             isLoading={isLoading}
+            disabled={isLoading}
           >
             {isLoading ? "Signing in..." : "Sign In"}
           </Button>
@@ -82,5 +115,5 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
- );
+  );
 }

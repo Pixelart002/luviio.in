@@ -4,41 +4,54 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function SignupPage() {
- // TypeScript States for the form
- const [name, setName] = useState < string > ('');
- const [email, setEmail] = useState < string > ('');
- const [password, setPassword] = useState < string > ('');
- const [confirmPassword, setConfirmPassword] = useState < string > ('');
- const [isLoading, setIsLoading] = useState < boolean > (false);
- const [error, setError] = useState < string > (''); // Agar password match na ho toh dikhane ke liye
- 
- // Form Submit Handler
- const handleSignup = async (e: React.FormEvent < HTMLFormElement > ) => {
-  e.preventDefault();
-  setError(''); // Puraane errors clear karna
+  // TypeScript States for the form
+  const [name, setName] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [confirmPassword, setConfirmPassword] = useState<string>('');
+  const [localError, setLocalError] = useState<string>('');
   
-  // Basic Frontend Validation
-  if (password !== confirmPassword) {
-   setError("Passwords do not match!");
-   return; // Aage mat badho
-  }
-  
-  setIsLoading(true);
-  
-  // Yahan FastAPI ko data bheja jayega baad mein
-  console.log("Signup Request Sent:", { name, email, password });
-  
-  // Fake delay
-  setTimeout(() => {
-   setIsLoading(false);
-   alert(`Account created successfully for ${name}!`);
-  }, 1500);
- };
- 
- return (
-  <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4 py-12">
+  // Use the auth hook for signup functionality
+  const { isLoading, error: authError, signup } = useAuth();
+  const router = useRouter();
+
+  // Form Submit Handler
+  const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLocalError(''); // Clear previous errors
+
+    // Basic Frontend Validation
+    if (password !== confirmPassword) {
+      setLocalError('Passwords do not match!');
+      return;
+    }
+
+    if (password.length < 6) {
+      setLocalError('Password must be at least 6 characters long!');
+      return;
+    }
+
+    try {
+      // Call the signup function from useAuth hook
+      await signup(name, email, password);
+      
+      // On successful signup, redirect to login page
+      router.push('/login?signup=success');
+    } catch (err: any) {
+      // Error is already set in the auth hook, but we can handle it here if needed
+      console.error('Signup error:', err);
+    }
+  };
+
+  // Determine which error to display
+  const displayError = localError || authError;
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4 py-12">
       <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-md border border-slate-200">
         
         <div className="text-center mb-8">
@@ -46,10 +59,10 @@ export default function SignupPage() {
           <p className="text-slate-500 mt-2">Join Luviio Store today</p>
         </div>
 
-        {/* Agar error hai toh yahan dikhega */}
-        {error && (
+        {/* Display error if it exists */}
+        {displayError && (
           <div className="mb-4 p-3 bg-red-50 text-red-600 border border-red-200 rounded-md text-sm text-center">
-            {error}
+            {displayError}
           </div>
         )}
 
@@ -64,6 +77,7 @@ export default function SignupPage() {
               className="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-colors"
               placeholder="John Doe"
               required
+              disabled={isLoading}
             />
           </div>
 
@@ -77,6 +91,7 @@ export default function SignupPage() {
               className="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-colors"
               placeholder="you@example.com"
               required
+              disabled={isLoading}
             />
           </div>
 
@@ -91,6 +106,7 @@ export default function SignupPage() {
               placeholder="••••••••"
               required
               minLength={6}
+              disabled={isLoading}
             />
           </div>
 
@@ -104,6 +120,7 @@ export default function SignupPage() {
               className="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-colors"
               placeholder="••••••••"
               required
+              disabled={isLoading}
             />
           </div>
 
@@ -113,6 +130,7 @@ export default function SignupPage() {
             className="w-full mt-2" 
             size="lg"
             isLoading={isLoading}
+            disabled={isLoading}
           >
             {isLoading ? "Creating account..." : "Create Account"}
           </Button>
@@ -126,5 +144,5 @@ export default function SignupPage() {
         </p>
       </div>
     </div>
- );
+  );
 }
