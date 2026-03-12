@@ -8,35 +8,27 @@ const nextConfig = {
       transform: 'lucide-react/dist/esm/icons/{{member}}',
     },
   },
-  
+
+  // 🛑 REAL-WORLD FIX: Vercel par koi rewrite nahi hoga, taaki loop na bane.
+  // Yeh sirf tumhare PC (localhost) par backend ko call karega.
   async rewrites() {
-    return [
-      // 1. Vercel Monorepo Hack (Next.js ko /frontend/ folder ke baare mein sikhana)
-      {
-        source: '/frontend/:path*',
-        destination: '/:path*',
-      },
-      
-      // 🛑 2. THE REAL-WORLD FIX: Proxy SIRF tab chalegi jab tum PC (localhost) pe hoge.
-      // Vercel (Production) par yeh code hide ho jayega aur Vercel loop me nahi phasega!
-      ...(process.env.NODE_ENV === 'development'
-        ? [
-            {
-              source: '/api/v1/:path*',
-              destination: 'http://127.0.0.1:8000/api/v1/:path*',
-            },
-          ]
-        : []),
-    ];
+    if (process.env.NODE_ENV === 'development') {
+      return [
+        {
+          source: '/api/v1/:path*',
+          destination: 'http://127.0.0.1:8000/api/v1/:path*',
+        },
+      ];
+    }
+    return []; // Production mein khali rahega
   },
-  
-  webpack: (config, { dev, isServer }) => {
+
+  webpack: (config) => {
     config.module.rules.push({
       test: /\.svg$/i,
       issuer: /\.[jt]sx?$/,
       use: ['@svgr/webpack'],
     });
-    
     return config;
   },
 };
