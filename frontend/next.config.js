@@ -11,25 +11,25 @@ const nextConfig = {
   
   async rewrites() {
     return [
-      // 🚀 THE MAGIC FIX: Vercel ke '/frontend/' path ko Next.js se chupana
-      // (Iske bina Next.js 404 error dega kyunki uske paas frontend naam ka folder nahi hai)
+      // 1. Vercel Monorepo Hack (Next.js ko /frontend/ folder ke baare mein sikhana)
       {
         source: '/frontend/:path*',
         destination: '/:path*',
       },
       
-      // 🔌 Local Dev & Proxy: 
-      // Vercel pe backend vercel.json handle karega, par Local PC pe ye proxy FastAPI (8000) ko call karegi
-      {
-        source: '/api/v1/:path*',
-        destination: process.env.NEXT_PUBLIC_API_URL ?
-          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/:path*` :
-          'http://127.0.0.1:8000/api/v1/:path*',
-      },
+      // 🛑 2. THE REAL-WORLD FIX: Proxy SIRF tab chalegi jab tum PC (localhost) pe hoge.
+      // Vercel (Production) par yeh code hide ho jayega aur Vercel loop me nahi phasega!
+      ...(process.env.NODE_ENV === 'development'
+        ? [
+            {
+              source: '/api/v1/:path*',
+              destination: 'http://127.0.0.1:8000/api/v1/:path*',
+            },
+          ]
+        : []),
     ];
   },
   
-  // Webpack specific customizations
   webpack: (config, { dev, isServer }) => {
     config.module.rules.push({
       test: /\.svg$/i,
