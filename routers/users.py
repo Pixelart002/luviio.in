@@ -1,101 +1,92 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-
-from app.database import get_db
-from app.dependencies import get_current_active_user, require_admin
-from app.models import User
-from app.schemas import UserRead, UserUpdate, UserAdminUpdate, AddressCreate, AddressRead
-from app.security import hash_password
+from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, Field
+from typing import Optional, List
+from app.dependencies import get_current_user, require_admin
+from app.supabase_client import get_admin_supabase
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
 
+class ProfileUpdate(BaseModel):
+    full_name: Optional[str] = Field(default=None, max_length=255)
+    phone: Optional[str] = Field(default=None, max_length=20)
+
+class AddressCreate(BaseModel):
+    line1: str = Field(max_length=255)
+    line2: Optional[str] = Field(default=None, max_length=255)
+    city: str = Field(max_length=100)
+    state: Optional[str] = Field(default=None, max_length=100)
+    postal_code: str = Field(max_length=20)
+    country: str = Field(min_length=2, max_length=2)
+    is_default: bool = False
+
+class AdminUserUpdate(BaseModel):
+    is_active: Optional[bool] = None
+    role: Optional[str] = Field(default=None, pattern="^(customer|admin)$")
+
+
 # ── Profile ───────────────────────────────────────────────────────────────────
 
-@router.get("/me", response_model=UserRead)
-def get_me(current_user: User = Depends(get_current_active_user)):
-    return current_user
+@router.get("/me")
+def get_me(current: dict = Depends(get_current_user)):
+    return current["profile"]
 
 
-@router.patch("/me", response_model=UserRead)
-def update_me(
-    payload: UserUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    if payload.full_name is not None:
-        current_user.full_name = payload.full_name
-    if payload.password is not None:
-        current_user.hashed_password = hash_password(payload.password)
-    db.commit()
-    db.refresh(current_user)
-    return current_user
+@router.patch("/me")
+def update_me(payload: ProfileUpdate, current: dict = Depends(get_current_user)):
+    sb = get_admin_supabase()
+    user_id = current["profile"]["id"]
+    data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not data:
+        return current["profile"]
+    result = sb.table("users").update(data).eq("id", user_id).execute()
+    return result.data[0] if result.data else current["profile"]
 
 
 # ── Addresses ─────────────────────────────────────────────────────────────────
 
-@router.get("/me/addresses", response_model=List[AddressRead])
-def list_addresses(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    return current_user.addresses
+@router.get("/me/addresses")
+def list_addresses(current: dict = Depends(get_current_user)):
+    sb = get_admin_supabase()
+    result = sb.table("addresses").select("*").eq("user_id", current["profile"]["id"]).execute()
+    return result.data
 
 
-@router.post("/me/addresses", response_model=AddressRead, status_code=201)
-def add_address(
-    payload: AddressCreate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    from app.models import Address
+@router.post("/me/addresses", status_code=201)
+def add_address(payload: AddressCreate, current: dict = Depends(get_current_user)):
+    sb = get_admin_supabase()
+    user_id = current["profile"]["id"]
     if payload.is_default:
-        for addr in current_user.addresses:
-            addr.is_default = False
-    addr = Address(**payload.model_dump(), user_id=current_user.id)
-    db.add(addr)
-    db.commit()
-    db.refresh(addr)
-    return addr
+        sb.table("addresses").update({"is_default": False}).eq("user_id", user_id).execute()
+    result = sb.table("addresses").insert({**payload.model_dump(), "user_id": user_id}).execute()
+    return result.data[0]
 
 
 @router.delete("/me/addresses/{address_id}", status_code=204)
-def delete_address(
-    address_id: str,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    from app.models import Address
-    addr = db.query(Address).filter(
-        Address.id == address_id, Address.user_id == current_user.id
-    ).first()
-    if not addr:
+def delete_address(address_id: str, current: dict = Depends(get_current_user)):
+    sb = get_admin_supabase()
+    existing = sb.table("addresses").select("id").eq("id", address_id).eq("user_id", current["profile"]["id"]).execute()
+    if not existing.data:
         raise HTTPException(status_code=404, detail="Address not found")
-    db.delete(addr)
-    db.commit()
+    sb.table("addresses").delete().eq("id", address_id).execute()
 
 
 # ── Admin ─────────────────────────────────────────────────────────────────────
 
-@router.get("/", response_model=List[UserRead], dependencies=[Depends(require_admin)])
-def list_users(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
-    return db.query(User).offset(skip).limit(limit).all()
+@router.get("/", dependencies=[Depends(require_admin)])
+def list_users(skip: int = 0, limit: int = 50):
+    sb = get_admin_supabase()
+    result = sb.table("users").select("*").range(skip, skip + limit - 1).execute()
+    return result.data
 
 
-@router.patch("/{user_id}", response_model=UserRead, dependencies=[Depends(require_admin)])
-def admin_update_user(
-    user_id: str,
-    payload: UserAdminUpdate,
-    db: Session = Depends(get_db),
-):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
+@router.patch("/{user_id}", dependencies=[Depends(require_admin)])
+def admin_update_user(user_id: str, payload: AdminUserUpdate):
+    sb = get_admin_supabase()
+    data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = sb.table("users").update(data).eq("id", user_id).execute()
+    if not result.data:
         raise HTTPException(status_code=404, detail="User not found")
-    if payload.is_active is not None:
-        user.is_active = payload.is_active
-    if payload.role is not None:
-        user.role = payload.role
-    db.commit()
-    db.refresh(user)
-    return user
+    return result.data[0]

@@ -1,197 +1,175 @@
-import json
+from fastapi import APIRouter, HTTPException, Depends, Query
+from pydantic import BaseModel, Field
+from typing import List, Optional
 from decimal import Decimal
-from typing import List
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
-
-from app.database import get_db
-from app.dependencies import get_current_active_user, require_admin
-from app.models import Address, Order, OrderItem, OrderStatus, Product, User
-from app.schemas import OrderAdminUpdate, OrderCreate, OrderRead, PaginatedResponse
+from app.dependencies import get_current_user, require_admin
+from app.supabase_client import get_admin_supabase
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
-SHIPPING_THRESHOLD = Decimal("75.00")   # free shipping above this
+SHIPPING_THRESHOLD = Decimal("75.00")
 SHIPPING_FLAT      = Decimal("9.99")
-TAX_RATE           = Decimal("0.08")    # 8 %
+TAX_RATE           = Decimal("0.08")
 
 
-def _build_order(payload: OrderCreate, user: User, db: Session) -> Order:
-    # Validate address ownership
-    address = db.query(Address).filter(
-        Address.id == payload.shipping_address_id,
-        Address.user_id == user.id,
-    ).first()
-    if not address:
+class OrderItemInput(BaseModel):
+    product_id: str
+    quantity: int = Field(ge=1, le=100)
+
+class OrderCreate(BaseModel):
+    items: List[OrderItemInput] = Field(min_length=1)
+    shipping_address_id: str
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+class OrderAdminUpdate(BaseModel):
+    status: Optional[str] = Field(default=None)
+    tracking_number: Optional[str] = Field(default=None, max_length=100)
+
+
+# ── Customer ──────────────────────────────────────────────────────────────────
+
+@router.post("/", status_code=201)
+def create_order(payload: OrderCreate, current: dict = Depends(get_current_user)):
+    sb = get_admin_supabase()
+    user_id = current["profile"]["id"]
+
+    # Validate address
+    addr_res = sb.table("addresses").select("*").eq("id", payload.shipping_address_id).eq("user_id", user_id).single().execute()
+    if not addr_res.data:
         raise HTTPException(status_code=404, detail="Shipping address not found")
+    addr = addr_res.data
 
-    subtotal = Decimal("0")
     order_items = []
+    subtotal = Decimal("0")
 
     for item_in in payload.items:
-        product: Product = db.query(Product).filter(
-            Product.id == item_in.product_id,
-            Product.is_active == True,
-        ).with_for_update().first()          # row-level lock to prevent overselling
-
-        if not product:
+        prod_res = sb.table("products").select("*").eq("id", item_in.product_id).eq("is_active", True).single().execute()
+        if not prod_res.data:
             raise HTTPException(status_code=404, detail=f"Product {item_in.product_id} not found")
-        if product.stock < item_in.quantity:
+        prod = prod_res.data
+
+        if prod["stock"] < item_in.quantity:
             raise HTTPException(
                 status_code=409,
-                detail=f"Insufficient stock for '{product.name}' (available: {product.stock})",
+                detail=f"Insufficient stock for '{prod['name']}' (available: {prod['stock']})"
             )
 
         # Deduct stock
-        product.stock -= item_in.quantity
-        line_total = product.price * item_in.quantity
-        subtotal += line_total
+        sb.table("products").update({"stock": prod["stock"] - item_in.quantity}).eq("id", prod["id"]).execute()
 
-        order_items.append(
-            OrderItem(
-                product_id=product.id,
-                product_name=product.name,
-                unit_price=product.price,
-                quantity=item_in.quantity,
-                subtotal=line_total,
-            )
-        )
+        line = Decimal(str(prod["price"])) * item_in.quantity
+        subtotal += line
+        order_items.append({
+            "product_id": prod["id"],
+            "product_name": prod["name"],
+            "unit_price": float(prod["price"]),
+            "quantity": item_in.quantity,
+            "subtotal": float(line),
+        })
 
     shipping = Decimal("0") if subtotal >= SHIPPING_THRESHOLD else SHIPPING_FLAT
     tax = (subtotal + shipping) * TAX_RATE
     total = subtotal + shipping + tax
 
-    order = Order(
-        user_id=user.id,
-        subtotal=subtotal,
-        shipping_cost=shipping,
-        tax=tax.quantize(Decimal("0.01")),
-        total=total.quantize(Decimal("0.01")),
-        shipping_address=json.dumps({
-            "line1": address.line1,
-            "line2": address.line2,
-            "city": address.city,
-            "state": address.state,
-            "postal_code": address.postal_code,
-            "country": address.country,
-        }),
-        notes=payload.notes,
-    )
-    order.items = order_items
-    return order
+    order_data = {
+        "customer_id": user_id,
+        "subtotal": float(subtotal),
+        "shipping_cost": float(shipping),
+        "tax_amount": float(tax.quantize(Decimal("0.01"))),
+        "total_amount": float(total.quantize(Decimal("0.01"))),
+        "shipping_line1": addr["line1"],
+        "shipping_line2": addr.get("line2"),
+        "shipping_city": addr["city"],
+        "shipping_state": addr.get("state"),
+        "shipping_postal_code": addr["postal_code"],
+        "shipping_country": addr["country"],
+        "notes": payload.notes,
+    }
+
+    order_res = sb.table("orders").insert(order_data).execute()
+    order = order_res.data[0]
+
+    for item in order_items:
+        item["order_id"] = order["id"]
+    sb.table("order_items").insert(order_items).execute()
+
+    # Return full order
+    return sb.table("orders").select("*, order_items(*)").eq("id", order["id"]).single().execute().data
 
 
-# ── Customer endpoints ────────────────────────────────────────────────────────
-
-@router.post("/", response_model=OrderRead, status_code=201)
-def create_order(
-    payload: OrderCreate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    order = _build_order(payload, current_user, db)
-    db.add(order)
-    db.commit()
-    db.refresh(order)
-    return order
+@router.get("/my")
+def my_orders(skip: int = 0, limit: int = 20, current: dict = Depends(get_current_user)):
+    sb = get_admin_supabase()
+    result = sb.table("orders").select("*, order_items(*)") \
+        .eq("customer_id", current["profile"]["id"]) \
+        .order("created_at", desc=True) \
+        .range(skip, skip + limit - 1).execute()
+    return result.data
 
 
-@router.get("/my", response_model=List[OrderRead])
-def my_orders(
-    skip: int = 0,
-    limit: int = 20,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    return (
-        db.query(Order)
-        .filter(Order.user_id == current_user.id)
-        .order_by(Order.created_at.desc())
-        .offset(skip).limit(limit)
-        .all()
-    )
-
-
-@router.get("/my/{order_id}", response_model=OrderRead)
-def get_my_order(
-    order_id: str,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    order = db.query(Order).filter(
-        Order.id == order_id,
-        Order.user_id == current_user.id,
-    ).first()
-    if not order:
+@router.get("/my/{order_id}")
+def get_my_order(order_id: str, current: dict = Depends(get_current_user)):
+    sb = get_admin_supabase()
+    result = sb.table("orders").select("*, order_items(*)") \
+        .eq("id", order_id).eq("customer_id", current["profile"]["id"]).single().execute()
+    if not result.data:
         raise HTTPException(status_code=404, detail="Order not found")
-    return order
+    return result.data
 
 
-@router.post("/my/{order_id}/cancel", response_model=OrderRead)
-def cancel_order(
-    order_id: str,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    order = db.query(Order).filter(
-        Order.id == order_id, Order.user_id == current_user.id
-    ).first()
-    if not order:
+@router.post("/my/{order_id}/cancel")
+def cancel_order(order_id: str, current: dict = Depends(get_current_user)):
+    sb = get_admin_supabase()
+    order_res = sb.table("orders").select("*, order_items(*)") \
+        .eq("id", order_id).eq("customer_id", current["profile"]["id"]).single().execute()
+    if not order_res.data:
         raise HTTPException(status_code=404, detail="Order not found")
-    if order.status not in (OrderStatus.pending,):
-        raise HTTPException(status_code=409, detail=f"Cannot cancel order in '{order.status}' status")
+    order = order_res.data
+
+    if order["status"] != "pending":
+        raise HTTPException(status_code=409, detail=f"Cannot cancel order with status '{order['status']}'")
 
     # Restore stock
-    for item in order.items:
-        if item.product_id:
-            product = db.query(Product).filter(Product.id == item.product_id).first()
-            if product:
-                product.stock += item.quantity
+    for item in order.get("order_items", []):
+        if item.get("product_id"):
+            prod = sb.table("products").select("stock").eq("id", item["product_id"]).single().execute()
+            if prod.data:
+                sb.table("products").update({"stock": prod.data["stock"] + item["quantity"]}).eq("id", item["product_id"]).execute()
 
-    order.status = OrderStatus.cancelled
-    db.commit()
-    db.refresh(order)
-    return order
+    sb.table("orders").update({"status": "cancelled"}).eq("id", order_id).execute()
+    return sb.table("orders").select("*, order_items(*)").eq("id", order_id).single().execute().data
 
 
-# ── Admin endpoints ───────────────────────────────────────────────────────────
+# ── Admin ─────────────────────────────────────────────────────────────────────
 
-@router.get("/", response_model=PaginatedResponse, dependencies=[Depends(require_admin)])
+@router.get("/", dependencies=[Depends(require_admin)])
 def list_all_orders(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    status_filter: OrderStatus = None,
-    db: Session = Depends(get_db),
+    status_filter: Optional[str] = None,
 ):
-    q = db.query(Order)
+    sb = get_admin_supabase()
+    q = sb.table("orders").select("*, order_items(*), users(email, full_name)", count="exact") \
+        .order("created_at", desc=True)
     if status_filter:
-        q = q.filter(Order.status == status_filter)
-    q = q.order_by(Order.created_at.desc())
-    total = q.count()
-    items = q.offset((page - 1) * page_size).limit(page_size).all()
-    return PaginatedResponse(
-        items=[OrderRead.model_validate(o) for o in items],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=-(-total // page_size),
-    )
+        q = q.eq("status", status_filter)
+    offset = (page - 1) * page_size
+    result = q.range(offset, offset + page_size - 1).execute()
+    total = result.count or 0
+    return {
+        "items": result.data,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": -(-total // page_size),
+    }
 
 
-@router.patch("/{order_id}", response_model=OrderRead, dependencies=[Depends(require_admin)])
-def admin_update_order(
-    order_id: str,
-    payload: OrderAdminUpdate,
-    db: Session = Depends(get_db),
-):
-    order = db.query(Order).filter(Order.id == order_id).first()
-    if not order:
+@router.patch("/{order_id}", dependencies=[Depends(require_admin)])
+def admin_update_order(order_id: str, payload: OrderAdminUpdate):
+    sb = get_admin_supabase()
+    data = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    result = sb.table("orders").update(data).eq("id", order_id).execute()
+    if not result.data:
         raise HTTPException(status_code=404, detail="Order not found")
-    if payload.status:
-        order.status = payload.status
-    if payload.tracking_number is not None:
-        order.tracking_number = payload.tracking_number
-    db.commit()
-    db.refresh(order)
-    return order
+    return result.data[0]

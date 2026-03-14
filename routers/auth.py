@@ -1,64 +1,107 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
-
-from app.database import get_db
-from app.models import User
-from app.schemas import Token, UserCreate, UserRead, RefreshRequest
-from app.security import (
-    hash_password, verify_password,
-    create_access_token, create_refresh_token, decode_token,
-)
+from fastapi import APIRouter, HTTPException, status, Depends
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import Optional
+from app.supabase_client import get_supabase, get_admin_supabase
+from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
-@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def register(payload: UserCreate, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.email == payload.email).first():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
-        )
-    user = User(
-        email=payload.email,
-        hashed_password=hash_password(payload.password),
-        full_name=payload.full_name,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    full_name: Optional[str] = Field(default=None, max_length=255)
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v):
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+class UpdatePasswordRequest(BaseModel):
+    password: str = Field(min_length=8, max_length=128)
 
 
-@router.post("/login", response_model=Token)
-def login(
-    form: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db),
-):
-    user = db.query(User).filter(User.email == form.username).first()
-    if not user or not verify_password(form.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+def register(payload: RegisterRequest):
+    sb = get_supabase()
+    try:
+        result = sb.auth.sign_up({
+            "email": payload.email,
+            "password": payload.password,
+            "options": {"data": {"full_name": payload.full_name or ""}},
+        })
+        if not result.user:
+            raise HTTPException(status_code=400, detail="Registration failed")
+    except Exception as e:
+        msg = str(e)
+        if "already registered" in msg.lower() or "already exists" in msg.lower():
+            raise HTTPException(status_code=409, detail="Email already registered")
+        raise HTTPException(status_code=400, detail=msg)
 
-    return Token(
-        access_token=create_access_token(user.id, user.role),
-        refresh_token=create_refresh_token(user.id),
-    )
+    return {
+        "message": "Registration successful. Please check your email to confirm your account.",
+        "user_id": result.user.id,
+    }
 
 
-@router.post("/refresh", response_model=Token)
-def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
-    token_data = decode_token(payload.refresh_token, expected_type="refresh")
-    user = db.query(User).filter(User.id == token_data["sub"]).first()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    return Token(
-        access_token=create_access_token(user.id, user.role),
-        refresh_token=create_refresh_token(user.id),
-    )
+@router.post("/login")
+def login(payload: LoginRequest):
+    sb = get_supabase()
+    try:
+        result = sb.auth.sign_in_with_password({
+            "email": payload.email,
+            "password": payload.password,
+        })
+        if not result.user or not result.session:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    return {
+        "access_token": result.session.access_token,
+        "refresh_token": result.session.refresh_token,
+        "token_type": "bearer",
+        "expires_in": result.session.expires_in,
+        "user": {
+            "id": result.user.id,
+            "email": result.user.email,
+        },
+    }
+
+
+@router.post("/refresh")
+def refresh(payload: RefreshRequest):
+    sb = get_supabase()
+    try:
+        result = sb.auth.refresh_session(payload.refresh_token)
+        if not result.session:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    return {
+        "access_token": result.session.access_token,
+        "refresh_token": result.session.refresh_token,
+        "token_type": "bearer",
+    }
+
+
+@router.post("/logout")
+def logout(current: dict = Depends(get_current_user)):
+    sb = get_supabase()
+    try:
+        sb.auth.sign_out()
+    except Exception:
+        pass
+    return {"message": "Logged out successfully"}

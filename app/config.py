@@ -1,5 +1,4 @@
 from pydantic_settings import BaseSettings
-from pydantic import AnyHttpUrl, field_validator
 from typing import List
 
 
@@ -7,16 +6,19 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "MyStore"
     APP_ENV: str = "production"
-    DEBUG: bool = False
 
-    # Database
-    DATABASE_URL: str
+    # Supabase
+    SB_URL: str = ""
+    SB_KEY: str = ""
+    SB_SERVICE_ROLE_KEY: str = ""
 
-    # Security
-    SECRET_KEY: str
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Stripe
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+
+    # Resend
+    RESEND_API_KEY: str = ""
+    FROM_EMAIL: str = "orders@mystore.com"
 
     # CORS
     ALLOWED_ORIGINS: str = ""
@@ -29,14 +31,6 @@ class Settings(BaseSettings):
 
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
-
-    # Stripe
-    STRIPE_SECRET_KEY: str = ""
-    STRIPE_WEBHOOK_SECRET: str = ""
-
-    # Admin seed
-    FIRST_ADMIN_EMAIL: str = "admin@mystore.com"
-    FIRST_ADMIN_PASSWORD: str = "change-me"
 
     class Config:
         env_file = ".env"
