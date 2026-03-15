@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
 from pydantic import BaseModel, Field
 from typing import Optional
 from decimal import Decimal
+from PIL import Image
+import io
 from app.dependencies import require_admin
 from app.supabase_client import get_admin_supabase
 
@@ -71,8 +73,8 @@ def delete_category(category_id: str):
 def list_products(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    category: Optional[str] = Query(default=None, max_length=120),  # ← fix
-    search: Optional[str] = Query(default=None, max_length=100),    # ← fix
+    category: Optional[str] = Query(default=None, max_length=120),
+    search: Optional[str] = Query(default=None, max_length=100),
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     in_stock: Optional[bool] = None,
@@ -145,3 +147,45 @@ def update_product(product_id: str, payload: ProductUpdate):
 def delete_product(product_id: str):
     sb = get_admin_supabase()
     sb.table("products").update({"is_active": False}).eq("id", product_id).execute()
+
+
+# ── Image Upload ──────────────────────────────────────────────────────────────
+
+@router.post("/products/{product_id}/image", dependencies=[Depends(require_admin)])
+async def upload_product_image(product_id: str, file: UploadFile = File(...)):
+    # Sirf image allow karo
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only images allowed")
+
+    contents = await file.read()
+
+    # Max 5MB check
+    if len(contents) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Max 5MB allowed")
+
+    # Product check
+    sb = get_admin_supabase()
+    product = sb.table("products").select("slug").eq("id", product_id).single().execute()
+    if not product.data:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Optimize — WebP convert + resize + compress
+    img = Image.open(io.BytesIO(contents))
+    img = img.convert("RGB")
+    img.thumbnail((800, 800))
+    buffer = io.BytesIO()
+    img.save(buffer, format="WEBP", quality=80)
+    optimized = buffer.getvalue()
+
+    # Supabase Storage mein upload
+    path = f"products/{product.data['slug']}.webp"
+    sb.storage.from_("product-images").upload(
+        path,
+        optimized,
+        {"content-type": "image/webp", "upsert": "true"}
+    )
+
+    url = sb.storage.from_("product-images").get_public_url(path)
+    sb.table("products").update({"image_url": url}).eq("id", product_id).execute()
+
+    return {"image_url": url}
