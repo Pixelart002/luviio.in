@@ -12,14 +12,14 @@ router = APIRouter(prefix="/payments", tags=["Payments"])
 
 
 class PaymentIntentRequest(BaseModel):
-    order_id: UUID  # ← str ki jagah UUID — invalid format automatically reject hoga
+    order_id: UUID
 
 
 @router.post("/create-intent")
 def create_payment_intent(payload: PaymentIntentRequest, current: dict = Depends(get_current_user)):
     sb = get_admin_supabase()
     order = sb.table("orders").select("*") \
-        .eq("id", str(payload.order_id)) \  # ← str() add kiya
+        .eq("id", str(payload.order_id)) \
         .eq("customer_id", current["profile"]["id"]) \
         .single().execute()
 
