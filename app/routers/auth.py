@@ -1,9 +1,12 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
-from app.supabase_client import get_supabase, get_admin_supabase
+from app.supabase_client import get_supabase
 from app.dependencies import get_current_user
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
+limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
@@ -28,12 +31,10 @@ class LoginRequest(BaseModel):
 class RefreshRequest(BaseModel):
     refresh_token: str
 
-class UpdatePasswordRequest(BaseModel):
-    password: str = Field(min_length=8, max_length=128)
-
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest):
+@limiter.limit("5/minute")
+def register(request: Request, payload: RegisterRequest):
     sb = get_supabase()
     try:
         result = sb.auth.sign_up({
@@ -47,16 +48,14 @@ def register(payload: RegisterRequest):
         msg = str(e)
         if "already registered" in msg.lower() or "already exists" in msg.lower():
             raise HTTPException(status_code=409, detail="Email already registered")
-        raise HTTPException(status_code=400, detail=msg)
+        raise HTTPException(status_code=400, detail="Registration failed")
 
-    return {
-        "message": "Registration successful. Please check your email to confirm your account.",
-        "user_id": result.user.id,
-    }
+    return {"message": "Registration successful. Please check your email to confirm your account."}
 
 
 @router.post("/login")
-def login(payload: LoginRequest):
+@limiter.limit("5/minute")
+def login(request: Request, payload: LoginRequest):
     sb = get_supabase()
     try:
         result = sb.auth.sign_in_with_password({
@@ -65,7 +64,7 @@ def login(payload: LoginRequest):
         })
         if not result.user or not result.session:
             raise HTTPException(status_code=401, detail="Invalid credentials")
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     return {
@@ -81,7 +80,8 @@ def login(payload: LoginRequest):
 
 
 @router.post("/refresh")
-def refresh(payload: RefreshRequest):
+@limiter.limit("10/minute")
+def refresh(request: Request, payload: RefreshRequest):
     sb = get_supabase()
     try:
         result = sb.auth.refresh_session(payload.refresh_token)

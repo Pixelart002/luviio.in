@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 from decimal import Decimal
 from app.dependencies import get_current_user, require_admin
@@ -10,6 +10,7 @@ router = APIRouter(prefix="/orders", tags=["Orders"])
 SHIPPING_THRESHOLD = Decimal("75.00")
 SHIPPING_FLAT      = Decimal("9.99")
 TAX_RATE           = Decimal("0.08")
+VALID_STATUSES     = {"pending", "paid", "shipped", "delivered", "cancelled"}
 
 
 class OrderItemInput(BaseModel):
@@ -25,15 +26,19 @@ class OrderAdminUpdate(BaseModel):
     status: Optional[str] = Field(default=None)
     tracking_number: Optional[str] = Field(default=None, max_length=100)
 
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v):
+        if v and v not in VALID_STATUSES:
+            raise ValueError(f"Invalid status. Must be one of: {VALID_STATUSES}")
+        return v
 
-# ── Customer ──────────────────────────────────────────────────────────────────
 
 @router.post("/", status_code=201)
 def create_order(payload: OrderCreate, current: dict = Depends(get_current_user)):
     sb = get_admin_supabase()
     user_id = current["profile"]["id"]
 
-    # Validate address
     addr_res = sb.table("addresses").select("*").eq("id", payload.shipping_address_id).eq("user_id", user_id).single().execute()
     if not addr_res.data:
         raise HTTPException(status_code=404, detail="Shipping address not found")
@@ -54,8 +59,15 @@ def create_order(payload: OrderCreate, current: dict = Depends(get_current_user)
                 detail=f"Insufficient stock for '{prod['name']}' (available: {prod['stock']})"
             )
 
-        # Deduct stock
-        sb.table("products").update({"stock": prod["stock"] - item_in.quantity}).eq("id", prod["id"]).execute()
+        # Atomic stock deduction — race condition fix
+        update_res = sb.table("products")\
+            .update({"stock": prod["stock"] - item_in.quantity})\
+            .eq("id", prod["id"])\
+            .gte("stock", item_in.quantity)\
+            .execute()
+
+        if not update_res.data:
+            raise HTTPException(status_code=409, detail=f"Insufficient stock for '{prod['name']}'")
 
         line = Decimal(str(prod["price"])) * item_in.quantity
         subtotal += line
@@ -93,16 +105,19 @@ def create_order(payload: OrderCreate, current: dict = Depends(get_current_user)
         item["order_id"] = order["id"]
     sb.table("order_items").insert(order_items).execute()
 
-    # Return full order
     return sb.table("orders").select("*, order_items(*)").eq("id", order["id"]).single().execute().data
 
 
 @router.get("/my")
-def my_orders(skip: int = 0, limit: int = 20, current: dict = Depends(get_current_user)):
+def my_orders(
+    skip: int = 0,
+    limit: int = Query(20, ge=1, le=100),
+    current: dict = Depends(get_current_user)
+):
     sb = get_admin_supabase()
-    result = sb.table("orders").select("*, order_items(*)") \
-        .eq("customer_id", current["profile"]["id"]) \
-        .order("created_at", desc=True) \
+    result = sb.table("orders").select("*, order_items(*)")\
+        .eq("customer_id", current["profile"]["id"])\
+        .order("created_at", desc=True)\
         .range(skip, skip + limit - 1).execute()
     return result.data
 
@@ -110,7 +125,7 @@ def my_orders(skip: int = 0, limit: int = 20, current: dict = Depends(get_curren
 @router.get("/my/{order_id}")
 def get_my_order(order_id: str, current: dict = Depends(get_current_user)):
     sb = get_admin_supabase()
-    result = sb.table("orders").select("*, order_items(*)") \
+    result = sb.table("orders").select("*, order_items(*)")\
         .eq("id", order_id).eq("customer_id", current["profile"]["id"]).single().execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -120,7 +135,7 @@ def get_my_order(order_id: str, current: dict = Depends(get_current_user)):
 @router.post("/my/{order_id}/cancel")
 def cancel_order(order_id: str, current: dict = Depends(get_current_user)):
     sb = get_admin_supabase()
-    order_res = sb.table("orders").select("*, order_items(*)") \
+    order_res = sb.table("orders").select("*, order_items(*)")\
         .eq("id", order_id).eq("customer_id", current["profile"]["id"]).single().execute()
     if not order_res.data:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -129,7 +144,6 @@ def cancel_order(order_id: str, current: dict = Depends(get_current_user)):
     if order["status"] != "pending":
         raise HTTPException(status_code=409, detail=f"Cannot cancel order with status '{order['status']}'")
 
-    # Restore stock
     for item in order.get("order_items", []):
         if item.get("product_id"):
             prod = sb.table("products").select("stock").eq("id", item["product_id"]).single().execute()
@@ -140,8 +154,6 @@ def cancel_order(order_id: str, current: dict = Depends(get_current_user)):
     return sb.table("orders").select("*, order_items(*)").eq("id", order_id).single().execute().data
 
 
-# ── Admin ─────────────────────────────────────────────────────────────────────
-
 @router.get("/", dependencies=[Depends(require_admin)])
 def list_all_orders(
     page: int = Query(1, ge=1),
@@ -149,9 +161,11 @@ def list_all_orders(
     status_filter: Optional[str] = None,
 ):
     sb = get_admin_supabase()
-    q = sb.table("orders").select("*, order_items(*), users(email, full_name)", count="exact") \
+    q = sb.table("orders").select("*, order_items(*), users(email, full_name)", count="exact")\
         .order("created_at", desc=True)
     if status_filter:
+        if status_filter not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail="Invalid status filter")
         q = q.eq("status", status_filter)
     offset = (page - 1) * page_size
     result = q.range(offset, offset + page_size - 1).execute()

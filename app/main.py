@@ -20,10 +20,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=[f"{settings.RATE_LIMIT_PER_MINUTE}/minute"],
-)
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title=settings.APP_NAME,
