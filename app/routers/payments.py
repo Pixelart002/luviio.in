@@ -1,4 +1,5 @@
 import stripe
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from pydantic import BaseModel
 from app.config import settings
@@ -11,14 +12,14 @@ router = APIRouter(prefix="/payments", tags=["Payments"])
 
 
 class PaymentIntentRequest(BaseModel):
-    order_id: str
+    order_id: UUID  # ← str ki jagah UUID — invalid format automatically reject hoga
 
 
 @router.post("/create-intent")
 def create_payment_intent(payload: PaymentIntentRequest, current: dict = Depends(get_current_user)):
     sb = get_admin_supabase()
     order = sb.table("orders").select("*") \
-        .eq("id", payload.order_id) \
+        .eq("id", str(payload.order_id)) \  # ← str() add kiya
         .eq("customer_id", current["profile"]["id"]) \
         .single().execute()
 
@@ -39,7 +40,7 @@ def create_payment_intent(payload: PaymentIntentRequest, current: dict = Depends
                 metadata={"order_id": order.data["id"], "user_id": current["profile"]["id"]},
                 automatic_payment_methods={"enabled": True},
             )
-            sb.table("orders").update({"stripe_payment_intent": intent.id}).eq("id", payload.order_id).execute()
+            sb.table("orders").update({"stripe_payment_intent": intent.id}).eq("id", str(payload.order_id)).execute()
     except stripe.error.StripeError as e:
         raise HTTPException(status_code=502, detail=f"Stripe error: {e.user_message}")
 
