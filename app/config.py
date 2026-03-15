@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     FROM_EMAIL: str = "orders@mystore.com"
 
     # CORS
-    ALLOWED_ORIGINS: str = ""
+    ALLOWED_ORIGINS: str = "https://yourfrontend.com,https://claude.ai"
 
     @property
     def cors_origins(self) -> List[str]:
