@@ -9,6 +9,7 @@ from slowapi.util import get_remote_address
 from app.config import settings
 from app.supabase_client import init_clients
 from app.routers import auth, users, products, orders, payments
+from app.middlewares.security import HideServerHeaderMiddleware, SecurityHeadersMiddleware
 
 
 @asynccontextmanager
@@ -27,11 +28,14 @@ limiter = Limiter(
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
-    docs_url="/docs"  if settings.APP_ENV != "production" else None,
+    docs_url="/docs" if settings.APP_ENV != "production" else None,
     redoc_url="/redoc" if settings.APP_ENV != "production" else None,
+    openapi_url="/openapi.json" if settings.APP_ENV != "production" else None,
     lifespan=lifespan,
 )
 
+app.add_middleware(HideServerHeaderMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
