@@ -71,8 +71,8 @@ def delete_category(category_id: str):
 def list_products(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    category: Optional[str] = None,
-    search: Optional[str] = None,
+    category: Optional[str] = Query(default=None, max_length=120),  # ← fix
+    search: Optional[str] = Query(default=None, max_length=100),    # ← fix
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     in_stock: Optional[bool] = None,

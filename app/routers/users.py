@@ -1,6 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional
 from app.dependencies import get_current_user, require_admin
 from app.supabase_client import get_admin_supabase
 
@@ -74,15 +74,23 @@ def delete_address(address_id: str, current: dict = Depends(get_current_user)):
 # ── Admin ─────────────────────────────────────────────────────────────────────
 
 @router.get("/", dependencies=[Depends(require_admin)])
-def list_users(skip: int = 0, limit: int = 50):
+def list_users(
+    skip: int = 0,
+    limit: int = Query(20, ge=1, le=100)  # ← pehle 50 tha, ab max 100 cap hai
+):
     sb = get_admin_supabase()
     result = sb.table("users").select("*").range(skip, skip + limit - 1).execute()
     return result.data
 
 
 @router.patch("/{user_id}", dependencies=[Depends(require_admin)])
-def admin_update_user(user_id: str, payload: AdminUserUpdate):
+def admin_update_user(user_id: str, payload: AdminUserUpdate, current: dict = Depends(require_admin)):
     sb = get_admin_supabase()
+
+    # Admin apna khud ka role nahi badal sakta ← naya security check
+    if str(user_id) == str(current["profile"]["id"]) and payload.role:
+        raise HTTPException(status_code=403, detail="You cannot change your own role")
+
     data = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not data:
         raise HTTPException(status_code=400, detail="No fields to update")
