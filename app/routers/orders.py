@@ -1,15 +1,14 @@
-    import logging
+import logging
 import re
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
+from postgrest.exceptions import APIError as PostgrestError
 from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-
-from postgrest.exceptions import APIError as PostgrestError
 
 from app.config import settings
 from app.dependencies import get_current_user, require_admin
@@ -46,13 +45,13 @@ def _sanitize_notes(notes: str | None) -> str | None:
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class OrderItemInput(BaseModel):
-    product_id: UUID  # galat format pe FastAPI 422 dega, 500 nahi
+    product_id: UUID
     quantity: int = Field(ge=1, le=100)
 
 
 class OrderCreate(BaseModel):
     items: list[OrderItemInput] = Field(min_length=1, max_length=MAX_ITEMS_PER_ORDER)
-    shipping_address_id: UUID  # UUID type — galat format pe FastAPI 422 dega, 500 nahi
+    shipping_address_id: UUID
     notes: str | None = Field(default=None, max_length=500)
 
     @field_validator("items")
@@ -100,13 +99,13 @@ def create_order(
     except PostgrestError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid shipping_address_id format",
+            detail="Invalid shipping_address_id",
         )
     if not addr_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipping address not found")
     addr = addr_res.data
 
-    # ── Phase 1: Batch fetch + validate — no DB writes ────────────────────────
+    # ── Phase 1: Batch fetch + validate ──────────────────────────────────────
     product_ids = [str(item.product_id) for item in payload.items]
     try:
         prods_res = (
@@ -119,13 +118,13 @@ def create_order(
     except PostgrestError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid product_id format",
+            detail="Invalid product_id",
         )
     prod_map: dict[str, dict[str, Any]] = {p["id"]: p for p in prods_res.data}
 
     validated: list[tuple[OrderItemInput, dict[str, Any]]] = []
     for item_in in payload.items:
-        prod = prod_map.get(item_in.product_id)
+        prod = prod_map.get(str(item_in.product_id))
         if not prod:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -138,7 +137,7 @@ def create_order(
             )
         validated.append((item_in, prod))
 
-    # ── Phase 2: Atomic stock deduct via RPC ──────────────────────────────────
+    # ── Phase 2: Atomic stock deduct ─────────────────────────────────────────
     order_items: list[dict[str, Any]] = []
     subtotal = Decimal("0")
     deducted: list[tuple[str, int]] = []
@@ -167,14 +166,14 @@ def create_order(
             restore_stock(sb, pid, qty, "create_order_rollback")
         raise
 
-    # ── Pricing (from config — change without redeploy) ───────────────────────
+    # ── Pricing ───────────────────────────────────────────────────────────────
     shipping = Decimal("0") if subtotal >= settings.SHIPPING_THRESHOLD else settings.SHIPPING_FLAT
     tax      = (subtotal + shipping) * settings.TAX_RATE
     total    = subtotal + shipping + tax
 
     order_data: dict[str, Any] = {
         "customer_id":           user_id,
-        "shipping_address_id":   str(payload.shipping_address_id),  # traceability
+        "shipping_address_id":   str(payload.shipping_address_id),
         "subtotal":              float(subtotal),
         "shipping_cost":         float(shipping),
         "tax_amount":            float(tax.quantize(Decimal("0.01"))),
@@ -188,7 +187,6 @@ def create_order(
         "notes":                 _sanitize_notes(payload.notes),
     }
 
-    # ── DB insert ─────────────────────────────────────────────────────────────
     order_res = sb.table("orders").insert(order_data).execute()
     order = order_res.data[0]
 
@@ -220,9 +218,7 @@ def create_order(
         .data
     )
 
-    # Send confirmation email (non-blocking — failure won't break order)
     send_order_confirmation(current["profile"]["email"], full_order)
-
     return full_order
 
 
@@ -370,12 +366,11 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    f"Cannot move '{current_status}' → '{payload.status}'. "
+                    f"Cannot move '{current_status}' to '{payload.status}'. "
                     f"Allowed: {allowed or 'none (terminal state)'}"
                 ),
             )
 
-        # Auto-refund via Stripe when moving to refunded
         if payload.status == "refunded":
             pi_id = current_res.data.get("stripe_payment_intent")
             if pi_id:
@@ -394,12 +389,11 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
 
     data = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
 
-    # TOCTOU fix — conditional update with current status guard
     result = (
         sb.table("orders")
         .update(data)
         .eq("id", str(order_id))
-        .eq("status", current_status)  # atomic guard
+        .eq("status", current_status)
         .execute()
     )
     if not result.data:
@@ -408,7 +402,6 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
             detail="Order status changed by another request. Please refresh and try again.",
         )
 
-    # Send shipped email
     if payload.status == "shipped":
         try:
             order = result.data[0]
