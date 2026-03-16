@@ -10,13 +10,12 @@ from pydantic import BaseModel, Field
 from app.dependencies import require_admin
 from app.supabase_client import get_admin_supabase
 
-# SECURITY: Decompression bomb protection — max 10MP (~40MB decompressed RAM)
+# SECURITY: Decompression bomb protection — max 10MP
 Image.MAX_IMAGE_PIXELS = 10_000_000
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Products"])
 
-# Magic bytes for real image validation (content-type spoof se protection)
 _IMAGE_MAGIC: dict[bytes, str] = {
     b"\xff\xd8\xff": "jpeg",
     b"\x89PNG":      "png",
@@ -26,11 +25,10 @@ _IMAGE_MAGIC: dict[bytes, str] = {
 
 
 def _is_real_image(data: bytes) -> bool:
-    """Client-provided Content-Type pe rely mat karo — actual bytes check karo."""
     return any(data.startswith(magic) for magic in _IMAGE_MAGIC)
 
 
-# ── Request models ─────────────────────────────────────────────────────────────
+# ── Models ────────────────────────────────────────────────────────────────────
 
 class CategoryCreate(BaseModel):
     name: str = Field(max_length=100)
@@ -74,43 +72,30 @@ class ProductUpdate(BaseModel):
 @router.get("/categories")
 def list_categories() -> list[dict[str, Any]]:
     sb = get_admin_supabase()
-    result = sb.table("categories").select("*").eq("is_active", True).execute()
-    return result.data
+    return sb.table("categories").select("*").eq("is_active", True).execute().data
 
 
-@router.post(
-    "/categories",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_admin)],
-)
+@router.post("/categories", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 def create_category(payload: CategoryCreate) -> dict[str, Any]:
     sb = get_admin_supabase()
-    result = sb.table("categories").insert(payload.model_dump()).execute()
-    return result.data[0]
+    return sb.table("categories").insert(payload.model_dump()).execute().data[0]
 
 
-@router.delete(
-    "/categories/{category_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_admin)],
-)
+@router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
 def delete_category(category_id: str) -> None:
     sb = get_admin_supabase()
-
-    # Active products check — orphan products prevent karo
-    active_products = (
+    active = (
         sb.table("products")
         .select("id", count="exact")
         .eq("category_id", category_id)
         .eq("is_active", True)
         .execute()
     )
-    if (active_products.count or 0) > 0:
+    if (active.count or 0) > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot delete category — it has active products. Reassign or deactivate them first.",
+            detail="Cannot delete — category has active products. Reassign or deactivate them first.",
         )
-
     sb.table("categories").update({"is_active": False}).eq("id", category_id).execute()
 
 
@@ -122,8 +107,8 @@ def list_products(
     page_size: int = Query(20, ge=1, le=100),
     category: str | None = Query(default=None, max_length=120),
     search: str | None = Query(default=None, max_length=100),
-    min_price: float | None = Query(default=None, ge=0),   # negative price nahi
-    max_price: float | None = Query(default=None, ge=0),   # negative price nahi
+    min_price: float | None = Query(default=None, ge=0),
+    max_price: float | None = Query(default=None, ge=0),
     in_stock: bool | None = None,
 ) -> dict[str, Any]:
     sb = get_admin_supabase()
@@ -139,27 +124,29 @@ def list_products(
             q = q.eq("category_id", cat.data["id"])
 
     if search:
-        q = q.ilike("name", f"%{search}%")
+        # FTS index use karo (migrations.sql mein fts column add kiya hai)
+        # Fallback: agar fts column nahi hai toh ilike use hogi
+        try:
+            q = q.text_search("fts", search)
+        except Exception:
+            q = q.ilike("name", f"%{search}%")
 
     if min_price is not None:
         q = q.gte("price", min_price)
-
     if max_price is not None:
         q = q.lte("price", max_price)
-
     if in_stock:
         q = q.gt("stock", 0)
 
     offset = (page - 1) * page_size
     result = q.range(offset, offset + page_size - 1).execute()
     total: int = result.count or 0
-
     return {
-        "items": result.data,
-        "total": total,
-        "page": page,
+        "items":     result.data,
+        "total":     total,
+        "page":      page,
         "page_size": page_size,
-        "pages": -(-total // page_size),
+        "pages":     -(-total // page_size),
     }
 
 
@@ -179,46 +166,31 @@ def get_product(slug: str) -> dict[str, Any]:
     return result.data
 
 
-@router.post(
-    "/products",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_admin)],
-)
+@router.post("/products", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 def create_product(payload: ProductCreate) -> dict[str, Any]:
     sb = get_admin_supabase()
     data = payload.model_dump()
     data["price"] = float(data["price"])
     if data.get("compare_price"):
         data["compare_price"] = float(data["compare_price"])
-    result = sb.table("products").insert(data).execute()
-    return result.data[0]
+    return sb.table("products").insert(data).execute().data[0]
 
 
-@router.patch(
-    "/products/{product_id}",
-    dependencies=[Depends(require_admin)],
-)
+@router.patch("/products/{product_id}", dependencies=[Depends(require_admin)])
 def update_product(product_id: str, payload: ProductUpdate) -> dict[str, Any]:
     sb = get_admin_supabase()
-    data: dict[str, Any] = {
-        k: v for k, v in payload.model_dump(exclude_unset=True).items()
-    }
+    data: dict[str, Any] = {k: v for k, v in payload.model_dump(exclude_unset=True).items()}
     if "price" in data and data["price"]:
         data["price"] = float(data["price"])
     if "compare_price" in data and data["compare_price"]:
         data["compare_price"] = float(data["compare_price"])
-
     result = sb.table("products").update(data).eq("id", product_id).execute()
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     return result.data[0]
 
 
-@router.delete(
-    "/products/{product_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_admin)],
-)
+@router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
 def delete_product(product_id: str) -> None:
     sb = get_admin_supabase()
     sb.table("products").update({"is_active": False}).eq("id", product_id).execute()
@@ -226,77 +198,58 @@ def delete_product(product_id: str) -> None:
 
 # ── Image Upload ──────────────────────────────────────────────────────────────
 
-@router.post(
-    "/products/{product_id}/image",
-    dependencies=[Depends(require_admin)],
-)
+@router.post("/products/{product_id}/image", dependencies=[Depends(require_admin)])
 async def upload_product_image(
     product_id: str,
     file: UploadFile = File(...),
 ) -> dict[str, str]:
     contents: bytes = await file.read()
 
-    # 1. Raw size check (5MB max)
+    # 1. Size check
     if len(contents) > 5 * 1024 * 1024:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File too large. Maximum 5MB allowed.",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Max 5MB allowed")
 
-    # 2. Magic bytes check — content-type header trusted nahi (spoof possible)
+    # 2. Magic bytes — content-type header trust mat karo
     if not _is_real_image(contents):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid image file. Only JPEG, PNG, GIF, or WebP allowed.",
+            detail="Invalid image file. Only JPEG, PNG, GIF, WebP allowed.",
         )
 
     # 3. Product existence check
     sb = get_admin_supabase()
-    product = (
-        sb.table("products")
-        .select("id")   # slug nahi — slug change hone pe image orphan hoti thi
-        .eq("id", product_id)
-        .single()
-        .execute()
-    )
+    product = sb.table("products").select("id").eq("id", product_id).single().execute()
     if not product.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
-    # 4. PIL open + dimension check (decompression bomb protection)
-    # Image.MAX_IMAGE_PIXELS already set globally at top of file
+    # 4. PIL open + dimension check (decompression bomb — MAX_IMAGE_PIXELS already set)
     try:
         img = Image.open(io.BytesIO(contents))
         if img.width * img.height > Image.MAX_IMAGE_PIXELS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Image dimensions too large. Maximum ~10 megapixels allowed.",
+                detail="Image dimensions too large. Max ~10 megapixels.",
             )
     except HTTPException:
         raise
     except Exception as e:
         logger.warning("PIL failed to open image: %s", e)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Could not process image file.",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not process image")
 
-    # 5. Optimize — RGB convert + resize + WebP compress
+    # 5. Optimize → WebP
     img = img.convert("RGB")
     img.thumbnail((800, 800))
     buffer = io.BytesIO()
     img.save(buffer, format="WEBP", quality=80)
     optimized: bytes = buffer.getvalue()
 
-    # 6. Upload — path uses product_id (not slug) so rename-safe
+    # 6. Upload — product_id path (slug change hone pe safe)
     path = f"products/{product_id}.webp"
     sb.storage.from_("product-images").upload(
-        path,
-        optimized,
-        {"content-type": "image/webp", "upsert": "true"},
+        path, optimized, {"content-type": "image/webp", "upsert": "true"}
     )
-
     url: str = sb.storage.from_("product-images").get_public_url(path)
     sb.table("products").update({"image_url": url}).eq("id", product_id).execute()
 
-    logger.info("Image uploaded for product %s → %s", product_id, path)
+    logger.info("Image uploaded: product=%s path=%s", product_id, path)
     return {"image_url": url}

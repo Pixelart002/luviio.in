@@ -1,4 +1,5 @@
 import logging
+import re
 from decimal import Decimal
 from typing import Any
 
@@ -14,14 +15,13 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
-SHIPPING_THRESHOLD = Decimal("75.00")
-SHIPPING_FLAT      = Decimal("9.99")
-TAX_RATE           = Decimal("0.08")
+SHIPPING_THRESHOLD  = Decimal("75.00")
+SHIPPING_FLAT       = Decimal("9.99")
+TAX_RATE            = Decimal("0.08")
 MAX_ITEMS_PER_ORDER = 50
 
 VALID_STATUSES: set[str] = {"pending", "paid", "shipped", "delivered", "cancelled"}
 
-# Valid status transitions — invalid moves block karo
 STATUS_TRANSITIONS: dict[str, set[str]] = {
     "pending":   {"paid", "cancelled"},
     "paid":      {"shipped", "cancelled"},
@@ -35,11 +35,32 @@ def _sanitize_notes(notes: str | None) -> str | None:
     """Basic HTML strip — stored XSS prevent karo."""
     if notes is None:
         return None
-    import re
     return re.sub(r"<[^>]+>", "", notes).strip()
 
 
-# ── Request models ─────────────────────────────────────────────────────────────
+def _restore_stock(sb, product_id: str, qty: int, context: str) -> None:
+    """
+    Atomic stock restore — RPC prefer karo, direct update fallback.
+    Agar migrations run nahi hua ho toh bhi kaam kare.
+    """
+    try:
+        sb.rpc("increment_stock", {"p_id": product_id, "p_qty": qty}).execute()
+    except Exception as rpc_err:
+        logger.warning("RPC increment_stock failed (%s), trying direct update: %s", context, rpc_err)
+        try:
+            row = sb.table("products").select("stock").eq("id", product_id).single().execute()
+            if row.data:
+                sb.table("products").update(
+                    {"stock": row.data["stock"] + qty}
+                ).eq("id", product_id).execute()
+        except Exception as direct_err:
+            logger.error(
+                "CRITICAL: Stock restore completely failed [%s] product=%s qty=%d err=%s",
+                context, product_id, qty, direct_err,
+            )
+
+
+# ── Models ────────────────────────────────────────────────────────────────────
 
 class OrderItemInput(BaseModel):
     product_id: str
@@ -54,10 +75,9 @@ class OrderCreate(BaseModel):
     @field_validator("items")
     @classmethod
     def no_duplicate_products(cls, v: list[OrderItemInput]) -> list[OrderItemInput]:
-        """Ek hi product_id do baar bheja toh double stock deduction hoga."""
         ids = [item.product_id for item in v]
         if len(ids) != len(set(ids)):
-            raise ValueError("Duplicate product_id in items is not allowed. Combine quantities instead.")
+            raise ValueError("Duplicate product_id not allowed — combine quantities instead.")
         return v
 
 
@@ -95,33 +115,29 @@ def create_order(
         .execute()
     )
     if not addr_res.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Shipping address not found",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipping address not found")
     addr = addr_res.data
 
-    order_items: list[dict[str, Any]] = []
-    subtotal = Decimal("0")
+    # ── Phase 1: Batch fetch — N+1 query fix ──────────────────────────────────
+    product_ids = [item.product_id for item in payload.items]
+    prods_res = (
+        sb.table("products")
+        .select("*")
+        .in_("id", product_ids)
+        .eq("is_active", True)
+        .execute()
+    )
+    prod_map: dict[str, dict[str, Any]] = {p["id"]: p for p in prods_res.data}
 
-    # ── Phase 1: Sab products validate karo — koi DB write nahi ──────────────
+    # Validate all before touching stock
     validated: list[tuple[OrderItemInput, dict[str, Any]]] = []
     for item_in in payload.items:
-        prod_res = (
-            sb.table("products")
-            .select("*")
-            .eq("id", item_in.product_id)
-            .eq("is_active", True)
-            .single()
-            .execute()
-        )
-        if not prod_res.data:
+        prod = prod_map.get(item_in.product_id)
+        if not prod:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Product {item_in.product_id} not found or inactive",
             )
-        prod = prod_res.data
-
         if prod["stock"] < item_in.quantity:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -129,11 +145,13 @@ def create_order(
             )
         validated.append((item_in, prod))
 
-    # ── Phase 2: Sab valid — atomic stock deduct karo ────────────────────────
+    # ── Phase 2: Atomic stock deduct ──────────────────────────────────────────
+    order_items: list[dict[str, Any]] = []
+    subtotal = Decimal("0")
     deducted: list[tuple[str, int]] = []
+
     try:
         for item_in, prod in validated:
-            # .gte("stock", quantity) = atomic guard — race condition protection
             update_res = (
                 sb.table("products")
                 .update({"stock": prod["stock"] - item_in.quantity})
@@ -144,9 +162,8 @@ def create_order(
             if not update_res.data:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Insufficient stock for '{prod['name']}' — try again",
+                    detail=f"Insufficient stock for '{prod['name']}' — please try again",
                 )
-
             deducted.append((prod["id"], item_in.quantity))
 
             line = Decimal(str(prod["price"])) * item_in.quantity
@@ -160,40 +177,31 @@ def create_order(
             })
 
     except HTTPException:
-        # Rollback — jo stock cut hua, atomic increment se wapas karo
-        for product_id, qty in deducted:
-            try:
-                sb.rpc("increment_stock", {"p_id": product_id, "p_qty": qty}).execute()
-            except Exception as e:
-                logger.error(
-                    "CRITICAL: Failed to rollback stock for product %s qty %d: %s",
-                    product_id, qty, e,
-                )
+        for pid, qty in deducted:
+            _restore_stock(sb, pid, qty, "create_order_rollback")
         raise
 
     # ── Pricing ───────────────────────────────────────────────────────────────
     shipping = Decimal("0") if subtotal >= SHIPPING_THRESHOLD else SHIPPING_FLAT
-    tax = (subtotal + shipping) * TAX_RATE
-    total = subtotal + shipping + tax
+    tax      = (subtotal + shipping) * TAX_RATE
+    total    = subtotal + shipping + tax
 
     order_data: dict[str, Any] = {
-        "customer_id": user_id,
-        "subtotal": float(subtotal),
-        "shipping_cost": float(shipping),
-        "tax_amount": float(tax.quantize(Decimal("0.01"))),
-        "total_amount": float(total.quantize(Decimal("0.01"))),
-        "shipping_line1": addr["line1"],
-        "shipping_line2": addr.get("line2"),
-        "shipping_city": addr["city"],
-        "shipping_state": addr.get("state"),
+        "customer_id":          user_id,
+        "subtotal":             float(subtotal),
+        "shipping_cost":        float(shipping),
+        "tax_amount":           float(tax.quantize(Decimal("0.01"))),
+        "total_amount":         float(total.quantize(Decimal("0.01"))),
+        "shipping_line1":       addr["line1"],
+        "shipping_line2":       addr.get("line2"),
+        "shipping_city":        addr["city"],
+        "shipping_state":       addr.get("state"),
         "shipping_postal_code": addr["postal_code"],
-        "shipping_country": addr["country"],
-        "notes": _sanitize_notes(payload.notes),
+        "shipping_country":     addr["country"],
+        "notes":                _sanitize_notes(payload.notes),
     }
 
     # ── DB insert ─────────────────────────────────────────────────────────────
-    # Ideally: Supabase RPC mein ek transaction mein karo
-    # TODO: create_order_txn(order_data, items) RPC function banana hai
     order_res = sb.table("orders").insert(order_data).execute()
     order = order_res.data[0]
 
@@ -204,12 +212,8 @@ def create_order(
         sb.table("order_items").insert(order_items).execute()
     except Exception as e:
         logger.error("CRITICAL: order_items insert failed for order %s: %s", order["id"], e)
-        # Stock rollback for orphan order
-        for product_id, qty in deducted:
-            try:
-                sb.rpc("increment_stock", {"p_id": product_id, "p_qty": qty}).execute()
-            except Exception as re:
-                logger.error("Stock rollback failed: product=%s qty=%d err=%s", product_id, qty, re)
+        for pid, qty in deducted:
+            _restore_stock(sb, pid, qty, "order_items_insert_fail")
         sb.table("orders").delete().eq("id", order["id"]).execute()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -230,20 +234,28 @@ def create_order(
 
 @router.get("/my")
 def my_orders(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     current: dict[str, Any] = Depends(get_current_user),
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     sb = get_admin_supabase()
+    offset = (page - 1) * page_size
     result = (
         sb.table("orders")
-        .select("*, order_items(*)")
+        .select("*, order_items(*)", count="exact")
         .eq("customer_id", current["profile"]["id"])
         .order("created_at", desc=True)
-        .range(skip, skip + limit - 1)
+        .range(offset, offset + page_size - 1)
         .execute()
     )
-    return result.data
+    total: int = result.count or 0
+    return {
+        "items": result.data,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": -(-total // page_size),
+    }
 
 
 @router.get("/my/{order_id}")
@@ -289,19 +301,9 @@ def cancel_order(
             detail=f"Cannot cancel order with status '{order['status']}'",
         )
 
-    # Atomic stock restore — stale read se bachao
     for item in order.get("order_items", []):
         if item.get("product_id"):
-            try:
-                sb.rpc("increment_stock", {
-                    "p_id": item["product_id"],
-                    "p_qty": item["quantity"],
-                }).execute()
-            except Exception as e:
-                logger.error(
-                    "Stock restore failed on cancel: order=%s product=%s err=%s",
-                    order_id, item["product_id"], e,
-                )
+            _restore_stock(sb, item["product_id"], item["quantity"], f"cancel_order:{order_id}")
 
     sb.table("orders").update({"status": "cancelled"}).eq("id", order_id).execute()
     return (
@@ -332,7 +334,7 @@ def list_all_orders(
         if status_filter not in VALID_STATUSES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid status filter. Valid: {VALID_STATUSES}",
+                detail=f"Invalid status. Valid: {VALID_STATUSES}",
             )
         q = q.eq("status", status_filter)
 
@@ -340,11 +342,11 @@ def list_all_orders(
     result = q.range(offset, offset + page_size - 1).execute()
     total: int = result.count or 0
     return {
-        "items": result.data,
-        "total": total,
-        "page": page,
+        "items":     result.data,
+        "total":     total,
+        "page":      page,
         "page_size": page_size,
-        "pages": -(-total // page_size),
+        "pages":     -(-total // page_size),
     }
 
 
@@ -354,27 +356,27 @@ def list_all_orders(
 def admin_update_order(order_id: str, payload: OrderAdminUpdate) -> dict[str, Any]:
     sb = get_admin_supabase()
 
-    # Current order fetch karo — state machine check ke liye
-    current_order_res = (
+    current_res = (
         sb.table("orders")
         .select("status")
         .eq("id", order_id)
         .single()
         .execute()
     )
-    if not current_order_res.data:
+    if not current_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
-    current_status: str = current_order_res.data["status"]
+    current_status: str = current_res.data["status"]
 
-    # State machine validation — invalid transitions block karo
     if payload.status:
         allowed: set[str] = STATUS_TRANSITIONS.get(current_status, set())
         if payload.status not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Cannot transition from '{current_status}' to '{payload.status}'. "
-                       f"Allowed: {allowed or 'none (terminal state)'}",
+                detail=(
+                    f"Cannot move '{current_status}' → '{payload.status}'. "
+                    f"Allowed: {allowed or 'none (terminal state)'}"
+                ),
             )
 
     data = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}

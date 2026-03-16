@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 from uuid import UUID
 
@@ -9,13 +10,14 @@ from pydantic import BaseModel
 from app.config import settings
 from app.dependencies import get_current_user
 from app.supabase_client import get_admin_supabase
+from app.routers.orders import _restore_stock
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
 
-# ── Request models ─────────────────────────────────────────────────────────────
+# ── Models ────────────────────────────────────────────────────────────────────
 
 class PaymentIntentRequest(BaseModel):
     order_id: UUID
@@ -52,27 +54,28 @@ def create_payment_intent(
             detail="Order is no longer payable",
         )
 
-    amount_cents: int = int(float(order["total_amount"]) * 100)
+    # Decimal precision — float se paisa calculation galat hoti thi
+    amount_cents: int = int(
+        (Decimal(str(order["total_amount"])) * 100).quantize(
+            Decimal("1"), rounding=ROUND_HALF_UP
+        )
+    )
 
     try:
         existing_pi_id: str | None = order.get("stripe_payment_intent")
 
         if existing_pi_id:
             intent = stripe.PaymentIntent.retrieve(existing_pi_id)
-
-            # SECURITY: Cancelled/succeeded intents reuse mat karo
+            # Cancelled / succeeded intents reuse nahi karte
             if intent.status in ("canceled", "succeeded"):
                 logger.info(
-                    "Existing intent %s is %s — creating new one for order %s",
+                    "Intent %s is '%s' — creating new for order %s",
                     existing_pi_id, intent.status, order["id"],
                 )
                 intent = stripe.PaymentIntent.create(
                     amount=amount_cents,
                     currency=order.get("currency", "usd").lower(),
-                    metadata={
-                        "order_id": order["id"],
-                        "user_id": current["profile"]["id"],
-                    },
+                    metadata={"order_id": order["id"], "user_id": current["profile"]["id"]},
                     automatic_payment_methods={"enabled": True},
                 )
                 sb.table("orders").update(
@@ -82,10 +85,7 @@ def create_payment_intent(
             intent = stripe.PaymentIntent.create(
                 amount=amount_cents,
                 currency=order.get("currency", "usd").lower(),
-                metadata={
-                    "order_id": order["id"],
-                    "user_id": current["profile"]["id"],
-                },
+                metadata={"order_id": order["id"], "user_id": current["profile"]["id"]},
                 automatic_payment_methods={"enabled": True},
             )
             sb.table("orders").update(
@@ -99,13 +99,10 @@ def create_payment_intent(
             detail=f"Payment provider error: {e.user_message}",
         )
 
-    return {
-        "client_secret": intent.client_secret,
-        "payment_intent_id": intent.id,
-    }
+    return {"client_secret": intent.client_secret, "payment_intent_id": intent.id}
 
 
-# ── Stripe webhook ────────────────────────────────────────────────────────────
+# ── Webhook ───────────────────────────────────────────────────────────────────
 
 @router.post("/webhook")
 async def stripe_webhook(
@@ -113,10 +110,17 @@ async def stripe_webhook(
     stripe_signature: str | None = Header(None, alias="stripe-signature"),
 ) -> dict[str, str]:
     """
-    SECURITY NOTE: payments table mein stripe_payment_intent_id pe UNIQUE constraint lagao:
+    DB requirement:
     ALTER TABLE payments ADD CONSTRAINT payments_pi_unique UNIQUE (stripe_payment_intent_id);
-    Ye replay attacks aur duplicate webhook inserts se protect karta hai.
     """
+    # Signature missing — early exit
+    if not stripe_signature:
+        logger.warning("Webhook received without stripe-signature header")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing stripe-signature header",
+        )
+
     body: bytes = await request.body()
 
     try:
@@ -125,19 +129,15 @@ async def stripe_webhook(
         )
     except (stripe.error.SignatureVerificationError, ValueError) as e:
         logger.warning("Invalid webhook signature: %s", e)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid webhook signature",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook signature")
 
     event_type: str = event["type"]
     pi_id: str = event["data"]["object"]["id"]
-
-    logger.info("Stripe webhook received: %s | pi_id: %s", event_type, pi_id)
+    logger.info("Stripe webhook: %s | pi: %s", event_type, pi_id)
 
     sb = get_admin_supabase()
 
-    # ── Payment succeeded ─────────────────────────────────────────────────────
+    # ── Succeeded ─────────────────────────────────────────────────────────────
     if event_type == "payment_intent.succeeded":
         order_res = (
             sb.table("orders")
@@ -146,50 +146,43 @@ async def stripe_webhook(
             .single()
             .execute()
         )
-
         if not order_res.data:
-            logger.warning("No order found for payment_intent: %s", pi_id)
+            logger.warning("No order for pi: %s", pi_id)
             return {"message": "OK"}
 
         order = order_res.data
-
         if order["status"] != "pending":
-            logger.info(
-                "Webhook skipped — order %s already in status '%s'",
-                order["id"], order["status"],
-            )
+            logger.info("Webhook skipped — order %s already '%s'", order["id"], order["status"])
             return {"message": "OK"}
 
-        # Amount reconciliation — Stripe amount vs order total cross-check
+        # Amount reconciliation
         stripe_amount: float = event["data"]["object"]["amount"] / 100
         order_amount: float = float(order["total_amount"])
         if abs(stripe_amount - order_amount) > 0.01:
             logger.error(
-                "Amount mismatch! order=%s stripe=%.2f order_total=%.2f",
+                "Amount mismatch! order=%s stripe=%.2f db=%.2f",
                 order["id"], stripe_amount, order_amount,
             )
-            # Log karo aur alert karo — lekin order ko block mat karo (partial payment edge case)
 
         sb.table("orders").update({"status": "paid"}).eq("id", order["id"]).execute()
 
-        # IDEMPOTENCY: unique constraint on stripe_payment_intent_id prevents duplicates
         try:
             sb.table("payments").insert({
-                "order_id": order["id"],
-                "stripe_payment_intent_id": pi_id,
-                "amount": stripe_amount,
-                "currency": event["data"]["object"]["currency"].upper(),
-                "status": "completed",
-                "payment_method": "stripe",
+                "order_id":                   order["id"],
+                "stripe_payment_intent_id":   pi_id,
+                "amount":                     stripe_amount,
+                "currency":                   event["data"]["object"]["currency"].upper(),
+                "status":                     "completed",
+                "payment_method":             "stripe",
             }).execute()
         except Exception as e:
             # Unique constraint violation = duplicate webhook — safe to ignore
             logger.info("Payment insert skipped (likely duplicate webhook): %s", e)
 
-        logger.info("Order %s marked as paid", order["id"])
+        logger.info("Order %s marked paid", order["id"])
 
-    # ── Payment failed ────────────────────────────────────────────────────────
-    elif event_type == "payment_intent.payment_failed":
+    # ── Failed ────────────────────────────────────────────────────────────────
+    elif event_type in ("payment_intent.payment_failed", "payment_intent.canceled"):
         order_res = (
             sb.table("orders")
             .select("id, status, order_items(*)")
@@ -197,34 +190,21 @@ async def stripe_webhook(
             .single()
             .execute()
         )
-
-        if not order_res.data:
-            logger.warning("No order found for failed payment_intent: %s", pi_id)
+        if not order_res.data or order_res.data["status"] != "pending":
             return {"message": "OK"}
 
         order = order_res.data
-
-        if order["status"] != "pending":
-            return {"message": "OK"}
-
-        # Atomic stock restore — stale read race condition avoid karo
         for item in order.get("order_items", []):
             if item.get("product_id"):
-                try:
-                    sb.rpc("increment_stock", {
-                        "p_id": item["product_id"],
-                        "p_qty": item["quantity"],
-                    }).execute()
-                except Exception as e:
-                    logger.error(
-                        "Stock restore failed: order=%s product=%s err=%s",
-                        order["id"], item["product_id"], e,
-                    )
+                _restore_stock(
+                    sb, item["product_id"], item["quantity"],
+                    f"webhook_{event_type}:{order['id']}",
+                )
 
         sb.table("orders").update({"status": "cancelled"}).eq("id", order["id"]).execute()
-        logger.info("Order %s cancelled after payment failure", order["id"])
+        logger.info("Order %s cancelled — event: %s", order["id"], event_type)
 
     else:
-        logger.debug("Unhandled webhook event type: %s", event_type)
+        logger.debug("Unhandled webhook type: %s", event_type)
 
     return {"message": "OK"}

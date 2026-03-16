@@ -1,7 +1,10 @@
+import asyncio
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status, Depends, Request
+from gotrue.errors import AuthApiError
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -13,8 +16,10 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
+_MIN_RESPONSE_SECONDS = 0.3  # Timing attack mitigation
 
-# ── Request / Response models ─────────────────────────────────────────────────
+
+# ── Models ────────────────────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -47,13 +52,8 @@ class TokenResponse(BaseModel):
     expires_in: int | None = None
 
 
-class UserInfo(BaseModel):
-    id: str
-    email: str
-
-
 class LoginResponse(TokenResponse):
-    user: UserInfo
+    user: dict[str, str]
 
 
 class MessageResponse(BaseModel):
@@ -66,32 +66,41 @@ class MessageResponse(BaseModel):
 @limiter.limit("5/minute")
 def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
     """
-    Register karo. 
-    SECURITY: Email existence kabhi reveal nahi karte (anti-enumeration).
+    SECURITY:
+    - Email existence kabhi reveal nahi karte (anti-enumeration).
+    - AuthApiError (duplicate email) aur infra errors alag pakde hain.
     """
     sb = get_supabase()
     try:
-        result = sb.auth.sign_up({
+        sb.auth.sign_up({
             "email": payload.email,
             "password": payload.password,
             "options": {"data": {"full_name": payload.full_name or ""}},
         })
-        if not result.user:
-            # Log but don't expose reason
-            logger.warning("Registration returned no user for email hash: %s", hash(payload.email))
+    except AuthApiError as e:
+        # Duplicate email — same response do (anti-enumeration)
+        logger.info("Register AuthApiError (likely duplicate): %s", e.code)
     except Exception as e:
-        msg = str(e).lower()
-        # Log for ops visibility, but return same response always
-        logger.info("Registration attempt result: %s", msg)
+        # Real infra failure — 503 do, NOT silent 201
+        logger.error("Registration service error: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Registration service unavailable. Please try again later.",
+        )
 
-    # ALWAYS same response — attacker ko pata nahi chalega email exist karti hai ya nahi
     return {"message": "If this email is new, a confirmation link has been sent."}
 
 
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit("5/minute")
-def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
+async def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
+    """
+    SECURITY: Constant-time response — timing attack mitigation.
+    Valid vs invalid email response time differ nahi karti.
+    """
+    start = time.monotonic()
     sb = get_supabase()
+
     try:
         result = sb.auth.sign_in_with_password({
             "email": payload.email,
@@ -104,19 +113,20 @@ def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
             )
     except HTTPException:
         raise
+    except AuthApiError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
     except Exception as e:
-        # Distinguish auth failure from infra failure
-        msg = str(e).lower()
-        if any(k in msg for k in ("invalid", "wrong", "not found", "credentials")):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password",
-            )
         logger.error("Login service error: %s", e)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authentication service unavailable",
         )
+    finally:
+        elapsed = time.monotonic() - start
+        await asyncio.sleep(max(0.0, _MIN_RESPONSE_SECONDS - elapsed))
 
     return {
         "access_token": result.session.access_token,
@@ -134,9 +144,7 @@ def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
 @limiter.limit("10/minute")
 def refresh(request: Request, payload: RefreshRequest) -> dict[str, Any]:
     """
-    NOTE: Supabase Dashboard mein "Refresh Token Rotation" enable karo.
-    Ye automatically purana refresh_token invalidate karta hai.
-    Dashboard → Auth → JWT Settings → Enable Token Rotation
+    NOTE: Supabase Dashboard → Auth → JWT Settings → Enable Token Rotation
     """
     sb = get_supabase()
     try:
@@ -165,14 +173,14 @@ def refresh(request: Request, payload: RefreshRequest) -> dict[str, Any]:
 @router.post("/logout", response_model=MessageResponse)
 def logout(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
     """
-    NOTE: JWT tokens are stateless — logout sirf client-side token delete karta hai.
-    True server-side invalidation ke liye Supabase mein JWT expiry kam karo (≤15 min).
+    NOTE: JWT expiry 15 min karo:
     Dashboard → Auth → JWT Settings → JWT expiry
     """
     sb = get_admin_supabase()
     try:
         user_id: str = current["profile"]["id"]
-        sb.auth.admin.sign_out(user_id)
+        # supabase-py v2 correct signature
+        sb.auth.admin.sign_out(user_id, scope="global")
     except Exception as e:
-        logger.warning("Sign out attempt failed (non-critical): %s", e)
+        logger.warning("Sign out failed (non-critical): %s", e)
     return {"message": "Logged out successfully"}
