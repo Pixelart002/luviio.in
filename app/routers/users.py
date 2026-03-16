@@ -5,6 +5,8 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from pydantic import BaseModel, Field
 
+from postgrest.exceptions import APIError as PostgrestError
+
 from app.dependencies import get_current_user, require_admin
 from app.supabase_client import get_admin_supabase
 

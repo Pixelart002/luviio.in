@@ -8,6 +8,8 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query, UploadFile
 from PIL import Image
 from pydantic import BaseModel, Field, model_validator
 
+from postgrest.exceptions import APIError as PostgrestError
+
 from app.dependencies import require_admin
 from app.supabase_client import get_admin_supabase
 
@@ -127,7 +129,7 @@ def list_products(
     sb = get_admin_supabase()
     q = (
         sb.table("products")
-        .select("*, categories(name, slug)", count="exact")
+        .select("id, name, slug, description, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, is_active, created_at, categories(name, slug)", count="exact")
         .eq("is_active", True)
     )
 
@@ -272,7 +274,7 @@ async def upload_product_image(
     sb.storage.from_("product-images").upload(
         path, optimized, {"content-type": "image/webp", "upsert": "true"}
     )
-    url: str = sb.storage.from_("product-images").get_public_url(path)
+    url: str = sb.storage.from_("product-images").get_public_url(path).rstrip("?")
     sb.table("products").update({"image_url": url}).eq("id", str(product_id)).execute()
 
     logger.info("Image uploaded: product=%s path=%s", product_id, path)

@@ -1,4 +1,4 @@
-import logging
+    import logging
 import re
 from decimal import Decimal
 from typing import Any
@@ -174,7 +174,7 @@ def create_order(
 
     order_data: dict[str, Any] = {
         "customer_id":           user_id,
-        "shipping_address_id":   payload.shipping_address_id,  # traceability
+        "shipping_address_id":   str(payload.shipping_address_id),  # traceability
         "subtotal":              float(subtotal),
         "shipping_cost":         float(shipping),
         "tax_amount":            float(tax.quantize(Decimal("0.01"))),

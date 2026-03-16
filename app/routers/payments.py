@@ -7,6 +7,8 @@ import stripe
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
 from pydantic import BaseModel
 
+from postgrest.exceptions import APIError as PostgrestError
+
 from app.config import settings
 from app.dependencies import get_current_user
 from app.supabase_client import get_admin_supabase
