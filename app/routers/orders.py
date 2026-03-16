@@ -46,7 +46,7 @@ def _sanitize_notes(notes: str | None) -> str | None:
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class OrderItemInput(BaseModel):
-    product_id: str
+    product_id: UUID  # galat format pe FastAPI 422 dega, 500 nahi
     quantity: int = Field(ge=1, le=100)
 
 
@@ -107,14 +107,20 @@ def create_order(
     addr = addr_res.data
 
     # ── Phase 1: Batch fetch + validate — no DB writes ────────────────────────
-    product_ids = [item.product_id for item in payload.items]
-    prods_res = (
-        sb.table("products")
-        .select("*")
-        .in_("id", product_ids)
-        .eq("is_active", True)
-        .execute()
-    )
+    product_ids = [str(item.product_id) for item in payload.items]
+    try:
+        prods_res = (
+            sb.table("products")
+            .select("*")
+            .in_("id", product_ids)
+            .eq("is_active", True)
+            .execute()
+        )
+    except PostgrestError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid product_id format",
+        )
     prod_map: dict[str, dict[str, Any]] = {p["id"]: p for p in prods_res.data}
 
     validated: list[tuple[OrderItemInput, dict[str, Any]]] = []

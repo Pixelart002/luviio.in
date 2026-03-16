@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from postgrest.exceptions import APIError as PostgrestError
+
 from app.config import settings
 from app.supabase_client import init_clients, get_admin_supabase
 from app.routers import auth, users, products, orders, payments
@@ -79,6 +81,17 @@ app.include_router(users.router,    prefix=PREFIX)
 app.include_router(products.router, prefix=PREFIX)
 app.include_router(orders.router,   prefix=PREFIX)
 app.include_router(payments.router, prefix=PREFIX)
+
+
+@app.exception_handler(PostgrestError)
+async def postgrest_error_handler(request: Request, exc: PostgrestError) -> JSONResponse:
+    """DB validation errors — single line log, clean 400 response."""
+    request_id: str = request.headers.get("x-request-id", "unknown")
+    logger.warning("[%s] DB error %s: %s", request_id, exc.code, exc.message)
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"detail": exc.message, "code": exc.code},
+    )
 
 
 @app.exception_handler(Exception)
