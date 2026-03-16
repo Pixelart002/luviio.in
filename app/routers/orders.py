@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from postgrest.exceptions import APIError as PostgrestError
+
 from app.config import settings
 from app.dependencies import get_current_user, require_admin
 from app.supabase_client import get_admin_supabase
@@ -50,7 +52,7 @@ class OrderItemInput(BaseModel):
 
 class OrderCreate(BaseModel):
     items: list[OrderItemInput] = Field(min_length=1, max_length=MAX_ITEMS_PER_ORDER)
-    shipping_address_id: str
+    shipping_address_id: UUID  # UUID type — galat format pe FastAPI 422 dega, 500 nahi
     notes: str | None = Field(default=None, max_length=500)
 
     @field_validator("items")
@@ -86,14 +88,20 @@ def create_order(
     sb = get_admin_supabase()
     user_id: str = current["profile"]["id"]
 
-    addr_res = (
-        sb.table("addresses")
-        .select("*")
-        .eq("id", payload.shipping_address_id)
-        .eq("user_id", user_id)
-        .single()
-        .execute()
-    )
+    try:
+        addr_res = (
+            sb.table("addresses")
+            .select("*")
+            .eq("id", str(payload.shipping_address_id))
+            .eq("user_id", user_id)
+            .single()
+            .execute()
+        )
+    except PostgrestError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid shipping_address_id format",
+        )
     if not addr_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipping address not found")
     addr = addr_res.data
