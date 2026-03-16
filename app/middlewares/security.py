@@ -1,7 +1,4 @@
-
-##Pure ASGI middlewares — BaseHTTPMiddleware avoid kiya (streaming response buffer issue).##
 import uuid
-from typing import Callable
 
 
 class HideServerHeaderMiddleware:
@@ -15,9 +12,10 @@ class HideServerHeaderMiddleware:
 
         async def send_with_server(message):
             if message["type"] == "http.response.start":
-                headers = list(message.get("headers", []))
-                headers = [(k, v) for k, v in headers
-                           if k.lower() not in (b"server", b"x-powered-by")]
+                headers = [
+                    (k, v) for k, v in message.get("headers", [])
+                    if k.lower() not in (b"server", b"x-powered-by")
+                ]
                 headers.append((b"server", b"webserver"))
                 headers.append((b"x-powered-by", b"luviio"))
                 message = {**message, "headers": headers}
@@ -30,23 +28,23 @@ class SecurityHeadersMiddleware:
     def __init__(self, app) -> None:
         self.app = app
 
+    _HEADERS = [
+        (b"x-content-type-options",    b"nosniff"),
+        (b"x-frame-options",           b"DENY"),
+        (b"strict-transport-security", b"max-age=31536000; includeSubDomains; preload"),
+        (b"content-security-policy",   b"default-src 'none'; frame-ancestors 'none'"),
+        (b"referrer-policy",           b"strict-origin-when-cross-origin"),
+        (b"permissions-policy",        b"geolocation=(), camera=(), microphone=(), payment=()"),
+    ]
+
     async def __call__(self, scope, receive, send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
-        _SECURITY_HEADERS = [
-            (b"x-content-type-options",    b"nosniff"),
-            (b"x-frame-options",           b"DENY"),
-            (b"strict-transport-security", b"max-age=31536000; includeSubDomains; preload"),
-            (b"content-security-policy",   b"default-src 'none'; frame-ancestors 'none'"),
-            (b"referrer-policy",           b"strict-origin-when-cross-origin"),
-            (b"permissions-policy",        b"geolocation=(), camera=(), microphone=(), payment=()"),
-        ]
-
         async def send_with_security(message):
             if message["type"] == "http.response.start":
-                headers = list(message.get("headers", [])) + _SECURITY_HEADERS
+                headers = list(message.get("headers", [])) + self._HEADERS
                 message = {**message, "headers": headers}
             await send(message)
 
@@ -82,6 +80,12 @@ class MaxBodySizeMiddleware:
 
 
 class RequestIDMiddleware:
+    """
+    Har request ko unique 8-char ID deta hai.
+    ID response header X-Request-ID mein milti hai.
+    main.py mein: request.headers.get("x-request-id", "unknown")
+    NOTE: pure ASGI se request.state set nahi hoti — incoming header mein inject karo.
+    """
     def __init__(self, app) -> None:
         self.app = app
 
@@ -91,8 +95,11 @@ class RequestIDMiddleware:
             return
 
         request_id = str(uuid.uuid4())[:8]
-        scope["state"] = scope.get("state", {})
-        scope["state"]["request_id"] = request_id
+
+        # Incoming headers mein inject — FastAPI Request.headers se readable
+        existing_headers = list(scope.get("headers", []))
+        existing_headers.append((b"x-request-id", request_id.encode()))
+        scope = {**scope, "headers": existing_headers}
 
         async def send_with_id(message):
             if message["type"] == "http.response.start":

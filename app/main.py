@@ -85,7 +85,7 @@ app.include_router(payments.router, prefix=PREFIX)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     if settings.APP_ENV == "development":
         raise exc
-    request_id: str = getattr(getattr(request, "state", None), "request_id", "unknown")
+    request_id: str = request.headers.get("x-request-id", "unknown")
     logger.error(
         "[%s] Unhandled exception | %s %s | %s",
         request_id, request.method, request.url, exc,
