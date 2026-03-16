@@ -6,10 +6,14 @@ admin_supabase: Client | None = None
 
 
 def init_clients() -> None:
+    """
+    App startup pe ek baar call hota hai.
+    Temp vars mein banao — partial init prevent karo.
+    """
     global supabase, admin_supabase
     _sb    = create_client(settings.SB_URL, settings.SB_KEY)
     _admin = create_client(settings.SB_URL, settings.SB_SERVICE_ROLE_KEY)
-    supabase, admin_supabase = _sb, _admin
+    supabase, admin_supabase = _sb, _admin  # atomic
 
 
 def get_supabase() -> Client:

@@ -2,62 +2,43 @@ import logging
 import re
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.config import settings
 from app.dependencies import get_current_user, require_admin
 from app.supabase_client import get_admin_supabase
+from app.utils.stock import restore_stock, decrement_stock
+from app.utils.email import send_order_confirmation, send_order_shipped
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
-SHIPPING_THRESHOLD  = Decimal("75.00")
-SHIPPING_FLAT       = Decimal("9.99")
-TAX_RATE            = Decimal("0.08")
 MAX_ITEMS_PER_ORDER = 50
 
-VALID_STATUSES: set[str] = {"pending", "paid", "shipped", "delivered", "cancelled"}
+VALID_STATUSES: set[str] = {
+    "pending", "paid", "shipped", "delivered", "cancelled", "refunded"
+}
 
 STATUS_TRANSITIONS: dict[str, set[str]] = {
     "pending":   {"paid", "cancelled"},
-    "paid":      {"shipped", "cancelled"},
+    "paid":      {"shipped", "cancelled", "refunded"},
     "shipped":   {"delivered"},
-    "delivered": set(),
+    "delivered": {"refunded"},
+    "refunded":  set(),
     "cancelled": set(),
 }
 
 
 def _sanitize_notes(notes: str | None) -> str | None:
-    """Basic HTML strip — stored XSS prevent karo."""
     if notes is None:
         return None
     return re.sub(r"<[^>]+>", "", notes).strip()
-
-
-def _restore_stock(sb, product_id: str, qty: int, context: str) -> None:
-    """
-    Atomic stock restore — RPC prefer karo, direct update fallback.
-    Agar migrations run nahi hua ho toh bhi kaam kare.
-    """
-    try:
-        sb.rpc("increment_stock", {"p_id": product_id, "p_qty": qty}).execute()
-    except Exception as rpc_err:
-        logger.warning("RPC increment_stock failed (%s), trying direct update: %s", context, rpc_err)
-        try:
-            row = sb.table("products").select("stock").eq("id", product_id).single().execute()
-            if row.data:
-                sb.table("products").update(
-                    {"stock": row.data["stock"] + qty}
-                ).eq("id", product_id).execute()
-        except Exception as direct_err:
-            logger.error(
-                "CRITICAL: Stock restore completely failed [%s] product=%s qty=%d err=%s",
-                context, product_id, qty, direct_err,
-            )
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -105,7 +86,6 @@ def create_order(
     sb = get_admin_supabase()
     user_id: str = current["profile"]["id"]
 
-    # Shipping address ownership verify
     addr_res = (
         sb.table("addresses")
         .select("*")
@@ -118,7 +98,7 @@ def create_order(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipping address not found")
     addr = addr_res.data
 
-    # ── Phase 1: Batch fetch — N+1 query fix ──────────────────────────────────
+    # ── Phase 1: Batch fetch + validate — no DB writes ────────────────────────
     product_ids = [item.product_id for item in payload.items]
     prods_res = (
         sb.table("products")
@@ -129,7 +109,6 @@ def create_order(
     )
     prod_map: dict[str, dict[str, Any]] = {p["id"]: p for p in prods_res.data}
 
-    # Validate all before touching stock
     validated: list[tuple[OrderItemInput, dict[str, Any]]] = []
     for item_in in payload.items:
         prod = prod_map.get(item_in.product_id)
@@ -145,21 +124,15 @@ def create_order(
             )
         validated.append((item_in, prod))
 
-    # ── Phase 2: Atomic stock deduct ──────────────────────────────────────────
+    # ── Phase 2: Atomic stock deduct via RPC ──────────────────────────────────
     order_items: list[dict[str, Any]] = []
     subtotal = Decimal("0")
     deducted: list[tuple[str, int]] = []
 
     try:
         for item_in, prod in validated:
-            update_res = (
-                sb.table("products")
-                .update({"stock": prod["stock"] - item_in.quantity})
-                .eq("id", prod["id"])
-                .gte("stock", item_in.quantity)
-                .execute()
-            )
-            if not update_res.data:
+            ok = decrement_stock(sb, prod["id"], item_in.quantity, prod["name"])
+            if not ok:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"Insufficient stock for '{prod['name']}' — please try again",
@@ -169,36 +142,36 @@ def create_order(
             line = Decimal(str(prod["price"])) * item_in.quantity
             subtotal += line
             order_items.append({
-                "product_id": prod["id"],
+                "product_id":   prod["id"],
                 "product_name": prod["name"],
-                "unit_price": float(prod["price"]),
-                "quantity": item_in.quantity,
-                "subtotal": float(line),
+                "unit_price":   float(prod["price"]),
+                "quantity":     item_in.quantity,
+                "subtotal":     float(line),
             })
-
     except HTTPException:
         for pid, qty in deducted:
-            _restore_stock(sb, pid, qty, "create_order_rollback")
+            restore_stock(sb, pid, qty, "create_order_rollback")
         raise
 
-    # ── Pricing ───────────────────────────────────────────────────────────────
-    shipping = Decimal("0") if subtotal >= SHIPPING_THRESHOLD else SHIPPING_FLAT
-    tax      = (subtotal + shipping) * TAX_RATE
+    # ── Pricing (from config — change without redeploy) ───────────────────────
+    shipping = Decimal("0") if subtotal >= settings.SHIPPING_THRESHOLD else settings.SHIPPING_FLAT
+    tax      = (subtotal + shipping) * settings.TAX_RATE
     total    = subtotal + shipping + tax
 
     order_data: dict[str, Any] = {
-        "customer_id":          user_id,
-        "subtotal":             float(subtotal),
-        "shipping_cost":        float(shipping),
-        "tax_amount":           float(tax.quantize(Decimal("0.01"))),
-        "total_amount":         float(total.quantize(Decimal("0.01"))),
-        "shipping_line1":       addr["line1"],
-        "shipping_line2":       addr.get("line2"),
-        "shipping_city":        addr["city"],
-        "shipping_state":       addr.get("state"),
-        "shipping_postal_code": addr["postal_code"],
-        "shipping_country":     addr["country"],
-        "notes":                _sanitize_notes(payload.notes),
+        "customer_id":           user_id,
+        "shipping_address_id":   payload.shipping_address_id,  # traceability
+        "subtotal":              float(subtotal),
+        "shipping_cost":         float(shipping),
+        "tax_amount":            float(tax.quantize(Decimal("0.01"))),
+        "total_amount":          float(total.quantize(Decimal("0.01"))),
+        "shipping_line1":        addr["line1"],
+        "shipping_line2":        addr.get("line2"),
+        "shipping_city":         addr["city"],
+        "shipping_state":        addr.get("state"),
+        "shipping_postal_code":  addr["postal_code"],
+        "shipping_country":      addr["country"],
+        "notes":                 _sanitize_notes(payload.notes),
     }
 
     # ── DB insert ─────────────────────────────────────────────────────────────
@@ -213,14 +186,18 @@ def create_order(
     except Exception as e:
         logger.error("CRITICAL: order_items insert failed for order %s: %s", order["id"], e)
         for pid, qty in deducted:
-            _restore_stock(sb, pid, qty, "order_items_insert_fail")
-        sb.table("orders").delete().eq("id", order["id"]).execute()
+            restore_stock(sb, pid, qty, "order_items_insert_fail")
+        try:
+            sb.table("orders").delete().eq("id", order["id"]).execute()
+        except Exception as del_err:
+            logger.error("CRITICAL: Orphan order cleanup failed %s: %s", order["id"], del_err)
+            sb.table("orders").update({"status": "cancelled"}).eq("id", order["id"]).execute()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Order creation failed. Please try again.",
         )
 
-    return (
+    full_order = (
         sb.table("orders")
         .select("*, order_items(*)")
         .eq("id", order["id"])
@@ -228,6 +205,11 @@ def create_order(
         .execute()
         .data
     )
+
+    # Send confirmation email (non-blocking — failure won't break order)
+    send_order_confirmation(current["profile"]["email"], full_order)
+
+    return full_order
 
 
 # ── My orders ─────────────────────────────────────────────────────────────────
@@ -250,24 +232,24 @@ def my_orders(
     )
     total: int = result.count or 0
     return {
-        "items": result.data,
-        "total": total,
-        "page": page,
+        "items":     result.data,
+        "total":     total,
+        "page":      page,
         "page_size": page_size,
-        "pages": -(-total // page_size),
+        "pages":     -(-total // page_size),
     }
 
 
 @router.get("/my/{order_id}")
 def get_my_order(
-    order_id: str,
+    order_id: UUID,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     sb = get_admin_supabase()
     result = (
         sb.table("orders")
         .select("*, order_items(*)")
-        .eq("id", order_id)
+        .eq("id", str(order_id))
         .eq("customer_id", current["profile"]["id"])
         .single()
         .execute()
@@ -279,14 +261,14 @@ def get_my_order(
 
 @router.post("/my/{order_id}/cancel")
 def cancel_order(
-    order_id: str,
+    order_id: UUID,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     sb = get_admin_supabase()
     order_res = (
         sb.table("orders")
         .select("*, order_items(*)")
-        .eq("id", order_id)
+        .eq("id", str(order_id))
         .eq("customer_id", current["profile"]["id"])
         .single()
         .execute()
@@ -303,13 +285,13 @@ def cancel_order(
 
     for item in order.get("order_items", []):
         if item.get("product_id"):
-            _restore_stock(sb, item["product_id"], item["quantity"], f"cancel_order:{order_id}")
+            restore_stock(sb, item["product_id"], item["quantity"], f"cancel:{order_id}")
 
-    sb.table("orders").update({"status": "cancelled"}).eq("id", order_id).execute()
+    sb.table("orders").update({"status": "cancelled"}).eq("id", str(order_id)).execute()
     return (
         sb.table("orders")
         .select("*, order_items(*)")
-        .eq("id", order_id)
+        .eq("id", str(order_id))
         .single()
         .execute()
         .data
@@ -353,13 +335,13 @@ def list_all_orders(
 # ── Admin update ──────────────────────────────────────────────────────────────
 
 @router.patch("/{order_id}", dependencies=[Depends(require_admin)])
-def admin_update_order(order_id: str, payload: OrderAdminUpdate) -> dict[str, Any]:
+def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, Any]:
     sb = get_admin_supabase()
 
     current_res = (
         sb.table("orders")
-        .select("status")
-        .eq("id", order_id)
+        .select("status, stripe_payment_intent, customer_id")
+        .eq("id", str(order_id))
         .single()
         .execute()
     )
@@ -379,8 +361,47 @@ def admin_update_order(order_id: str, payload: OrderAdminUpdate) -> dict[str, An
                 ),
             )
 
+        # Auto-refund via Stripe when moving to refunded
+        if payload.status == "refunded":
+            pi_id = current_res.data.get("stripe_payment_intent")
+            if pi_id:
+                try:
+                    import stripe
+                    from app.config import settings as cfg
+                    stripe.api_key = cfg.STRIPE_SECRET_KEY
+                    stripe.Refund.create(payment_intent=pi_id)
+                    logger.info("Stripe refund created for order %s", order_id)
+                except Exception as e:
+                    logger.error("Stripe refund failed for order %s: %s", order_id, e)
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail=f"Stripe refund failed: {e}",
+                    )
+
     data = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
-    result = sb.table("orders").update(data).eq("id", order_id).execute()
+
+    # TOCTOU fix — conditional update with current status guard
+    result = (
+        sb.table("orders")
+        .update(data)
+        .eq("id", str(order_id))
+        .eq("status", current_status)  # atomic guard
+        .execute()
+    )
     if not result.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Order status changed by another request. Please refresh and try again.",
+        )
+
+    # Send shipped email
+    if payload.status == "shipped":
+        try:
+            order = result.data[0]
+            user_res = sb.table("users").select("email").eq("id", order["customer_id"]).single().execute()
+            if user_res.data:
+                send_order_shipped(user_res.data["email"], order, payload.tracking_number)
+        except Exception as e:
+            logger.warning("Failed to send shipped email: %s", e)
+
     return result.data[0]

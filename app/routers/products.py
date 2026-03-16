@@ -2,17 +2,16 @@ import io
 import logging
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status, Depends, Query, UploadFile, File
 from PIL import Image
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.dependencies import require_admin
 from app.supabase_client import get_admin_supabase
 
-# SECURITY: Decompression bomb protection — max 10MP
 Image.MAX_IMAGE_PIXELS = 10_000_000
-
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Products"])
 
@@ -52,6 +51,13 @@ class ProductCreate(BaseModel):
     image_url: str | None = None
     is_active: bool = True
 
+    @model_validator(mode="after")
+    def compare_must_exceed_price(self) -> "ProductCreate":
+        if self.compare_price and self.price:
+            if self.compare_price <= self.price:
+                raise ValueError("compare_price must be greater than price (it's the original/strikethrough price)")
+        return self
+
 
 class ProductUpdate(BaseModel):
     name: str | None = None
@@ -65,6 +71,13 @@ class ProductUpdate(BaseModel):
     category_id: str | None = None
     is_active: bool | None = None
     weight_grams: int | None = None
+
+    @model_validator(mode="after")
+    def compare_must_exceed_price(self) -> "ProductUpdate":
+        if self.compare_price and self.price:
+            if self.compare_price <= self.price:
+                raise ValueError("compare_price must be greater than price")
+        return self
 
 
 # ── Categories ────────────────────────────────────────────────────────────────
@@ -82,12 +95,12 @@ def create_category(payload: CategoryCreate) -> dict[str, Any]:
 
 
 @router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
-def delete_category(category_id: str) -> None:
+def delete_category(category_id: UUID) -> None:
     sb = get_admin_supabase()
     active = (
         sb.table("products")
         .select("id", count="exact")
-        .eq("category_id", category_id)
+        .eq("category_id", str(category_id))
         .eq("is_active", True)
         .execute()
     )
@@ -96,7 +109,7 @@ def delete_category(category_id: str) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot delete — category has active products. Reassign or deactivate them first.",
         )
-    sb.table("categories").update({"is_active": False}).eq("id", category_id).execute()
+    sb.table("categories").update({"is_active": False}).eq("id", str(category_id)).execute()
 
 
 # ── Products ──────────────────────────────────────────────────────────────────
@@ -124,11 +137,10 @@ def list_products(
             q = q.eq("category_id", cat.data["id"])
 
     if search:
-        # FTS index use karo (migrations.sql mein fts column add kiya hai)
-        # Fallback: agar fts column nahi hai toh ilike use hogi
         try:
             q = q.text_search("fts", search)
-        except Exception:
+        except Exception as e:
+            logger.warning("FTS search failed, falling back to ilike: %s", e)
             q = q.ilike("name", f"%{search}%")
 
     if min_price is not None:
@@ -169,6 +181,24 @@ def get_product(slug: str) -> dict[str, Any]:
 @router.post("/products", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 def create_product(payload: ProductCreate) -> dict[str, Any]:
     sb = get_admin_supabase()
+
+    # Slug uniqueness check
+    existing = sb.table("products").select("id").eq("slug", payload.slug).execute()
+    if existing.data:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Product with slug '{payload.slug}' already exists",
+        )
+
+    # SKU uniqueness check
+    if payload.sku:
+        existing_sku = sb.table("products").select("id").eq("sku", payload.sku).execute()
+        if existing_sku.data:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Product with SKU '{payload.sku}' already exists",
+            )
+
     data = payload.model_dump()
     data["price"] = float(data["price"])
     if data.get("compare_price"):
@@ -177,52 +207,48 @@ def create_product(payload: ProductCreate) -> dict[str, Any]:
 
 
 @router.patch("/products/{product_id}", dependencies=[Depends(require_admin)])
-def update_product(product_id: str, payload: ProductUpdate) -> dict[str, Any]:
+def update_product(product_id: UUID, payload: ProductUpdate) -> dict[str, Any]:
     sb = get_admin_supabase()
     data: dict[str, Any] = {k: v for k, v in payload.model_dump(exclude_unset=True).items()}
     if "price" in data and data["price"]:
         data["price"] = float(data["price"])
     if "compare_price" in data and data["compare_price"]:
         data["compare_price"] = float(data["compare_price"])
-    result = sb.table("products").update(data).eq("id", product_id).execute()
+    result = sb.table("products").update(data).eq("id", str(product_id)).execute()
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     return result.data[0]
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
-def delete_product(product_id: str) -> None:
+def delete_product(product_id: UUID) -> None:
     sb = get_admin_supabase()
-    sb.table("products").update({"is_active": False}).eq("id", product_id).execute()
+    sb.table("products").update({"is_active": False}).eq("id", str(product_id)).execute()
 
 
 # ── Image Upload ──────────────────────────────────────────────────────────────
 
 @router.post("/products/{product_id}/image", dependencies=[Depends(require_admin)])
 async def upload_product_image(
-    product_id: str,
+    product_id: UUID,
     file: UploadFile = File(...),
 ) -> dict[str, str]:
     contents: bytes = await file.read()
 
-    # 1. Size check
     if len(contents) > 5 * 1024 * 1024:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Max 5MB allowed")
 
-    # 2. Magic bytes — content-type header trust mat karo
     if not _is_real_image(contents):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid image file. Only JPEG, PNG, GIF, WebP allowed.",
+            detail="Invalid image. Only JPEG, PNG, GIF, WebP allowed.",
         )
 
-    # 3. Product existence check
     sb = get_admin_supabase()
-    product = sb.table("products").select("id").eq("id", product_id).single().execute()
+    product = sb.table("products").select("id").eq("id", str(product_id)).single().execute()
     if not product.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
-    # 4. PIL open + dimension check (decompression bomb — MAX_IMAGE_PIXELS already set)
     try:
         img = Image.open(io.BytesIO(contents))
         if img.width * img.height > Image.MAX_IMAGE_PIXELS:
@@ -233,23 +259,21 @@ async def upload_product_image(
     except HTTPException:
         raise
     except Exception as e:
-        logger.warning("PIL failed to open image: %s", e)
+        logger.warning("PIL failed: %s", e)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not process image")
 
-    # 5. Optimize → WebP
     img = img.convert("RGB")
     img.thumbnail((800, 800))
     buffer = io.BytesIO()
     img.save(buffer, format="WEBP", quality=80)
     optimized: bytes = buffer.getvalue()
 
-    # 6. Upload — product_id path (slug change hone pe safe)
     path = f"products/{product_id}.webp"
     sb.storage.from_("product-images").upload(
         path, optimized, {"content-type": "image/webp", "upsert": "true"}
     )
     url: str = sb.storage.from_("product-images").get_public_url(path)
-    sb.table("products").update({"image_url": url}).eq("id", product_id).execute()
+    sb.table("products").update({"image_url": url}).eq("id", str(product_id)).execute()
 
     logger.info("Image uploaded: product=%s path=%s", product_id, path)
     return {"image_url": url}

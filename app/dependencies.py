@@ -25,7 +25,10 @@ def get_current_user(
         raise
     except Exception as e:
         logger.warning("Token validation failed: %s", e)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
 
     try:
         profile_res = (
@@ -37,17 +40,29 @@ def get_current_user(
         )
     except Exception as e:
         logger.error("Profile fetch failed for user %s: %s", user.id, e)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not retrieve user profile")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not retrieve user profile",
+        )
 
     if not profile_res.data:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User profile not found")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User profile not found",
+        )
     if not profile_res.data.get("is_active", True):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account deactivated",
+        )
 
     return {"auth_user": user, "profile": profile_res.data}
 
 
 def require_admin(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     if current["profile"].get("role") != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
     return current

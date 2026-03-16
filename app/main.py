@@ -1,22 +1,21 @@
 import logging
-import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
-from app.supabase_client import init_clients
+from app.supabase_client import init_clients, get_admin_supabase
 from app.routers import auth, users, products, orders, payments
 from app.middlewares.security import (
     HideServerHeaderMiddleware,
     SecurityHeadersMiddleware,
     MaxBodySizeMiddleware,
+    RequestIDMiddleware,
 )
 
 logging.basicConfig(
@@ -26,12 +25,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ── Real IP — proxy-aware ─────────────────────────────────────────────────────
 def get_real_ip(request: Request) -> str:
     """
-    Koyeb/Nginx ke peeche: X-Forwarded-For ka LAST value use karo.
-    Last value proxy ka add kiya hua hota hai — attacker fake nahi kar sakta.
-    Format: X-Forwarded-For: client, proxy1, proxy2 (last = proxy-added)
+    Proxy ke peeche LAST X-Forwarded-For value use karo.
+    Last value proxy-appended hoti hai — client spoof nahi kar sakta.
     """
     forwarded_for: str | None = request.headers.get("X-Forwarded-For")
     if forwarded_for:
@@ -39,21 +36,9 @@ def get_real_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-# ── Request ID middleware ─────────────────────────────────────────────────────
-class RequestIDMiddleware(BaseHTTPMiddleware):
-    """Har request ko unique ID deta hai — logs trace karne ke liye."""
-    async def dispatch(self, request: Request, call_next) -> Response:
-        request_id = str(uuid.uuid4())[:8]
-        request.state.request_id = request_id
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        return response
-
-
 limiter = Limiter(key_func=get_real_ip)
 
 
-# ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting %s [%s]", settings.APP_NAME, settings.APP_ENV)
@@ -63,17 +48,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Shutting down %s", settings.APP_NAME)
 
 
-# ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
-    docs_url="/docs"        if not settings.is_production else None,
-    redoc_url="/redoc"      if not settings.is_production else None,
+    docs_url="/docs"         if not settings.is_production else None,
+    redoc_url="/redoc"       if not settings.is_production else None,
     openapi_url="/openapi.json" if not settings.is_production else None,
     lifespan=lifespan,
 )
 
-# Middleware order: outermost → innermost (first added = last executed)
+# Pure ASGI middlewares (no BaseHTTPMiddleware — avoids streaming buffer issue)
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(MaxBodySizeMiddleware, max_bytes=10 * 1024 * 1024)
 app.add_middleware(HideServerHeaderMiddleware)
@@ -101,7 +85,7 @@ app.include_router(payments.router, prefix=PREFIX)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     if settings.APP_ENV == "development":
         raise exc
-    request_id: str = getattr(request.state, "request_id", "unknown")
+    request_id: str = getattr(getattr(request, "state", None), "request_id", "unknown")
     logger.error(
         "[%s] Unhandled exception | %s %s | %s",
         request_id, request.method, request.url, exc,
@@ -115,4 +99,15 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 @app.get("/health", tags=["Health"])
 def health() -> dict[str, str]:
+    """DB connection bhi check karta hai — sirf in-memory ok nahi."""
+    try:
+        sb = get_admin_supabase()
+        sb.table("users").select("id").limit(1).execute()
+    except Exception as e:
+        logger.error("Health check DB ping failed: %s", e)
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database unreachable",
+        )
     return {"status": "ok", "app": settings.APP_NAME}
