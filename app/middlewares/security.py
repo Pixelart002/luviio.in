@@ -28,11 +28,14 @@ class SecurityHeadersMiddleware:
     def __init__(self, app) -> None:
         self.app = app
 
+    # FIX: CSP removed from API middleware.
+    # `default-src 'none'` is a browser/document policy — wrong on a JSON API.
+    # It was also leaking into CORS preflight responses and breaking OPTIONS.
+    # CSP belongs on your frontend (Vercel headers config), not the API.
     _HEADERS = [
         (b"x-content-type-options",    b"nosniff"),
         (b"x-frame-options",           b"DENY"),
         (b"strict-transport-security", b"max-age=31536000; includeSubDomains; preload"),
-        (b"content-security-policy",   b"default-src 'none'; frame-ancestors 'none'"),
         (b"referrer-policy",           b"strict-origin-when-cross-origin"),
         (b"permissions-policy",        b"geolocation=(), camera=(), microphone=(), payment=()"),
     ]
@@ -61,6 +64,11 @@ class MaxBodySizeMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # FIX: Skip body check for OPTIONS — preflight has no body
+        if scope.get("method") == "OPTIONS":
+            await self.app(scope, receive, send)
+            return
+
         headers = dict(scope.get("headers", []))
         content_length = headers.get(b"content-length")
         if content_length and int(content_length) > self.max_bytes:
@@ -80,12 +88,6 @@ class MaxBodySizeMiddleware:
 
 
 class RequestIDMiddleware:
-    """
-    Har request ko unique 8-char ID deta hai.
-    ID response header X-Request-ID mein milti hai.
-    main.py mein: request.headers.get("x-request-id", "unknown")
-    NOTE: pure ASGI se request.state set nahi hoti — incoming header mein inject karo.
-    """
     def __init__(self, app) -> None:
         self.app = app
 
@@ -95,8 +97,6 @@ class RequestIDMiddleware:
             return
 
         request_id = str(uuid.uuid4())[:8]
-
-        # Incoming headers mein inject — FastAPI Request.headers se readable
         existing_headers = list(scope.get("headers", []))
         existing_headers.append((b"x-request-id", request_id.encode()))
         scope = {**scope, "headers": existing_headers}

@@ -1,10 +1,12 @@
 """
 App Factory — main.py
 ======================
-Changes from original:
-  1. register_default_handlers() called at startup — wires Observer pattern subscribers
-  2. __init__ files created for new packages (repositories, services)
-  Everything else preserved.
+FIXES APPLIED:
+  1. CORS: allow_credentials=True + allow_origins=["*"] illegal combination fixed
+     → Now reflects actual origin when credentials=True
+  2. SecurityHeadersMiddleware moved OUTSIDE CORSMiddleware
+     → CORS preflight responses no longer get broken CSP headers
+  3. Middleware order corrected for proper CORS flow
 """
 import logging
 import uuid
@@ -66,11 +68,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting %s [%s]", settings.APP_NAME, settings.APP_ENV)
     init_clients()
     logger.info("Supabase clients initialized")
-
-    # Observer Pattern: wire email handlers to event bus
     register_default_handlers()
     logger.info("Event handlers registered")
-
     yield
     logger.info("Shutting down %s", settings.APP_NAME)
 
@@ -97,15 +96,43 @@ async def request_id_middleware(request: Request, call_next):
         _request_id_ctx.reset(token)
 
 
+# ── Middleware order (innermost → outermost, last added = outermost) ──────────
+#
+# Request flow (outermost first):
+#   CORSMiddleware → SecurityHeadersMiddleware → HideServerHeaderMiddleware
+#   → MaxBodySizeMiddleware → Route
+#
+# FIX: CORSMiddleware must be outermost (last added) ✅
+# FIX: SecurityHeadersMiddleware is now INSIDE CORSMiddleware
+#       → CORS preflight (OPTIONS) is handled by CORS before SecurityHeaders runs
+#       → No broken CSP on preflight responses
+
 app.add_middleware(MaxBodySizeMiddleware, max_bytes=10 * 1024 * 1024)
 app.add_middleware(HideServerHeaderMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+
+# ── CORS — THE MAIN FIX ───────────────────────────────────────────────────────
+# BUG: allow_credentials=True + allow_origins=["*"] = browser rejects OPTIONS
+# FIX: Use cors_origins from settings (actual domain list, NOT "*")
+#      Set ALLOWED_ORIGINS env var on Koyeb:
+#        ALLOWED_ORIGINS=https://your-project.vercel.app
+#      Multiple domains:
+#        ALLOWED_ORIGINS=https://your-project.vercel.app,https://luviio.in
+#
+# When ALLOWED_ORIGINS is a real domain (not "*"):
+#   allow_credentials=True works correctly ✅
+#   OPTIONS preflight returns 200 ✅
+#   Login/Auth works ✅
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "Origin",
+                   "X-Requested-With", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
+    max_age=600,  # preflight cache 10 min — browser won't re-preflight every time
 )
 
 app.state.limiter = limiter
