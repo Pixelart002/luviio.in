@@ -1,12 +1,7 @@
 """
 App Factory — main.py
 ======================
-FIXES APPLIED:
-  1. CORS: allow_credentials=True + allow_origins=["*"] illegal combination fixed
-     → Now reflects actual origin when credentials=True
-  2. SecurityHeadersMiddleware moved OUTSIDE CORSMiddleware
-     → CORS preflight responses no longer get broken CSP headers
-  3. Middleware order corrected for proper CORS flow
+CORS: Fully open — any origin, any header, any method, credentials allowed.
 """
 import logging
 import uuid
@@ -15,7 +10,6 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request, status
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -84,6 +78,34 @@ app = FastAPI(
 )
 
 
+# ── CORS — Fully open, reflects origin so credentials + any URL works ─────────
+@app.middleware("http")
+async def cors_middleware(request: Request, call_next):
+    origin = request.headers.get("origin", "*")
+
+    if request.method == "OPTIONS":
+        return JSONResponse(
+            content={},
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin":      origin,
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Allow-Methods":     "*",
+                "Access-Control-Allow-Headers":     "*",
+                "Access-Control-Max-Age":           "86400",
+            },
+        )
+
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"]      = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"]     = "*"
+    response.headers["Access-Control-Allow-Headers"]     = "*"
+    response.headers["Access-Control-Expose-Headers"]    = "*"
+    return response
+
+
+# ── Request ID ────────────────────────────────────────────────────────────────
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
     request_id = str(uuid.uuid4())[:8]
@@ -96,44 +118,9 @@ async def request_id_middleware(request: Request, call_next):
         _request_id_ctx.reset(token)
 
 
-# ── Middleware order (innermost → outermost, last added = outermost) ──────────
-#
-# Request flow (outermost first):
-#   CORSMiddleware → SecurityHeadersMiddleware → HideServerHeaderMiddleware
-#   → MaxBodySizeMiddleware → Route
-#
-# FIX: CORSMiddleware must be outermost (last added) ✅
-# FIX: SecurityHeadersMiddleware is now INSIDE CORSMiddleware
-#       → CORS preflight (OPTIONS) is handled by CORS before SecurityHeaders runs
-#       → No broken CSP on preflight responses
-
 app.add_middleware(MaxBodySizeMiddleware, max_bytes=10 * 1024 * 1024)
 app.add_middleware(HideServerHeaderMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
-
-# ── CORS — THE MAIN FIX ───────────────────────────────────────────────────────
-# BUG: allow_credentials=True + allow_origins=["*"] = browser rejects OPTIONS
-# FIX: Use cors_origins from settings (actual domain list, NOT "*")
-#      Set ALLOWED_ORIGINS env var on Koyeb:
-#        ALLOWED_ORIGINS=https://your-project.vercel.app
-#      Multiple domains:
-#        ALLOWED_ORIGINS=https://your-project.vercel.app,https://luviio.in
-#
-# When ALLOWED_ORIGINS is a real domain (not "*"):
-#   allow_credentials=True works correctly ✅
-#   OPTIONS preflight returns 200 ✅
-#   Login/Auth works ✅
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "Origin",
-                   "X-Requested-With", "X-Request-ID"],
-    expose_headers=["X-Request-ID"],
-    max_age=600,  # preflight cache 10 min — browser won't re-preflight every time
-)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
