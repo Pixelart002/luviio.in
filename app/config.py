@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     FROM_EMAIL: str = "orders@mystore.com"
 
     # CORS — set your actual frontend domain in .env
-    ALLOWED_ORIGINS: str = "https://my-frontend-ia4u47o24-pixelart002s-projects.vercel.app"
+    ALLOWED_ORIGINS: str = "*"
 
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
