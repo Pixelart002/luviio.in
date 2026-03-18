@@ -1,3 +1,20 @@
+"""
+Dependencies — Authentication & Authorization
+===============================================
+Changes from original:
+  1. CRITICAL FIX: .single() → repo.get_profile() which uses maybe_single()
+     This eliminates the PGRST116 → 500 error when profile row is missing
+  2. Auto-creates missing profile (handles users registered before trigger was added)
+  3. Separated concerns: UserRepository handles all DB access (Repository Pattern)
+  4. get_current_user is now a clean composition of:
+       validate_token() → fetch_profile() → guard_active()
+
+LLD concepts applied:
+  Repository Pattern    → no raw DB calls here
+  Separation of Concerns → token validation ≠ profile fetching ≠ authorization
+  Single Responsibility  → each helper does exactly one thing
+  Proxy Pattern          → require_admin wraps get_current_user, adds authz layer
+"""
 import logging
 from typing import Any
 
@@ -5,22 +22,23 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.supabase_client import get_admin_supabase
+from app.repositories.user_repo import UserRepository
 
 logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer()
 
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-) -> dict[str, Any]:
-    token: str = credentials.credentials
+def _validate_token(token: str) -> Any:
+    """
+    Step 1: Validate JWT with Supabase Auth.
+    Returns auth user object or raises 401.
+    """
     sb = get_admin_supabase()
-
     try:
         result = sb.auth.get_user(token)
         if not result or not result.user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-        user = result.user
+        return result.user
     except HTTPException:
         raise
     except Exception as e:
@@ -30,36 +48,78 @@ def get_current_user(
             detail="Invalid or expired token",
         )
 
-    try:
-        profile_res = (
-            sb.table("users")
-            .select("id, email, full_name, phone, role, is_active, created_at")
-            .eq("id", user.id)
-            .single()
-            .execute()
+
+def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
+    """
+    Step 2: Fetch profile row from users table.
+
+    CRITICAL FIX: Original code used .single() which throws PGRST116 when
+    0 rows exist → 500 Internal Server Error.
+
+    New flow:
+      1. Try get_profile() — uses maybe_single(), returns None on miss (not exception)
+      2. If None → auto-create via upsert_profile() using auth user data
+         (handles users registered before the DB trigger was added)
+      3. Return the profile dict
+
+    This is Idempotency in action: safe to call on every request regardless
+    of whether the profile row exists.
+    """
+    sb = get_admin_supabase()
+    repo = UserRepository(sb)
+
+    profile = repo.get_profile(str(auth_user.id))
+
+    if profile is None:
+        # Profile missing — defensive auto-create
+        # Case 1: User registered before handle_new_user trigger was added
+        # Case 2: Trigger failed silently during registration
+        logger.warning(
+            "Profile missing for auth user %s — auto-creating. "
+            "Run migrations.sql Section 6 to prevent this permanently.",
+            auth_user.id,
         )
-    except Exception as e:
-        logger.error("Profile fetch failed for user %s: %s", user.id, e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not retrieve user profile",
+        profile = repo.upsert_profile(
+            user_id=str(auth_user.id),
+            email=auth_user.email or "",
+            full_name=getattr(auth_user, "user_metadata", {}).get("full_name", "") or "",
         )
 
-    if not profile_res.data:
+    return profile
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -> dict[str, Any]:
+    """
+    Composed dependency: validate → fetch/create → guard.
+
+    Returns {"auth_user": ..., "profile": ...} — same shape as before,
+    so all existing routers work without changes.
+    """
+    auth_user = _validate_token(credentials.credentials)
+    profile   = _get_or_create_profile(auth_user)
+
+    if not profile:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User profile not found",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not retrieve or create user profile",
         )
-    if not profile_res.data.get("is_active", True):
+
+    if not profile.get("is_active", True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account deactivated",
         )
 
-    return {"auth_user": user, "profile": profile_res.data}
+    return {"auth_user": auth_user, "profile": profile}
 
 
 def require_admin(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Proxy Pattern — wraps get_current_user and adds admin authorization layer.
+    All existing admin routers work unchanged.
+    """
     if current["profile"].get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

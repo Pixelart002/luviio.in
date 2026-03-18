@@ -1,3 +1,11 @@
+"""
+App Factory — main.py
+======================
+Changes from original:
+  1. register_default_handlers() called at startup — wires Observer pattern subscribers
+  2. __init__ files created for new packages (repositories, services)
+  Everything else preserved.
+"""
 import logging
 import uuid
 from contextvars import ContextVar
@@ -18,26 +26,24 @@ from app.middlewares.security import (
     HideServerHeaderMiddleware,
     SecurityHeadersMiddleware,
     MaxBodySizeMiddleware,
-    RequestIDMiddleware,
 )
+from app.services.events import register_default_handlers
 
-# ── Request ID context var — har request ka apna ID ──────────────────────────
+# ── Request ID context ────────────────────────────────────────────────────────
 _request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
 
 
 class RequestIDFilter(logging.Filter):
-    """Har log record mein request_id add karta hai."""
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = _request_id_ctx.get("-")
         return True
 
 
-# ── Logging setup ─────────────────────────────────────────────────────────────
+# ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.DEBUG if settings.APP_ENV == "development" else logging.INFO,
     format="%(asctime)s | %(levelname)s | [%(request_id)s] | %(name)s | %(message)s",
 )
-# Sab handlers pe filter lagao
 _filter = RequestIDFilter()
 for handler in logging.root.handlers:
     handler.addFilter(_filter)
@@ -45,7 +51,6 @@ for handler in logging.root.handlers:
 logger = logging.getLogger(__name__)
 
 
-# ── Real IP ───────────────────────────────────────────────────────────────────
 def get_real_ip(request: Request) -> str:
     forwarded_for: str | None = request.headers.get("X-Forwarded-For")
     if forwarded_for:
@@ -56,17 +61,20 @@ def get_real_ip(request: Request) -> str:
 limiter = Limiter(key_func=get_real_ip)
 
 
-# ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting %s [%s]", settings.APP_NAME, settings.APP_ENV)
     init_clients()
     logger.info("Supabase clients initialized")
+
+    # Observer Pattern: wire email handlers to event bus
+    register_default_handlers()
+    logger.info("Event handlers registered")
+
     yield
     logger.info("Shutting down %s", settings.APP_NAME)
 
 
-# ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
@@ -79,7 +87,6 @@ app = FastAPI(
 
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
-    """Request ID generate karo, context mein set karo, response header mein bhi dalo."""
     request_id = str(uuid.uuid4())[:8]
     token = _request_id_ctx.set(request_id)
     try:
@@ -90,7 +97,6 @@ async def request_id_middleware(request: Request, call_next):
         _request_id_ctx.reset(token)
 
 
-# Pure ASGI middlewares
 app.add_middleware(MaxBodySizeMiddleware, max_bytes=10 * 1024 * 1024)
 app.add_middleware(HideServerHeaderMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -115,7 +121,6 @@ app.include_router(payments.router, prefix=PREFIX)
 
 @app.exception_handler(PostgrestError)
 async def postgrest_error_handler(request: Request, exc: PostgrestError) -> JSONResponse:
-    """DB validation errors — single line log, clean 400 response."""
     logger.warning("DB error %s: %s", exc.code, exc.message)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,

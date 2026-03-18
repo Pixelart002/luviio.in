@@ -1,3 +1,19 @@
+"""
+Auth Router
+============
+Changes from original:
+  1. register() — now defensively creates profile row after sign_up()
+     Reason: auth trigger (handle_new_user) is not guaranteed to fire
+             immediately in all Supabase plan tiers / edge cases
+  2. Anti-enumeration preserved — same response regardless of outcome
+  3. Idempotency: profile upsert uses ON CONFLICT DO NOTHING
+
+LLD concepts applied:
+  Idempotency          → register is safe to retry; profile upsert is idempotent
+  Defensive Programming → don't trust the DB trigger; create profile ourselves too
+  Timing Attack Mitigation → constant response time on login
+  Anti-Enumeration     → register/forgot-password never reveal email existence
+"""
 import logging
 import time
 from typing import Any
@@ -9,13 +25,14 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.supabase_client import get_supabase, get_admin_supabase
+from app.repositories.user_repo import UserRepository
 from app.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
-_MIN_RESPONSE_SECONDS = 0.3  # Timing attack mitigation
+_MIN_RESPONSE_SECONDS = 0.3
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -82,35 +99,61 @@ class MessageResponse(BaseModel):
 @limiter.limit("5/minute")
 def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
     """
-    SECURITY: Email existence kabhi reveal nahi karte (anti-enumeration).
-    AuthApiError (duplicate) aur infra errors alag handle hote hain.
+    SECURITY: Anti-enumeration — always returns same message.
+
+    Flow:
+      1. sign_up() with Supabase Auth
+      2. If user created, defensively upsert profile row
+         (don't rely solely on DB trigger — not guaranteed in all scenarios)
+      3. If duplicate AuthApiError → still return same message (anti-enum)
+
+    Idempotency: upsert_profile uses ON CONFLICT DO NOTHING — safe to retry.
     """
-    sb = get_supabase()
+    sb  = get_supabase()
+    adm = get_admin_supabase()
+    repo = UserRepository(adm)
+
+    auth_user_id: str | None = None
+
     try:
-        sb.auth.sign_up({
+        result = sb.auth.sign_up({
             "email": payload.email,
             "password": payload.password,
             "options": {"data": {"full_name": payload.full_name or ""}},
         })
+        if result.user:
+            auth_user_id = result.user.id
+
     except AuthApiError as e:
         logger.info("Register AuthApiError (likely duplicate): %s", e.code)
-        # Same response — anti-enumeration
+        # Anti-enumeration: same response even for duplicates
+
     except Exception as e:
         logger.error("Registration service error: %s", e)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Registration service unavailable. Please try again later.",
         )
+
+    # Defensive profile creation — don't trust the trigger alone
+    if auth_user_id:
+        try:
+            repo.upsert_profile(
+                user_id=auth_user_id,
+                email=payload.email,
+                full_name=payload.full_name or "",
+            )
+        except Exception as e:
+            # Non-fatal — trigger will retry, or get_current_user will auto-create on first login
+            logger.warning("Profile upsert after register failed (non-critical): %s", e)
+
     return {"message": "If this email is new, a confirmation link has been sent."}
 
 
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit("5/minute")
 def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
-    """
-    SYNC function — Supabase client is synchronous, mixing with async causes event loop block.
-    time.sleep for constant-time response (timing attack mitigation).
-    """
+    """Constant-time response — timing attack mitigation."""
     start = time.monotonic()
     sb = get_supabase()
 
@@ -138,7 +181,6 @@ def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
             detail="Authentication service unavailable",
         )
     finally:
-        # Constant response time — timing side-channel mitigation
         elapsed = time.monotonic() - start
         time.sleep(max(0.0, _MIN_RESPONSE_SECONDS - elapsed))
 
@@ -157,10 +199,6 @@ def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("10/minute")
 def refresh(request: Request, payload: RefreshRequest) -> dict[str, Any]:
-    """
-    NOTE: Enable Refresh Token Rotation in Supabase Dashboard:
-    Auth → JWT Settings → Enable Token Rotation + Reuse Interval: 0
-    """
     sb = get_supabase()
     try:
         result = sb.auth.refresh_session(payload.refresh_token)
@@ -186,14 +224,9 @@ def refresh(request: Request, payload: RefreshRequest) -> dict[str, Any]:
 
 @router.post("/logout", response_model=MessageResponse)
 def logout(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
-    """
-    NOTE: Set JWT expiry to 15 min for true invalidation:
-    Dashboard → Auth → JWT Settings → JWT expiry
-    """
     sb = get_admin_supabase()
     try:
-        user_id: str = current["profile"]["id"]
-        sb.auth.admin.sign_out(user_id, scope="global")
+        sb.auth.admin.sign_out(current["profile"]["id"], scope="global")
     except Exception as e:
         logger.warning("Sign out failed (non-critical): %s", e)
     return {"message": "Logged out successfully"}
@@ -202,9 +235,7 @@ def logout(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, str
 @router.post("/forgot-password", response_model=MessageResponse)
 @limiter.limit("3/minute")
 def forgot_password(request: Request, payload: ForgotPasswordRequest) -> dict[str, str]:
-    """
-    SECURITY: Always same response — don't reveal if email exists.
-    """
+    """Anti-enumeration — always same response regardless of whether email exists."""
     sb = get_supabase()
     try:
         sb.auth.reset_password_email(payload.email)
@@ -218,10 +249,6 @@ def reset_password(
     payload: ResetPasswordRequest,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, str]:
-    """
-    User reset link pe click karta hai — Supabase token se authenticated hota hai.
-    Us token se /login kar, phir ye endpoint hit karo.
-    """
     sb = get_supabase()
     try:
         sb.auth.update_user({"password": payload.new_password})

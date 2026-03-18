@@ -1,3 +1,10 @@
+"""
+Users Router
+=============
+Changes from original:
+  All .single() → .maybe_single() throughout.
+  UserRepository used for get_me / update_me (cleaner).
+"""
 import logging
 from typing import Any
 from uuid import UUID
@@ -9,6 +16,7 @@ from postgrest.exceptions import APIError as PostgrestError
 
 from app.dependencies import get_current_user, require_admin
 from app.supabase_client import get_admin_supabase
+from app.repositories.user_repo import UserRepository
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -27,7 +35,7 @@ class AddressCreate(BaseModel):
     city: str = Field(max_length=100)
     state: str | None = Field(default=None, max_length=100)
     postal_code: str = Field(max_length=20)
-    country: str = Field(min_length=2, max_length=2)  # ISO 3166-1 alpha-2
+    country: str = Field(min_length=2, max_length=2)
     is_default: bool = False
 
 
@@ -48,13 +56,13 @@ def update_me(
     payload: ProfileUpdate,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    sb = get_admin_supabase()
-    user_id: str = current["profile"]["id"]
+    sb   = get_admin_supabase()
+    repo = UserRepository(sb)
     data = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not data:
         return current["profile"]
-    result = sb.table("users").update(data).eq("id", user_id).execute()
-    return result.data[0] if result.data else current["profile"]
+    updated = repo.update_profile(current["profile"]["id"], data)
+    return updated or current["profile"]
 
 
 # ── Addresses ─────────────────────────────────────────────────────────────────
@@ -80,8 +88,8 @@ def add_address(
     payload: AddressCreate,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    sb = get_admin_supabase()
-    user_id: str = current["profile"]["id"]
+    sb      = get_admin_supabase()
+    user_id = current["profile"]["id"]
 
     count_res = (
         sb.table("addresses")
@@ -111,20 +119,20 @@ def delete_address(
     address_id: UUID,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> None:
-    sb = get_admin_supabase()
-    user_id: str = current["profile"]["id"]
+    sb      = get_admin_supabase()
+    user_id = current["profile"]["id"]
 
     existing = (
         sb.table("addresses")
         .select("id")
         .eq("id", str(address_id))
         .eq("user_id", user_id)
+        .maybe_single()   # ← was missing, plain .execute().data check is fine but explicit is better
         .execute()
     )
     if not existing.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Address not found")
 
-    # Active order check
     active = (
         sb.table("orders")
         .select("id")
@@ -183,10 +191,7 @@ def admin_update_user(
 
     data = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No fields to update",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields to update")
 
     result = sb.table("users").update(data).eq("id", str(user_id)).execute()
     if not result.data:

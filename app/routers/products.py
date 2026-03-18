@@ -1,3 +1,10 @@
+"""
+Products Router
+================
+Changes from original:
+  All .single() → .maybe_single() — no PGRST116 on missing rows.
+  Rest of logic preserved — already well-structured.
+"""
 import io
 import logging
 from decimal import Decimal
@@ -57,7 +64,7 @@ class ProductCreate(BaseModel):
     def compare_must_exceed_price(self) -> "ProductCreate":
         if self.compare_price and self.price:
             if self.compare_price <= self.price:
-                raise ValueError("compare_price must be greater than price (it's the original/strikethrough price)")
+                raise ValueError("compare_price must be greater than price")
         return self
 
 
@@ -109,7 +116,7 @@ def delete_category(category_id: UUID) -> None:
     if (active.count or 0) > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot delete — category has active products. Reassign or deactivate them first.",
+            detail="Cannot delete — category has active products.",
         )
     sb.table("categories").update({"is_active": False}).eq("id", str(category_id)).execute()
 
@@ -129,12 +136,23 @@ def list_products(
     sb = get_admin_supabase()
     q = (
         sb.table("products")
-        .select("id, name, slug, description, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, is_active, created_at, categories(name, slug)", count="exact")
+        .select(
+            "id, name, slug, description, short_description, sku, category_id, "
+            "price, compare_price, stock, low_stock_threshold, weight_grams, "
+            "image_url, is_active, created_at, categories(name, slug)",
+            count="exact",
+        )
         .eq("is_active", True)
     )
 
     if category:
-        cat = sb.table("categories").select("id").eq("slug", category).single().execute()
+        cat = (
+            sb.table("categories")
+            .select("id")
+            .eq("slug", category)
+            .maybe_single()   # ← was .single()
+            .execute()
+        )
         if cat.data:
             q = q.eq("category_id", cat.data["id"])
 
@@ -172,7 +190,7 @@ def get_product(slug: str) -> dict[str, Any]:
         .select("*, categories(name, slug), product_images(*)")
         .eq("slug", slug)
         .eq("is_active", True)
-        .single()
+        .maybe_single()   # ← was .single()
         .execute()
     )
     if not result.data:
@@ -184,7 +202,6 @@ def get_product(slug: str) -> dict[str, Any]:
 def create_product(payload: ProductCreate) -> dict[str, Any]:
     sb = get_admin_supabase()
 
-    # Slug uniqueness check
     existing = sb.table("products").select("id").eq("slug", payload.slug).execute()
     if existing.data:
         raise HTTPException(
@@ -192,7 +209,6 @@ def create_product(payload: ProductCreate) -> dict[str, Any]:
             detail=f"Product with slug '{payload.slug}' already exists",
         )
 
-    # SKU uniqueness check
     if payload.sku:
         existing_sku = sb.table("products").select("id").eq("sku", payload.sku).execute()
         if existing_sku.data:
@@ -228,8 +244,6 @@ def delete_product(product_id: UUID) -> None:
     sb.table("products").update({"is_active": False}).eq("id", str(product_id)).execute()
 
 
-# ── Image Upload ──────────────────────────────────────────────────────────────
-
 @router.post("/products/{product_id}/image", dependencies=[Depends(require_admin)])
 async def upload_product_image(
     product_id: UUID,
@@ -247,7 +261,13 @@ async def upload_product_image(
         )
 
     sb = get_admin_supabase()
-    product = sb.table("products").select("id").eq("id", str(product_id)).single().execute()
+    product = (
+        sb.table("products")
+        .select("id")
+        .eq("id", str(product_id))
+        .maybe_single()   # ← was .single()
+        .execute()
+    )
     if not product.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
