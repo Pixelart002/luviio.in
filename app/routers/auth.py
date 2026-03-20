@@ -2,17 +2,9 @@
 Auth Router
 ============
 Changes from original:
-  1. register() — now defensively creates profile row after sign_up()
-     Reason: auth trigger (handle_new_user) is not guaranteed to fire
-             immediately in all Supabase plan tiers / edge cases
-  2. Anti-enumeration preserved — same response regardless of outcome
-  3. Idempotency: profile upsert uses ON CONFLICT DO NOTHING
-
-LLD concepts applied:
-  Idempotency          → register is safe to retry; profile upsert is idempotent
-  Defensive Programming → don't trust the DB trigger; create profile ourselves too
-  Timing Attack Mitigation → constant response time on login
-  Anti-Enumeration     → register/forgot-password never reveal email existence
+  1. send_welcome_email() added after successful registration
+  2. Anti-enumeration preserved
+  3. Timing attack mitigation on login
 """
 import logging
 import time
@@ -99,21 +91,18 @@ class MessageResponse(BaseModel):
 @limiter.limit("5/minute")
 def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
     """
-    SECURITY: Anti-enumeration — always returns same message.
-
+    Anti-enumeration — always returns same message.
     Flow:
       1. sign_up() with Supabase Auth
-      2. If user created, defensively upsert profile row
-         (don't rely solely on DB trigger — not guaranteed in all scenarios)
-      3. If duplicate AuthApiError → still return same message (anti-enum)
-
-    Idempotency: upsert_profile uses ON CONFLICT DO NOTHING — safe to retry.
+      2. Defensively upsert profile row
+      3. Send welcome email via Resend (non-fatal)
     """
-    sb  = get_supabase()
-    adm = get_admin_supabase()
+    sb   = get_supabase()
+    adm  = get_admin_supabase()
     repo = UserRepository(adm)
 
     auth_user_id: str | None = None
+    user_name: str = payload.full_name or ""
 
     try:
         result = sb.auth.sign_up({
@@ -126,7 +115,6 @@ def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
 
     except AuthApiError as e:
         logger.info("Register AuthApiError (likely duplicate): %s", e.code)
-        # Anti-enumeration: same response even for duplicates
 
     except Exception as e:
         logger.error("Registration service error: %s", e)
@@ -135,7 +123,7 @@ def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
             detail="Registration service unavailable. Please try again later.",
         )
 
-    # Defensive profile creation — don't trust the trigger alone
+    # ── Defensive profile creation ────────────────────────────────────────────
     if auth_user_id:
         try:
             repo.upsert_profile(
@@ -144,8 +132,15 @@ def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
                 full_name=payload.full_name or "",
             )
         except Exception as e:
-            # Non-fatal — trigger will retry, or get_current_user will auto-create on first login
             logger.warning("Profile upsert after register failed (non-critical): %s", e)
+
+        # ── Welcome email via Resend ──────────────────────────────────────────
+        try:
+            from app.utils.email import send_welcome_email
+            send_welcome_email(payload.email, user_name)
+        except Exception as e:
+            # Non-fatal — registration still succeeds
+            logger.warning("Welcome email failed (non-critical): %s", e)
 
     return {"message": "If this email is new, a confirmation link has been sent."}
 
@@ -235,7 +230,7 @@ def logout(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, str
 @router.post("/forgot-password", response_model=MessageResponse)
 @limiter.limit("3/minute")
 def forgot_password(request: Request, payload: ForgotPasswordRequest) -> dict[str, str]:
-    """Anti-enumeration — always same response regardless of whether email exists."""
+    """Anti-enumeration — always same response."""
     sb = get_supabase()
     try:
         sb.auth.reset_password_email(payload.email)

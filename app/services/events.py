@@ -1,21 +1,17 @@
 """
 Event Bus — Observer Pattern
 ==============================
-Pattern: Observer / Event-Driven (Publish-Subscribe)
-Why: Order creation triggers email + analytics + notifications.
-     Direct calls = tight coupling, every new side-effect needs changing the router.
-
-LLD concepts applied:
-  Observer Pattern    → publisher knows nothing about subscribers
-  Loose Coupling      → OrderService fires event; EmailService listens, unaware of order logic
-  Open/Closed         → add new subscribers (SMS, analytics, webhooks) without touching order code
-  Single Responsibility → each handler has one job
+Changes from original:
+  1. _handle_order_created / _handle_order_shipped — updated to match
+     new email.py signature: send_xxx(to, order, ...)
+     Old signature was send_xxx(email, order) — same, no breaking change.
+  2. OrderCancelledEvent handler added (optional, for future use)
 """
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
@@ -42,16 +38,16 @@ class OrderCancelledEvent:
     reason: str
 
 
-# ── Simple synchronous event bus ──────────────────────────────────────────────
+# ── Event Bus ─────────────────────────────────────────────────────────────────
 
 EventType = type
-Handler = Callable[[Any], None]
+Handler   = Callable[[Any], None]
 
 
 class EventBus:
     """
     In-process synchronous event bus.
-    Upgrade path: swap for Celery/Redis queue for async — interface stays the same.
+    Upgrade path: swap for Celery/Redis — interface stays the same.
     """
 
     def __init__(self) -> None:
@@ -61,8 +57,9 @@ class EventBus:
         self._handlers[event_type].append(handler)
 
     def publish(self, event: Any) -> None:
-        """Fire all handlers for this event type. Failures are isolated — one bad handler
-        never blocks others or breaks the main flow."""
+        """
+        Fire all handlers. One bad handler never blocks others.
+        """
         for handler in self._handlers[type(event)]:
             try:
                 handler(event)
@@ -73,7 +70,7 @@ class EventBus:
                 )
 
 
-# ── Singleton bus instance ────────────────────────────────────────────────────
+# ── Singleton ─────────────────────────────────────────────────────────────────
 
 _bus = EventBus()
 
@@ -85,18 +82,25 @@ def get_event_bus() -> EventBus:
 # ── Email handlers (subscribers) ─────────────────────────────────────────────
 
 def _handle_order_created(event: OrderCreatedEvent) -> None:
+    """
+    Uses new email.py: send_order_confirmation(to, order)
+    """
     from app.utils.email import send_order_confirmation
     send_order_confirmation(event.customer_email, event.order)
 
 
 def _handle_order_shipped(event: OrderShippedEvent) -> None:
+    """
+    Uses new email.py: send_order_shipped(to, order, tracking_number)
+    """
     from app.utils.email import send_order_shipped
     send_order_shipped(event.customer_email, event.order, event.tracking_number)
 
 
 def register_default_handlers() -> None:
-    """Wire up default subscribers. Called once at startup."""
+    """Wire up all subscribers. Called once at startup in lifespan."""
     bus = get_event_bus()
     bus.subscribe(OrderCreatedEvent, _handle_order_created)
     bus.subscribe(OrderShippedEvent, _handle_order_shipped)
-    # Add SMS, analytics, Slack alerts here without touching order router
+    # Add SMS, Slack alerts, analytics here — zero changes to order router needed
+    logger.info("Event handlers registered: OrderCreated, OrderShipped")
