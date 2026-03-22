@@ -1,20 +1,8 @@
 """
-Orders Router
-==============
-Changes from original:
-  1. Pricing via PricingStrategy — decoupled, testable, extensible
-  2. Post-order events via EventBus (Observer) — email no longer directly called
-  3. All .single() → .maybe_single() — no more 500 on 0 rows
-  4. Status transitions validated with state machine (same as before, kept)
-  5. Cleaner composition — order creation delegates to focused helpers
-
-LLD concepts applied:
-  Strategy Pattern    → StandardPricing swappable without touching this file
-  Observer Pattern    → EventBus.publish() — order router doesn't know about email
-  State Machine       → STATUS_TRANSITIONS enforces valid order status flow
-  Idempotency         → cancel is safe to call twice (idempotent guard on status)
-  Optimistic Locking  → decrement_stock RPC (stock >= qty check is atomic in DB)
-  Separation of Concerns → pricing, events, stock — each in their own module
+Orders Router — FIXED
+  BUG 1: OrderCreatedEvent mein customer_id pass nahi ho raha tha
+          → customer push kabhi deliver nahi hota tha
+  BUG 2: OrderShippedEvent mein bhi customer_id empty tha
 """
 import logging
 import re
@@ -61,8 +49,6 @@ def _sanitize_notes(notes: str | None) -> str | None:
     return re.sub(r"<[^>]+>", "", notes).strip()
 
 
-# ── Models ────────────────────────────────────────────────────────────────────
-
 class OrderItemInput(BaseModel):
     product_id: UUID
     quantity: int = Field(ge=1, le=100)
@@ -94,8 +80,6 @@ class OrderAdminUpdate(BaseModel):
         return v
 
 
-# ── Create order ──────────────────────────────────────────────────────────────
-
 @router.post("/", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 def create_order(
@@ -106,20 +90,18 @@ def create_order(
     sb = get_admin_supabase()
     user_id: str = current["profile"]["id"]
 
-    # ── Validate shipping address ─────────────────────────────────────────────
     addr_res = (
         sb.table("addresses")
         .select("*")
         .eq("id", str(payload.shipping_address_id))
         .eq("user_id", user_id)
-        .maybe_single()   # ← was .single() — fix for PGRST116
+        .maybe_single()
         .execute()
     )
     if not addr_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipping address not found")
     addr = addr_res.data
 
-    # ── Batch fetch products (N+1 fix — single query) ─────────────────────────
     product_ids = [str(item.product_id) for item in payload.items]
     try:
         prods_res = (
@@ -137,7 +119,6 @@ def create_order(
 
     prod_map: dict[str, dict[str, Any]] = {p["id"]: p for p in prods_res.data}
 
-    # ── Validate stock (pre-check) ────────────────────────────────────────────
     validated: list[tuple[OrderItemInput, dict[str, Any]]] = []
     for item_in in payload.items:
         prod = prod_map.get(str(item_in.product_id))
@@ -153,9 +134,6 @@ def create_order(
             )
         validated.append((item_in, prod))
 
-    # ── Atomic stock deduct — Optimistic Locking via DB RPC ──────────────────
-    # decrement_stock RPC: UPDATE WHERE stock >= qty RETURNING stock
-    # Empty result = another request grabbed the stock first (race condition handled)
     order_items: list[dict[str, Any]] = []
     subtotal = Decimal("0")
     deducted: list[tuple[str, int]] = []
@@ -184,16 +162,13 @@ def create_order(
             restore_stock(sb, pid, qty, "create_order_rollback")
         raise
 
-    # ── Pricing via Strategy Pattern ─────────────────────────────────────────
-    # Swap StandardPricing → ZeroTaxPricing / RegionalPricing here
-    # without touching any of the code below
-    pricing  = get_default_pricing()
+    pricing   = get_default_pricing()
     breakdown = pricing.calculate(subtotal)
 
     order_data: dict[str, Any] = {
         "customer_id":           user_id,
         "shipping_address_id":   str(payload.shipping_address_id),
-        **breakdown.as_dict(),   # subtotal, shipping_cost, tax_amount, total_amount
+        **breakdown.as_dict(),
         "shipping_line1":        addr["line1"],
         "shipping_line2":        addr.get("line2"),
         "shipping_city":         addr["city"],
@@ -229,22 +204,22 @@ def create_order(
         sb.table("orders")
         .select("*, order_items(*)")
         .eq("id", order["id"])
-        .maybe_single()   # ← was .single()
+        .maybe_single()
         .execute()
         .data
     )
 
-    # ── Observer Pattern: fire event, don't call email directly ──────────────
-    # EmailService subscribes to this event — zero coupling with order logic
+    # ── FIX: customer_id ab pass ho raha hai ─────────────────────────────────
+    # Pehle yahan customer_id="" tha (default) — customer push kabhi nahi bejta tha
+    logger.info("Publishing OrderCreatedEvent | order=%s customer=%s", order["id"][:8], user_id[:8])
     get_event_bus().publish(OrderCreatedEvent(
         order=full_order,
         customer_email=current["profile"]["email"],
+        customer_id=user_id,   # ← FIX: pehle yeh missing tha
     ))
 
     return full_order
 
-
-# ── My orders ─────────────────────────────────────────────────────────────────
 
 @router.get("/my")
 def my_orders(
@@ -283,7 +258,7 @@ def get_my_order(
         .select("*, order_items(*)")
         .eq("id", str(order_id))
         .eq("customer_id", current["profile"]["id"])
-        .maybe_single()   # ← was .single()
+        .maybe_single()
         .execute()
     )
     if not result.data:
@@ -296,17 +271,13 @@ def cancel_order(
     order_id: UUID,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """
-    Idempotent cancel: if already cancelled, return 409 (not 500).
-    Status check prevents double stock restore.
-    """
     sb = get_admin_supabase()
     order_res = (
         sb.table("orders")
         .select("*, order_items(*)")
         .eq("id", str(order_id))
         .eq("customer_id", current["profile"]["id"])
-        .maybe_single()   # ← was .single()
+        .maybe_single()
         .execute()
     )
     if not order_res.data:
@@ -333,8 +304,6 @@ def cancel_order(
         .data
     )
 
-
-# ── Admin list ────────────────────────────────────────────────────────────────
 
 @router.get("/", dependencies=[Depends(require_admin)])
 def list_all_orders(
@@ -368,8 +337,6 @@ def list_all_orders(
     }
 
 
-# ── Admin update ──────────────────────────────────────────────────────────────
-
 @router.patch("/{order_id}", dependencies=[Depends(require_admin)])
 def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, Any]:
     sb = get_admin_supabase()
@@ -378,7 +345,7 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
         sb.table("orders")
         .select("status, stripe_payment_intent, customer_id")
         .eq("id", str(order_id))
-        .maybe_single()   # ← was .single()
+        .maybe_single()
         .execute()
     )
     if not current_res.data:
@@ -414,7 +381,6 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
 
     data = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
 
-    # Optimistic concurrency — only update if status hasn't changed
     result = (
         sb.table("orders")
         .update(data)
@@ -428,14 +394,15 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
             detail="Order status changed by another request. Please refresh and try again.",
         )
 
-    # Observer: fire shipped event
+    # ── FIX: customer_id ab result se liya ja raha hai ───────────────────────
     if payload.status == "shipped":
         try:
             order = result.data[0]
+            customer_id = current_res.data["customer_id"]   # ← directly available
             user_res = (
                 sb.table("users")
                 .select("email")
-                .eq("id", order["customer_id"])
+                .eq("id", customer_id)
                 .maybe_single()
                 .execute()
             )
@@ -443,6 +410,7 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
                 get_event_bus().publish(OrderShippedEvent(
                     order=order,
                     customer_email=user_res.data["email"],
+                    customer_id=customer_id,   # ← FIX: pehle empty tha
                     tracking_number=payload.tracking_number,
                 ))
         except Exception as e:
