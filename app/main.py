@@ -24,6 +24,7 @@ from app.middlewares.security import (
     MaxBodySizeMiddleware,
 )
 from app.services.events import register_default_handlers
+from app.routers import push
 
 # ── Request ID context ────────────────────────────────────────────────────────
 _request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
@@ -131,6 +132,7 @@ app.include_router(users.router,    prefix=PREFIX)
 app.include_router(products.router, prefix=PREFIX)
 app.include_router(orders.router,   prefix=PREFIX)
 app.include_router(payments.router, prefix=PREFIX)
+app.include_router(push.router, prefix=PREFIX)
 
 
 @app.exception_handler(PostgrestError)
