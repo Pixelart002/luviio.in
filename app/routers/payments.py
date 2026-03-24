@@ -43,8 +43,7 @@ async def create_payment_intent(
 ):
     supabase = get_supabase()
     order_id = str(body.order_id)
-    user_id = str(current_user["id"])
-
+    user_id = str(current_user.get("sub") or current_user.get("id"))
     # Fetch order — verify ownership
     result = (
         supabase.table("orders")
