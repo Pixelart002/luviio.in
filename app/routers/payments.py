@@ -44,10 +44,14 @@ async def create_payment_intent(
     supabase = get_admin_supabase()
     order_id = str(body.order_id)
     user_id = str(current_user["profile"]["id"])
-    # Fetch order — verify ownership
+
+    # Fetch order — verify ownership + get shipping details for India compliance
     result = (
         supabase.table("orders")
-        .select("id, total_amount, status, customer_id")
+        .select(
+            "id, total_amount, status, customer_id, "
+            "shipping_line1, shipping_city, shipping_postal_code, shipping_country"
+        )
         .eq("id", order_id)
         .limit(1)
         .execute()
@@ -67,10 +71,10 @@ async def create_payment_intent(
             detail=f"Order is already {order['status']}. Cannot create payment."
         )
 
-    # Amount in paise (INR smallest unit) — total_amount stored as float/decimal
+    # Amount in paise (INR smallest unit)
     amount_in_paise = int(float(order["total_amount"]) * 100)
 
-    if amount_in_paise < 50:  # Stripe minimum ₹0.50
+    if amount_in_paise < 50:
         raise HTTPException(status_code=400, detail="Order amount too small for payment")
 
     try:
@@ -79,6 +83,16 @@ async def create_payment_intent(
             currency="inr",
             # ✅ Required for Indian Stripe accounts (RBI regulation)
             description=f"Order #{order_id[:8].upper()} - Luviio Store",
+            # ✅ Required for India export compliance
+            shipping={
+                "name": current_user["profile"].get("full_name") or current_user["profile"]["email"],
+                "address": {
+                    "line1": order.get("shipping_line1") or "N/A",
+                    "city": order.get("shipping_city") or "N/A",
+                    "postal_code": order.get("shipping_postal_code") or "N/A",
+                    "country": order.get("shipping_country") or "IN",
+                },
+            },
             metadata={
                 "order_id": order_id,
                 "user_id": user_id,
@@ -128,7 +142,7 @@ async def stripe_webhook(
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid webhook payload")
 
-    supabase = get_admin_supabase()   
+    supabase = get_admin_supabase()
 
     # ── payment_intent.succeeded ──────────────────────────────────────────────
     if event["type"] == "payment_intent.succeeded":
@@ -150,7 +164,6 @@ async def stripe_webhook(
 
         if order_id:
             logger.warning(f"Payment failed for order {order_id}: {failure_msg}")
-            # Don't cancel order — user may retry
 
     # ── charge.refunded ───────────────────────────────────────────────────────
     elif event["type"] == "charge.refunded":
