@@ -6,7 +6,7 @@ import logging
 
 from app.dependencies import get_current_user
 from app.config import settings
-from app.supabase_client import get_supabase
+from app.supabase_client import get_admin_supabase
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -41,9 +41,9 @@ async def create_payment_intent(
     body: CreatePaymentIntentRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    supabase = get_supabase()
+    supabase = get_admin_supabase()
     order_id = str(body.order_id)
-    user_id = str(current_user.get("sub") or current_user.get("id"))
+    user_id = str(current_user["profile"]["id"])
     # Fetch order — verify ownership
     result = (
         supabase.table("orders")
@@ -128,7 +128,7 @@ async def stripe_webhook(
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid webhook payload")
 
-    supabase = get_supabase()
+    supabase = get_admin_supabase()   
 
     # ── payment_intent.succeeded ──────────────────────────────────────────────
     if event["type"] == "payment_intent.succeeded":
