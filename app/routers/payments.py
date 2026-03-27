@@ -1,22 +1,22 @@
 """
 Payments Router
-================
-FIX: Added /confirm endpoint so frontend can mark order paid
-     without relying on Stripe webhook (which needs dashboard config).
+===============
+Handles Stripe payment intents, confirmation, and webhooks.
 
 Flow:
-  1. POST /payments/create-intent  → Stripe PaymentIntent banao
+  1. POST /payments/create-intent  → Create Stripe PaymentIntent
   2. Frontend: stripe.confirmCardPayment()
-  3. POST /payments/confirm         → order ko 'paid' mark karo (NEW)
-  4. Stripe webhook (optional)      → same kaam, backup ke liye
+  3. POST /payments/confirm         → Mark order as paid (verified via Stripe)
+  4. POST /payments/webhook         → Stripe-side backup (optional)
 """
+import json
 import logging
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 from uuid import UUID
 
 import stripe
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, status
 from pydantic import BaseModel
 
 from app.config import settings
@@ -28,6 +28,8 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
 
 class PaymentIntentRequest(BaseModel):
     order_id: UUID
@@ -43,19 +45,45 @@ class ConfirmPaymentRequest(BaseModel):
     payment_intent_id: str
 
 
-# ── Create PaymentIntent ──────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _amount_to_paise(amount: Any) -> int:
+    """Convert INR amount (Decimal/float/str) to paise (smallest unit)."""
+    return int(
+        (Decimal(str(amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    )
+
+
+def _create_stripe_intent(amount_paise: int, order_id: str, user_id: str) -> stripe.PaymentIntent:
+    return stripe.PaymentIntent.create(
+        amount=amount_paise,
+        currency="inr",
+        metadata={"order_id": order_id, "user_id": user_id},
+        automatic_payment_methods={"enabled": True},
+        description=f"Luviio Order #{order_id[:8].upper()}",
+    )
+
+
+# ── POST /payments/create-intent ──────────────────────────────────────────────
 
 @router.post("/create-intent", response_model=PaymentIntentResponse)
 def create_payment_intent(
     payload: PaymentIntentRequest,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, str]:
+    """
+    Create (or reuse) a Stripe PaymentIntent for a pending order.
+    Reuses existing intent unless it was cancelled or already succeeded.
+    """
     sb = get_admin_supabase()
+    user_id: str = current["profile"]["id"]
+    order_id: str = str(payload.order_id)
+
     order_res = (
         sb.table("orders")
         .select("*")
-        .eq("id", str(payload.order_id))
-        .eq("customer_id", current["profile"]["id"])
+        .eq("id", order_id)
+        .eq("customer_id", user_id)
         .maybe_single()
         .execute()
     )
@@ -64,46 +92,33 @@ def create_payment_intent(
 
     order = order_res.data
     if order["status"] != "pending":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order is no longer payable")
-
-    # Amount in smallest currency unit
-    # INR → paise (multiply by 100)
-    amount_cents: int = int(
-        (Decimal(str(order["total_amount"])) * 100).quantize(
-            Decimal("1"), rounding=ROUND_HALF_UP
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Order is not payable (status: {order['status']})"
         )
-    )
+
+    amount_paise = _amount_to_paise(order["total_amount"])
+    existing_pi_id: str | None = order.get("stripe_payment_intent")
 
     try:
-        existing_pi_id: str | None = order.get("stripe_payment_intent")
-
         if existing_pi_id:
             intent = stripe.PaymentIntent.retrieve(existing_pi_id)
             if intent.status in ("canceled", "succeeded"):
-                intent = stripe.PaymentIntent.create(
-                    amount=amount_cents,
-                    currency="inr",
-                    metadata={"order_id": str(payload.order_id), "user_id": current["profile"]["id"]},
-                    automatic_payment_methods={"enabled": True},
-                    description=f"Luviio Order #{str(payload.order_id)[:8].upper()}",
+                logger.info(
+                    "PaymentIntent %s is %s — creating new one for order %s",
+                    existing_pi_id, intent.status, order_id[:8]
                 )
-                sb.table("orders").update(
-                    {"stripe_payment_intent": intent.id}
-                ).eq("id", str(payload.order_id)).execute()
+                intent = _create_stripe_intent(amount_paise, order_id, user_id)
+                sb.table("orders").update({"stripe_payment_intent": intent.id}).eq("id", order_id).execute()
+            else:
+                logger.info("Reusing existing PaymentIntent %s for order %s", existing_pi_id, order_id[:8])
         else:
-            intent = stripe.PaymentIntent.create(
-                amount=amount_cents,
-                currency="inr",
-                metadata={"order_id": str(payload.order_id), "user_id": current["profile"]["id"]},
-                automatic_payment_methods={"enabled": True},
-                description=f"Luviio Order #{str(payload.order_id)[:8].upper()}",
-            )
-            sb.table("orders").update(
-                {"stripe_payment_intent": intent.id}
-            ).eq("id", str(payload.order_id)).execute()
+            intent = _create_stripe_intent(amount_paise, order_id, user_id)
+            sb.table("orders").update({"stripe_payment_intent": intent.id}).eq("id", order_id).execute()
+            logger.info("Created PaymentIntent %s for order %s", intent.id, order_id[:8])
 
     except stripe.error.StripeError as e:
-        logger.error("Stripe error for order %s: %s", payload.order_id, e)
+        logger.error("Stripe error for order %s: %s", order_id[:8], e)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Payment provider error: {e.user_message}"
@@ -111,12 +126,11 @@ def create_payment_intent(
 
     return {
         "client_secret": intent.client_secret,
-        "payment_intent_id": intent.id
+        "payment_intent_id": intent.id,
     }
 
 
-# ── Confirm Payment (Frontend calls this after stripe.confirmCardPayment) ─────
-# Webhook ka backup — kaam karta hai chahe webhook configure ho ya na ho
+# ── POST /payments/confirm ────────────────────────────────────────────────────
 
 @router.post("/confirm")
 def confirm_payment(
@@ -124,19 +138,19 @@ def confirm_payment(
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
-    Frontend payment succeed hone ke baad yeh call karta hai.
-    Stripe PaymentIntent verify karta hai, phir order 'paid' mark karta hai.
-    
-    Idempotent hai — agar already paid hai toh 200 return karta hai.
+    Called by frontend after stripe.confirmCardPayment() succeeds.
+    Verifies the PaymentIntent with Stripe, then marks the order as paid.
+    Idempotent — returns 200 if already paid.
     """
     sb = get_admin_supabase()
+    user_id: str = current["profile"]["id"]
+    order_id: str = str(payload.order_id)
 
-    # Order fetch karo + ownership verify karo
     order_res = (
         sb.table("orders")
         .select("id, status, total_amount, stripe_payment_intent, customer_id")
-        .eq("id", str(payload.order_id))
-        .eq("customer_id", current["profile"]["id"])
+        .eq("id", order_id)
+        .eq("customer_id", user_id)
         .maybe_single()
         .execute()
     )
@@ -145,41 +159,36 @@ def confirm_payment(
 
     order = order_res.data
 
-    # Already paid? — idempotent
+    # Idempotency — already paid
     if order["status"] == "paid":
-        logger.info("Order %s already paid — confirm called again (idempotent)", order["id"][:8])
+        logger.info("Order %s already paid — duplicate confirm call ignored", order["id"][:8])
         return {"status": "paid", "order_id": order["id"], "message": "Order already paid"}
 
-    if order["status"] not in ("pending",):
+    if order["status"] != "pending":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot confirm payment for order with status '{order['status']}'"
         )
 
-    # Stripe se payment verify karo
+    # Demo / test mode — no real Stripe key
     if not settings.STRIPE_SECRET_KEY or settings.STRIPE_SECRET_KEY.startswith("sk_test_REPLACE"):
-        # Test/demo mode — Stripe key nahi hai, directly paid mark karo
-        logger.warning(
-            "STRIPE_SECRET_KEY not set — marking order %s paid without Stripe verification (demo mode)",
-            order["id"][:8]
-        )
+        logger.warning("STRIPE_SECRET_KEY not configured — marking order %s paid in demo mode", order["id"][:8])
         sb.table("orders").update({"status": "paid"}).eq("id", order["id"]).execute()
-        logger.info("Order %s marked PAID (demo mode, no Stripe key)", order["id"][:8])
-        return {"status": "paid", "order_id": order["id"], "message": "Order confirmed"}
+        return {"status": "paid", "order_id": order["id"], "message": "Order confirmed (demo mode)"}
 
+    # Verify PaymentIntent with Stripe
     try:
         intent = stripe.PaymentIntent.retrieve(payload.payment_intent_id)
     except stripe.error.StripeError as e:
-        logger.error("Stripe retrieve failed for order %s: %s", order["id"][:8], e)
+        logger.error("Failed to retrieve PaymentIntent %s for order %s: %s", payload.payment_intent_id, order["id"][:8], e)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Could not verify payment: {e.user_message}"
         )
 
-    # Payment succeed check karo
     if intent.status != "succeeded":
         logger.warning(
-            "PaymentIntent %s status is '%s' (not succeeded) for order %s",
+            "PaymentIntent %s status='%s' (expected 'succeeded') for order %s",
             payload.payment_intent_id, intent.status, order["id"][:8]
         )
         raise HTTPException(
@@ -187,24 +196,24 @@ def confirm_payment(
             detail=f"Payment not completed. Stripe status: {intent.status}"
         )
 
-    # Amount verify karo (fraud prevention)
+    # Amount mismatch check (fraud prevention — 50 paise tolerance)
     order_amount = float(order["total_amount"])
     stripe_amount = intent.amount / 100
-    if abs(stripe_amount - order_amount) > 0.50:  # 50 paise tolerance
+    if abs(stripe_amount - order_amount) > 0.50:
         logger.error(
-            "AMOUNT MISMATCH order=%s | expected=%.2f | stripe=%.2f",
+            "Amount mismatch for order %s | expected=%.2f | stripe=%.2f",
             order["id"][:8], order_amount, stripe_amount
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Payment amount mismatch — contact support"
+            detail="Payment amount mismatch — please contact support"
         )
 
-    # Payment intent order se match karo
+    # PaymentIntent ID must match what we stored
     stored_pi = order.get("stripe_payment_intent")
     if stored_pi and stored_pi != payload.payment_intent_id:
         logger.error(
-            "Payment intent mismatch for order %s | stored=%s | received=%s",
+            "PaymentIntent mismatch for order %s | stored=%s | received=%s",
             order["id"][:8], stored_pi, payload.payment_intent_id
         )
         raise HTTPException(
@@ -212,14 +221,11 @@ def confirm_payment(
             detail="Payment intent mismatch"
         )
 
-    # Sab verify ho gaya — order paid mark karo
+    # All checks passed — mark order paid
     sb.table("orders").update({"status": "paid"}).eq("id", order["id"]).execute()
-    logger.info(
-        "Order %s marked PAID | pi=%s | amount=%.2f",
-        order["id"][:8], payload.payment_intent_id, stripe_amount
-    )
+    logger.info("Order %s marked PAID | pi=%s | amount=%.2f INR", order["id"][:8], payload.payment_intent_id, stripe_amount)
 
-    # Payment record save karo
+    # Save payment record (non-fatal if duplicate)
     try:
         sb.table("payments").insert({
             "order_id": order["id"],
@@ -235,40 +241,39 @@ def confirm_payment(
     return {"status": "paid", "order_id": order["id"], "message": "Payment confirmed successfully"}
 
 
-# ── Stripe Webhook (optional — configure in Stripe Dashboard) ─────────────────
-# Dashboard → Developers → Webhooks → Add endpoint:
-# URL: https://your-koyeb-url.koyeb.app/api/v1/payments/webhook
-# Events: payment_intent.succeeded, payment_intent.payment_failed
+# ── POST /payments/webhook ────────────────────────────────────────────────────
+# Configure in Stripe Dashboard → Developers → Webhooks
+# URL: https://<your-app>.koyeb.app/api/v1/payments/webhook
+# Events: payment_intent.succeeded, payment_intent.payment_failed, payment_intent.canceled
 
 @router.post("/webhook")
 async def stripe_webhook(
     request: Request,
     stripe_signature: str | None = Header(None, alias="stripe-signature"),
 ) -> dict[str, str]:
+    """
+    Stripe webhook handler. Serves as a reliable backup to /confirm.
+    Verifies signature when STRIPE_WEBHOOK_SECRET is set.
+    """
     body: bytes = await request.body()
     sb = get_admin_supabase()
 
-    # Signature verify karo (agar webhook secret set hai)
     if settings.STRIPE_WEBHOOK_SECRET and stripe_signature:
         try:
-            event = stripe.Webhook.construct_event(
-                body, stripe_signature, settings.STRIPE_WEBHOOK_SECRET
-            )
+            event = stripe.Webhook.construct_event(body, stripe_signature, settings.STRIPE_WEBHOOK_SECRET)
         except (stripe.error.SignatureVerificationError, ValueError) as e:
             logger.warning("Invalid webhook signature: %s", e)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook signature")
     else:
-        # No secret — parse as-is (development only)
+        # No secret configured — parse raw (development only, insecure)
         try:
-            import json
-            event_data = json.loads(body)
-            event = event_data
+            event = json.loads(body)
         except Exception:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook payload")
 
     event_type: str = event["type"]
     pi_id: str = event["data"]["object"]["id"]
-    logger.info("Stripe webhook: %s | pi: %s", event_type, pi_id)
+    logger.info("Webhook received | type=%s | pi=%s", event_type, pi_id)
 
     if event_type == "payment_intent.succeeded":
         order_res = (
@@ -279,18 +284,21 @@ async def stripe_webhook(
             .execute()
         )
         if not order_res.data:
-            logger.warning("No order for pi: %s", pi_id)
+            logger.warning("No order found for PaymentIntent %s", pi_id)
             return {"message": "OK"}
 
         order = order_res.data
+
         if order["status"] == "paid":
-            logger.info("Order %s already paid (webhook duplicate)", order["id"][:8])
+            logger.info("Order %s already paid — webhook duplicate ignored", order["id"][:8])
             return {"message": "OK"}
 
         if order["status"] != "pending":
+            logger.warning("Order %s has unexpected status '%s' on webhook", order["id"][:8], order["status"])
             return {"message": "OK"}
 
         sb.table("orders").update({"status": "paid"}).eq("id", order["id"]).execute()
+        logger.info("Order %s marked PAID via webhook", order["id"][:8])
 
         try:
             stripe_amount = event["data"]["object"]["amount"] / 100
@@ -303,9 +311,7 @@ async def stripe_webhook(
                 "payment_method": "stripe",
             }).execute()
         except Exception as e:
-            logger.info("Webhook payment record skipped (duplicate): %s", e)
-
-        logger.info("Order %s marked paid via webhook", order["id"][:8])
+            logger.info("Webhook payment record skipped (likely duplicate): %s", e)
 
     elif event_type in ("payment_intent.payment_failed", "payment_intent.canceled"):
         order_res = (
@@ -319,11 +325,15 @@ async def stripe_webhook(
             return {"message": "OK"}
 
         order = order_res.data
+
         for item in order.get("order_items", []):
             if item.get("product_id"):
                 restore_stock(sb, item["product_id"], item["quantity"], f"webhook_{event_type}")
 
         sb.table("orders").update({"status": "cancelled"}).eq("id", order["id"]).execute()
-        logger.info("Order %s cancelled via webhook: %s", order["id"][:8], event_type)
+        logger.info("Order %s cancelled via webhook | event=%s", order["id"][:8], event_type)
+
+    else:
+        logger.debug("Unhandled webhook event type: %s", event_type)
 
     return {"message": "OK"}
