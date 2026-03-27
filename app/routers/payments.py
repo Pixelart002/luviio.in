@@ -47,6 +47,22 @@ class ConfirmPaymentRequest(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _get_user_id(current_user: dict[str, Any]) -> str:
+    """Safely extract user_id from the current user object/token payload."""
+    # Agar profile dictionary mein id hai
+    if "profile" in current_user and isinstance(current_user["profile"], dict) and "id" in current_user["profile"]:
+        return str(current_user["profile"]["id"])
+    # Agar root level par id hai
+    if "id" in current_user:
+        return str(current_user["id"])
+    # Agar JWT token payload hai toh sub hoga
+    if "sub" in current_user:
+        return str(current_user["sub"])
+        
+    logger.error(f"Cannot find user ID in: {current_user}")
+    raise HTTPException(status_code=401, detail="User ID not found in session")
+
+
 def _amount_to_paise(amount: Any) -> int:
     """Convert INR amount (Decimal/float/str) to paise (smallest unit)."""
     return int(
@@ -76,7 +92,9 @@ def create_payment_intent(
     Reuses existing intent unless it was cancelled or already succeeded.
     """
     sb = get_admin_supabase()
-    user_id: str = current["profile"]["id"]
+    
+    # [FIX] Safely get user ID
+    user_id: str = _get_user_id(current)
     order_id: str = str(payload.order_id)
 
     order_res = (
@@ -143,7 +161,9 @@ def confirm_payment(
     Idempotent — returns 200 if already paid.
     """
     sb = get_admin_supabase()
-    user_id: str = current["profile"]["id"]
+    
+    # [FIX] Safely get user ID
+    user_id: str = _get_user_id(current)
     order_id: str = str(payload.order_id)
 
     order_res = (
