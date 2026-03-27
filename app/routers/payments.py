@@ -49,13 +49,10 @@ class ConfirmPaymentRequest(BaseModel):
 
 def _get_user_id(current_user: dict[str, Any]) -> str:
     """Safely extract user_id from the current user object/token payload."""
-    # Agar profile dictionary mein id hai
     if "profile" in current_user and isinstance(current_user["profile"], dict) and "id" in current_user["profile"]:
         return str(current_user["profile"]["id"])
-    # Agar root level par id hai
     if "id" in current_user:
         return str(current_user["id"])
-    # Agar JWT token payload hai toh sub hoga
     if "sub" in current_user:
         return str(current_user["sub"])
         
@@ -93,19 +90,25 @@ def create_payment_intent(
     """
     sb = get_admin_supabase()
     
-    # [FIX] Safely get user ID
+    # [FIX 1] Safely get user ID
     user_id: str = _get_user_id(current)
     order_id: str = str(payload.order_id)
 
-    order_res = (
-        sb.table("orders")
-        .select("*")
-        .eq("id", order_id)
-        .eq("customer_id", user_id)
-        .maybe_single()
-        .execute()
-    )
-    if not order_res.data:
+    try:
+        order_res = (
+            sb.table("orders")
+            .select("*")
+            .eq("id", order_id)
+            .eq("customer_id", user_id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as e:
+        logger.error(f"Database error while fetching order {order_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error fetching order from database")
+
+    # [FIX 2] Safe check for order_res and order_res.data
+    if not order_res or not hasattr(order_res, "data") or not order_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
     order = order_res.data
@@ -162,7 +165,7 @@ def confirm_payment(
     """
     sb = get_admin_supabase()
     
-    # [FIX] Safely get user ID
+    # [FIX 1] Safely get user ID
     user_id: str = _get_user_id(current)
     order_id: str = str(payload.order_id)
 
@@ -174,7 +177,9 @@ def confirm_payment(
         .maybe_single()
         .execute()
     )
-    if not order_res.data:
+    
+    # [FIX 2] Safe check for order_res and order_res.data
+    if not order_res or not hasattr(order_res, "data") or not order_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
     order = order_res.data
@@ -262,9 +267,6 @@ def confirm_payment(
 
 
 # ── POST /payments/webhook ────────────────────────────────────────────────────
-# Configure in Stripe Dashboard → Developers → Webhooks
-# URL: https://<your-app>.koyeb.app/api/v1/payments/webhook
-# Events: payment_intent.succeeded, payment_intent.payment_failed, payment_intent.canceled
 
 @router.post("/webhook")
 async def stripe_webhook(
@@ -285,7 +287,6 @@ async def stripe_webhook(
             logger.warning("Invalid webhook signature: %s", e)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook signature")
     else:
-        # No secret configured — parse raw (development only, insecure)
         try:
             event = json.loads(body)
         except Exception:
@@ -303,7 +304,9 @@ async def stripe_webhook(
             .maybe_single()
             .execute()
         )
-        if not order_res.data:
+        
+        # [FIX 2] Safe check applied
+        if not order_res or not hasattr(order_res, "data") or not order_res.data:
             logger.warning("No order found for PaymentIntent %s", pi_id)
             return {"message": "OK"}
 
@@ -341,7 +344,9 @@ async def stripe_webhook(
             .maybe_single()
             .execute()
         )
-        if not order_res.data or order_res.data["status"] != "pending":
+        
+        # [FIX 2] Safe check applied
+        if not order_res or not hasattr(order_res, "data") or not order_res.data or order_res.data["status"] != "pending":
             return {"message": "OK"}
 
         order = order_res.data
