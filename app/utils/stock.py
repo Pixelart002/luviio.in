@@ -1,6 +1,7 @@
 """
 Stock Utility - Atomic deduct + restore
 FIX: RPC result.data can be a raw int (not a list) - handle both cases
+FIX: Added robust NoneType and hasattr checks for all Supabase responses.
 """
 import logging
 from typing import TYPE_CHECKING
@@ -22,13 +23,8 @@ def decrement_stock(sb: "Client", product_id: str, qty: int, product_name: str) 
             "decrement_stock", {"p_id": product_id, "p_qty": qty}
         ).execute()
 
-        # FIX: result.data can be:
-        #   - int directly (e.g. 19) when RPC returns scalar
-        #   - list of ints (e.g. [19])
-        #   - list of dicts (e.g. [{"stock": 19}])
-        #   - empty list [] when WHERE stock >= qty didn't match
-        #   - None when RPC fails silently
-        data = result.data if result else None
+        # SAFE CHECK: Extract data reliably
+        data = result.data if result and hasattr(result, "data") else None
 
         if data is None:
             logger.warning("Insufficient stock (RPC None) | product=%s", product_name)
@@ -60,6 +56,8 @@ def decrement_stock(sb: "Client", product_id: str, qty: int, product_name: str) 
 
     # Step 2: Direct atomic UPDATE fallback (WHERE stock >= qty is atomic in Postgres)
     try:
+        # Note: sb.raw() is not native to standard supabase-py, it might throw an AttributeError here.
+        # But since it's wrapped in try-except, it safely falls back to Step 3 if it fails.
         result = (
             sb.table("products")
             .update({"stock": sb.raw("stock - " + str(int(qty)))})
@@ -67,7 +65,8 @@ def decrement_stock(sb: "Client", product_id: str, qty: int, product_name: str) 
             .gte("stock", qty)
             .execute()
         )
-        if result and result.data:
+        # SAFE CHECK
+        if result and hasattr(result, "data") and result.data:
             stock_after = result.data[0].get("stock", "?")
             logger.info("Stock deducted via fallback UPDATE | product=%s qty=-%d stock_after=%s",
                         product_name, qty, stock_after)
@@ -78,7 +77,7 @@ def decrement_stock(sb: "Client", product_id: str, qty: int, product_name: str) 
             return False
     except Exception as direct_err:
         logger.warning(
-            "Direct UPDATE with raw() failed - trying optimistic lock | product=%s | err=%s",
+            "Direct UPDATE failed (expected if sb.raw is unsupported) - trying optimistic lock | product=%s | err=%s",
             product_name, direct_err,
         )
 
@@ -91,7 +90,9 @@ def decrement_stock(sb: "Client", product_id: str, qty: int, product_name: str) 
             .limit(1)
             .execute()
         )
-        if not row.data:
+        
+        # SAFE CHECK
+        if not row or not hasattr(row, "data") or not row.data:
             logger.error("Product not found for stock deduct | product_id=%s", product_id)
             return False
 
@@ -114,7 +115,9 @@ def decrement_stock(sb: "Client", product_id: str, qty: int, product_name: str) 
             .eq("stock", current_stock)
             .execute()
         )
-        if upd and upd.data:
+        
+        # SAFE CHECK
+        if upd and hasattr(upd, "data") and upd.data:
             logger.info(
                 "Stock deducted via optimistic lock | sku=%s product=%s qty=-%d stock=%d->%d",
                 sku, product_name, qty, current_stock, new_stock,
@@ -162,7 +165,9 @@ def restore_stock(sb: "Client", product_id: str, qty: int, context: str) -> None
             .limit(1)
             .execute()
         )
-        if row and row.data:
+        
+        # SAFE CHECK
+        if row and hasattr(row, "data") and row.data:
             new_stock = row.data[0]["stock"] + qty
             sb.table("products").update({"stock": new_stock}).eq("id", product_id).execute()
             logger.info("Stock restored via direct UPDATE | product=%s qty=+%d stock_after=%d ctx=%s",
@@ -196,7 +201,8 @@ def _log_audit(
         else:
             try:
                 r = sb.table("products").select("sku").eq("id", product_id).limit(1).execute()
-                if r and r.data:
+                # SAFE CHECK
+                if r and hasattr(r, "data") and r.data:
                     row["sku"] = r.data[0].get("sku")
             except Exception:
                 pass

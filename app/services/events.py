@@ -9,12 +9,15 @@ Email budget saved:
   Before: 4 emails per order lifecycle
   After:  1 email per order (confirmation only)
   Everything else → Push (instant + free)
+  
+FIXED: Added `(event.order or {})` safe fallbacks to prevent NoneType attribute crashes.
+FIXED: Moved variable extractions inside try-except blocks for full safety.
 """
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
@@ -97,8 +100,16 @@ def get_event_bus() -> EventBus:
 
 def _email_order_confirmation(event: OrderCreatedEvent) -> None:
     """EMAIL — user expects this immediately after placing order."""
-    from app.utils.email import send_order_confirmation
-    send_order_confirmation(event.customer_email, event.order)
+    try:
+        # Safe check just in case order is missing
+        if not event.order:
+            logger.warning("Order data missing in OrderCreatedEvent, skipping email.")
+            return
+            
+        from app.utils.email import send_order_confirmation
+        send_order_confirmation(event.customer_email, event.order)
+    except Exception as e:
+        logger.error("Email order confirmation failed: %s", e)
 
 
 # ── PUSH — admin alerts ───────────────────────────────────────────────────────
@@ -109,8 +120,12 @@ def _push_new_order_admin(event: OrderCreatedEvent) -> None:
         from app.supabase_client import get_admin_supabase
         from app.utils.push import broadcast_push_to_admins
         sb  = get_admin_supabase()
-        oid = str(event.order.get("id", ""))[:8].upper()
-        amt = event.order.get("total_amount", 0)
+        
+        # SAFE EXTRACT: Use (event.order or {})
+        safe_order = event.order or {}
+        oid = str(safe_order.get("id", "UNKNOWN"))[:8].upper()
+        amt = safe_order.get("total_amount", 0)
+        
         broadcast_push_to_admins(
             sb,
             title="🛒 New Order Received",
@@ -129,13 +144,18 @@ def _push_order_shipped(event: OrderShippedEvent) -> None:
         from app.supabase_client import get_admin_supabase
         from app.utils.push import send_push_to_user
         sb  = get_admin_supabase()
-        oid = str(event.order.get("id", ""))[:8].upper()
+        
+        # SAFE EXTRACT
+        safe_order = event.order or {}
+        oid = str(safe_order.get("id", "UNKNOWN"))[:8].upper()
+        
         body = f"Order #{oid} is on the way!"
         if event.tracking_number:
             body += f" Tracking: {event.tracking_number}"
+            
         send_push_to_user(
             sb,
-            user_id=event.customer_id or event.order.get("customer_id", ""),
+            user_id=event.customer_id or safe_order.get("customer_id", ""),
             title="📦 Your order has shipped!",
             body=body,
             url="/orders.html",
@@ -163,11 +183,15 @@ def _push_order_status(event: OrderStatusChangedEvent) -> None:
     if event.new_status not in icons:
         return
 
-    oid = str(event.order.get("id", ""))[:8].upper()
     try:
         from app.supabase_client import get_admin_supabase
         from app.utils.push import send_push_to_user
         sb = get_admin_supabase()
+        
+        # SAFE EXTRACT (Moved inside try block)
+        safe_order = event.order or {}
+        oid = str(safe_order.get("id", "UNKNOWN"))[:8].upper()
+        
         send_push_to_user(
             sb,
             user_id=event.customer_id,

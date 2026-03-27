@@ -2,8 +2,8 @@ import os
 from decimal import Decimal
 from typing import List
 
-from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic import field_validator, ValidationInfo
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -30,37 +30,20 @@ class Settings(BaseSettings):
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
 
-    # Order pricing as str — pydantic-settings parses env vars as str
-    # Decimal type se env parse nahi hoti, str mein rakho + property mein convert karo
-    SHIPPING_THRESHOLD_STR: str = "75.00"
-    SHIPPING_FLAT_STR: str = "9.99"
-    TAX_RATE_STR: str = "0.08"
+    # Pricing (Pydantic V2 natively handles Decimal parsing!)
+    SHIPPING_THRESHOLD: Decimal = Decimal("75.00")
+    SHIPPING_FLAT: Decimal = Decimal("9.99")
+    TAX_RATE: Decimal = Decimal("0.08")
 
-    @field_validator("SB_URL", "SB_KEY", "SB_SERVICE_ROLE_KEY")
+    @field_validator("SB_URL", "SB_KEY", "SB_SERVICE_ROLE_KEY", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET")
     @classmethod
-    def supabase_must_be_set(cls, v: str, info) -> str:
-        if os.getenv("APP_ENV", "production") != "development" and not v:
-            raise ValueError(f"{info.field_name} must be set in environment")
+    def require_keys_in_production(cls, v: str, info: ValidationInfo) -> str:
+        # FIX: Use info.data to read APP_ENV parsed from the .env file
+        app_env = info.data.get("APP_ENV", "production")
+        
+        if app_env != "development" and not v:
+            raise ValueError(f"{info.field_name} must be set in production environment")
         return v
-
-    @field_validator("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET")
-    @classmethod
-    def stripe_must_be_set(cls, v: str, info) -> str:
-        if os.getenv("APP_ENV", "production") != "development" and not v:
-            raise ValueError(f"{info.field_name} must be set in environment")
-        return v
-
-    @property
-    def SHIPPING_THRESHOLD(self) -> Decimal:
-        return Decimal(self.SHIPPING_THRESHOLD_STR)
-
-    @property
-    def SHIPPING_FLAT(self) -> Decimal:
-        return Decimal(self.SHIPPING_FLAT_STR)
-
-    @property
-    def TAX_RATE(self) -> Decimal:
-        return Decimal(self.TAX_RATE_STR)
 
     @property
     def cors_origins(self) -> List[str]:
@@ -72,12 +55,13 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.APP_ENV == "production"
 
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "case_sensitive": True,
-        "extra": "ignore",
-    }
+    # Use SettingsConfigDict for Pydantic V2 best practices
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
 
 
 settings = Settings()

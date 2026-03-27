@@ -4,6 +4,8 @@ Users Router
 Changes from original:
   All .single() → .maybe_single() throughout.
   UserRepository used for get_me / update_me (cleaner).
+  FIXED: Safe extraction of user ID via _get_user_id() to prevent KeyError crashes.
+  FIXED: Added comprehensive NoneType checks on all Supabase responses (.data and .count).
 """
 import logging
 from typing import Any
@@ -23,6 +25,23 @@ router = APIRouter(prefix="/users", tags=["Users"])
 
 MAX_ADDRESSES_PER_USER = 10
 
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _get_user_id(current_user: dict[str, Any]) -> str:
+    """Safely extract user_id from the current user object/token payload."""
+    if "profile" in current_user and isinstance(current_user["profile"], dict) and "id" in current_user["profile"]:
+        return str(current_user["profile"]["id"])
+    if "id" in current_user:
+        return str(current_user["id"])
+    if "sub" in current_user:
+        return str(current_user["sub"])
+        
+    logger.error(f"Cannot find user ID in: {current_user}")
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found in session")
+
+
+# ── Models ────────────────────────────────────────────────────────────────────
 
 class ProfileUpdate(BaseModel):
     full_name: str | None = Field(default=None, max_length=255)
@@ -48,7 +67,8 @@ class AdminUserUpdate(BaseModel):
 
 @router.get("/me")
 def get_me(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    return current["profile"]
+    # Safely return profile or current if nested profile doesn't exist
+    return current.get("profile", current)
 
 
 @router.patch("/me")
@@ -58,11 +78,16 @@ def update_me(
 ) -> dict[str, Any]:
     sb   = get_admin_supabase()
     repo = UserRepository(sb)
+    
+    # Safe user ID extraction
+    user_id = _get_user_id(current)
+    
     data = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not data:
-        return current["profile"]
-    updated = repo.update_profile(current["profile"]["id"], data)
-    return updated or current["profile"]
+        return current.get("profile", current)
+        
+    updated = repo.update_profile(user_id, data)
+    return updated or current.get("profile", current)
 
 
 # ── Addresses ─────────────────────────────────────────────────────────────────
@@ -72,15 +97,17 @@ def list_addresses(
     current: dict[str, Any] = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     sb = get_admin_supabase()
-    return (
+    user_id = _get_user_id(current)
+    
+    res = (
         sb.table("addresses")
         .select("*")
-        .eq("user_id", current["profile"]["id"])
+        .eq("user_id", user_id)
         .order("is_default", desc=True)
         .limit(MAX_ADDRESSES_PER_USER)
         .execute()
-        .data
     )
+    return res.data if res and hasattr(res, "data") and res.data else []
 
 
 @router.post("/me/addresses", status_code=status.HTTP_201_CREATED)
@@ -89,7 +116,7 @@ def add_address(
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     sb      = get_admin_supabase()
-    user_id = current["profile"]["id"]
+    user_id = _get_user_id(current)
 
     count_res = (
         sb.table("addresses")
@@ -97,7 +124,9 @@ def add_address(
         .eq("user_id", user_id)
         .execute()
     )
-    if (count_res.count or 0) >= MAX_ADDRESSES_PER_USER:
+    
+    current_count = count_res.count if count_res and hasattr(count_res, "count") and count_res.count else 0
+    if current_count >= MAX_ADDRESSES_PER_USER:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Maximum {MAX_ADDRESSES_PER_USER} addresses allowed per user",
@@ -106,12 +135,16 @@ def add_address(
     if payload.is_default:
         sb.table("addresses").update({"is_default": False}).eq("user_id", user_id).execute()
 
-    return (
+    res = (
         sb.table("addresses")
         .insert({**payload.model_dump(), "user_id": user_id})
         .execute()
-        .data[0]
     )
+    
+    if not res or not hasattr(res, "data") or not res.data:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to add address")
+        
+    return res.data[0]
 
 
 @router.delete("/me/addresses/{address_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -120,17 +153,19 @@ def delete_address(
     current: dict[str, Any] = Depends(get_current_user),
 ) -> None:
     sb      = get_admin_supabase()
-    user_id = current["profile"]["id"]
+    user_id = _get_user_id(current)
 
     existing = (
         sb.table("addresses")
         .select("id")
         .eq("id", str(address_id))
         .eq("user_id", user_id)
-        .maybe_single()   # ← was missing, plain .execute().data check is fine but explicit is better
+        .maybe_single()
         .execute()
     )
-    if not existing.data:
+    
+    # Safe check for existence
+    if not existing or not hasattr(existing, "data") or not existing.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Address not found")
 
     active = (
@@ -140,7 +175,9 @@ def delete_address(
         .in_("status", ["pending", "paid", "shipped"])
         .execute()
     )
-    if active.data:
+    
+    # Safe check for active orders
+    if active and hasattr(active, "data") and active.data:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot delete — address is used in an active order",
@@ -165,13 +202,16 @@ def list_users(
         .range(offset, offset + page_size - 1)
         .execute()
     )
-    total: int = result.count or 0
+    
+    total: int = result.count if result and hasattr(result, "count") and result.count else 0
+    items = result.data if result and hasattr(result, "data") and result.data else []
+    
     return {
-        "items":     result.data,
+        "items":     items,
         "total":     total,
         "page":      page,
         "page_size": page_size,
-        "pages":     -(-total // page_size),
+        "pages":     -(-total // page_size) if page_size > 0 else 0,
     }
 
 
@@ -182,8 +222,10 @@ def admin_update_user(
     current: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
     sb = get_admin_supabase()
+    
+    admin_id = _get_user_id(current)
 
-    if str(user_id) == str(current["profile"]["id"]) and payload.role:
+    if str(user_id) == str(admin_id) and payload.role:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You cannot change your own role",
@@ -194,6 +236,9 @@ def admin_update_user(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields to update")
 
     result = sb.table("users").update(data).eq("id", str(user_id)).execute()
-    if not result.data:
+    
+    # Safe check
+    if not result or not hasattr(result, "data") or not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        
     return result.data[0]

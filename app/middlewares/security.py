@@ -1,5 +1,7 @@
 import uuid
+import logging
 
+logger = logging.getLogger(__name__)
 
 class HideServerHeaderMiddleware:
     def __init__(self, app) -> None:
@@ -47,7 +49,14 @@ class SecurityHeadersMiddleware:
 
         async def send_with_security(message):
             if message["type"] == "http.response.start":
-                headers = list(message.get("headers", [])) + self._HEADERS
+                # Get existing header keys to prevent duplicates
+                existing_keys = {k.lower() for k, _ in message.get("headers", [])}
+                headers = list(message.get("headers", []))
+                
+                for key, value in self._HEADERS:
+                    if key not in existing_keys:
+                        headers.append((key, value))
+                        
                 message = {**message, "headers": headers}
             await send(message)
 
@@ -64,25 +73,34 @@ class MaxBodySizeMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # FIX: Skip body check for OPTIONS — preflight has no body
+        # Skip body check for OPTIONS — preflight has no body
         if scope.get("method") == "OPTIONS":
             await self.app(scope, receive, send)
             return
 
         headers = dict(scope.get("headers", []))
-        content_length = headers.get(b"content-length")
-        if content_length and int(content_length) > self.max_bytes:
-            response = b'{"detail":"Request body too large"}'
-            await send({
-                "type": "http.response.start",
-                "status": 413,
-                "headers": [
-                    (b"content-type", b"application/json"),
-                    (b"content-length", str(len(response)).encode()),
-                ],
-            })
-            await send({"type": "http.response.body", "body": response})
-            return
+        content_length_raw = headers.get(b"content-length")
+        
+        if content_length_raw:
+            try:
+                # SAFE CHECK: Handle bad actors sending non-integer content-length
+                content_length = int(content_length_raw)
+                if content_length > self.max_bytes:
+                    response = b'{"detail":"Request body too large"}'
+                    await send({
+                        "type": "http.response.start",
+                        "status": 413,
+                        "headers": [
+                            (b"content-type", b"application/json"),
+                            (b"content-length", str(len(response)).encode()),
+                        ],
+                    })
+                    await send({"type": "http.response.body", "body": response})
+                    return
+            except ValueError:
+                logger.warning("Invalid Content-Length header received.")
+                # If content-length is garbage, you can either reject or pass. 
+                # Passing it to Uvicorn will natively handle bad headers, which is safer.
 
         await self.app(scope, receive, send)
 

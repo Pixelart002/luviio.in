@@ -5,6 +5,9 @@ Changes from original:
   1. send_welcome_email() added after successful registration
   2. Anti-enumeration preserved
   3. Timing attack mitigation on login
+  4. FIXED: Safe checks for Supabase Auth responses to prevent NoneType crashes
+  5. FIXED: Safe extraction of user_id for logout to prevent KeyErrors
+  6. FIXED: Proper AuthApiError handling for refresh tokens
 """
 import logging
 import time
@@ -110,7 +113,8 @@ def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
             "password": payload.password,
             "options": {"data": {"full_name": payload.full_name or ""}},
         })
-        if result.user:
+        # SAFE CHECK: Prevent NoneType error if user requires email confirmation
+        if result and hasattr(result, "user") and result.user:
             auth_user_id = result.user.id
 
     except AuthApiError as e:
@@ -151,17 +155,21 @@ def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
     """Constant-time response — timing attack mitigation."""
     start = time.monotonic()
     sb = get_supabase()
+    result = None
 
     try:
         result = sb.auth.sign_in_with_password({
             "email": payload.email,
             "password": payload.password,
         })
-        if not result.user or not result.session:
+        
+        # SAFE CHECK: Prevent crash if user or session is missing
+        if not result or not hasattr(result, "user") or not result.user or not hasattr(result, "session") or not result.session:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",
             )
+            
     except HTTPException:
         raise
     except AuthApiError:
@@ -197,18 +205,28 @@ def refresh(request: Request, payload: RefreshRequest) -> dict[str, Any]:
     sb = get_supabase()
     try:
         result = sb.auth.refresh_session(payload.refresh_token)
-        if not result.session:
+        # SAFE CHECK
+        if not result or not hasattr(result, "session") or not result.session:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid refresh token",
             )
-    except HTTPException:
-        raise
-    except Exception:
+            
+    except AuthApiError as e:
+        logger.warning(f"AuthApiError during token refresh: {e.message}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during refresh: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+        
     return {
         "access_token":  result.session.access_token,
         "refresh_token": result.session.refresh_token,
@@ -221,9 +239,23 @@ def refresh(request: Request, payload: RefreshRequest) -> dict[str, Any]:
 def logout(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
     sb = get_admin_supabase()
     try:
-        sb.auth.admin.sign_out(current["profile"]["id"], scope="global")
+        # SAFE CHECK: Extract user ID properly (like we did in payments.py)
+        user_id = None
+        if "profile" in current and "id" in current["profile"]:
+            user_id = current["profile"]["id"]
+        elif "id" in current:
+            user_id = current["id"]
+        elif "sub" in current:
+            user_id = current["sub"]
+
+        if user_id:
+            sb.auth.admin.sign_out(user_id, scope="global")
+        else:
+            logger.warning("Logout attempted but no valid user ID found in session.")
+            
     except Exception as e:
         logger.warning("Sign out failed (non-critical): %s", e)
+        
     return {"message": "Logged out successfully"}
 
 

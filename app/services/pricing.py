@@ -81,7 +81,12 @@ class ZeroTaxPricing(PricingStrategy):
     def calculate(self, subtotal: Decimal) -> PriceBreakdown:
         shipping = Decimal("0") if subtotal >= self._threshold else self._flat
         total    = subtotal + shipping
-        return PriceBreakdown(subtotal=subtotal, shipping=shipping, tax=Decimal("0"), total=total)
+        return PriceBreakdown(
+            subtotal=subtotal, 
+            shipping=shipping, 
+            tax=Decimal("0"), 
+            total=total
+        )
 
 
 def get_default_pricing() -> PricingStrategy:

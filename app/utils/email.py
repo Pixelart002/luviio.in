@@ -51,12 +51,18 @@ def send_welcome_email(to: str, name: str) -> None:
     }
     try:
         email = resend.Emails.send(params)
-        logger.info("Welcome email sent | to=%s id=%s", to, email.get("id"))
+        
+        # Safely extract ID depending on Resend SDK version
+        email_id = email.get("id") if isinstance(email, dict) else getattr(email, "id", "unknown")
+        logger.info("Welcome email sent | to=%s id=%s", to, email_id)
     except Exception as e:
         logger.error("Welcome email failed | to=%s | %s", to, e, exc_info=True)
 
 
-def send_order_confirmation(to: str, order: dict[str, Any]) -> None:
+def send_order_confirmation(to: str, order: dict[str, Any] | None) -> None:
+    # SAFE CHECK: Prevent NoneType crash
+    order = order or {}
+    
     oid     = str(order.get("id", ""))[:8].upper()
     total   = order.get("total_amount", "0")
     status  = str(order.get("status", "pending")).capitalize()
@@ -104,12 +110,16 @@ def send_order_confirmation(to: str, order: dict[str, Any]) -> None:
     }
     try:
         email = resend.Emails.send(params)
-        logger.info("Order confirmation sent | to=%s order=%s id=%s", to, order.get("id"), email.get("id"))
+        email_id = email.get("id") if isinstance(email, dict) else getattr(email, "id", "unknown")
+        logger.info("Order confirmation sent | to=%s order=%s id=%s", to, order.get("id"), email_id)
     except Exception as e:
         logger.error("Order confirmation failed | to=%s | %s", to, e, exc_info=True)
 
 
-def send_order_shipped(to: str, order: dict[str, Any], tracking_number: str | None) -> None:
+def send_order_shipped(to: str, order: dict[str, Any] | None, tracking_number: str | None) -> None:
+    # SAFE CHECK: Prevent NoneType crash
+    order = order or {}
+    
     oid          = str(order.get("id", ""))[:8].upper()
     tracking_row = (
         f"<tr><td style='padding:10px 0;color:#888;font-size:13px;'>Tracking</td>"
@@ -143,6 +153,7 @@ def send_order_shipped(to: str, order: dict[str, Any], tracking_number: str | No
     }
     try:
         email = resend.Emails.send(params)
-        logger.info("Shipped email sent | to=%s order=%s id=%s", to, order.get("id"), email.get("id"))
+        email_id = email.get("id") if isinstance(email, dict) else getattr(email, "id", "unknown")
+        logger.info("Shipped email sent | to=%s order=%s id=%s", to, order.get("id"), email_id)
     except Exception as e:
         logger.error("Shipped email failed | to=%s | %s", to, e, exc_info=True)

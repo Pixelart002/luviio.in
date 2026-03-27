@@ -39,8 +39,10 @@ class UserRepository:
                 .limit(1)
                 .execute()
             )
-            if result is None or not result.data:
+            # Safe Check: Prevent any AttributeError
+            if not result or not hasattr(result, "data") or not result.data:
                 return None
+                
             return result.data[0]
         except Exception as e:
             logger.error("get_profile failed for user %s: %s", user_id, e)
@@ -63,10 +65,13 @@ class UserRepository:
                 )
                 .execute()
             )
-            if result and result.data:
+            # Safe Check
+            if result and hasattr(result, "data") and result.data:
                 return result.data[0]
+                
             # upsert did nothing (duplicate) — fetch existing
             return self.get_profile(user_id) or {}
+            
         except Exception as e:
             logger.error("upsert_profile failed for user %s: %s", user_id, e)
             return self.get_profile(user_id) or {}
@@ -79,8 +84,10 @@ class UserRepository:
                 .eq("id", user_id)
                 .execute()
             )
-            if result and result.data:
+            # Safe Check
+            if result and hasattr(result, "data") and result.data:
                 return result.data[0]
+                
             return None
         except Exception as e:
             logger.error("update_profile failed for user %s: %s", user_id, e)

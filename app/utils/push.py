@@ -38,14 +38,17 @@ def send_push(subscription: dict[str, Any], title: str, body: str,
     if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
         logger.warning("VAPID keys not set — push skipped")
         return False
+        
     try:
         from pywebpush import webpush, WebPushException
+        
         payload = json.dumps({
             "title": title,
             "body":  body,
             "icon":  icon,
             "url":   url,
         })
+        
         webpush(
             subscription_info=subscription,
             data=payload,
@@ -55,7 +58,15 @@ def send_push(subscription: dict[str, Any], title: str, body: str,
         logger.info("✓ Push sent | endpoint=%s... title=%s",
                     subscription.get("endpoint", "")[:40], title)
         return True
+        
     except Exception as e:
+        # We can distinguish between network errors and expired subscriptions
+        # If it's a WebPushException, it often has a response object
+        if e.__class__.__name__ == 'WebPushException':
+            if hasattr(e, 'response') and e.response and e.response.status_code in [404, 410]:
+                logger.info("Subscription expired or invalid (404/410) | endpoint=%s...", subscription.get("endpoint", "")[:20])
+                return False
+        
         logger.error("✗ Push failed | %s", e)
         return False
 
@@ -73,23 +84,34 @@ def send_push_to_user(sb_admin, user_id: str, title: str, body: str,
             .eq("user_id", user_id)
             .execute()
         )
-        if not result.data:
+        
+        # SAFE CHECK: Prevent NoneType crash
+        if not result or not hasattr(result, "data") or not result.data:
             return 0
 
         sent = 0
         dead = []   # expired subscriptions to clean up
+        
         for row in result.data:
-            sub = json.loads(row["subscription_json"])
-            ok  = send_push(sub, title, body, icon, url)
-            if ok:
-                sent += 1
-            else:
-                dead.append(sub.get("endpoint"))
+            try:
+                sub = json.loads(row["subscription_json"])
+                ok  = send_push(sub, title, body, icon, url)
+                if ok:
+                    sent += 1
+                else:
+                    dead.append(sub.get("endpoint"))
+            except json.JSONDecodeError:
+                logger.error(f"Invalid subscription JSON found for user {user_id}")
+                continue
 
-        # Clean up dead subscriptions
+        # Clean up dead subscriptions safely
         for endpoint in dead:
             if endpoint:
-                sb_admin.table("push_subscriptions").delete().eq("endpoint", endpoint).execute()
+                try:
+                    sb_admin.table("push_subscriptions").delete().eq("endpoint", endpoint).execute()
+                    logger.info("Cleaned up dead subscription | endpoint=%s...", endpoint[:20])
+                except Exception as del_err:
+                    logger.warning("Failed to clean up dead subscription | endpoint=%s... | error=%s", endpoint[:20], del_err)
 
         return sent
     except Exception as e:
@@ -108,9 +130,16 @@ def broadcast_push_to_admins(sb_admin, title: str, body: str,
             .eq("is_active", True)
             .execute()
         )
+        
+        # SAFE CHECK: Prevent NoneType crash
+        if not admins or not hasattr(admins, "data") or not admins.data:
+            logger.info("No active admins found for broadcast.")
+            return 0
+            
         total = 0
-        for admin in (admins.data or []):
+        for admin in admins.data:
             total += send_push_to_user(sb_admin, admin["id"], title, body, icon, url)
+            
         return total
     except Exception as e:
         logger.error("broadcast_push_to_admins failed | %s", e)

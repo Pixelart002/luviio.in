@@ -1,8 +1,10 @@
 """
-Orders Router — FIXED
-  BUG 1: OrderCreatedEvent mein customer_id pass nahi ho raha tha
-          → customer push kabhi deliver nahi hota tha
-  BUG 2: OrderShippedEvent mein bhi customer_id empty tha
+Orders Router
+=============
+Handles order creation, user order history, cancellations, and admin updates.
+INCLUDES FIXES FOR:
+  - Customer ID correctly passed to OrderCreatedEvent and OrderShippedEvent
+  - Safe Supabase data resolution to prevent 'NoneType' crashes
 """
 import logging
 import re
@@ -44,10 +46,13 @@ STATUS_TRANSITIONS: dict[str, set[str]] = {
 
 
 def _sanitize_notes(notes: str | None) -> str | None:
+    """Removes HTML tags and strips whitespace from notes."""
     if notes is None:
         return None
     return re.sub(r"<[^>]+>", "", notes).strip()
 
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
 
 class OrderItemInput(BaseModel):
     product_id: UUID
@@ -80,6 +85,8 @@ class OrderAdminUpdate(BaseModel):
         return v
 
 
+# ── POST /orders/ ─────────────────────────────────────────────────────────────
+
 @router.post("/", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 def create_order(
@@ -90,19 +97,26 @@ def create_order(
     sb = get_admin_supabase()
     user_id: str = current["profile"]["id"]
 
-    addr_res = (
-        sb.table("addresses")
-        .select("*")
-        .eq("id", str(payload.shipping_address_id))
-        .eq("user_id", user_id)
-        .maybe_single()
-        .execute()
-    )
-    if not addr_res.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipping address not found")
-    addr = addr_res.data
+    try:
+        addr_res = (
+            sb.table("addresses")
+            .select("*")
+            .eq("id", str(payload.shipping_address_id))
+            .eq("user_id", user_id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as e:
+        logger.error(f"Error fetching address {payload.shipping_address_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to verify address")
 
+    # SAFE CHECK: Prevents 'NoneType' object has no attribute 'data'
+    if not addr_res or not hasattr(addr_res, "data") or not addr_res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipping address not found")
+    
+    addr = addr_res.data
     product_ids = [str(item.product_id) for item in payload.items]
+    
     try:
         prods_res = (
             sb.table("products")
@@ -112,10 +126,10 @@ def create_order(
             .execute()
         )
     except PostgrestError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid product_id",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid product request format")
+
+    if not prods_res or not hasattr(prods_res, "data") or not prods_res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="One or more products could not be found.")
 
     prod_map: dict[str, dict[str, Any]] = {p["id"]: p for p in prods_res.data}
 
@@ -158,6 +172,7 @@ def create_order(
                 "subtotal":     float(line),
             })
     except HTTPException:
+        # Rollback stock deductions if something fails halfway
         for pid, qty in deducted:
             restore_stock(sb, pid, qty, "create_order_rollback")
         raise
@@ -179,7 +194,14 @@ def create_order(
     }
 
     order_res = sb.table("orders").insert(order_data).execute()
-    order     = order_res.data[0]
+    
+    if not order_res or not hasattr(order_res, "data") or not order_res.data:
+        # Restore stock if order insert fails entirely
+        for pid, qty in deducted:
+            restore_stock(sb, pid, qty, "create_order_insert_fail")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create order record")
+
+    order = order_res.data[0]
 
     for item in order_items:
         item["order_id"] = order["id"]
@@ -200,26 +222,30 @@ def create_order(
             detail="Order creation failed. Please try again.",
         )
 
-    full_order = (
+    full_order_res = (
         sb.table("orders")
         .select("*, order_items(*)")
         .eq("id", order["id"])
         .maybe_single()
         .execute()
-        .data
     )
+    full_order = full_order_res.data if full_order_res and hasattr(full_order_res, "data") else order
 
-    # ── FIX: customer_id ab pass ho raha hai ─────────────────────────────────
-    # Pehle yahan customer_id="" tha (default) — customer push kabhi nahi bejta tha
+    # Publish Event (Includes your customer_id fix)
     logger.info("Publishing OrderCreatedEvent | order=%s customer=%s", order["id"][:8], user_id[:8])
-    get_event_bus().publish(OrderCreatedEvent(
-        order=full_order,
-        customer_email=current["profile"]["email"],
-        customer_id=user_id,   # ← FIX: pehle yeh missing tha
-    ))
+    try:
+        get_event_bus().publish(OrderCreatedEvent(
+            order=full_order,
+            customer_email=current["profile"]["email"],
+            customer_id=user_id,
+        ))
+    except Exception as e:
+        logger.warning(f"Event bus failed to publish OrderCreatedEvent: {e}")
 
     return full_order
 
+
+# ── GET /orders/my ────────────────────────────────────────────────────────────
 
 @router.get("/my")
 def my_orders(
@@ -239,11 +265,11 @@ def my_orders(
     )
     total: int = result.count or 0
     return {
-        "items":     result.data,
+        "items":     result.data if result and hasattr(result, "data") else [],
         "total":     total,
         "page":      page,
         "page_size": page_size,
-        "pages":     -(-total // page_size),
+        "pages":     -(-total // page_size) if page_size > 0 else 0,
     }
 
 
@@ -261,10 +287,14 @@ def get_my_order(
         .maybe_single()
         .execute()
     )
-    if not result.data:
+    # SAFE CHECK
+    if not result or not hasattr(result, "data") or not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    
     return result.data
 
+
+# ── POST /orders/my/{order_id}/cancel ─────────────────────────────────────────
 
 @router.post("/my/{order_id}/cancel")
 def cancel_order(
@@ -280,8 +310,11 @@ def cancel_order(
         .maybe_single()
         .execute()
     )
-    if not order_res.data:
+    
+    # SAFE CHECK
+    if not order_res or not hasattr(order_res, "data") or not order_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    
     order = order_res.data
 
     if order["status"] != "pending":
@@ -295,15 +328,18 @@ def cancel_order(
             restore_stock(sb, item["product_id"], item["quantity"], f"cancel:{order_id}")
 
     sb.table("orders").update({"status": "cancelled"}).eq("id", str(order_id)).execute()
-    return (
+    
+    updated_res = (
         sb.table("orders")
         .select("*, order_items(*)")
         .eq("id", str(order_id))
         .maybe_single()
         .execute()
-        .data
     )
+    return updated_res.data if updated_res and hasattr(updated_res, "data") else {}
 
+
+# ── GET /orders/ (Admin) ──────────────────────────────────────────────────────
 
 @router.get("/", dependencies=[Depends(require_admin)])
 def list_all_orders(
@@ -329,13 +365,15 @@ def list_all_orders(
     result = q.range(offset, offset + page_size - 1).execute()
     total: int = result.count or 0
     return {
-        "items":     result.data,
+        "items":     result.data if result and hasattr(result, "data") else [],
         "total":     total,
         "page":      page,
         "page_size": page_size,
-        "pages":     -(-total // page_size),
+        "pages":     -(-total // page_size) if page_size > 0 else 0,
     }
 
+
+# ── PATCH /orders/{order_id} (Admin) ──────────────────────────────────────────
 
 @router.patch("/{order_id}", dependencies=[Depends(require_admin)])
 def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, Any]:
@@ -348,7 +386,9 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
         .maybe_single()
         .execute()
     )
-    if not current_res.data:
+    
+    # SAFE CHECK
+    if not current_res or not hasattr(current_res, "data") or not current_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
     current_status: str = current_res.data["status"]
@@ -360,7 +400,7 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
                     f"Cannot move '{current_status}' to '{payload.status}'. "
-                    f"Allowed: {allowed or 'none (terminal state)'}"
+                    f"Allowed transitions: {allowed or 'none (terminal state)'}"
                 ),
             )
 
@@ -388,17 +428,18 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
         .eq("status", current_status)
         .execute()
     )
-    if not result.data:
+    
+    if not result or not hasattr(result, "data") or not result.data:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Order status changed by another request. Please refresh and try again.",
         )
 
-    # ── FIX: customer_id ab result se liya ja raha hai ───────────────────────
+    # Publish Event (Includes your customer_id fix)
     if payload.status == "shipped":
         try:
             order = result.data[0]
-            customer_id = current_res.data["customer_id"]   # ← directly available
+            customer_id = current_res.data["customer_id"]
             user_res = (
                 sb.table("users")
                 .select("email")
@@ -406,11 +447,11 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
                 .maybe_single()
                 .execute()
             )
-            if user_res.data:
+            if user_res and hasattr(user_res, "data") and user_res.data:
                 get_event_bus().publish(OrderShippedEvent(
                     order=order,
                     customer_email=user_res.data["email"],
-                    customer_id=customer_id,   # ← FIX: pehle empty tha
+                    customer_id=customer_id,
                     tracking_number=payload.tracking_number,
                 ))
         except Exception as e:

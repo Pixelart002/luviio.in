@@ -3,6 +3,7 @@ Products Router
 ================
 Changes from original:
   All .single() → .maybe_single() — no PGRST116 on missing rows.
+  FIXED: Added robust NoneType checks for .data attributes to prevent crashes.
   Rest of logic preserved — already well-structured.
 """
 import io
@@ -94,13 +95,17 @@ class ProductUpdate(BaseModel):
 @router.get("/categories")
 def list_categories() -> list[dict[str, Any]]:
     sb = get_admin_supabase()
-    return sb.table("categories").select("*").eq("is_active", True).execute().data
+    res = sb.table("categories").select("*").eq("is_active", True).execute()
+    return res.data if res and hasattr(res, "data") and res.data else []
 
 
 @router.post("/categories", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 def create_category(payload: CategoryCreate) -> dict[str, Any]:
     sb = get_admin_supabase()
-    return sb.table("categories").insert(payload.model_dump()).execute().data[0]
+    res = sb.table("categories").insert(payload.model_dump()).execute()
+    if not res or not hasattr(res, "data") or not res.data:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create category")
+    return res.data[0]
 
 
 @router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
@@ -113,7 +118,7 @@ def delete_category(category_id: UUID) -> None:
         .eq("is_active", True)
         .execute()
     )
-    if (active.count or 0) > 0:
+    if active and hasattr(active, "count") and (active.count or 0) > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot delete — category has active products.",
@@ -146,15 +151,24 @@ def list_products(
     )
 
     if category:
-        cat = (
-            sb.table("categories")
-            .select("id")
-            .eq("slug", category)
-            .maybe_single()   # ← was .single()
-            .execute()
-        )
-        if cat.data:
-            q = q.eq("category_id", cat.data["id"])
+        try:
+            cat = (
+                sb.table("categories")
+                .select("id")
+                .eq("slug", category)
+                .maybe_single()
+                .execute()
+            )
+            # SAFE CHECK: Prevents the exact crash you saw earlier
+            if cat and hasattr(cat, "data") and cat.data:
+                q = q.eq("category_id", cat.data["id"])
+            else:
+                # If category doesn't exist, return empty immediately instead of crashing
+                return {
+                    "items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0
+                }
+        except Exception as e:
+            logger.warning(f"Error fetching category {category}: {e}")
 
     if search:
         try:
@@ -171,15 +185,21 @@ def list_products(
         q = q.gt("stock", 0)
 
     offset = (page - 1) * page_size
-    result = q.range(offset, offset + page_size - 1).execute()
-    total: int = result.count or 0
-    return {
-        "items":     result.data,
-        "total":     total,
-        "page":      page,
-        "page_size": page_size,
-        "pages":     -(-total // page_size),
-    }
+    try:
+        result = q.range(offset, offset + page_size - 1).execute()
+        total: int = result.count if result and hasattr(result, "count") and result.count else 0
+        items = result.data if result and hasattr(result, "data") and result.data else []
+        
+        return {
+            "items":     items,
+            "total":     total,
+            "page":      page,
+            "page_size": page_size,
+            "pages":     -(-total // page_size) if page_size > 0 else 0,
+        }
+    except Exception as e:
+        logger.error(f"Error listing products: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to fetch products")
 
 
 @router.get("/products/{slug}")
@@ -190,10 +210,11 @@ def get_product(slug: str) -> dict[str, Any]:
         .select("*, categories(name, slug), product_images(*)")
         .eq("slug", slug)
         .eq("is_active", True)
-        .maybe_single()   # ← was .single()
+        .maybe_single()
         .execute()
     )
-    if not result.data:
+    # SAFE CHECK
+    if not result or not hasattr(result, "data") or not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     return result.data
 
@@ -203,7 +224,7 @@ def create_product(payload: ProductCreate) -> dict[str, Any]:
     sb = get_admin_supabase()
 
     existing = sb.table("products").select("id").eq("slug", payload.slug).execute()
-    if existing.data:
+    if existing and hasattr(existing, "data") and existing.data:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Product with slug '{payload.slug}' already exists",
@@ -211,7 +232,7 @@ def create_product(payload: ProductCreate) -> dict[str, Any]:
 
     if payload.sku:
         existing_sku = sb.table("products").select("id").eq("sku", payload.sku).execute()
-        if existing_sku.data:
+        if existing_sku and hasattr(existing_sku, "data") and existing_sku.data:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Product with SKU '{payload.sku}' already exists",
@@ -221,7 +242,11 @@ def create_product(payload: ProductCreate) -> dict[str, Any]:
     data["price"] = float(data["price"])
     if data.get("compare_price"):
         data["compare_price"] = float(data["compare_price"])
-    return sb.table("products").insert(data).execute().data[0]
+        
+    res = sb.table("products").insert(data).execute()
+    if not res or not hasattr(res, "data") or not res.data:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create product")
+    return res.data[0]
 
 
 @router.patch("/products/{product_id}", dependencies=[Depends(require_admin)])
@@ -232,9 +257,12 @@ def update_product(product_id: UUID, payload: ProductUpdate) -> dict[str, Any]:
         data["price"] = float(data["price"])
     if "compare_price" in data and data["compare_price"]:
         data["compare_price"] = float(data["compare_price"])
+        
     result = sb.table("products").update(data).eq("id", str(product_id)).execute()
-    if not result.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    
+    # SAFE CHECK
+    if not result or not hasattr(result, "data") or not result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found or no changes made")
     return result.data[0]
 
 
@@ -265,10 +293,12 @@ async def upload_product_image(
         sb.table("products")
         .select("id")
         .eq("id", str(product_id))
-        .maybe_single()   # ← was .single()
+        .maybe_single()
         .execute()
     )
-    if not product.data:
+    
+    # SAFE CHECK
+    if not product or not hasattr(product, "data") or not product.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
     try:
@@ -291,11 +321,15 @@ async def upload_product_image(
     optimized: bytes = buffer.getvalue()
 
     path = f"products/{product_id}.webp"
-    sb.storage.from_("product-images").upload(
-        path, optimized, {"content-type": "image/webp", "upsert": "true"}
-    )
-    url: str = sb.storage.from_("product-images").get_public_url(path).rstrip("?")
-    sb.table("products").update({"image_url": url}).eq("id", str(product_id)).execute()
+    try:
+        sb.storage.from_("product-images").upload(
+            path, optimized, {"content-type": "image/webp", "upsert": "true"}
+        )
+        url: str = sb.storage.from_("product-images").get_public_url(path).rstrip("?")
+        sb.table("products").update({"image_url": url}).eq("id", str(product_id)).execute()
+    except Exception as e:
+        logger.error(f"Image upload to Supabase failed: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save image")
 
     logger.info("Image uploaded: product=%s path=%s", product_id, path)
     return {"image_url": url}
