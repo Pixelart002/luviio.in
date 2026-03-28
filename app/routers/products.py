@@ -4,7 +4,8 @@ Products Router
 Changes from original:
   All .single() → .maybe_single() — no PGRST116 on missing rows.
   FIXED: Added robust NoneType checks for .data attributes to prevent crashes.
-  Rest of logic preserved — already well-structured.
+  ADDED: Auto unique slug generation — no more 409 conflicts on duplicate slugs.
+         _generate_unique_slug() appends -2, -3... until a free slot is found.
 """
 import io
 import logging
@@ -35,6 +36,24 @@ _IMAGE_MAGIC: dict[bytes, str] = {
 
 def _is_real_image(data: bytes) -> bool:
     return any(data.startswith(magic) for magic in _IMAGE_MAGIC)
+
+
+# ── Slug Helper ───────────────────────────────────────────────────────────────
+
+def _generate_unique_slug(sb, base_slug: str) -> str:
+    """
+    Ensures the slug is unique in the products table.
+    If 'premium-soap' exists → tries 'premium-soap-2', 'premium-soap-3', etc.
+    Stops at first free slot.
+    """
+    slug = base_slug
+    counter = 2
+    while True:
+        existing = sb.table("products").select("id").eq("slug", slug).execute()
+        if not existing or not hasattr(existing, "data") or not existing.data:
+            return slug
+        slug = f"{base_slug}-{counter}"
+        counter += 1
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -159,14 +178,10 @@ def list_products(
                 .maybe_single()
                 .execute()
             )
-            # SAFE CHECK: Prevents the exact crash you saw earlier
             if cat and hasattr(cat, "data") and cat.data:
                 q = q.eq("category_id", cat.data["id"])
             else:
-                # If category doesn't exist, return empty immediately instead of crashing
-                return {
-                    "items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0
-                }
+                return {"items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}
         except Exception as e:
             logger.warning(f"Error fetching category {category}: {e}")
 
@@ -189,7 +204,6 @@ def list_products(
         result = q.range(offset, offset + page_size - 1).execute()
         total: int = result.count if result and hasattr(result, "count") and result.count else 0
         items = result.data if result and hasattr(result, "data") and result.data else []
-        
         return {
             "items":     items,
             "total":     total,
@@ -213,7 +227,6 @@ def get_product(slug: str) -> dict[str, Any]:
         .maybe_single()
         .execute()
     )
-    # SAFE CHECK
     if not result or not hasattr(result, "data") or not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     return result.data
@@ -223,13 +236,7 @@ def get_product(slug: str) -> dict[str, Any]:
 def create_product(payload: ProductCreate) -> dict[str, Any]:
     sb = get_admin_supabase()
 
-    existing = sb.table("products").select("id").eq("slug", payload.slug).execute()
-    if existing and hasattr(existing, "data") and existing.data:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Product with slug '{payload.slug}' already exists",
-        )
-
+    # SKU uniqueness check (slug is handled by auto-generator below)
     if payload.sku:
         existing_sku = sb.table("products").select("id").eq("sku", payload.sku).execute()
         if existing_sku and hasattr(existing_sku, "data") and existing_sku.data:
@@ -238,15 +245,27 @@ def create_product(payload: ProductCreate) -> dict[str, Any]:
                 detail=f"Product with SKU '{payload.sku}' already exists",
             )
 
+    # Auto unique slug — no manual conflict handling needed
+    unique_slug = _generate_unique_slug(sb, payload.slug)
+    if unique_slug != payload.slug:
+        logger.info("Slug '%s' taken — assigned '%s'", payload.slug, unique_slug)
+
     data = payload.model_dump()
+    data["slug"] = unique_slug
     data["price"] = float(data["price"])
     if data.get("compare_price"):
         data["compare_price"] = float(data["compare_price"])
-        
+
     res = sb.table("products").insert(data).execute()
     if not res or not hasattr(res, "data") or not res.data:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create product")
-    return res.data[0]
+
+    created = res.data[0]
+    if unique_slug != payload.slug:
+        # Inform admin the slug was changed
+        created["_slug_note"] = f"Slug '{payload.slug}' was taken — assigned '{unique_slug}'"
+
+    return created
 
 
 @router.patch("/products/{product_id}", dependencies=[Depends(require_admin)])
@@ -257,10 +276,9 @@ def update_product(product_id: UUID, payload: ProductUpdate) -> dict[str, Any]:
         data["price"] = float(data["price"])
     if "compare_price" in data and data["compare_price"]:
         data["compare_price"] = float(data["compare_price"])
-        
+
     result = sb.table("products").update(data).eq("id", str(product_id)).execute()
-    
-    # SAFE CHECK
+
     if not result or not hasattr(result, "data") or not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found or no changes made")
     return result.data[0]
@@ -268,8 +286,16 @@ def update_product(product_id: UUID, payload: ProductUpdate) -> dict[str, Any]:
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
 def delete_product(product_id: UUID) -> None:
+    """
+    Hard delete — product permanently remove hota hai.
+    UUID free ho jaata hai, slug bhi reusable ho jaata hai.
+    Note: Supabase FK constraint hai order_items.product_id → products.id
+    Agar product kisi active/paid order mein hai toh DB 409 throw karega — safe.
+    """
     sb = get_admin_supabase()
-    sb.table("products").update({"is_active": False}).eq("id", str(product_id)).execute()
+    result = sb.table("products").delete().eq("id", str(product_id)).execute()
+    if not result or not hasattr(result, "data") or not result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
 
 @router.post("/products/{product_id}/image", dependencies=[Depends(require_admin)])
@@ -296,8 +322,7 @@ async def upload_product_image(
         .maybe_single()
         .execute()
     )
-    
-    # SAFE CHECK
+
     if not product or not hasattr(product, "data") or not product.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
