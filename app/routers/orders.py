@@ -5,6 +5,7 @@ Handles order creation, user order history, cancellations, and admin updates.
 INCLUDES FIXES FOR:
   - Customer ID correctly passed to OrderCreatedEvent and OrderShippedEvent
   - Safe Supabase data resolution to prevent 'NoneType' crashes
+  - Product image_url joined via products table for order item display
 """
 import logging
 import re
@@ -30,6 +31,10 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
 MAX_ITEMS_PER_ORDER = 50
+
+# ── Select string with product image join ─────────────────────────────────────
+# products(image_url, slug) gives us the image without storing it in order_items
+ORDER_ITEMS_SELECT = "*, order_items(*, products(image_url, slug))"
 
 VALID_STATUSES: set[str] = {
     "pending", "paid", "shipped", "delivered", "cancelled", "refunded"
@@ -110,13 +115,12 @@ def create_order(
         logger.error(f"Error fetching address {payload.shipping_address_id}: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to verify address")
 
-    # SAFE CHECK: Prevents 'NoneType' object has no attribute 'data'
     if not addr_res or not hasattr(addr_res, "data") or not addr_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipping address not found")
-    
+
     addr = addr_res.data
     product_ids = [str(item.product_id) for item in payload.items]
-    
+
     try:
         prods_res = (
             sb.table("products")
@@ -172,7 +176,6 @@ def create_order(
                 "subtotal":     float(line),
             })
     except HTTPException:
-        # Rollback stock deductions if something fails halfway
         for pid, qty in deducted:
             restore_stock(sb, pid, qty, "create_order_rollback")
         raise
@@ -194,9 +197,8 @@ def create_order(
     }
 
     order_res = sb.table("orders").insert(order_data).execute()
-    
+
     if not order_res or not hasattr(order_res, "data") or not order_res.data:
-        # Restore stock if order insert fails entirely
         for pid, qty in deducted:
             restore_stock(sb, pid, qty, "create_order_insert_fail")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create order record")
@@ -222,16 +224,16 @@ def create_order(
             detail="Order creation failed. Please try again.",
         )
 
+    # Fetch full order with product images
     full_order_res = (
         sb.table("orders")
-        .select("*, order_items(*)")
+        .select(ORDER_ITEMS_SELECT)
         .eq("id", order["id"])
         .maybe_single()
         .execute()
     )
     full_order = full_order_res.data if full_order_res and hasattr(full_order_res, "data") else order
 
-    # Publish Event (Includes your customer_id fix)
     logger.info("Publishing OrderCreatedEvent | order=%s customer=%s", order["id"][:8], user_id[:8])
     try:
         get_event_bus().publish(OrderCreatedEvent(
@@ -257,7 +259,7 @@ def my_orders(
     offset = (page - 1) * page_size
     result = (
         sb.table("orders")
-        .select("*, order_items(*)", count="exact")
+        .select(ORDER_ITEMS_SELECT, count="exact")
         .eq("customer_id", current["profile"]["id"])
         .order("created_at", desc=True)
         .range(offset, offset + page_size - 1)
@@ -273,6 +275,8 @@ def my_orders(
     }
 
 
+# ── GET /orders/my/{order_id} ─────────────────────────────────────────────────
+
 @router.get("/my/{order_id}")
 def get_my_order(
     order_id: UUID,
@@ -281,16 +285,14 @@ def get_my_order(
     sb = get_admin_supabase()
     result = (
         sb.table("orders")
-        .select("*, order_items(*)")
+        .select(ORDER_ITEMS_SELECT)
         .eq("id", str(order_id))
         .eq("customer_id", current["profile"]["id"])
         .maybe_single()
         .execute()
     )
-    # SAFE CHECK
     if not result or not hasattr(result, "data") or not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
-    
     return result.data
 
 
@@ -304,17 +306,16 @@ def cancel_order(
     sb = get_admin_supabase()
     order_res = (
         sb.table("orders")
-        .select("*, order_items(*)")
+        .select(ORDER_ITEMS_SELECT)
         .eq("id", str(order_id))
         .eq("customer_id", current["profile"]["id"])
         .maybe_single()
         .execute()
     )
-    
-    # SAFE CHECK
+
     if not order_res or not hasattr(order_res, "data") or not order_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
-    
+
     order = order_res.data
 
     if order["status"] != "pending":
@@ -328,10 +329,10 @@ def cancel_order(
             restore_stock(sb, item["product_id"], item["quantity"], f"cancel:{order_id}")
 
     sb.table("orders").update({"status": "cancelled"}).eq("id", str(order_id)).execute()
-    
+
     updated_res = (
         sb.table("orders")
-        .select("*, order_items(*)")
+        .select(ORDER_ITEMS_SELECT)
         .eq("id", str(order_id))
         .maybe_single()
         .execute()
@@ -350,7 +351,7 @@ def list_all_orders(
     sb = get_admin_supabase()
     q = (
         sb.table("orders")
-        .select("*, order_items(*), users(email, full_name)", count="exact")
+        .select(f"{ORDER_ITEMS_SELECT}, users(email, full_name)", count="exact")
         .order("created_at", desc=True)
     )
     if status_filter:
@@ -386,8 +387,7 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
         .maybe_single()
         .execute()
     )
-    
-    # SAFE CHECK
+
     if not current_res or not hasattr(current_res, "data") or not current_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
@@ -428,14 +428,13 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
         .eq("status", current_status)
         .execute()
     )
-    
+
     if not result or not hasattr(result, "data") or not result.data:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Order status changed by another request. Please refresh and try again.",
         )
 
-    # Publish Event (Includes your customer_id fix)
     if payload.status == "shipped":
         try:
             order = result.data[0]
