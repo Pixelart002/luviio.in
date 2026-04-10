@@ -5,13 +5,13 @@ Changes from original:
   All .single() → .maybe_single() — no PGRST116 on missing rows.
   FIXED: Added robust NoneType checks for .data attributes to prevent crashes.
   ADDED: Auto unique slug generation — no more 409 conflicts on duplicate slugs.
-         _generate_unique_slug() appends -2, -3... until a free slot is found.
+  UPDATED: Max 10 images upload support per product.
 """
 import io
 import logging
+import uuid
 from decimal import Decimal
 from typing import Any
-from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status, Depends, Query, UploadFile, File
 from PIL import Image
@@ -33,7 +33,6 @@ _IMAGE_MAGIC: dict[bytes, str] = {
     b"RIFF":         "webp",
 }
 
-
 def _is_real_image(data: bytes) -> bool:
     return any(data.startswith(magic) for magic in _IMAGE_MAGIC)
 
@@ -41,11 +40,6 @@ def _is_real_image(data: bytes) -> bool:
 # ── Slug Helper ───────────────────────────────────────────────────────────────
 
 def _generate_unique_slug(sb, base_slug: str) -> str:
-    """
-    Ensures the slug is unique in the products table.
-    If 'premium-soap' exists → tries 'premium-soap-2', 'premium-soap-3', etc.
-    Stops at first free slot.
-    """
     slug = base_slug
     counter = 2
     while True:
@@ -78,6 +72,7 @@ class ProductCreate(BaseModel):
     low_stock_threshold: int = Field(default=10, ge=0)
     weight_grams: int | None = Field(default=None, ge=0)
     image_url: str | None = None
+    images: list[str] | None = Field(default_factory=list)  # New images array
     is_active: bool = True
 
     @model_validator(mode="after")
@@ -97,6 +92,7 @@ class ProductUpdate(BaseModel):
     stock: int | None = Field(default=None, ge=0)
     low_stock_threshold: int | None = None
     image_url: str | None = None
+    images: list[str] | None = None  # New images array
     category_id: str | None = None
     is_active: bool | None = None
     weight_grams: int | None = None
@@ -128,7 +124,7 @@ def create_category(payload: CategoryCreate) -> dict[str, Any]:
 
 
 @router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
-def delete_category(category_id: UUID) -> None:
+def delete_category(category_id: uuid.UUID) -> None:
     sb = get_admin_supabase()
     active = (
         sb.table("products")
@@ -163,7 +159,7 @@ def list_products(
         .select(
             "id, name, slug, description, short_description, sku, category_id, "
             "price, compare_price, stock, low_stock_threshold, weight_grams, "
-            "image_url, is_active, created_at, categories(name, slug)",
+            "image_url, images, is_active, created_at, categories(name, slug)",
             count="exact",
         )
         .eq("is_active", True)
@@ -171,13 +167,7 @@ def list_products(
 
     if category:
         try:
-            cat = (
-                sb.table("categories")
-                .select("id")
-                .eq("slug", category)
-                .maybe_single()
-                .execute()
-            )
+            cat = sb.table("categories").select("id").eq("slug", category).maybe_single().execute()
             if cat and hasattr(cat, "data") and cat.data:
                 q = q.eq("category_id", cat.data["id"])
             else:
@@ -188,8 +178,7 @@ def list_products(
     if search:
         try:
             q = q.text_search("fts", search)
-        except Exception as e:
-            logger.warning("FTS search failed, falling back to ilike: %s", e)
+        except Exception:
             q = q.ilike("name", f"%{search}%")
 
     if min_price is not None:
@@ -236,7 +225,6 @@ def get_product(slug: str) -> dict[str, Any]:
 def create_product(payload: ProductCreate) -> dict[str, Any]:
     sb = get_admin_supabase()
 
-    # SKU uniqueness check (slug is handled by auto-generator below)
     if payload.sku:
         existing_sku = sb.table("products").select("id").eq("sku", payload.sku).execute()
         if existing_sku and hasattr(existing_sku, "data") and existing_sku.data:
@@ -245,11 +233,7 @@ def create_product(payload: ProductCreate) -> dict[str, Any]:
                 detail=f"Product with SKU '{payload.sku}' already exists",
             )
 
-    # Auto unique slug — no manual conflict handling needed
     unique_slug = _generate_unique_slug(sb, payload.slug)
-    if unique_slug != payload.slug:
-        logger.info("Slug '%s' taken — assigned '%s'", payload.slug, unique_slug)
-
     data = payload.model_dump()
     data["slug"] = unique_slug
     data["price"] = float(data["price"])
@@ -262,14 +246,13 @@ def create_product(payload: ProductCreate) -> dict[str, Any]:
 
     created = res.data[0]
     if unique_slug != payload.slug:
-        # Inform admin the slug was changed
         created["_slug_note"] = f"Slug '{payload.slug}' was taken — assigned '{unique_slug}'"
 
     return created
 
 
 @router.patch("/products/{product_id}", dependencies=[Depends(require_admin)])
-def update_product(product_id: UUID, payload: ProductUpdate) -> dict[str, Any]:
+def update_product(product_id: uuid.UUID, payload: ProductUpdate) -> dict[str, Any]:
     sb = get_admin_supabase()
     data: dict[str, Any] = {k: v for k, v in payload.model_dump(exclude_unset=True).items()}
     if "price" in data and data["price"]:
@@ -285,76 +268,79 @@ def update_product(product_id: UUID, payload: ProductUpdate) -> dict[str, Any]:
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
-def delete_product(product_id: UUID) -> None:
-    """
-    Hard delete — product permanently remove hota hai.
-    UUID free ho jaata hai, slug bhi reusable ho jaata hai.
-    Note: Supabase FK constraint hai order_items.product_id → products.id
-    Agar product kisi active/paid order mein hai toh DB 409 throw karega — safe.
-    """
+def delete_product(product_id: uuid.UUID) -> None:
     sb = get_admin_supabase()
     result = sb.table("products").delete().eq("id", str(product_id)).execute()
     if not result or not hasattr(result, "data") or not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
 
-@router.post("/products/{product_id}/image", dependencies=[Depends(require_admin)])
-async def upload_product_image(
-    product_id: UUID,
-    file: UploadFile = File(...),
-) -> dict[str, str]:
-    contents: bytes = await file.read()
+# ── Multiple Image Upload (Max 10) ────────────────────────────────────────────
 
-    if len(contents) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Max 5MB allowed")
-
-    if not _is_real_image(contents):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid image. Only JPEG, PNG, GIF, WebP allowed.",
-        )
+@router.post("/products/{product_id}/images", dependencies=[Depends(require_admin)])
+async def upload_product_images(
+    product_id: uuid.UUID,
+    files: list[UploadFile] = File(...),
+) -> dict[str, Any]:
+    
+    if len(files) > 10:
+        raise HTTPException(status_code=400, detail="Maximum 10 images allowed per product.")
 
     sb = get_admin_supabase()
-    product = (
-        sb.table("products")
-        .select("id")
-        .eq("id", str(product_id))
-        .maybe_single()
-        .execute()
-    )
+    product = sb.table("products").select("id, images").eq("id", str(product_id)).maybe_single().execute()
 
     if not product or not hasattr(product, "data") or not product.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
-    try:
-        img = Image.open(io.BytesIO(contents))
-        if img.width * img.height > Image.MAX_IMAGE_PIXELS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Image dimensions too large. Max ~10 megapixels.",
+    existing_images = product.data.get("images") or []
+    if len(existing_images) + len(files) > 10:
+        raise HTTPException(status_code=400, detail=f"Cannot upload. You already have {len(existing_images)} images. Max limit is 10.")
+
+    uploaded_urls = []
+
+    for file in files:
+        contents: bytes = await file.read()
+
+        if len(contents) > 5 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail=f"File {file.filename} max 5MB allowed")
+
+        if not _is_real_image(contents):
+            raise HTTPException(status_code=400, detail=f"Invalid image format for {file.filename}")
+
+        try:
+            img = Image.open(io.BytesIO(contents))
+            if img.width * img.height > Image.MAX_IMAGE_PIXELS:
+                raise HTTPException(status_code=400, detail=f"Dimensions too large for {file.filename}")
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Could not process image {file.filename}")
+
+        img = img.convert("RGB")
+        img.thumbnail((800, 800))
+        buffer = io.BytesIO()
+        img.save(buffer, format="WEBP", quality=80)
+        optimized: bytes = buffer.getvalue()
+
+        # Generate unique ID for each image
+        img_id = uuid.uuid4().hex[:8]
+        path = f"products/{product_id}/{img_id}.webp"
+        
+        try:
+            sb.storage.from_("product-images").upload(
+                path, optimized, {"content-type": "image/webp", "upsert": "true"}
             )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.warning("PIL failed: %s", e)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not process image")
+            url: str = sb.storage.from_("product-images").get_public_url(path).rstrip("?")
+            uploaded_urls.append(url)
+        except Exception as e:
+            logger.error(f"Image upload failed: {e}")
+            raise HTTPException(status_code=500, detail="Failed to save images")
 
-    img = img.convert("RGB")
-    img.thumbnail((800, 800))
-    buffer = io.BytesIO()
-    img.save(buffer, format="WEBP", quality=80)
-    optimized: bytes = buffer.getvalue()
+    all_images = existing_images + uploaded_urls
+    update_data = {"images": all_images}
+    
+    # Set the first image as the main image_url if not set
+    if all_images and not product.data.get("image_url"):
+        update_data["image_url"] = all_images[0]
 
-    path = f"products/{product_id}.webp"
-    try:
-        sb.storage.from_("product-images").upload(
-            path, optimized, {"content-type": "image/webp", "upsert": "true"}
-        )
-        url: str = sb.storage.from_("product-images").get_public_url(path).rstrip("?")
-        sb.table("products").update({"image_url": url}).eq("id", str(product_id)).execute()
-    except Exception as e:
-        logger.error(f"Image upload to Supabase failed: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save image")
+    sb.table("products").update(update_data).eq("id", str(product_id)).execute()
 
-    logger.info("Image uploaded: product=%s path=%s", product_id, path)
-    return {"image_url": url}
+    return {"message": "Images uploaded successfully", "images": all_images}
