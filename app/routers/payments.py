@@ -24,6 +24,9 @@ from app.dependencies import get_current_user
 from app.supabase_client import get_admin_supabase
 from app.utils.stock import restore_stock
 
+# ── Import Event Bus for Notifications ──
+from app.events import get_event_bus, OrderStatusChangedEvent
+
 # Initialize Stripe officially
 stripe.api_key = settings.STRIPE_SECRET_KEY
 logger = logging.getLogger(__name__)
@@ -164,7 +167,7 @@ def confirm_payment(
 
     order_res = (
         sb.table("orders")
-        .select("id, status, total_amount, stripe_payment_intent, customer_id")
+        .select("*") # Selected all fields needed for full_order notification later
         .eq("id", order_id)
         .eq("customer_id", user_id)
         .maybe_single()
@@ -197,6 +200,7 @@ def confirm_payment(
             detail=f"Could not verify payment: {e.user_message or str(e)}"
         )
 
+    # 🛑 Strictly allow ONLY "succeeded" to change DB status
     if intent.status != "succeeded":
         logger.warning(f"PaymentIntent {payload.payment_intent_id} status='{intent.status}' (expected 'succeeded')")
         raise HTTPException(
@@ -221,6 +225,7 @@ def confirm_payment(
 
     # All checks passed — mark order paid
     sb.table("orders").update({"status": "paid"}).eq("id", order["id"]).execute()
+    order["status"] = "paid" # Update local object status for the event notification
     logger.info(f"Order {order['id'][:8]} marked PAID | pi={payload.payment_intent_id}")
 
     try:
@@ -234,6 +239,20 @@ def confirm_payment(
         }).execute()
     except Exception as e:
         logger.info(f"Payment record insert skipped (likely duplicate): {e}")
+
+    # ── Trigger Event Notification ──
+    try:
+        bus = get_event_bus()
+        bus.publish(
+            OrderStatusChangedEvent(
+                order=order,
+                customer_id=user_id,
+                old_status="pending",
+                new_status="paid"
+            )
+        )
+    except Exception as e:
+        logger.error(f"Failed to publish OrderStatusChangedEvent for order {order['id'][:8]}: {e}")
 
     return {"status": "paid", "order_id": order["id"], "message": "Payment confirmed successfully"}
 
@@ -290,7 +309,7 @@ async def stripe_webhook(
     if event_type == "payment_intent.succeeded":
         order_res = (
             sb.table("orders")
-            .select("id, status, total_amount")
+            .select("*") # Changed to * so we have complete data for notification
             .eq("stripe_payment_intent", pi_id)
             .maybe_single()
             .execute()
@@ -311,6 +330,7 @@ async def stripe_webhook(
             return {"message": "OK"}
 
         sb.table("orders").update({"status": "paid"}).eq("id", order["id"]).execute()
+        order["status"] = "paid" # Update locally for event
         logger.info(f"Order {order['id'][:8]} marked PAID via webhook")
 
         try:
@@ -325,6 +345,20 @@ async def stripe_webhook(
             }).execute()
         except Exception as e:
             logger.info(f"Webhook payment record skipped (likely duplicate): {e}")
+
+        # ── Trigger Event Notification from Backup Webhook ──
+        try:
+            bus = get_event_bus()
+            bus.publish(
+                OrderStatusChangedEvent(
+                    order=order,
+                    customer_id=order["customer_id"],
+                    old_status="pending",
+                    new_status="paid"
+                )
+            )
+        except Exception as e:
+            logger.error(f"Failed to publish event from webhook for order {order['id'][:8]}: {e}")
 
     elif event_type in ("payment_intent.payment_failed", "payment_intent.canceled"):
         order_res = (
