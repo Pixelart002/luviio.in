@@ -25,7 +25,7 @@ from app.supabase_client import get_admin_supabase
 from app.utils.stock import restore_stock
 
 # ── Import Event Bus for Notifications ──
-from app.events import get_event_bus, OrderStatusChangedEvent
+from app.services.events import get_event_bus, OrderStatusChangedEvent
 
 # Initialize Stripe officially
 stripe.api_key = settings.STRIPE_SECRET_KEY
