@@ -26,7 +26,7 @@ from app.utils.stock import restore_stock
 
 # ── Event Bus Imports ─────────────────────────────────────────────────────────
 from app.services.events import get_event_bus
-from app.events.orders import OrderPaidEvent, OrderCancelledEvent
+from app.routers.orders import OrderPaidEvent, OrderCancelledEvent
 from app.routers.orders import ORDER_ITEMS_SELECT  # reuse the same select string
 
 # Initialize Stripe officially
