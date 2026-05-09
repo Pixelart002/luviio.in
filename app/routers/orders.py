@@ -224,28 +224,6 @@ def create_order(
             detail="Order creation failed. Please try again.",
         )
 
-    # Fetch full order with product images
-    full_order_res = (
-        sb.table("orders")
-        .select(ORDER_ITEMS_SELECT)
-        .eq("id", order["id"])
-        .maybe_single()
-        .execute()
-    )
-    full_order = full_order_res.data if full_order_res and hasattr(full_order_res, "data") else order
-
-    logger.info("Publishing OrderCreatedEvent | order=%s customer=%s", order["id"][:8], user_id[:8])
-    try:
-        get_event_bus().publish(OrderCreatedEvent(
-            order=full_order,
-            customer_email=current["profile"]["email"],
-            customer_id=user_id,
-        ))
-    except Exception as e:
-        logger.warning(f"Event bus failed to publish OrderCreatedEvent: {e}")
-
-    return full_order
-
 
 # ── GET /orders/my ────────────────────────────────────────────────────────────
 
