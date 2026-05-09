@@ -25,7 +25,7 @@ from app.supabase_client import get_admin_supabase
 from app.utils.stock import restore_stock
 
 # ── Event Bus Imports ─────────────────────────────────────────────────────────
-from app.events.bus import get_event_bus
+from app.services.events.bus import get_event_bus
 from app.events.orders import OrderPaidEvent, OrderCancelledEvent
 from app.routers.orders import ORDER_ITEMS_SELECT  # reuse the same select string
 
