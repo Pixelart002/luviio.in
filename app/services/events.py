@@ -1,16 +1,15 @@
 """
 Event Bus — Observer Pattern + Smart Notification Routing
 ===========================================================
-Strategy:
-  EMAIL  → critical only: welcome + order confirmation
-  PUSH   → everything real-time: shipped, status, admin alerts, low stock
+Notification Flow (Updated):
+  Order Created  → Sirf Admin push 🔔 (customer ko abhi kuch nahi)
+  Order Paid     → Customer email (confirmation) + Customer push ✅
+  Order Failed   → Customer push ❌ (payment reject/cancel)
+  Order Shipped  → Customer push 📦
+  Status change  → Customer push
+  Low stock      → Admin push ⚠️
 
-Email budget saved:
-  Before: 4 emails per order lifecycle
-  After:  1 email per order (confirmation only)
-  Everything else → Push (instant + free)
-  
-FIXED: Added `(event.order or {})` safe fallbacks to prevent NoneType attribute crashes.
+FIXED: Added `(event.order or {})` safe fallbacks to prevent NoneType crashes.
 FIXED: Moved variable extractions inside try-except blocks for full safety.
 """
 from __future__ import annotations
@@ -27,9 +26,27 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class OrderCreatedEvent:
+    """Admin ko batao — customer ko kuch nahi abhi."""
     order: dict[str, Any]
     customer_email: str
     customer_id: str = ""
+
+
+@dataclass
+class OrderPaidEvent:
+    """Payment succeed hua — ab customer ko email + push bhejo."""
+    order: dict[str, Any]
+    customer_email: str
+    customer_id: str = ""
+
+
+@dataclass
+class OrderFailedEvent:
+    """Payment fail/cancel hua — customer ko push bhejo."""
+    order: dict[str, Any]
+    customer_email: str
+    customer_id: str = ""
+    reason: str = "payment_failed"
 
 
 @dataclass
@@ -96,39 +113,25 @@ def get_event_bus() -> EventBus:
 #  HANDLERS — 1 function = 1 notification
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── EMAIL (critical only) ─────────────────────────────────────────────────────
-
-def _email_order_confirmation(event: OrderCreatedEvent) -> None:
-    """EMAIL — user expects this immediately after placing order."""
-    try:
-        # Safe check just in case order is missing
-        if not event.order:
-            logger.warning("Order data missing in OrderCreatedEvent, skipping email.")
-            return
-            
-        from app.utils.email import send_order_confirmation
-        send_order_confirmation(event.customer_email, event.order)
-    except Exception as e:
-        logger.error("Email order confirmation failed: %s", e)
-
-
-# ── PUSH — admin alerts ───────────────────────────────────────────────────────
+# ── PUSH — Admin: naya order aaya ─────────────────────────────────────────────
 
 def _push_new_order_admin(event: OrderCreatedEvent) -> None:
-    """PUSH admins — instant new order alert, zero email cost."""
+    """
+    PUSH admins — order place hote hi, turant admin ko batao.
+    Customer ko is stage pe kuch nahi jaata.
+    """
     try:
         from app.supabase_client import get_admin_supabase
         from app.utils.push import broadcast_push_to_admins
-        sb  = get_admin_supabase()
-        
-        # SAFE EXTRACT: Use (event.order or {})
+        sb = get_admin_supabase()
+
         safe_order = event.order or {}
         oid = str(safe_order.get("id", "UNKNOWN"))[:8].upper()
         amt = safe_order.get("total_amount", 0)
-        
+
         broadcast_push_to_admins(
             sb,
-            title="🛒 New Order Received",
+            title="🛒 Naya Order Aaya!",
             body=f"Order #{oid} — ₹{amt}",
             url="/admin.html",
         )
@@ -136,27 +139,100 @@ def _push_new_order_admin(event: OrderCreatedEvent) -> None:
         logger.warning("Admin new-order push failed: %s", e)
 
 
-# ── PUSH — customer shipped ───────────────────────────────────────────────────
+# ── EMAIL + PUSH — Customer: payment successful ───────────────────────────────
 
-def _push_order_shipped(event: OrderShippedEvent) -> None:
-    """PUSH customer — shipped notification replaces email entirely."""
+def _email_order_confirmation(event: OrderPaidEvent) -> None:
+    """
+    EMAIL — payment succeed hone ke BAAD bhejo.
+    Order create pe nahi, payment confirm pe bhejo.
+    """
+    try:
+        if not event.order:
+            logger.warning("Order data missing in OrderPaidEvent, skipping email.")
+            return
+
+        from app.utils.email import send_order_confirmation
+        send_order_confirmation(event.customer_email, event.order)
+    except Exception as e:
+        logger.error("Email order confirmation failed: %s", e)
+
+
+def _push_order_paid(event: OrderPaidEvent) -> None:
+    """
+    PUSH customer — payment hone ke baad turant batao ✅
+    """
     try:
         from app.supabase_client import get_admin_supabase
         from app.utils.push import send_push_to_user
-        sb  = get_admin_supabase()
-        
-        # SAFE EXTRACT
+        sb = get_admin_supabase()
+
         safe_order = event.order or {}
         oid = str(safe_order.get("id", "UNKNOWN"))[:8].upper()
-        
-        body = f"Order #{oid} is on the way!"
-        if event.tracking_number:
-            body += f" Tracking: {event.tracking_number}"
-            
+        amt = safe_order.get("total_amount", 0)
+
         send_push_to_user(
             sb,
             user_id=event.customer_id or safe_order.get("customer_id", ""),
-            title="📦 Your order has shipped!",
+            title="✅ Payment Successful!",
+            body=f"Order #{oid} confirm ho gaya — ₹{amt}. Hum prepare kar rahe hain.",
+            url="/orders.html",
+        )
+    except Exception as e:
+        logger.warning("Customer paid push failed: %s", e)
+
+
+# ── PUSH — Customer: payment failed/rejected ──────────────────────────────────
+
+def _push_order_failed(event: OrderFailedEvent) -> None:
+    """
+    PUSH customer — payment fail/reject hone pe batao ❌
+    Stock bhi restore ho chuka hoga is point pe.
+    """
+    try:
+        from app.supabase_client import get_admin_supabase
+        from app.utils.push import send_push_to_user
+        sb = get_admin_supabase()
+
+        safe_order = event.order or {}
+        oid = str(safe_order.get("id", "UNKNOWN"))[:8].upper()
+
+        reason_map = {
+            "payment_failed":   "Payment fail ho gaya. Dobara try karein.",
+            "payment_canceled": "Payment cancel ho gayi.",
+        }
+        body = reason_map.get(event.reason, "Payment process nahi ho saka.")
+
+        send_push_to_user(
+            sb,
+            user_id=event.customer_id or safe_order.get("customer_id", ""),
+            title=f"❌ Order #{oid} — Payment Failed",
+            body=body,
+            url="/orders.html",
+        )
+    except Exception as e:
+        logger.warning("Customer failed push failed: %s", e)
+
+
+# ── PUSH — Customer: order shipped ───────────────────────────────────────────
+
+def _push_order_shipped(event: OrderShippedEvent) -> None:
+    """PUSH customer — shipped notification."""
+    try:
+        from app.supabase_client import get_admin_supabase
+        from app.utils.push import send_push_to_user
+        sb = get_admin_supabase()
+
+        safe_order = event.order or {}
+        oid = str(safe_order.get("id", "UNKNOWN"))[:8].upper()
+
+        body = f"Order #{oid} ship ho gaya!"
+        if event.tracking_number:
+            body += f" Tracking: {event.tracking_number}"
+
+        send_push_to_user(
+            sb,
+            user_id=event.customer_id or safe_order.get("customer_id", ""),
+            title="📦 Aapka Order Ship Ho Gaya!",
             body=body,
             url="/orders.html",
         )
@@ -164,22 +240,21 @@ def _push_order_shipped(event: OrderShippedEvent) -> None:
         logger.warning("Customer shipped push failed: %s", e)
 
 
-# ── PUSH — order status changes ───────────────────────────────────────────────
+# ── PUSH — Customer: status changes ──────────────────────────────────────────
 
 def _push_order_status(event: OrderStatusChangedEvent) -> None:
-    """PUSH customer — all status updates (paid, delivered, cancelled, refunded)."""
+    """PUSH customer — all status updates (delivered, cancelled, refunded)."""
     icons = {
-        "paid":      "✅",
         "delivered": "📬",
         "cancelled": "❌",
         "refunded":  "💰",
     }
     msgs = {
-        "paid":      "Payment confirmed — we're preparing your order.",
-        "delivered": "Your order has been delivered!",
-        "cancelled": "Your order has been cancelled.",
-        "refunded":  "Refund has been initiated.",
+        "delivered": "Aapka order deliver ho gaya!",
+        "cancelled": "Aapka order cancel ho gaya.",
+        "refunded":  "Refund initiate kar diya gaya hai.",
     }
+    # "paid" yahan handle nahi — woh OrderPaidEvent se aata hai
     if event.new_status not in icons:
         return
 
@@ -187,11 +262,10 @@ def _push_order_status(event: OrderStatusChangedEvent) -> None:
         from app.supabase_client import get_admin_supabase
         from app.utils.push import send_push_to_user
         sb = get_admin_supabase()
-        
-        # SAFE EXTRACT (Moved inside try block)
+
         safe_order = event.order or {}
         oid = str(safe_order.get("id", "UNKNOWN"))[:8].upper()
-        
+
         send_push_to_user(
             sb,
             user_id=event.customer_id,
@@ -203,10 +277,10 @@ def _push_order_status(event: OrderStatusChangedEvent) -> None:
         logger.warning("Status change push failed [%s]: %s", event.new_status, e)
 
 
-# ── PUSH — low stock admin alert ──────────────────────────────────────────────
+# ── PUSH — Admin: low stock ───────────────────────────────────────────────────
 
 def _push_low_stock(event: LowStockEvent) -> None:
-    """PUSH admins — low stock alert. Zero emails for ops."""
+    """PUSH admins — low stock alert."""
     try:
         from app.supabase_client import get_admin_supabase
         from app.utils.push import broadcast_push_to_admins
@@ -214,7 +288,7 @@ def _push_low_stock(event: LowStockEvent) -> None:
         broadcast_push_to_admins(
             sb,
             title="⚠️ Low Stock",
-            body=f"{event.product_name} — {event.stock} left (threshold: {event.threshold})",
+            body=f"{event.product_name} — {event.stock} bachi hai (threshold: {event.threshold})",
             url="/admin.html",
         )
     except Exception as e:
@@ -227,21 +301,31 @@ def register_default_handlers() -> None:
     """Called once at startup (lifespan)."""
     bus = get_event_bus()
 
-    # Order created: 1 email (critical) + 1 push to admin
-    bus.subscribe(OrderCreatedEvent,       _email_order_confirmation)
-    bus.subscribe(OrderCreatedEvent,       _push_new_order_admin)
+    # Order created: sirf admin ko push (customer ko KUCH NAHI abhi)
+    bus.subscribe(OrderCreatedEvent, _push_new_order_admin)
 
-    # Shipped: push only — no email
-    bus.subscribe(OrderShippedEvent,       _push_order_shipped)
+    # Order paid: customer ko email + push dono
+    bus.subscribe(OrderPaidEvent, _email_order_confirmation)
+    bus.subscribe(OrderPaidEvent, _push_order_paid)
 
-    # All status changes: push only
+    # Order failed/rejected: customer ko push
+    bus.subscribe(OrderFailedEvent, _push_order_failed)
+
+    # Shipped: customer ko push
+    bus.subscribe(OrderShippedEvent, _push_order_shipped)
+
+    # Status changes (delivered, cancelled, refunded): customer push
     bus.subscribe(OrderStatusChangedEvent, _push_order_status)
 
-    # Low stock: push admins only
-    bus.subscribe(LowStockEvent,           _push_low_stock)
+    # Low stock: admin push
+    bus.subscribe(LowStockEvent, _push_low_stock)
 
     logger.info(
         "Handlers registered | "
-        "EMAIL: order_confirm(1) | "
-        "PUSH: admin_new_order, shipped, status_changes, low_stock"
+        "OrderCreated→AdminPush | "
+        "OrderPaid→CustomerEmail+Push | "
+        "OrderFailed→CustomerPush | "
+        "Shipped→CustomerPush | "
+        "Status→CustomerPush | "
+        "LowStock→AdminPush"
     )
