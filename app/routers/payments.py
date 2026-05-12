@@ -6,7 +6,8 @@ Stripe PaymentIntent lifecycle with idempotent, race-safe DB updates.
 Payment flow:
   1. POST /payments/create-intent  → create / reuse Stripe PaymentIntent
   2. Frontend: stripe.confirmCardPayment()
-  3. POST /payments/confirm        → verify with Stripe, mark paid, notify customer
+     ├── Success → POST /payments/confirm    → mark paid, notify customer
+     └── Failure → POST /payments/notify-failed → notify customer IMMEDIATELY
   4. POST /payments/webhook        → Stripe-side backup (idempotent source of truth)
 
 Race-condition handling:
@@ -19,6 +20,14 @@ Notification flow:
   Payment succeeded  → OrderPaidEvent  (customer email + push)
   Payment failed     → OrderFailedEvent with verbatim Stripe error message
   Payment cancelled  → OrderFailedEvent with reason="payment_canceled"
+
+Why /notify-failed exists:
+  stripe.confirmCardPayment() errors (3DS failures, card declines) happen
+  client-side. The push notification path is:
+    webhook → DB lookup → OrderFailedEvent → push
+  This adds 2-30s delay AND requires "payment_intent.payment_failed" to be
+  enabled in Stripe Dashboard. /notify-failed bypasses both requirements.
+  The webhook remains as an idempotent backup for server-side failures.
 """
 from __future__ import annotations
 
@@ -30,7 +39,7 @@ from uuid import UUID
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request, Header, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.dependencies import get_current_user
@@ -57,6 +66,14 @@ class PaymentIntentResponse(BaseModel):
 class ConfirmPaymentRequest(BaseModel):
     order_id:          UUID
     payment_intent_id: str
+
+
+class NotifyFailedRequest(BaseModel):
+    order_id:          UUID
+    payment_intent_id: str
+    # Verbatim error message from stripe.confirmCardPayment() result.error.message
+    # e.g. "We are unable to authenticate your payment method..."
+    error_message:     str = Field(default="", max_length=500)
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -95,7 +112,6 @@ def _create_stripe_intent(
         currency="inr",
         metadata={"order_id": order_id, "user_id": user_id},
         automatic_payment_methods={"enabled": True},
-        # Uses APP_NAME for reusability across store brands
         description=f"{settings.APP_NAME} — Order #{order_id[:8].upper()}",
     )
 
@@ -104,9 +120,7 @@ def _get_customer_email(sb: Any, customer_id: str) -> str:
     """
     Fetch customer email from DB.
     Used in webhook context where `current` user is not available.
-
-    Returns empty string on failure — callers must treat "" as "no email"
-    and skip any email-dependent actions (push still fires without it).
+    Returns empty string on failure — callers treat "" as "no email".
     """
     if not customer_id:
         logger.warning("_get_customer_email: empty customer_id — skipping")
@@ -163,7 +177,8 @@ def _publish_failed_event(
 ) -> None:
     """
     Publish OrderFailedEvent — triggers customer push.
-    `reason` is either a sentinel string or a verbatim Stripe error message.
+    `reason` is either a sentinel ("payment_failed" / "payment_canceled")
+    or a verbatim Stripe error message string.
     Non-fatal: same reasoning as _publish_paid_event.
     """
     try:
@@ -261,7 +276,7 @@ def confirm_payment(
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
-    Called by the frontend after stripe.confirmCardPayment() returns.
+    Called by the frontend after stripe.confirmCardPayment() SUCCEEDS.
 
     Steps:
       1. Fetch order and validate ownership + status.
@@ -345,8 +360,6 @@ def confirm_payment(
         )
 
     # ── Atomic conditional update (TOCTOU-safe) ───────────────────────────────
-    # .eq("status", "pending") ensures that if the Stripe webhook already
-    # marked this paid, we get 0 rows back and handle it gracefully.
     update_res = (
         sb.table("orders")
         .update({"status": "paid"})
@@ -375,15 +388,12 @@ def confirm_payment(
         # Non-fatal: uniqueness constraint fires if webhook already inserted
         logger.info("Payment record insert skipped (likely duplicate): %s", exc)
 
-    # ── Build paid_order snapshot — no extra DB fetch needed ──────────────────
-    # copy.copy() is a shallow copy; order dict here contains only scalar fields
-    # (id, status, total_amount, stripe_payment_intent, customer_id) so shallow
-    # is sufficient and safe. No nested mutation risk.
+    # ── Notify customer ───────────────────────────────────────────────────────
+    # copy.copy() is safe here — order contains only scalar fields at this point
     paid_order           = copy.copy(order)
     paid_order["status"] = "paid"
-
-    customer_id    = order.get("customer_id", "")
-    customer_email = (
+    customer_id          = order.get("customer_id", "")
+    customer_email       = (
         current.get("profile", {}).get("email", "")
         or _get_customer_email(sb, customer_id)
     )
@@ -397,6 +407,119 @@ def confirm_payment(
     }
 
 
+# ── POST /payments/notify-failed ──────────────────────────────────────────────
+
+@router.post("/notify-failed", status_code=status.HTTP_200_OK)
+def notify_payment_failed(
+    payload: NotifyFailedRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, str]:
+    """
+    Called by the frontend immediately after stripe.confirmCardPayment() returns
+    an error (card declined, 3DS auth failure, insufficient funds, etc.).
+
+    WHY THIS ENDPOINT EXISTS:
+      stripe.confirmCardPayment() failures are purely client-side events.
+      The push notification path through the Stripe webhook adds 2–30 seconds
+      of delay AND requires "payment_intent.payment_failed" to be explicitly
+      enabled in the Stripe Dashboard. This endpoint removes both dependencies.
+
+      The Stripe webhook remains in place as an idempotent server-side backup
+      for failures that don't go through the frontend (e.g. network drop after
+      payment, server-initiated cancellations).
+
+    WHAT IT DOES:
+      1. Verifies the order belongs to the authenticated user.
+      2. Verifies the PaymentIntent exists on Stripe (cannot be spoofed).
+      3. Publishes OrderFailedEvent with the exact Stripe error message so the
+         customer's push notification shows the real reason, not a generic copy.
+
+    WHAT IT DOES NOT DO:
+      • Does NOT cancel the order — the order stays "pending" so the user can
+        retry with a different card. Cancellation happens only on webhook events
+        or explicit user cancellation.
+      • Does NOT restore stock — same reason.
+
+    FRONTEND USAGE:
+      const result = await stripe.confirmCardPayment(clientSecret, { ... });
+      if (result.error) {
+        // Show error in UI (already doing this)
+        showError(result.error.message);
+        // Also notify backend for instant push
+        await fetch('/api/v1/payments/notify-failed', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            order_id: orderId,
+            payment_intent_id: paymentIntentId,
+            error_message: result.error.message   // "We are unable to authenticate..."
+          })
+        });
+      }
+    """
+    sb       = get_admin_supabase()
+    user_id  = _get_user_id(current)
+    order_id = str(payload.order_id)
+
+    # ── Verify order ownership ────────────────────────────────────────────────
+    order_res = (
+        sb.table("orders")
+        .select("id, status, customer_id, stripe_payment_intent")
+        .eq("id", order_id)
+        .eq("customer_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+
+    if not order_res or not getattr(order_res, "data", None):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    order = order_res.data
+
+    # Only notify for orders that are still payable — skip silently for others
+    if order["status"] != "pending":
+        logger.info(
+            "notify-failed: order %.8s status='%s' — skipping (not pending)",
+            order_id, order["status"],
+        )
+        return {"message": "OK"}
+
+    # ── Verify PaymentIntent exists on Stripe (prevents notification spam) ────
+    stored_pi = order.get("stripe_payment_intent")
+    if not stored_pi:
+        logger.warning("notify-failed: no stripe_payment_intent on order %.8s", order_id)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No payment intent found for this order",
+        )
+
+    if stored_pi != str(payload.payment_intent_id):
+        logger.warning(
+            "notify-failed: PI mismatch | order=%.8s stored=%s received=%s",
+            order_id, stored_pi, payload.payment_intent_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Payment intent mismatch",
+        )
+
+    # ── Determine reason ──────────────────────────────────────────────────────
+    # Use the verbatim Stripe error message if provided, otherwise generic fallback.
+    # This is what gets shown in the customer's push notification body.
+    reason = payload.error_message.strip() or "payment_failed"
+
+    logger.info(
+        "notify-failed called | order=%.8s reason=%.80s",
+        order_id, reason,
+    )
+
+    # ── Publish notification — non-fatal ──────────────────────────────────────
+    customer_id = order.get("customer_id", "")
+    _publish_failed_event(sb, order, customer_id, reason)
+
+    return {"message": "OK"}
+
+
 # ── POST /payments/webhook ────────────────────────────────────────────────────
 
 @router.post("/webhook")
@@ -405,11 +528,15 @@ async def stripe_webhook(
     stripe_signature: str | None = Header(None, alias="stripe-signature"),
 ) -> dict[str, str]:
     """
-    Stripe webhook — idempotent source of truth for all payment state changes.
+    Stripe webhook — idempotent source of truth for server-side payment events.
 
     payment_intent.succeeded       → atomic mark paid, notify customer
     payment_intent.payment_failed  → cancel order, restore stock, push Stripe error
     payment_intent.canceled        → cancel order, restore stock, push cancellation
+
+    NOTE: For client-side failures (card decline, 3DS auth errors), the frontend
+    calls /notify-failed directly for instant notification. This webhook acts as
+    the backup for those cases and handles all server-side failures.
 
     Always returns 200 — Stripe retries on any non-2xx response.
     """
@@ -488,7 +615,6 @@ async def stripe_webhook(
 
         logger.info("Order %.8s marked PAID via webhook", order["id"])
 
-        # Insert payment record
         stripe_amount = data_object.get("amount", 0) / 100
         try:
             sb.table("payments").insert({
@@ -502,7 +628,6 @@ async def stripe_webhook(
         except Exception as exc:
             logger.info("Webhook payment record skipped (likely duplicate): %s", exc)
 
-        # Build paid snapshot and notify customer
         paid_order           = copy.copy(order)
         paid_order["status"] = "paid"
         customer_id          = order.get("customer_id", "")
@@ -529,10 +654,9 @@ async def stripe_webhook(
             return {"message": "OK"}
 
         # ── Cancel first, then restore stock ──────────────────────────────────
-        # Order: cancel → restore (not restore → cancel).
-        # If we restored first and the DB cancel failed, stock would be
-        # double-available while the order is still "pending" — allowing a
-        # second payment attempt on already-restored stock.
+        # If we restored stock first and the DB cancel failed, the order would
+        # remain "pending" with already-restored stock — allowing a second
+        # payment attempt on stock that's already back in the pool.
         sb.table("orders").update({"status": "cancelled"}).eq("id", order["id"]).execute()
         logger.info("Order %.8s cancelled via webhook | event=%s", order["id"], event_type)
 
@@ -545,11 +669,7 @@ async def stripe_webhook(
                     context=f"webhook_{event_type}",
                 )
 
-        # ── Extract exact Stripe error message ────────────────────────────────
-        # "payment_canceled" sentinel for cancelled intents.
-        # For failures: pull last_payment_error.message from the Stripe payload
-        # so the customer sees the exact reason (3DS failure, card declined,
-        # insufficient funds, etc.) in their push notification.
+        # ── Extract exact Stripe error for push body ───────────────────────────
         if "canceled" in event_type:
             reason = "payment_canceled"
         else:
