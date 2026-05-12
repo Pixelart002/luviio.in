@@ -1,83 +1,131 @@
 """
-Event Bus  —  Observer Pattern
-================================
-Notification routing matrix:
+Event Bus — Observer Pattern + Notification Router
+===================================================
 
-  Trigger            | Customer              | Admin
-  ───────────────────┼───────────────────────┼─────────────────
-  Order created      | —                     | Push
-  Order paid    ✅   | Email + Push          | —
-  Order failed  ❌   | Push                  | —
-  Order shipped 📦   | Push                  | —
-  Status changed     | Push                  | —
-  Low stock     ⚠️   | —                     | Push
+Notification Matrix:
+  ┌──────────────────────┬──────────────────────┬──────────────────────┐
+  │ Event                │ Customer             │ Admin                │
+  ├──────────────────────┼──────────────────────┼──────────────────────┤
+  │ OrderCreatedEvent    │ —                    │ Push  (ri-bag-3)     │
+  │ OrderPaidEvent       │ Email + Push         │ —                    │
+  │ OrderFailedEvent     │ Push  (Stripe error) │ —                    │
+  │ OrderShippedEvent    │ Push                 │ —                    │
+  │ OrderStatusChanged   │ Push  (status-icon)  │ —                    │
+  │ LowStockEvent        │ —                    │ Push  (ri-alert)     │
+  └──────────────────────┴──────────────────────┴──────────────────────┘
 
-Design notes:
-  - Each handler owns exactly one notification channel + recipient.
-  - All notification copy is declared as module-level constants — one
-    place to update strings for the whole system.
-  - EventBus guards against double-registration (safe on hot-reload and
-    repeated lifespan calls during testing).
-  - Lazy imports inside handlers avoid circular-import issues and keep
-    startup time fast.
+Push icon paths follow Remix Icons naming (ri-*).
+Set PUSH_ICON_BASE_URL env var to your CDN base URL.
+Defaults to "/icons" (same-domain relative — works out of the box).
+
+Design decisions:
+  • register_default_handlers() is IDEMPOTENT — safe for hot-reload + tests.
+  • send_push_to_user / broadcast / send_order_confirmation imported at module
+    level → ImportError surfaces at startup, not on first notification.
+  • get_admin_supabase() is called inside handlers at runtime because clients
+    are initialised in lifespan(), after this module is first imported.
+  • Notification failures are always non-fatal: a push/email error must never
+    roll back or mask a successful payment.
 """
 from __future__ import annotations
 
 import logging
+import os
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable
 
+# Module-level imports — ImportError surfaces at startup, not at notification time
+from app.utils.push  import send_push_to_user, broadcast_push_to_admins
+from app.utils.email import send_order_confirmation
+
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "EventBus",
+    "get_event_bus",
+    "register_default_handlers",
+    "OrderCreatedEvent",
+    "OrderPaidEvent",
+    "OrderFailedEvent",
+    "OrderShippedEvent",
+    "OrderStatusChangedEvent",
+    "LowStockEvent",
+]
 
-# ── Notification copy  ────────────────────────────────────────────────────────
-# Single source of truth.  Change strings here; nowhere else.
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ICON MAP  —  Remix Icons → push notification CDN paths
+# ══════════════════════════════════════════════════════════════════════════════
+
+_ICON_BASE: str = os.environ.get("PUSH_ICON_BASE_URL", "/icons").rstrip("/")
+
+
+class _Icon:
+    """
+    Remix Icon filenames served from your CDN.
+    Frontend uses ri-* CSS classes; backend sends these URLs in push payloads.
+    """
+    NEW_ORDER  = f"{_ICON_BASE}/ri-shopping-bag-3.png"   # ri-shopping-bag-3-fill
+    PAID       = f"{_ICON_BASE}/ri-checkbox-circle.png"  # ri-checkbox-circle-fill
+    FAILED     = f"{_ICON_BASE}/ri-close-circle.png"     # ri-close-circle-fill
+    CANCELLED  = f"{_ICON_BASE}/ri-forbid-2.png"         # ri-forbid-2-fill
+    SHIPPED    = f"{_ICON_BASE}/ri-truck.png"             # ri-truck-fill
+    DELIVERED  = f"{_ICON_BASE}/ri-mail-check.png"       # ri-mail-check-fill
+    REFUNDED   = f"{_ICON_BASE}/ri-refund-2.png"         # ri-refund-2-fill
+    LOW_STOCK  = f"{_ICON_BASE}/ri-alert.png"            # ri-alert-fill
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  COPY STRINGS  —  all user-facing strings in one place (easy to localise)
+# ══════════════════════════════════════════════════════════════════════════════
 
 class _Copy:
-    # Admin
-    ADMIN_NEW_ORDER_TITLE = "New order received"
-    ADMIN_LOW_STOCK_TITLE = "Low stock alert"
+    """Notification copy. Use .format(oid=…, amt=…, …) for templating."""
 
-    # Customer — payment
-    PAID_PUSH_TITLE   = "Payment confirmed"
-    PAID_PUSH_BODY    = "Order #{oid} confirmed — ₹{amt}. We're preparing your order."
-    FAILED_PUSH_TITLE = "Payment failed — Order #{oid}"
-    FAILED_PUSH_BODY  = "Your payment could not be processed. Please try again."
-    CANCEL_PUSH_TITLE = "Payment canceled — Order #{oid}"
-    CANCEL_PUSH_BODY  = "Your payment was canceled. Stock has been released."
-
-    # Customer — shipping
-    SHIPPED_PUSH_TITLE = "Your order has shipped"
-    SHIPPED_PUSH_BODY  = "Order #{oid} is on its way!"
-    SHIPPED_TRACK_BODY = "Order #{oid} is on its way! Tracking: {tracking}"
-
-    # Customer — status changes (delivered / cancelled / refunded only)
-    STATUS_COPY: dict[str, tuple[str, str]] = {
-        "delivered": (
-            "Order delivered",
-            "Order #{oid} has been delivered. Enjoy!",
-        ),
-        "cancelled": (
-            "Order cancelled",
-            "Order #{oid} has been cancelled.",
-        ),
-        "refunded": (
-            "Refund initiated",
-            "A refund has been initiated for order #{oid}.",
-        ),
-    }
-
-    # Deep-link paths
+    # Deep-link targets
     URL_ORDERS = "/orders.html"
     URL_ADMIN  = "/admin.html"
 
+    # Admin — new order
+    ADMIN_ORDER_TITLE = "New Order #{oid}"
+    ADMIN_ORDER_BODY  = "₹{amt} — needs processing"
 
-# ── Event dataclasses  ────────────────────────────────────────────────────────
+    # Customer — payment confirmed
+    PAID_PUSH_TITLE = "Payment Confirmed ✓"
+    PAID_PUSH_BODY  = "Order #{oid} confirmed. We're preparing it now."
+
+    # Customer — payment failed (generic)
+    FAILED_PUSH_TITLE = "Payment Failed — Order #{oid}"
+    FAILED_PUSH_BODY  = "Your payment could not be processed. Please try again."
+
+    # Customer — intent cancelled
+    CANCEL_PUSH_TITLE = "Order #{oid} Cancelled"
+    CANCEL_PUSH_BODY  = "Your payment was cancelled. Items are still in your cart."
+
+    # Customer — shipped
+    SHIPPED_PUSH_TITLE   = "Order #{oid} Shipped!"
+    SHIPPED_PUSH_BODY    = "Your order is on the way."
+    SHIPPED_TRACKING_SUF = " Tracking: {tracking}"
+
+    # Customer — status transitions
+    DELIVERED_TITLE = "Order #{oid} Delivered!"
+    DELIVERED_BODY  = "Your order has arrived. Enjoy!"
+    REFUNDED_TITLE  = "Refund Initiated — Order #{oid}"
+    REFUNDED_BODY   = "Your refund has been processed."
+
+    # Admin — low stock
+    LOW_STOCK_TITLE = "Low Stock — {name}"
+    LOW_STOCK_BODY  = "Only {stock} left (threshold: {threshold})"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  EVENT DATACLASSES
+# ══════════════════════════════════════════════════════════════════════════════
 
 @dataclass
 class OrderCreatedEvent:
-    """Order placed — notify admin only.  Customer gets nothing at this stage."""
+    """Order placed. Admin is notified. Customer notification comes on payment."""
     order:          dict[str, Any]
     customer_email: str
     customer_id:    str = ""
@@ -85,7 +133,7 @@ class OrderCreatedEvent:
 
 @dataclass
 class OrderPaidEvent:
-    """Payment succeeded — notify customer via email + push."""
+    """Payment succeeded. Send confirmation email + push to customer."""
     order:          dict[str, Any]
     customer_email: str
     customer_id:    str = ""
@@ -93,16 +141,27 @@ class OrderPaidEvent:
 
 @dataclass
 class OrderFailedEvent:
-    """Payment failed or canceled — notify customer via push."""
+    """
+    Payment failed or PaymentIntent was cancelled.
+
+    `reason` semantics (set by payments router):
+      "payment_canceled"   — Stripe intent was cancelled by user / timeout
+      "payment_failed"     — generic failure (no Stripe message available)
+      <any other string>   — verbatim Stripe last_payment_error.message
+                             (e.g. "We are unable to authenticate your payment
+                              method. Please choose a different payment method
+                              and try again.")
+                             Shown directly in the push body so the customer
+                             knows exactly what went wrong.
+    """
     order:          dict[str, Any]
     customer_email: str
     customer_id:    str = ""
-    reason:         str = "payment_failed"   # "payment_failed" | "payment_canceled"
+    reason:         str = "payment_failed"
 
 
 @dataclass
 class OrderShippedEvent:
-    """Order shipped — notify customer via push."""
     order:           dict[str, Any]
     customer_email:  str
     customer_id:     str = ""
@@ -111,7 +170,15 @@ class OrderShippedEvent:
 
 @dataclass
 class OrderStatusChangedEvent:
-    """Generic status transition — push customer for delivered/cancelled/refunded."""
+    """
+    Fired by admin order-update for status transitions not covered by
+    dedicated events. Handles: delivered, refunded.
+
+    Intentionally NOT used for:
+      "paid"      → OrderPaidEvent
+      "shipped"   → OrderShippedEvent
+      "cancelled" via payment failure → OrderFailedEvent
+    """
     order:       dict[str, Any]
     customer_id: str
     old_status:  str
@@ -120,14 +187,15 @@ class OrderStatusChangedEvent:
 
 @dataclass
 class LowStockEvent:
-    """Stock fell below threshold — push admins."""
     product_id:   str
     product_name: str
     stock:        int
     threshold:    int
 
 
-# ── Event Bus  ────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  EVENT BUS
+# ══════════════════════════════════════════════════════════════════════════════
 
 EventType = type
 Handler   = Callable[[Any], None]
@@ -135,15 +203,14 @@ Handler   = Callable[[Any], None]
 
 class EventBus:
     """
-    In-process synchronous event bus.
+    Synchronous in-process event bus.
 
-    Swap `publish` for an async queue (Celery / ARQ) without touching any
-    handler or router — just change this class.
+    Scaling path: replace publish() body with a task queue (Celery, ARQ, RQ)
+    without changing any call sites.
     """
 
     def __init__(self) -> None:
-        self._handlers:   dict[EventType, list[Handler]] = defaultdict(list)
-        self._registered: bool = False
+        self._handlers: dict[EventType, list[Handler]] = defaultdict(list)
 
     def subscribe(self, event_type: EventType, handler: Handler) -> None:
         self._handlers[event_type].append(handler)
@@ -154,14 +221,9 @@ class EventBus:
                 handler(event)
             except Exception as exc:
                 logger.error(
-                    "Handler %s failed for %s: %s",
+                    "Handler %s raised for %s: %s",
                     handler.__name__, type(event).__name__, exc,
                 )
-
-    def reset(self) -> None:
-        """Testing only — clear all handlers and reset the registration flag."""
-        self._handlers.clear()
-        self._registered = False
 
 
 _bus = EventBus()
@@ -171,105 +233,121 @@ def get_event_bus() -> EventBus:
     return _bus
 
 
-# ── Internal push helpers  ────────────────────────────────────────────────────
-# Centralise all error handling so individual handlers stay clean.
+# ══════════════════════════════════════════════════════════════════════════════
+#  PRIVATE PUSH HELPERS  —  single call site for every push action
+# ══════════════════════════════════════════════════════════════════════════════
 
 def _safe_oid(order: dict[str, Any]) -> str:
-    """Return an 8-char upper-cased order ID fragment, never raises."""
+    """Return an 8-char uppercase display ID from an order dict."""
     return str(order.get("id", "UNKNOWN"))[:8].upper()
 
 
-def _push_user(sb: Any, user_id: str, *, title: str, body: str, url: str) -> None:
-    from app.utils.push import send_push_to_user
-    try:
-        send_push_to_user(sb, user_id=user_id, title=title, body=body, url=url)
-    except Exception as exc:
-        logger.warning("send_push_to_user failed | user=%.8s | %s", user_id, exc)
+def _push_user(
+    sb: Any,
+    user_id: str,
+    *,
+    title: str,
+    body: str,
+    icon: str,
+    url: str = _Copy.URL_ORDERS,
+) -> None:
+    """
+    Push a notification to all subscriptions of one user.
+    No-ops with a warning if user_id is empty.
+    """
+    if not user_id:
+        logger.warning("_push_user: empty user_id — skipping")
+        return
+    send_push_to_user(sb, user_id, title=title, body=body, icon=icon, url=url)
 
 
-def _push_admins(sb: Any, *, title: str, body: str, url: str) -> None:
-    from app.utils.push import broadcast_push_to_admins
-    try:
-        broadcast_push_to_admins(sb, title=title, body=body, url=url)
-    except Exception as exc:
-        logger.warning("broadcast_push_to_admins failed: %s", exc)
+def _push_admins(
+    sb: Any,
+    *,
+    title: str,
+    body: str,
+    icon: str,
+    url: str = _Copy.URL_ADMIN,
+) -> None:
+    """Push a notification to all active admin users."""
+    broadcast_push_to_admins(sb, title=title, body=body, icon=icon, url=url)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  HANDLERS — one function = one notification
+#  HANDLERS  —  one function = one notification action
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── Admin: new order ──────────────────────────────────────────────────────────
-
-def _push_new_order_admin(event: OrderCreatedEvent) -> None:
-    """Push admins the moment an order is placed.  Customer gets nothing yet."""
+def _handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
+    """
+    Push admins when a new order is placed.
+    Customer receives NOTHING at this stage — notification comes after payment.
+    Remix icon: ri-shopping-bag-3-fill
+    """
     from app.supabase_client import get_admin_supabase
-    sb    = get_admin_supabase()
     order = event.order or {}
     oid   = _safe_oid(order)
     amt   = order.get("total_amount", 0)
 
     _push_admins(
-        sb,
-        title=_Copy.ADMIN_NEW_ORDER_TITLE,
-        body=f"Order #{oid} — ₹{amt}",
-        url=_Copy.URL_ADMIN,
+        get_admin_supabase(),
+        title=_Copy.ADMIN_ORDER_TITLE.format(oid=oid),
+        body=_Copy.ADMIN_ORDER_BODY.format(amt=amt),
+        icon=_Icon.NEW_ORDER,
     )
 
 
-# ── Customer: payment confirmed — email ───────────────────────────────────────
-
-def _email_order_confirmation(event: OrderPaidEvent) -> None:
+def _handle_paid_email(event: OrderPaidEvent) -> None:
     """
-    Send the confirmation email only after payment succeeds — not on order-create.
-    Non-fatal: a failed email must not roll back a paid order.
+    Send order-confirmation email to customer after payment succeeds.
+    Remix icon: ri-checkbox-circle-fill (used in email header template).
     """
-    if not event.order:
-        logger.warning("OrderPaidEvent has no order data — skipping confirmation email")
+    if not event.customer_email:
+        logger.warning("_handle_paid_email: empty customer_email — skipping")
         return
-
-    from app.utils.email import send_order_confirmation
-    try:
-        send_order_confirmation(event.customer_email, event.order)
-    except Exception as exc:
-        logger.error("Confirmation email failed | to=%s | %s", event.customer_email, exc)
+    if not event.order:
+        logger.warning("_handle_paid_email: empty order dict — skipping")
+        return
+    send_order_confirmation(event.customer_email, event.order)
 
 
-# ── Customer: payment confirmed — push ────────────────────────────────────────
-
-def _push_order_paid(event: OrderPaidEvent) -> None:
-    """Push the customer immediately after payment succeeds."""
+def _handle_paid_push(event: OrderPaidEvent) -> None:
+    """
+    Push customer after payment succeeds.
+    Remix icon: ri-checkbox-circle-fill
+    """
     from app.supabase_client import get_admin_supabase
-    sb    = get_admin_supabase()
     order = event.order or {}
     uid   = event.customer_id or order.get("customer_id", "")
-
-    if not uid:
-        logger.warning("_push_order_paid: no customer_id — skipping push")
-        return
-
-    oid = _safe_oid(order)
-    amt = order.get("total_amount", 0)
+    oid   = _safe_oid(order)
 
     _push_user(
-        sb, uid,
+        get_admin_supabase(),
+        uid,
         title=_Copy.PAID_PUSH_TITLE,
-        body=_Copy.PAID_PUSH_BODY.format(oid=oid, amt=amt),
-        url=_Copy.URL_ORDERS,
+        body=_Copy.PAID_PUSH_BODY.format(oid=oid),
+        icon=_Icon.PAID,
     )
 
 
-# ── Customer: payment failed / canceled ───────────────────────────────────────
+def _handle_failed_push(event: OrderFailedEvent) -> None:
+    """
+    Push customer when payment fails or is cancelled.
 
-def _push_order_failed(event: OrderFailedEvent) -> None:
-    """Push the customer when their payment is rejected or canceled."""
+    Dynamic reason routing:
+      "payment_canceled" → cancellation copy + ri-forbid-2-fill icon
+      "payment_failed"   → generic failure copy + ri-close-circle-fill
+      <stripe error str> → verbatim Stripe message in body + ri-close-circle-fill
+                           so customer sees the exact reason (e.g. 3DS failure,
+                           insufficient funds, card declined).
+
+    Remix icons: ri-close-circle-fill / ri-forbid-2-fill
+    """
     from app.supabase_client import get_admin_supabase
-    sb    = get_admin_supabase()
     order = event.order or {}
     uid   = event.customer_id or order.get("customer_id", "")
 
     if not uid:
-        logger.warning("_push_order_failed: no customer_id — skipping push")
+        logger.warning("_handle_failed_push: no customer_id — skipping")
         return
 
     oid = _safe_oid(order)
@@ -277,116 +355,139 @@ def _push_order_failed(event: OrderFailedEvent) -> None:
     if event.reason == "payment_canceled":
         title = _Copy.CANCEL_PUSH_TITLE.format(oid=oid)
         body  = _Copy.CANCEL_PUSH_BODY
-    else:
+        icon  = _Icon.CANCELLED
+    elif event.reason == "payment_failed":
         title = _Copy.FAILED_PUSH_TITLE.format(oid=oid)
         body  = _Copy.FAILED_PUSH_BODY
+        icon  = _Icon.FAILED
+    else:
+        # Verbatim Stripe error — show it directly to the customer
+        title = _Copy.FAILED_PUSH_TITLE.format(oid=oid)
+        body  = event.reason
+        icon  = _Icon.FAILED
 
-    _push_user(sb, uid, title=title, body=body, url=_Copy.URL_ORDERS)
+    _push_user(get_admin_supabase(), uid, title=title, body=body, icon=icon)
 
 
-# ── Customer: order shipped ───────────────────────────────────────────────────
-
-def _push_order_shipped(event: OrderShippedEvent) -> None:
-    """Push the customer when their order ships."""
+def _handle_shipped_push(event: OrderShippedEvent) -> None:
+    """
+    Push customer when order ships.
+    Remix icon: ri-truck-fill
+    """
     from app.supabase_client import get_admin_supabase
-    sb    = get_admin_supabase()
     order = event.order or {}
     uid   = event.customer_id or order.get("customer_id", "")
-
-    if not uid:
-        logger.warning("_push_order_shipped: no customer_id — skipping push")
-        return
-
-    oid  = _safe_oid(order)
-    body = (
-        _Copy.SHIPPED_TRACK_BODY.format(oid=oid, tracking=event.tracking_number)
-        if event.tracking_number
-        else _Copy.SHIPPED_PUSH_BODY.format(oid=oid)
-    )
-
-    _push_user(
-        sb, uid,
-        title=_Copy.SHIPPED_PUSH_TITLE,
-        body=body,
-        url=_Copy.URL_ORDERS,
-    )
-
-
-# ── Customer: generic status change ───────────────────────────────────────────
-
-def _push_order_status(event: OrderStatusChangedEvent) -> None:
-    """
-    Push the customer for terminal status changes.
-    'paid'    is excluded — handled by OrderPaidEvent.
-    'shipped' is excluded — handled by OrderShippedEvent.
-    """
-    copy = _Copy.STATUS_COPY.get(event.new_status)
-    if not copy:
-        return
-
-    from app.supabase_client import get_admin_supabase
-    sb    = get_admin_supabase()
-    order = event.order or {}
     oid   = _safe_oid(order)
 
-    title, body = copy[0], copy[1].format(oid=oid)
-    _push_user(sb, event.customer_id, title=title, body=body, url=_Copy.URL_ORDERS)
+    body = _Copy.SHIPPED_PUSH_BODY
+    if event.tracking_number:
+        body += _Copy.SHIPPED_TRACKING_SUF.format(tracking=event.tracking_number)
 
-
-# ── Admin: low stock ──────────────────────────────────────────────────────────
-
-def _push_low_stock(event: LowStockEvent) -> None:
-    """Push admins when a product's stock falls below its threshold."""
-    from app.supabase_client import get_admin_supabase
-    sb = get_admin_supabase()
-
-    _push_admins(
-        sb,
-        title=_Copy.ADMIN_LOW_STOCK_TITLE,
-        body=(
-            f"{event.product_name} — {event.stock} units left"
-            f" (threshold: {event.threshold})"
-        ),
-        url=_Copy.URL_ADMIN,
+    _push_user(
+        get_admin_supabase(),
+        uid,
+        title=_Copy.SHIPPED_PUSH_TITLE.format(oid=oid),
+        body=body,
+        icon=_Icon.SHIPPED,
     )
 
 
-# ── Handler registration ──────────────────────────────────────────────────────
+def _handle_status_push(event: OrderStatusChangedEvent) -> None:
+    """
+    Push customer for admin-driven status transitions: delivered, refunded.
+    Does not handle paid / shipped / payment-cancelled (separate events).
+    Remix icons: ri-mail-check-fill (delivered), ri-refund-2-fill (refunded)
+    """
+    # (title_template, body, icon)
+    _CONFIG: dict[str, tuple[str, str, str]] = {
+        "delivered": (_Copy.DELIVERED_TITLE, _Copy.DELIVERED_BODY, _Icon.DELIVERED),
+        "refunded":  (_Copy.REFUNDED_TITLE,  _Copy.REFUNDED_BODY,  _Icon.REFUNDED),
+    }
+
+    cfg = _CONFIG.get(event.new_status)
+    if cfg is None:
+        return  # unhandled status — no push
+
+    from app.supabase_client import get_admin_supabase
+    order              = event.order or {}
+    oid                = _safe_oid(order)
+    title_tpl, body, icon = cfg
+
+    _push_user(
+        get_admin_supabase(),
+        event.customer_id,
+        title=title_tpl.format(oid=oid),
+        body=body,
+        icon=icon,
+    )
+
+
+def _handle_low_stock_push(event: LowStockEvent) -> None:
+    """
+    Push admins on low-stock alert.
+    Remix icon: ri-alert-fill
+    """
+    from app.supabase_client import get_admin_supabase
+
+    _push_admins(
+        get_admin_supabase(),
+        title=_Copy.LOW_STOCK_TITLE.format(name=event.product_name),
+        body=_Copy.LOW_STOCK_BODY.format(stock=event.stock, threshold=event.threshold),
+        icon=_Icon.LOW_STOCK,
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  REGISTRATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+_registered: bool = False
+
 
 def register_default_handlers() -> None:
     """
-    Wire all handlers to their event types.
+    Wire up all default notification handlers.
 
-    Called once at app startup via lifespan.
-    Guarded against double-registration — safe on hot-reload and in tests.
+    IDEMPOTENT — a module-level flag prevents duplicate registration on
+    hot-reload or multiple test suite runs. Without this guard, every handler
+    would fire N times per event (N = number of register calls), causing
+    duplicate emails and push notifications.
+
+    Call once at app startup from lifespan().
     """
-    bus = get_event_bus()
-
-    if bus._registered:
-        logger.warning("register_default_handlers called more than once — skipping")
+    global _registered
+    if _registered:
+        logger.debug("register_default_handlers: already registered — skipping")
         return
 
-    bus.subscribe(OrderCreatedEvent,       _push_new_order_admin)
+    bus = get_event_bus()
 
-    bus.subscribe(OrderPaidEvent,          _email_order_confirmation)
-    bus.subscribe(OrderPaidEvent,          _push_order_paid)
+    # New order → admin push only (customer notified after payment)
+    bus.subscribe(OrderCreatedEvent,       _handle_new_order_admin_push)
 
-    bus.subscribe(OrderFailedEvent,        _push_order_failed)
+    # Payment paid → customer email + push
+    bus.subscribe(OrderPaidEvent,          _handle_paid_email)
+    bus.subscribe(OrderPaidEvent,          _handle_paid_push)
 
-    bus.subscribe(OrderShippedEvent,       _push_order_shipped)
+    # Payment failed / cancelled → customer push with exact Stripe error
+    bus.subscribe(OrderFailedEvent,        _handle_failed_push)
 
-    bus.subscribe(OrderStatusChangedEvent, _push_order_status)
+    # Shipped → customer push
+    bus.subscribe(OrderShippedEvent,       _handle_shipped_push)
 
-    bus.subscribe(LowStockEvent,           _push_low_stock)
+    # Admin status changes (delivered, refunded) → customer push
+    bus.subscribe(OrderStatusChangedEvent, _handle_status_push)
 
-    bus._registered = True
+    # Low stock → admin push
+    bus.subscribe(LowStockEvent,           _handle_low_stock_push)
 
+    _registered = True
     logger.info(
         "Event handlers registered | "
         "OrderCreated→AdminPush | "
         "OrderPaid→CustomerEmail+Push | "
-        "OrderFailed→CustomerPush | "
+        "OrderFailed→CustomerPush(+StripeError) | "
         "OrderShipped→CustomerPush | "
-        "StatusChanged→CustomerPush | "
+        "OrderStatus→CustomerPush | "
         "LowStock→AdminPush"
     )
