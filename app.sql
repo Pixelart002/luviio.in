@@ -133,3 +133,100 @@ CREATE TABLE public.users (
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );
+
+
+
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  Cart + Pricing Migration
+--  Run once in Supabase Dashboard → SQL Editor
+--  Tables: carts, cart_items
+--  Trigger: auto-update carts.updated_at on item change
+--  Indexes: user_id, updated_at, cart_id
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ── 1. carts — one row per user ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.carts (
+  id         uuid        NOT NULL DEFAULT gen_random_uuid(),
+  user_id    uuid        NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT carts_pkey         PRIMARY KEY (id),
+  CONSTRAINT carts_user_id_uq   UNIQUE (user_id),           -- one cart per user
+  CONSTRAINT carts_user_id_fkey FOREIGN KEY (user_id)
+    REFERENCES public.users(id) ON DELETE CASCADE
+);
+
+-- ── 2. cart_items — line items inside a cart ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.cart_items (
+  id             uuid        NOT NULL DEFAULT gen_random_uuid(),
+  cart_id        uuid        NOT NULL,
+  product_id     uuid        NOT NULL,
+  quantity       integer     NOT NULL CHECK (quantity > 0 AND quantity <= 100),
+  -- Price at time of adding — guards against price changes between add and checkout.
+  -- Frontend displays this; checkout uses live product.price for actual billing.
+  price_snapshot numeric     NOT NULL,
+  added_at       timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT cart_items_pkey           PRIMARY KEY (id),
+  CONSTRAINT cart_items_cart_product_uq UNIQUE (cart_id, product_id),   -- no duplicates
+  CONSTRAINT cart_items_cart_id_fkey   FOREIGN KEY (cart_id)
+    REFERENCES public.carts(id) ON DELETE CASCADE,
+  CONSTRAINT cart_items_product_id_fkey FOREIGN KEY (product_id)
+    REFERENCES public.products(id)
+);
+
+-- ── 3. Trigger — auto-bump carts.updated_at on any item change ────────────────
+--  WHY: Abandoned cart detection relies on updated_at.
+--  Without this, adding/removing items would not update the cart timestamp.
+CREATE OR REPLACE FUNCTION public.fn_cart_items_touch_cart()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE public.carts
+  SET    updated_at = now()
+  WHERE  id = COALESCE(NEW.cart_id, OLD.cart_id);
+  RETURN NULL;  -- AFTER trigger, return value ignored
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_cart_items_touch ON public.cart_items;
+CREATE TRIGGER trg_cart_items_touch
+  AFTER INSERT OR UPDATE OR DELETE ON public.cart_items
+  FOR EACH ROW EXECUTE FUNCTION public.fn_cart_items_touch_cart();
+
+-- ── 4. Indexes ────────────────────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_carts_user_id    ON public.carts(user_id);
+-- Used by admin abandoned-cart query: WHERE updated_at < now() - interval AND has items
+CREATE INDEX IF NOT EXISTS idx_carts_updated_at ON public.carts(updated_at);
+CREATE INDEX IF NOT EXISTS idx_cart_items_cart  ON public.cart_items(cart_id);
+
+-- ── 5. RLS — service role bypasses; anon/customer cannot read other carts ─────
+ALTER TABLE public.carts      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cart_items ENABLE ROW LEVEL SECURITY;
+
+-- Service role (used by backend) bypasses RLS automatically.
+-- These policies allow authenticated users to read/write ONLY their own cart.
+-- If you use the anon key on the frontend directly, add these policies.
+-- Backend uses service role key → these policies are informational / best-practice.
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename='carts' AND policyname='carts_owner'
+  ) THEN
+    CREATE POLICY carts_owner ON public.carts
+      FOR ALL USING (user_id = auth.uid());
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename='cart_items' AND policyname='cart_items_owner'
+  ) THEN
+    CREATE POLICY cart_items_owner ON public.cart_items
+      FOR ALL USING (
+        cart_id IN (SELECT id FROM public.carts WHERE user_id = auth.uid())
+      );
+  END IF;
+END $$;

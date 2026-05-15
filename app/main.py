@@ -20,6 +20,7 @@ from postgrest.exceptions import APIError as PostgrestError
 from app.config import settings
 from app.supabase_client import init_clients, get_admin_supabase
 from app.routers import auth, users, products, orders, payments, push
+from app.routers import cart, pricing, invoice
 from app.routers import admin_verify
 from app.middlewares.security import (
     HideServerHeaderMiddleware,
@@ -136,6 +137,10 @@ app.include_router(orders.router,   prefix=PREFIX)
 app.include_router(payments.router, prefix=PREFIX)
 app.include_router(push.router,     prefix=PREFIX)
 app.include_router(admin_verify.router, prefix=PREFIX)
+app.include_router(cart.router,    prefix=PREFIX)
+app.include_router(pricing.router, prefix=PREFIX)
+app.include_router(invoice.router, prefix=PREFIX)
+
 
 # ── Exception Handlers ──────────────────────────────────────────────────────
 @app.exception_handler(PostgrestError)
