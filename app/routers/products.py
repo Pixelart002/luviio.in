@@ -1,19 +1,44 @@
 """
 Products Router
-================
-Changes from original:
-  All .single() → .maybe_single() — no PGRST116 on missing rows.
-  FIXED: Added robust NoneType checks for .data attributes to prevent crashes.
-  ADDED: Auto unique slug generation — no more 409 conflicts on duplicate slugs.
-  UPDATED: Max 10 images upload support per product.
+===============
+Fixes applied vs previous version:
+
+BUG 1 — CRITICAL (root cause — no images returned):
+  get_product() was joining product_images(*) — a separate table that is
+  always empty because uploads write to products.images TEXT[] column, not
+  to that table. Removed the join; `images` column is on products itself.
+
+BUG 2 — Pydantic v2 Field default_factory:
+  `Field(default_factory=list)` is deprecated inside Field() in Pydantic v2.
+  Changed to `images: list[str] = Field(default_factory=list)` (no | None).
+
+BUG 3 — Upload path collision:
+  Multiple-image upload was using  products/{id}/{img_id}.webp
+  Single-image (image.py) was using products/{id}.webp (root level)
+  Standardised: all images go to  products/{product_id}/{hex_id}.webp
+
+BUG 4 — image_url not updated on subsequent uploads:
+  Old: only set image_url if it was NULL.
+  New: always set image_url = images[0] so primary image stays consistent.
+
+BUG 5 — No delete-image endpoint:
+  Added DELETE /products/{id}/images/{index}
+  Removes image from array by index, deletes file from Storage,
+  updates image_url to next available image (or null if empty).
+
+BUG 6 — Server Load Prevention (NEW):
+  Changed upload endpoint to accept ONLY ONE image per request. 
+  Frontend will loop and call this endpoint one-by-one to prevent RAM spikes.
 """
+from __future__ import annotations
+
 import io
 import logging
 import uuid
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status, Depends, Query, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from PIL import Image
 from pydantic import BaseModel, Field, model_validator
 
@@ -22,10 +47,19 @@ from postgrest.exceptions import APIError as PostgrestError
 from app.dependencies import require_admin
 from app.supabase_client import get_admin_supabase
 
+# PIL safety limit
 Image.MAX_IMAGE_PIXELS = 10_000_000
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Products"])
 
+# ── Image constants ───────────────────────────────────────────────────────────
+_MAX_IMAGES      = 10
+_MAX_FILE_BYTES  = 5 * 1024 * 1024          # 5 MB per file
+_THUMB_SIZE      = (800, 800)
+_WEBP_QUALITY    = 80
+_STORAGE_BUCKET  = "product-images"
+
+# Magic bytes for supported formats (content-type spoof protection)
 _IMAGE_MAGIC: dict[bytes, str] = {
     b"\xff\xd8\xff": "jpeg",
     b"\x89PNG":      "png",
@@ -33,99 +67,172 @@ _IMAGE_MAGIC: dict[bytes, str] = {
     b"RIFF":         "webp",
 }
 
+
+# ── Private helpers ───────────────────────────────────────────────────────────
+
 def _is_real_image(data: bytes) -> bool:
+    """Magic-bytes check — rejects files that lie about their content-type."""
     return any(data.startswith(magic) for magic in _IMAGE_MAGIC)
 
 
-# ── Slug Helper ───────────────────────────────────────────────────────────────
-
-def _generate_unique_slug(sb, base_slug: str) -> str:
-    slug = base_slug
+def _generate_unique_slug(sb: Any, base_slug: str) -> str:
+    """Append -2, -3 … until slug is unique."""
+    slug    = base_slug
     counter = 2
     while True:
         existing = sb.table("products").select("id").eq("slug", slug).execute()
-        if not existing or not hasattr(existing, "data") or not existing.data:
+        if not getattr(existing, "data", None):
             return slug
-        slug = f"{base_slug}-{counter}"
+        slug    = f"{base_slug}-{counter}"
         counter += 1
 
 
-# ── Models ────────────────────────────────────────────────────────────────────
+def _upload_webp(sb: Any, file_bytes: bytes, product_id: str, img_hex: str) -> str:
+    """
+    Process raw image bytes → resize → WebP → upload to Storage.
+    All images use the same path pattern: products/{product_id}/{hex}.webp
+    Returns the public URL.
+    Raises HTTPException on processing or upload failure.
+    """
+    # ── PIL processing ────────────────────────────────────────────────────────
+    try:
+        img = Image.open(io.BytesIO(file_bytes))
+        if img.width * img.height > Image.MAX_IMAGE_PIXELS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Image dimensions too large",
+            )
+        img = img.convert("RGB")
+        img.thumbnail(_THUMB_SIZE)
+        buf = io.BytesIO()
+        img.save(buf, format="WEBP", quality=_WEBP_QUALITY)
+        optimized = buf.getvalue()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("PIL processing failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not process image — ensure file is a valid JPEG/PNG/WebP",
+        )
+
+    # ── Storage upload ────────────────────────────────────────────────────────
+    # Standardised path: products/{product_id}/{img_hex}.webp
+    path = f"products/{product_id}/{img_hex}.webp"
+    try:
+        sb.storage.from_(_STORAGE_BUCKET).upload(
+            path, optimized,
+            {"content-type": "image/webp", "upsert": "true"},
+        )
+        url: str = sb.storage.from_(_STORAGE_BUCKET).get_public_url(path)
+        return url.rstrip("?")
+    except Exception as exc:
+        logger.error("Storage upload failed | path=%s | %s", path, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload image to cloud storage",
+        )
+
+
+def _delete_storage_file(sb: Any, url: str) -> None:
+    """
+    Extract the storage path from a public URL and delete the file.
+    Non-fatal — logs on failure but never raises.
+    """
+    try:
+        # URL format: https://<project>.supabase.co/storage/v1/object/public/product-images/products/...
+        marker = f"/object/public/{_STORAGE_BUCKET}/"
+        if marker in url:
+            path = url.split(marker, 1)[1].split("?")[0]
+            sb.storage.from_(_STORAGE_BUCKET).remove([path])
+            logger.info("Deleted storage file: %s", path)
+    except Exception as exc:
+        logger.warning("Storage file deletion failed | url=%s | %s", url[:60], exc)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SCHEMAS
+# ══════════════════════════════════════════════════════════════════════════════
 
 class CategoryCreate(BaseModel):
-    name: str = Field(max_length=100)
-    slug: str = Field(max_length=120, pattern=r"^[a-z0-9-]+$")
+    name:        str       = Field(max_length=100)
+    slug:        str       = Field(max_length=120, pattern=r"^[a-z0-9-]+$")
     description: str | None = None
-    image_url: str | None = None
+    image_url:   str | None = None
 
 
 class ProductCreate(BaseModel):
-    name: str = Field(max_length=255)
-    slug: str = Field(max_length=280, pattern=r"^[a-z0-9-]+$")
-    description: str | None = None
-    short_description: str | None = None
-    sku: str | None = Field(default=None, max_length=100)
-    category_id: str | None = None
-    price: Decimal = Field(gt=0, decimal_places=2)
-    compare_price: Decimal | None = Field(default=None, gt=0, decimal_places=2)
-    stock: int = Field(ge=0, default=0)
-    low_stock_threshold: int = Field(default=10, ge=0)
-    weight_grams: int | None = Field(default=None, ge=0)
-    image_url: str | None = None
-    images: list[str] | None = Field(default_factory=list)  # New images array
-    is_active: bool = True
+    name:               str            = Field(max_length=255)
+    slug:               str            = Field(max_length=280, pattern=r"^[a-z0-9-]+$")
+    description:        str | None     = None
+    short_description:  str | None     = None
+    sku:                str | None     = Field(default=None, max_length=100)
+    category_id:        str | None     = None
+    price:              Decimal        = Field(gt=0, decimal_places=2)
+    compare_price:      Decimal | None = Field(default=None, gt=0, decimal_places=2)
+    stock:              int            = Field(ge=0, default=0)
+    low_stock_threshold: int           = Field(default=10, ge=0)
+    weight_grams:       int | None     = Field(default=None, ge=0)
+    image_url:          str | None     = None
+    images:             list[str]      = Field(default_factory=list)
+    is_active:          bool           = True
 
     @model_validator(mode="after")
     def compare_must_exceed_price(self) -> "ProductCreate":
-        if self.compare_price and self.price:
-            if self.compare_price <= self.price:
-                raise ValueError("compare_price must be greater than price")
+        if self.compare_price and self.price and self.compare_price <= self.price:
+            raise ValueError("compare_price must be greater than price")
         return self
 
 
 class ProductUpdate(BaseModel):
-    name: str | None = None
-    description: str | None = None
-    short_description: str | None = None
-    price: Decimal | None = Field(default=None, gt=0)
-    compare_price: Decimal | None = None
-    stock: int | None = Field(default=None, ge=0)
-    low_stock_threshold: int | None = None
-    image_url: str | None = None
-    images: list[str] | None = None  # New images array
-    category_id: str | None = None
-    is_active: bool | None = None
-    weight_grams: int | None = None
+    name:               str | None     = None
+    description:        str | None     = None
+    short_description:  str | None     = None
+    price:              Decimal | None = Field(default=None, gt=0)
+    compare_price:      Decimal | None = None
+    stock:              int | None     = Field(default=None, ge=0)
+    low_stock_threshold: int | None   = None
+    image_url:          str | None     = None
+    images:             list[str] | None = None
+    category_id:        str | None     = None
+    is_active:          bool | None    = None
+    weight_grams:       int | None     = None
 
     @model_validator(mode="after")
     def compare_must_exceed_price(self) -> "ProductUpdate":
-        if self.compare_price and self.price:
-            if self.compare_price <= self.price:
-                raise ValueError("compare_price must be greater than price")
+        if self.compare_price and self.price and self.compare_price <= self.price:
+            raise ValueError("compare_price must be greater than price")
         return self
 
 
-# ── Categories ────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  CATEGORY ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/categories")
 def list_categories() -> list[dict[str, Any]]:
-    sb = get_admin_supabase()
+    sb  = get_admin_supabase()
     res = sb.table("categories").select("*").eq("is_active", True).execute()
-    return res.data if res and hasattr(res, "data") and res.data else []
+    return getattr(res, "data", None) or []
 
 
-@router.post("/categories", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
+@router.post("/categories", status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_admin)])
 def create_category(payload: CategoryCreate) -> dict[str, Any]:
-    sb = get_admin_supabase()
+    sb  = get_admin_supabase()
     res = sb.table("categories").insert(payload.model_dump()).execute()
-    if not res or not hasattr(res, "data") or not res.data:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create category")
+    if not getattr(res, "data", None):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create category",
+        )
     return res.data[0]
 
 
-@router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
+@router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT,
+               dependencies=[Depends(require_admin)])
 def delete_category(category_id: uuid.UUID) -> None:
-    sb = get_admin_supabase()
+    sb     = get_admin_supabase()
     active = (
         sb.table("products")
         .select("id", count="exact")
@@ -133,7 +240,7 @@ def delete_category(category_id: uuid.UUID) -> None:
         .eq("is_active", True)
         .execute()
     )
-    if active and hasattr(active, "count") and (active.count or 0) > 0:
+    if (active.count or 0) > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot delete — category has active products.",
@@ -141,23 +248,25 @@ def delete_category(category_id: uuid.UUID) -> None:
     sb.table("categories").update({"is_active": False}).eq("id", str(category_id)).execute()
 
 
-# ── Products ──────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  PRODUCT ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/products")
 def list_products(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    category: str | None = Query(default=None, max_length=120),
-    search: str | None = Query(default=None, max_length=100),
-    min_price: float | None = Query(default=None, ge=0),
-    max_price: float | None = Query(default=None, ge=0),
-    in_stock: bool | None = None,
+    page:       int   = Query(1, ge=1),
+    page_size:  int   = Query(20, ge=1, le=100),
+    category:   str | None = Query(default=None, max_length=120),
+    search:     str | None = Query(default=None, max_length=100),
+    min_price:  float | None = Query(default=None, ge=0),
+    max_price:  float | None = Query(default=None, ge=0),
+    in_stock:   bool | None  = None,
 ) -> dict[str, Any]:
     sb = get_admin_supabase()
-    q = (
+    q  = (
         sb.table("products")
         .select(
-            "id, name, slug, description, short_description, sku, category_id, "
+            "id, name, slug, short_description, sku, category_id, "
             "price, compare_price, stock, low_stock_threshold, weight_grams, "
             "image_url, images, is_active, created_at, categories(name, slug)",
             count="exact",
@@ -168,12 +277,12 @@ def list_products(
     if category:
         try:
             cat = sb.table("categories").select("id").eq("slug", category).maybe_single().execute()
-            if cat and hasattr(cat, "data") and cat.data:
+            if cat and getattr(cat, "data", None):
                 q = q.eq("category_id", cat.data["id"])
             else:
                 return {"items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}
-        except Exception as e:
-            logger.warning(f"Error fetching category {category}: {e}")
+        except Exception as exc:
+            logger.warning("Category filter error for '%s': %s", category, exc)
 
     if search:
         try:
@@ -191,8 +300,8 @@ def list_products(
     offset = (page - 1) * page_size
     try:
         result = q.range(offset, offset + page_size - 1).execute()
-        total: int = result.count if result and hasattr(result, "count") and result.count else 0
-        items = result.data if result and hasattr(result, "data") and result.data else []
+        total  = result.count or 0
+        items  = getattr(result, "data", None) or []
         return {
             "items":     items,
             "total":     total,
@@ -200,147 +309,268 @@ def list_products(
             "page_size": page_size,
             "pages":     -(-total // page_size) if page_size > 0 else 0,
         }
-    except Exception as e:
-        logger.error(f"Error listing products: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to fetch products")
+    except Exception as exc:
+        logger.error("list_products failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch products",
+        )
 
 
 @router.get("/products/{slug}")
 def get_product(slug: str) -> dict[str, Any]:
-    sb = get_admin_supabase()
+    sb     = get_admin_supabase()
     result = (
         sb.table("products")
-        .select("*, categories(name, slug), product_images(*)")
+        .select("*, categories(name, slug)")
         .eq("slug", slug)
         .eq("is_active", True)
         .maybe_single()
         .execute()
     )
-    if not result or not hasattr(result, "data") or not result.data:
+    if not result or not getattr(result, "data", None):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
-    return result.data
+
+    product = result.data
+    if product.get("images") is None:
+        product["images"] = []
+
+    return product
 
 
-@router.post("/products", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
+@router.post("/products", status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_admin)])
 def create_product(payload: ProductCreate) -> dict[str, Any]:
     sb = get_admin_supabase()
 
     if payload.sku:
-        existing_sku = sb.table("products").select("id").eq("sku", payload.sku).execute()
-        if existing_sku and hasattr(existing_sku, "data") and existing_sku.data:
+        existing = sb.table("products").select("id").eq("sku", payload.sku).execute()
+        if getattr(existing, "data", None):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Product with SKU '{payload.sku}' already exists",
             )
 
     unique_slug = _generate_unique_slug(sb, payload.slug)
-    data = payload.model_dump()
-    data["slug"] = unique_slug
+    data        = payload.model_dump()
+    data["slug"]  = unique_slug
     data["price"] = float(data["price"])
     if data.get("compare_price"):
         data["compare_price"] = float(data["compare_price"])
+    data["images"] = data.get("images") or []
 
     res = sb.table("products").insert(data).execute()
-    if not res or not hasattr(res, "data") or not res.data:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create product")
+    if not getattr(res, "data", None):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create product",
+        )
 
     created = res.data[0]
     if unique_slug != payload.slug:
         created["_slug_note"] = f"Slug '{payload.slug}' was taken — assigned '{unique_slug}'"
-
     return created
 
 
 @router.patch("/products/{product_id}", dependencies=[Depends(require_admin)])
 def update_product(product_id: uuid.UUID, payload: ProductUpdate) -> dict[str, Any]:
-    sb = get_admin_supabase()
-    data: dict[str, Any] = {k: v for k, v in payload.model_dump(exclude_unset=True).items()}
+    sb   = get_admin_supabase()
+    data = {k: v for k, v in payload.model_dump(exclude_unset=True).items()}
+
     if "price" in data and data["price"]:
         data["price"] = float(data["price"])
     if "compare_price" in data and data["compare_price"]:
         data["compare_price"] = float(data["compare_price"])
 
-    result = sb.table("products").update(data).eq("id", str(product_id)).execute()
+    if "images" in data:
+        imgs = data["images"] or []
+        data["images"] = imgs
+        if imgs and "image_url" not in data:
+            data["image_url"] = imgs[0]
+        elif not imgs:
+            data["image_url"] = None
 
-    if not result or not hasattr(result, "data") or not result.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found or no changes made")
+    result = sb.table("products").update(data).eq("id", str(product_id)).execute()
+    if not getattr(result, "data", None):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found or no changes made",
+        )
     return result.data[0]
 
 
-@router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
+@router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT,
+               dependencies=[Depends(require_admin)])
 def delete_product(product_id: uuid.UUID) -> None:
-    sb = get_admin_supabase()
-    result = sb.table("products").delete().eq("id", str(product_id)).execute()
-    if not result or not hasattr(result, "data") or not result.data:
+    sb     = get_admin_supabase()
+    result = sb.table("products").update({"is_active": False}).eq("id", str(product_id)).execute()
+    if not getattr(result, "data", None):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
 
-# ── Multiple Image Upload (Max 10) ────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  IMAGE ENDPOINTS (UPDATED FOR ONE-BY-ONE PROCESSING)
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/products/{product_id}/images", dependencies=[Depends(require_admin)])
-async def upload_product_images(
+async def upload_product_image(
     product_id: uuid.UUID,
-    files: list[UploadFile] = File(...),
+    file: UploadFile = File(...),  # ← ONE file at a time, to prevent RAM spike
 ) -> dict[str, Any]:
-    
-    if len(files) > 10:
-        raise HTTPException(status_code=400, detail="Maximum 10 images allowed per product.")
+    """
+    Upload ONE image for a product.
+    Frontend must loop and call this endpoint 1-by-1 if admin selects multiple images.
+    """
+    sb  = get_admin_supabase()
+    pid = str(product_id)
 
-    sb = get_admin_supabase()
-    product = sb.table("products").select("id, images").eq("id", str(product_id)).maybe_single().execute()
-
-    if not product or not hasattr(product, "data") or not product.data:
+    # Fetch current images array
+    prod_res = (
+        sb.table("products")
+        .select("id, images, image_url")
+        .eq("id", pid)
+        .limit(1)
+        .execute()
+    )
+    if not getattr(prod_res, "data", None):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
-    existing_images = product.data.get("images") or []
-    if len(existing_images) + len(files) > 10:
-        raise HTTPException(status_code=400, detail=f"Cannot upload. You already have {len(existing_images)} images. Max limit is 10.")
+    existing_images: list[str] = prod_res.data[0].get("images") or []
 
-    uploaded_urls = []
+    if len(existing_images) >= _MAX_IMAGES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot upload image — already have {len(existing_images)}. Maximum is {_MAX_IMAGES} total.",
+        )
 
-    for file in files:
-        contents: bytes = await file.read()
+    # Read the single file into memory
+    contents: bytes = await file.read()
 
-        if len(contents) > 5 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail=f"File {file.filename} max 5MB allowed")
+    if len(contents) > _MAX_FILE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"'{file.filename}' exceeds 5 MB limit",
+        )
+    if not _is_real_image(contents):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"'{file.filename}' is not a valid image (JPEG/PNG/WebP/GIF)",
+        )
 
-        if not _is_real_image(contents):
-            raise HTTPException(status_code=400, detail=f"Invalid image format for {file.filename}")
+    # Process and upload
+    img_hex = uuid.uuid4().hex[:12]
+    url     = _upload_webp(sb, contents, pid, img_hex)
+    logger.info("Image uploaded | product=%.8s url=%s", pid, url[:60])
 
-        try:
-            img = Image.open(io.BytesIO(contents))
-            if img.width * img.height > Image.MAX_IMAGE_PIXELS:
-                raise HTTPException(status_code=400, detail=f"Dimensions too large for {file.filename}")
-        except Exception:
-            raise HTTPException(status_code=400, detail=f"Could not process image {file.filename}")
+    all_images = existing_images + [url]
 
-        img = img.convert("RGB")
-        img.thumbnail((800, 800))
-        buffer = io.BytesIO()
-        img.save(buffer, format="WEBP", quality=80)
-        optimized: bytes = buffer.getvalue()
+    # Update database
+    update_data: dict[str, Any] = {
+        "images":    all_images,
+        "image_url": all_images[0],
+    }
+    sb.table("products").update(update_data).eq("id", pid).execute()
 
-        # Generate unique ID for each image
-        img_id = uuid.uuid4().hex[:8]
-        path = f"products/{product_id}/{img_id}.webp"
-        
-        try:
-            sb.storage.from_("product-images").upload(
-                path, optimized, {"content-type": "image/webp", "upsert": "true"}
-            )
-            url: str = sb.storage.from_("product-images").get_public_url(path).rstrip("?")
-            uploaded_urls.append(url)
-        except Exception as e:
-            logger.error(f"Image upload failed: {e}")
-            raise HTTPException(status_code=500, detail="Failed to save images")
+    return {
+        "message":       "Image uploaded successfully",
+        "total_count":   len(all_images),
+        "images":        all_images,
+        "image_url":     all_images[0],
+        "uploaded_url":  url
+    }
 
-    all_images = existing_images + uploaded_urls
-    update_data = {"images": all_images}
-    
-    # Set the first image as the main image_url if not set
-    if all_images and not product.data.get("image_url"):
-        update_data["image_url"] = all_images[0]
 
-    sb.table("products").update(update_data).eq("id", str(product_id)).execute()
+@router.delete("/products/{product_id}/images/{index}",
+               dependencies=[Depends(require_admin)])
+def delete_product_image(
+    product_id: uuid.UUID,
+    index:      int,
+) -> dict[str, Any]:
+    sb  = get_admin_supabase()
+    pid = str(product_id)
 
-    return {"message": "Images uploaded successfully", "images": all_images}
+    prod_res = (
+        sb.table("products")
+        .select("id, images, image_url")
+        .eq("id", pid)
+        .limit(1)
+        .execute()
+    )
+    if not getattr(prod_res, "data", None):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+    current_images: list[str] = prod_res.data[0].get("images") or []
+
+    if not current_images:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Product has no images to delete",
+        )
+    if index < 0 or index >= len(current_images):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Index {index} out of range — product has {len(current_images)} image(s) (0-based)",
+        )
+
+    deleted_url    = current_images.pop(index)
+    new_image_url  = current_images[0] if current_images else None
+
+    sb.table("products").update({
+        "images":    current_images,
+        "image_url": new_image_url,
+    }).eq("id", pid).execute()
+
+    _delete_storage_file(sb, deleted_url)
+
+    logger.info(
+        "Image deleted | product=%.8s index=%d remaining=%d",
+        pid, index, len(current_images),
+    )
+
+    return {
+        "message":       "Image deleted successfully",
+        "deleted_url":   deleted_url,
+        "remaining":     len(current_images),
+        "images":        current_images,
+        "image_url":     new_image_url,
+    }
+
+
+@router.put("/products/{product_id}/images/reorder",
+            dependencies=[Depends(require_admin)])
+def reorder_product_images(
+    product_id: uuid.UUID,
+    ordered_urls: list[str],
+) -> dict[str, Any]:
+    sb  = get_admin_supabase()
+    pid = str(product_id)
+
+    prod_res = (
+        sb.table("products")
+        .select("id, images")
+        .eq("id", pid)
+        .limit(1)
+        .execute()
+    )
+    if not getattr(prod_res, "data", None):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+    current_images: list[str] = prod_res.data[0].get("images") or []
+
+    if set(ordered_urls) != set(current_images):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provided URLs must match existing product images exactly — no additions or removals allowed",
+        )
+
+    new_primary = ordered_urls[0] if ordered_urls else None
+    sb.table("products").update({
+        "images":    ordered_urls,
+        "image_url": new_primary,
+    }).eq("id", pid).execute()
+
+    return {
+        "message":   "Images reordered successfully",
+        "images":    ordered_urls,
+        "image_url": new_primary,
+    }
