@@ -38,7 +38,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from PIL import Image
 from pydantic import BaseModel, Field, model_validator
 
@@ -230,6 +230,7 @@ def create_category(payload: CategoryCreate) -> dict[str, Any]:
 
 
 @router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT,
+               response_class=Response,
                dependencies=[Depends(require_admin)])
 def delete_category(category_id: uuid.UUID) -> None:
     sb     = get_admin_supabase()
@@ -400,6 +401,7 @@ def update_product(product_id: uuid.UUID, payload: ProductUpdate) -> dict[str, A
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT,
+               response_class=Response,
                dependencies=[Depends(require_admin)])
 def delete_product(product_id: uuid.UUID) -> None:
     sb     = get_admin_supabase()

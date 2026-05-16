@@ -18,6 +18,7 @@ Design:
 from __future__ import annotations
 
 import io
+import os
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -35,8 +36,34 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.pdfmetrics import registerFontFamily
 
 logger = logging.getLogger(__name__)
+
+# ── Font Setup for Rupee (₹) Support ──────────────────────────────────────────
+_DIR = os.path.dirname(os.path.abspath(__file__))
+_FONT_DIR = os.path.join(_DIR, "fonts")
+
+# Fallback fonts just in case TTF files are missing
+_FONT_REGULAR = "Helvetica"
+_FONT_BOLD = "Helvetica-Bold"
+
+try:
+    # Register Roboto fonts
+    pdfmetrics.registerFont(TTFont("Roboto", os.path.join(_FONT_DIR, "Roboto-Regular.ttf")))
+    pdfmetrics.registerFont(TTFont("Roboto-Bold", os.path.join(_FONT_DIR, "Roboto-Bold.ttf")))
+    
+    # Register family so <b> HTML tags work mapped to the bold font
+    registerFontFamily("Roboto", normal="Roboto", bold="Roboto-Bold")
+    
+    _FONT_REGULAR = "Roboto"
+    _FONT_BOLD = "Roboto-Bold"
+    logger.info("Custom fonts loaded successfully for Rupee symbol support.")
+except Exception as e:
+    logger.warning(f"Failed to load custom fonts. Falling back to Helvetica. Rupee symbol may not render. Error: {e}")
+
 
 # ── Brand palette ─────────────────────────────────────────────────────────────
 _NAVY  = colors.HexColor("#0B1628")
@@ -55,14 +82,13 @@ _MARGIN  = 20 * mm        # 20mm all sides
 # ── Style helpers ─────────────────────────────────────────────────────────────
 
 def _styles() -> dict[str, ParagraphStyle]:
-    base = getSampleStyleSheet()
     return {
         "brand": ParagraphStyle(
             "brand",
             fontSize=26,
             leading=30,
             textColor=_TEAL,
-            fontName="Helvetica-Bold",
+            fontName=_FONT_BOLD,
             letterSpacing=3,
         ),
         "tagline": ParagraphStyle(
@@ -70,42 +96,42 @@ def _styles() -> dict[str, ParagraphStyle]:
             fontSize=8,
             leading=10,
             textColor=_GREY,
-            fontName="Helvetica",
+            fontName=_FONT_REGULAR,
         ),
         "invoice_title": ParagraphStyle(
             "invoice_title",
             fontSize=18,
             leading=22,
             textColor=_NAVY,
-            fontName="Helvetica-Bold",
+            fontName=_FONT_BOLD,
         ),
         "h2": ParagraphStyle(
             "h2",
             fontSize=10,
             leading=14,
             textColor=_NAVY,
-            fontName="Helvetica-Bold",
+            fontName=_FONT_BOLD,
         ),
         "body": ParagraphStyle(
             "body",
             fontSize=9,
             leading=13,
             textColor=_BLACK,
-            fontName="Helvetica",
+            fontName=_FONT_REGULAR,
         ),
         "small": ParagraphStyle(
             "small",
             fontSize=8,
             leading=11,
             textColor=_GREY,
-            fontName="Helvetica",
+            fontName=_FONT_REGULAR,
         ),
         "footer": ParagraphStyle(
             "footer",
             fontSize=7.5,
             leading=11,
             textColor=_GREY,
-            fontName="Helvetica",
+            fontName=_FONT_REGULAR,
             alignment=1,   # center
         ),
         "total_label": ParagraphStyle(
@@ -113,14 +139,14 @@ def _styles() -> dict[str, ParagraphStyle]:
             fontSize=11,
             leading=15,
             textColor=_NAVY,
-            fontName="Helvetica-Bold",
+            fontName=_FONT_BOLD,
         ),
         "total_value": ParagraphStyle(
             "total_value",
             fontSize=13,
             leading=17,
             textColor=_TEAL,
-            fontName="Helvetica-Bold",
+            fontName=_FONT_BOLD,
         ),
     }
 
@@ -154,13 +180,6 @@ def build_invoice_pdf(
 ) -> bytes:
     """
     Build a complete invoice PDF in memory and return raw bytes.
-
-    Args:
-        order:    Full order dict (from DB, with order_items nested if available).
-        customer: User profile dict (email, full_name).
-
-    Returns:
-        Raw PDF bytes — caller streams these to the HTTP response.
     """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -197,7 +216,7 @@ def build_invoice_pdf(
             fontSize=14,
             leading=18,
             textColor=_WHITE,
-            fontName="Helvetica-Bold",
+            fontName=_FONT_BOLD,
             alignment=2,  # right
         )),
     ]]
@@ -252,7 +271,6 @@ def build_invoice_pdf(
     story.append(Spacer(1, 3 * mm))
 
     items_raw = order.get("order_items") or []
-    # Normalise nested structure (Supabase join returns list of dicts)
     item_rows: list[dict[str, Any]] = []
     for item in items_raw:
         if isinstance(item, dict):
@@ -289,12 +307,11 @@ def build_invoice_pdf(
         tbl_data.append([Paragraph("No items found.", s["small"]), "", "", ""])
 
     items_tbl = Table(tbl_data, colWidths=col_widths, repeatRows=1)
-    row_count = len(tbl_data)
     items_tbl.setStyle(TableStyle([
         # Header
         ("BACKGROUND",    (0, 0), (-1, 0), _NAVY),
         ("TEXTCOLOR",     (0, 0), (-1, 0), _WHITE),
-        ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME",      (0, 0), (-1, 0), _FONT_BOLD),
         ("FONTSIZE",      (0, 0), (-1, 0), 9),
         # Alternating rows
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [_WHITE, _LIGHT]),
@@ -328,7 +345,6 @@ def build_invoice_pdf(
     ]
 
     summary_col_w = (_W - 2 * _MARGIN) * 0.3
-    summary_offset = (_W - 2 * _MARGIN) - summary_col_w * 2
     sum_tbl = Table(
         summary_data,
         colWidths=[summary_col_w, summary_col_w],
@@ -336,8 +352,8 @@ def build_invoice_pdf(
     )
     sum_tbl.setStyle(TableStyle([
         ("FONTSIZE",      (0, 0), (-1, -1), 8.5),
-        ("FONTNAME",      (0, 0), (0, -1), "Helvetica"),
-        ("FONTNAME",      (1, 0), (1, -1), "Helvetica"),
+        ("FONTNAME",      (0, 0), (0, -1), _FONT_REGULAR),
+        ("FONTNAME",      (1, 0), (1, -1), _FONT_REGULAR),
         ("TEXTCOLOR",     (0, 0), (0, -1), _GREY),
         ("TEXTCOLOR",     (1, 0), (1, -1), _BLACK),
         ("ALIGN",         (0, 0), (-1, -1), "RIGHT"),
@@ -358,7 +374,7 @@ def build_invoice_pdf(
     total_tbl.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, -1), _NAVY),
         ("TEXTCOLOR",     (0, 0), (-1, -1), _TEAL),
-        ("FONTNAME",      (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTNAME",      (0, 0), (-1, -1), _FONT_BOLD),
         ("FONTSIZE",      (0, 0), (-1, -1), 12),
         ("ALIGN",         (0, 0), (-1, -1), "RIGHT"),
         ("TOPPADDING",    (0, 0), (-1, -1), 7),
