@@ -2,33 +2,11 @@
 Products Router
 ===============
 Fixes applied vs previous version:
-
-BUG 1 — CRITICAL (root cause — no images returned):
-  get_product() was joining product_images(*) — a separate table that is
-  always empty because uploads write to products.images TEXT[] column, not
-  to that table. Removed the join; `images` column is on products itself.
-
-BUG 2 — Pydantic v2 Field default_factory:
-  `Field(default_factory=list)` is deprecated inside Field() in Pydantic v2.
-  Changed to `images: list[str] = Field(default_factory=list)` (no | None).
-
-BUG 3 — Upload path collision:
-  Multiple-image upload was using  products/{id}/{img_id}.webp
-  Single-image (image.py) was using products/{id}.webp (root level)
-  Standardised: all images go to  products/{product_id}/{hex_id}.webp
-
-BUG 4 — image_url not updated on subsequent uploads:
-  Old: only set image_url if it was NULL.
-  New: always set image_url = images[0] so primary image stays consistent.
-
-BUG 5 — No delete-image endpoint:
-  Added DELETE /products/{id}/images/{index}
-  Removes image from array by index, deletes file from Storage,
-  updates image_url to next available image (or null if empty).
-
-BUG 6 — Server Load Prevention (NEW):
-  Changed upload endpoint to accept ONLY ONE image per request. 
-  Frontend will loop and call this endpoint one-by-one to prevent RAM spikes.
+BUG 1-6: All previous logic and image upload bug fixes retained.
+BUG 7 (CRASH FIX): Changed all DELETE endpoints from 204 No Content to 200 OK.
+  FastAPI strictly asserts that 204 routes cannot have any response model.
+  Returning 200 OK with a JSON message is safer, prevents startup crashes, 
+  and is much easier for the frontend to parse.
 """
 from __future__ import annotations
 
@@ -38,7 +16,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from PIL import Image
 from pydantic import BaseModel, Field, model_validator
 
@@ -94,7 +72,6 @@ def _upload_webp(sb: Any, file_bytes: bytes, product_id: str, img_hex: str) -> s
     Returns the public URL.
     Raises HTTPException on processing or upload failure.
     """
-    # ── PIL processing ────────────────────────────────────────────────────────
     try:
         img = Image.open(io.BytesIO(file_bytes))
         if img.width * img.height > Image.MAX_IMAGE_PIXELS:
@@ -116,8 +93,6 @@ def _upload_webp(sb: Any, file_bytes: bytes, product_id: str, img_hex: str) -> s
             detail="Could not process image — ensure file is a valid JPEG/PNG/WebP",
         )
 
-    # ── Storage upload ────────────────────────────────────────────────────────
-    # Standardised path: products/{product_id}/{img_hex}.webp
     path = f"products/{product_id}/{img_hex}.webp"
     try:
         sb.storage.from_(_STORAGE_BUCKET).upload(
@@ -137,10 +112,8 @@ def _upload_webp(sb: Any, file_bytes: bytes, product_id: str, img_hex: str) -> s
 def _delete_storage_file(sb: Any, url: str) -> None:
     """
     Extract the storage path from a public URL and delete the file.
-    Non-fatal — logs on failure but never raises.
     """
     try:
-        # URL format: https://<project>.supabase.co/storage/v1/object/public/product-images/products/...
         marker = f"/object/public/{_STORAGE_BUCKET}/"
         if marker in url:
             path = url.split(marker, 1)[1].split("?")[0]
@@ -229,10 +202,10 @@ def create_category(payload: CategoryCreate) -> dict[str, Any]:
     return res.data[0]
 
 
-@router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT,
-               response_class=Response,
+@router.delete("/categories/{category_id}", status_code=status.HTTP_200_OK,
                dependencies=[Depends(require_admin)])
-def delete_category(category_id: uuid.UUID) -> None:
+def delete_category(category_id: uuid.UUID) -> dict[str, Any]:
+    """Changed from 204 to 200 OK to prevent FastAPI assertion errors"""
     sb     = get_admin_supabase()
     active = (
         sb.table("products")
@@ -247,6 +220,7 @@ def delete_category(category_id: uuid.UUID) -> None:
             detail="Cannot delete — category has active products.",
         )
     sb.table("categories").update({"is_active": False}).eq("id", str(category_id)).execute()
+    return {"message": "Category deleted successfully"}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -400,33 +374,30 @@ def update_product(product_id: uuid.UUID, payload: ProductUpdate) -> dict[str, A
     return result.data[0]
 
 
-@router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT,
-               response_class=Response,
+@router.delete("/products/{product_id}", status_code=status.HTTP_200_OK,
                dependencies=[Depends(require_admin)])
-def delete_product(product_id: uuid.UUID) -> None:
+def delete_product(product_id: uuid.UUID) -> dict[str, Any]:
+    """Changed from 204 to 200 OK to prevent FastAPI assertion errors"""
     sb     = get_admin_supabase()
     result = sb.table("products").update({"is_active": False}).eq("id", str(product_id)).execute()
     if not getattr(result, "data", None):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    
+    return {"message": "Product deleted successfully"}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  IMAGE ENDPOINTS (UPDATED FOR ONE-BY-ONE PROCESSING)
+#  IMAGE ENDPOINTS 
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/products/{product_id}/images", dependencies=[Depends(require_admin)])
 async def upload_product_image(
     product_id: uuid.UUID,
-    file: UploadFile = File(...),  # ← ONE file at a time, to prevent RAM spike
+    file: UploadFile = File(...),
 ) -> dict[str, Any]:
-    """
-    Upload ONE image for a product.
-    Frontend must loop and call this endpoint 1-by-1 if admin selects multiple images.
-    """
     sb  = get_admin_supabase()
     pid = str(product_id)
 
-    # Fetch current images array
     prod_res = (
         sb.table("products")
         .select("id, images, image_url")
@@ -445,7 +416,6 @@ async def upload_product_image(
             detail=f"Cannot upload image — already have {len(existing_images)}. Maximum is {_MAX_IMAGES} total.",
         )
 
-    # Read the single file into memory
     contents: bytes = await file.read()
 
     if len(contents) > _MAX_FILE_BYTES:
@@ -459,14 +429,12 @@ async def upload_product_image(
             detail=f"'{file.filename}' is not a valid image (JPEG/PNG/WebP/GIF)",
         )
 
-    # Process and upload
     img_hex = uuid.uuid4().hex[:12]
     url     = _upload_webp(sb, contents, pid, img_hex)
     logger.info("Image uploaded | product=%.8s url=%s", pid, url[:60])
 
     all_images = existing_images + [url]
 
-    # Update database
     update_data: dict[str, Any] = {
         "images":    all_images,
         "image_url": all_images[0],
@@ -482,7 +450,7 @@ async def upload_product_image(
     }
 
 
-@router.delete("/products/{product_id}/images/{index}",
+@router.delete("/products/{product_id}/images/{index}", status_code=status.HTTP_200_OK,
                dependencies=[Depends(require_admin)])
 def delete_product_image(
     product_id: uuid.UUID,
