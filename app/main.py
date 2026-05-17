@@ -29,6 +29,12 @@ from app.middlewares.security import (
 )
 from app.services.events import register_default_handlers
 
+
+
+# 1. Sabse pehle log level fix karein
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
 # ── Request ID context ────────────────────────────────────────────────────────
 _request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
 
