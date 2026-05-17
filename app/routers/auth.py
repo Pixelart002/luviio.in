@@ -9,6 +9,7 @@ Changes from original:
   5. FIXED: Safe extraction of user_id for logout to prevent KeyErrors
   6. FIXED: Proper AuthApiError handling for refresh tokens
   7. SECURED: Moved Refresh Token to HttpOnly Cookie to prevent XSS attacks.
+  8. CROSS-ORIGIN FIX: Updated cookies to samesite="none" and secure=True for cross-domain auth.
 """
 import logging
 import time
@@ -189,8 +190,8 @@ def login(request: Request, response: Response, payload: LoginRequest) -> dict[s
         key="refresh_token",
         value=result.session.refresh_token,
         httponly=True,            # Prevents JS access (XSS mitigation)
-        secure=True,              # Change to False if testing locally without HTTPS
-        samesite="lax",           # CSRF mitigation
+        secure=True,              # MUST be True for cross-domain
+        samesite="none",          # 🔥 ALLOWS cross-origin cookie sync
         max_age=7 * 24 * 60 * 60  # 7 days expiry
     )
 
@@ -228,8 +229,8 @@ def refresh(request: Request, response: Response, refresh_token: str | None = Co
             
     except AuthApiError as e:
         logger.warning(f"AuthApiError during token refresh: {e.message}")
-        # Clear invalid cookie
-        response.delete_cookie("refresh_token")
+        # Clear invalid cookie (added samesite="none" here too)
+        response.delete_cookie("refresh_token", samesite="none", secure=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
@@ -248,8 +249,8 @@ def refresh(request: Request, response: Response, refresh_token: str | None = Co
         key="refresh_token",
         value=result.session.refresh_token,
         httponly=True,
-        secure=True,
-        samesite="lax",
+        secure=True,              # MUST be True for cross-domain
+        samesite="none",          # 🔥 ALLOWS cross-origin cookie sync
         max_age=7 * 24 * 60 * 60
     )
         
@@ -281,8 +282,12 @@ def logout(response: Response, current: dict[str, Any] = Depends(get_current_use
     except Exception as e:
         logger.warning("Sign out failed (non-critical): %s", e)
         
-    # Clear the refresh token cookie
-    response.delete_cookie("refresh_token")
+    # Clear the refresh token cookie (added samesite="none" here too)
+    response.delete_cookie(
+        key="refresh_token", 
+        samesite="none", 
+        secure=True
+    )
         
     return {"message": "Logged out successfully"}
 
