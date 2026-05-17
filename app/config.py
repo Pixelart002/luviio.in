@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # App
-    APP_NAME: str = "MyStore"
+    APP_NAME: str = "luviio"
     APP_ENV: str = "production"
 
     # Supabase
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     FROM_EMAIL: str = "orders@mystore.com"
 
     # CORS — set your actual frontend domain in .env
-    ALLOWED_ORIGINS: str = "*"
+    ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in,http://localhost:7700,http://127.0.0.1:7700"
 
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
@@ -47,8 +47,7 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> List[str]:
-        if self.APP_ENV == "development":
-            return ["*"]
+        # Cross-origin cookies need explicit domains, NEVER return ["*"]
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
     @property
