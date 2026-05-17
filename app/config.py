@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     FROM_EMAIL: str = "orders@mystore.com"
 
-    # CORS — set your actual frontend domain in .env
-    ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in,http://localhost:7700,http://127.0.0.1:7700"
+    # CORS — Updated with Vercel URL
+    ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in,http://localhost:7700,http://127.0.0.1:7700,https://my-frontend-c4s409o9f-pixelart002s-projects.vercel.app"
 
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
@@ -47,8 +47,15 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> List[str]:
-        # Cross-origin cookies need explicit domains, NEVER return ["*"]
-        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+        # 🔥 KOYEB BYPASS: Strictly enforcing these domains. 
+        # This prevents any stray '*' in Koyeb's environment variables from breaking login.
+        return [
+            "https://luviio.in",
+            "https://www.luviio.in",
+            "http://localhost:7700",
+            "http://127.0.0.1:7700",
+            "https://my-frontend-c4s409o9f-pixelart002s-projects.vercel.app"
+        ]
 
     @property
     def is_production(self) -> bool:
