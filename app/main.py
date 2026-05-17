@@ -30,9 +30,15 @@ from app.middlewares.security import (
 from app.services.events import register_default_handlers
 
 
-
 # 1. Sabse pehle log level fix karein
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# 🔥 2. Uvicorn ke access logs se /health spam block karein
+class HealthCheckFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/health" not in record.getMessage()
+
+logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
 
 # ── Request ID context ────────────────────────────────────────────────────────
