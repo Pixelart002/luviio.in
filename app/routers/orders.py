@@ -68,7 +68,7 @@ class OrderItemInput(BaseModel):
 class OrderCreate(BaseModel):
     items: list[OrderItemInput] = Field(min_length=1, max_length=MAX_ITEMS_PER_ORDER)
     shipping_address_id: UUID
-    idempotency_key: UUID  # Added for idempotency
+    idempotency_key: UUID
     notes: str | None = Field(default=None, max_length=500)
 
     @field_validator("items")
@@ -110,7 +110,8 @@ def create_order(
         "idempotency_key": str(payload.idempotency_key)
     }).maybe_single().execute()
     
-    if existing.data:
+    # FIX: Check if existing is not None and has data attribute
+    if existing and hasattr(existing, "data") and existing.data:
         return existing.data
 
     try:
@@ -236,7 +237,6 @@ def create_order(
             detail="Order creation failed. Please try again.",
         )
 
-    # Fetch full order with product images
     full_order_res = (
         sb.table("orders")
         .select(ORDER_ITEMS_SELECT)
