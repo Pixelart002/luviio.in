@@ -10,6 +10,8 @@ Changes from original:
   6. FIXED: Proper AuthApiError handling for refresh tokens
   7. SECURED: Moved Refresh Token to HttpOnly Cookie to prevent XSS attacks.
   8. CROSS-ORIGIN FIX: Updated cookies to samesite="none" and secure=True for cross-domain auth.
+  9. FIXED: logout ab expired/malformed JWT pe bhi kaam karta hai — get_current_user
+     dependency hata di, refresh_token cookie se session invalidate hota hai.
 """
 import logging
 import time
@@ -30,6 +32,14 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 _MIN_RESPONSE_SECONDS = 0.3
+
+# Cookie helper — ek jagah define, sab jagah reuse
+_COOKIE_KWARGS = dict(
+    key="refresh_token",
+    httponly=True,
+    secure=True,
+    samesite="none",
+)
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -75,7 +85,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str
     expires_in: int | None = None
-    # refresh_token is intentionally removed from JSON response for XSS protection
+    # refresh_token intentionally removed from JSON — XSS protection
 
 
 class LoginResponse(TokenResponse):
@@ -91,13 +101,6 @@ class MessageResponse(BaseModel):
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=MessageResponse)
 @limiter.limit("5/minute")
 def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
-    """
-    Anti-enumeration — always returns same message.
-    Flow:
-      1. sign_up() with Supabase Auth
-      2. Defensively upsert profile row
-      3. Send welcome email via Resend (non-fatal)
-    """
     sb   = get_supabase()
     adm  = get_admin_supabase()
     repo = UserRepository(adm)
@@ -111,7 +114,6 @@ def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
             "password": payload.password,
             "options": {"data": {"full_name": payload.full_name or ""}},
         })
-        # SAFE CHECK: Prevent NoneType error if user requires email confirmation
         if result and hasattr(result, "user") and result.user:
             auth_user_id = result.user.id
 
@@ -125,7 +127,6 @@ def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
             detail="Registration service unavailable. Please try again later.",
         )
 
-    # ── Defensive profile creation ────────────────────────────────────────────
     if auth_user_id:
         try:
             repo.upsert_profile(
@@ -136,12 +137,10 @@ def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
         except Exception as e:
             logger.warning("Profile upsert after register failed (non-critical): %s", e)
 
-        # ── Welcome email via Resend ──────────────────────────────────────────
         try:
             from app.utils.email import send_welcome_email
             send_welcome_email(payload.email, user_name)
         except Exception as e:
-            # Non-fatal — registration still succeeds
             logger.warning("Welcome email failed (non-critical): %s", e)
 
     return {"message": "If this email is new, a confirmation link has been sent."}
@@ -160,14 +159,17 @@ def login(request: Request, response: Response, payload: LoginRequest) -> dict[s
             "email": payload.email,
             "password": payload.password,
         })
-        
-        # SAFE CHECK: Prevent crash if user or session is missing
-        if not result or not hasattr(result, "user") or not result.user or not hasattr(result, "session") or not result.session:
+
+        if (
+            not result
+            or not hasattr(result, "user") or not result.user
+            or not hasattr(result, "session") or not result.session
+        ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",
             )
-            
+
     except HTTPException:
         raise
     except AuthApiError:
@@ -185,20 +187,16 @@ def login(request: Request, response: Response, payload: LoginRequest) -> dict[s
         elapsed = time.monotonic() - start
         time.sleep(max(0.0, _MIN_RESPONSE_SECONDS - elapsed))
 
-    # ── Set Refresh Token in HttpOnly Cookie ──────────────────────────────────
     response.set_cookie(
-        key="refresh_token",
+        **_COOKIE_KWARGS,
         value=result.session.refresh_token,
-        httponly=True,            # Prevents JS access (XSS mitigation)
-        secure=True,              # MUST be True for cross-domain
-        samesite="none",          # 🔥 ALLOWS cross-origin cookie sync
-        max_age=7 * 24 * 60 * 60  # 7 days expiry
+        max_age=7 * 24 * 60 * 60,
     )
 
     return {
-        "access_token":  result.session.access_token,
-        "token_type":    "bearer",
-        "expires_in":    result.session.expires_in,
+        "access_token": result.session.access_token,
+        "token_type":   "bearer",
+        "expires_in":   result.session.expires_in,
         "user": {
             "id":    result.user.id,
             "email": result.user.email,
@@ -208,29 +206,31 @@ def login(request: Request, response: Response, payload: LoginRequest) -> dict[s
 
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("10/minute")
-def refresh(request: Request, response: Response, refresh_token: str | None = Cookie(None)) -> dict[str, Any]:
-    """Uses HttpOnly cookie instead of JSON payload to get the refresh token."""
-    
+def refresh(
+    request: Request,
+    response: Response,
+    refresh_token: str | None = Cookie(None),
+) -> dict[str, Any]:
+    """HttpOnly cookie se refresh token leta hai."""
+
     if not refresh_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token missing. Please log in again."
+            detail="Refresh token missing. Please log in again.",
         )
 
     sb = get_supabase()
     try:
         result = sb.auth.refresh_session(refresh_token)
-        # SAFE CHECK
         if not result or not hasattr(result, "session") or not result.session:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid refresh token",
             )
-            
+
     except AuthApiError as e:
-        logger.warning(f"AuthApiError during token refresh: {e.message}")
-        # Clear invalid cookie (added samesite="none" here too)
-        response.delete_cookie("refresh_token", samesite="none", secure=True)
+        logger.warning("AuthApiError during token refresh: %s", e.message)
+        response.delete_cookie(**_COOKIE_KWARGS)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
@@ -238,57 +238,56 @@ def refresh(request: Request, response: Response, refresh_token: str | None = Co
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error during refresh: {e}")
+        logger.error("Unexpected error during refresh: %s", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
-        
-    # Supabase might issue a new refresh token, so update the cookie
+
     response.set_cookie(
-        key="refresh_token",
+        **_COOKIE_KWARGS,
         value=result.session.refresh_token,
-        httponly=True,
-        secure=True,              # MUST be True for cross-domain
-        samesite="none",          # 🔥 ALLOWS cross-origin cookie sync
-        max_age=7 * 24 * 60 * 60
+        max_age=7 * 24 * 60 * 60,
     )
-        
+
     return {
-        "access_token":  result.session.access_token,
-        "token_type":    "bearer",
-        "expires_in":    result.session.expires_in,
+        "access_token": result.session.access_token,
+        "token_type":   "bearer",
+        "expires_in":   result.session.expires_in,
     }
 
 
 @router.post("/logout", response_model=MessageResponse)
-def logout(response: Response, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
-    sb = get_admin_supabase()
-    try:
-        # SAFE CHECK: Extract user ID properly (like we did in payments.py)
-        user_id = None
-        if "profile" in current and "id" in current["profile"]:
-            user_id = current["profile"]["id"]
-        elif "id" in current:
-            user_id = current["id"]
-        elif "sub" in current:
-            user_id = current["sub"]
+def logout(
+    response: Response,
+    refresh_token: str | None = Cookie(None),  # FIX: JWT dependency hatayi
+) -> dict[str, str]:
+    """
+    FIX: get_current_user dependency hata di.
+    Expired ya malformed access token hone par bhi logout kaam karta hai.
+    
+    Strategy:
+      1. Refresh token cookie se Supabase session invalidate karo
+      2. Cookie hamesha clear karo — chahe session invalidation fail bhi ho
+      3. Hamesha 200 return karo (user ka perspective: logout = done)
+    """
+    # ── Step 1: Supabase session invalidate karo ─────────────────────────────
+    if refresh_token:
+        try:
+            sb = get_supabase()
+            # Pehle refresh karke valid session lo, phir sign out karo
+            result = sb.auth.refresh_session(refresh_token)
+            if result and hasattr(result, "session") and result.session:
+                sb.auth.sign_out()
+        except Exception as e:
+            # Non-critical — cookie toh clear hogi hi
+            logger.warning("Session invalidation during logout failed (non-critical): %s", e)
+    else:
+        logger.info("Logout called with no refresh token cookie — clearing anyway.")
 
-        if user_id:
-            sb.auth.admin.sign_out(user_id, scope="global")
-        else:
-            logger.warning("Logout attempted but no valid user ID found in session.")
-            
-    except Exception as e:
-        logger.warning("Sign out failed (non-critical): %s", e)
-        
-    # Clear the refresh token cookie (added samesite="none" here too)
-    response.delete_cookie(
-        key="refresh_token", 
-        samesite="none", 
-        secure=True
-    )
-        
+    # ── Step 2: Cookie hamesha clear karo ────────────────────────────────────
+    response.delete_cookie(**_COOKIE_KWARGS)
+
     return {"message": "Logged out successfully"}
 
 
