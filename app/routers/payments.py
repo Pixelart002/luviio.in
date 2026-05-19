@@ -2,27 +2,13 @@
 Payments Router
 ===============
 Stripe PaymentIntent lifecycle with idempotent, race-safe DB updates.
-
-Payment flow:
-  1. POST /payments/create-intent  → create / reuse Stripe PaymentIntent
-  2. Frontend: stripe.confirmCardPayment()
-     ├── Success → POST /payments/confirm    → mark paid, notify customer
-     └── Failure → POST /payments/notify-failed → notify customer IMMEDIATELY
-  3. POST /payments/webhook        → Stripe-side backup (idempotent source of truth)
-
-FIXES:
-  1. Rate limiting added on /confirm and /notify-failed (pehle missing tha)
-  2. Idempotency key added to Stripe PaymentIntent creation (duplicate PI prevention)
-  3. Stripe key guard — startup pe hi fail karo, request pe nahi
-  4. notify-failed pe stricter rate limit (spam prevention)
-  5. get_real_ip from middlewares — proxy headers handle karta hai
 """
 from __future__ import annotations
 
 import copy
 import logging
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any
+from typing import Any, Dict
 from uuid import UUID
 
 import stripe
@@ -37,7 +23,6 @@ from app.utils.stock import restore_stock
 from app.services.events import get_event_bus, OrderPaidEvent, OrderFailedEvent
 
 # ── Stripe key guard ──────────────────────────────────────────────────────────
-# Module import pe hi check karo — missing key pe request tak wait mat karo
 if not settings.STRIPE_SECRET_KEY:
     raise RuntimeError("STRIPE_SECRET_KEY env var not set — payments disabled")
 
@@ -47,7 +32,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
 
-# ── Rate Limiter (same IP extractor as main.py) ───────────────────────────────
+# ── Rate Limiter ──────────────────────────────────────────────────────────────
 def _get_real_ip(request: Request) -> str:
     fwd = request.headers.get("X-Forwarded-For")
     if fwd:
@@ -62,16 +47,13 @@ limiter = Limiter(key_func=_get_real_ip)
 class PaymentIntentRequest(BaseModel):
     order_id: UUID
 
-
 class PaymentIntentResponse(BaseModel):
     client_secret:     str
     payment_intent_id: str
 
-
 class ConfirmPaymentRequest(BaseModel):
     order_id:          UUID
     payment_intent_id: str
-
 
 class NotifyFailedRequest(BaseModel):
     order_id:          UUID
@@ -81,7 +63,7 @@ class NotifyFailedRequest(BaseModel):
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
-def _get_user_id(current_user: dict[str, Any]) -> str:
+def _get_user_id(current_user: Dict[str, Any]) -> str:
     profile = current_user.get("profile")
     if isinstance(profile, dict) and "id" in profile:
         return str(profile["id"])
@@ -113,8 +95,6 @@ def _create_stripe_intent(
         metadata={"order_id": order_id, "user_id": user_id},
         automatic_payment_methods={"enabled": True},
         description=f"{settings.APP_NAME} — Order #{order_id[:8].upper()}",
-        # FIX: Idempotency key — same order_id pe duplicate PI nahi banega
-        # Network retry ya double-click pe safe hai
         idempotency_key=f"create_pi_{order_id}",
     )
 
@@ -138,7 +118,7 @@ def _get_customer_email(sb: Any, customer_id: str) -> str:
 
 
 def _publish_paid_event(
-    order:          dict[str, Any],
+    order:          Dict[str, Any],
     customer_id:    str,
     customer_email: str,
 ) -> None:
@@ -155,7 +135,7 @@ def _publish_paid_event(
 
 def _publish_failed_event(
     sb:          Any,
-    order:       dict[str, Any],
+    order:       Dict[str, Any],
     customer_id: str,
     reason:      str,
 ) -> None:
@@ -182,8 +162,8 @@ def _publish_failed_event(
 def create_payment_intent(
     request: Request,
     payload: PaymentIntentRequest,
-    current: dict[str, Any] = Depends(get_current_user),
-) -> dict[str, str]:
+    current: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, str]:
     sb       = get_admin_supabase()
     user_id  = _get_user_id(current)
     order_id = str(payload.order_id)
@@ -225,8 +205,6 @@ def create_payment_intent(
                     "PaymentIntent %s is '%s' — creating fresh one for order %.8s",
                     existing_pi_id, intent.status, order_id,
                 )
-                # New PI ke liye alag idempotency key (suffix _v2, _v3 etc.)
-                # Count existing PIs on this order to version the key
                 intent = stripe.PaymentIntent.create(
                     amount=amount_paise,
                     currency="inr",
@@ -260,12 +238,12 @@ def create_payment_intent(
 # ── POST /payments/confirm ────────────────────────────────────────────────────
 
 @router.post("/confirm")
-@limiter.limit("10/minute")  # FIX: Rate limit missing tha
+@limiter.limit("10/minute")
 def confirm_payment(
     request: Request,
     payload: ConfirmPaymentRequest,
-    current: dict[str, Any] = Depends(get_current_user),
-) -> dict[str, Any]:
+    current: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
     sb       = get_admin_supabase()
     user_id  = _get_user_id(current)
     order_id = str(payload.order_id)
@@ -294,7 +272,7 @@ def confirm_payment(
             detail=f"Cannot confirm payment for order with status '{order['status']}'",
         )
 
-    # ── Verify with Stripe ────────────────────────────────────────────────────
+    # Verify with Stripe
     try:
         intent = stripe.PaymentIntent.retrieve(payload.payment_intent_id)
     except stripe.error.StripeError as exc:
@@ -310,7 +288,7 @@ def confirm_payment(
             detail=f"Payment not completed. Stripe status: {intent.status}",
         )
 
-    # ── Fraud checks ──────────────────────────────────────────────────────────
+    # Fraud checks
     order_amount  = float(order["total_amount"])
     stripe_amount = intent.amount / 100
 
@@ -335,7 +313,7 @@ def confirm_payment(
             detail="Payment intent mismatch",
         )
 
-    # ── Atomic conditional update (TOCTOU-safe) ───────────────────────────────
+    # Atomic conditional update (TOCTOU-safe)
     update_res = (
         sb.table("orders")
         .update({"status": "paid"})
@@ -350,7 +328,7 @@ def confirm_payment(
 
     logger.info("Order %.8s marked PAID | pi=%s", order_id, payload.payment_intent_id)
 
-    # ── Insert payment record ─────────────────────────────────────────────────
+    # Insert payment record
     try:
         sb.table("payments").insert({
             "order_id":                 order["id"],
@@ -363,7 +341,7 @@ def confirm_payment(
     except Exception as exc:
         logger.info("Payment record insert skipped (likely duplicate): %s", exc)
 
-    # ── Notify customer ───────────────────────────────────────────────────────
+    # Notify customer
     paid_order           = copy.copy(order)
     paid_order["status"] = "paid"
     customer_id          = order.get("customer_id", "")
@@ -384,16 +362,12 @@ def confirm_payment(
 # ── POST /payments/notify-failed ──────────────────────────────────────────────
 
 @router.post("/notify-failed", status_code=status.HTTP_200_OK)
-@limiter.limit("5/minute")   # FIX: Strict limit — spam prevention
+@limiter.limit("5/minute")
 def notify_payment_failed(
     request: Request,
     payload: NotifyFailedRequest,
-    current: dict[str, Any] = Depends(get_current_user),
-) -> dict[str, str]:
-    """
-    Frontend se turant call hota hai jab stripe.confirmCardPayment() fail ho.
-    Webhook se 2-30s faster notification milti hai customer ko.
-    """
+    current: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, str]:
     sb       = get_admin_supabase()
     user_id  = _get_user_id(current)
     order_id = str(payload.order_id)
@@ -451,11 +425,7 @@ def notify_payment_failed(
 async def stripe_webhook(
     request:          Request,
     stripe_signature: str | None = Header(None, alias="stripe-signature"),
-) -> dict[str, str]:
-    """
-    Stripe webhook — idempotent source of truth for server-side payment events.
-    Hamesha 200 return karta hai — Stripe non-2xx pe retry karta hai.
-    """
+) -> Dict[str, str]:
     body = await request.body()
     sb   = get_admin_supabase()
 
@@ -489,7 +459,7 @@ async def stripe_webhook(
 
     logger.info("Webhook received | type=%s | pi=%s", event_type, pi_id)
 
-    # ── payment_intent.succeeded ──────────────────────────────────────────────
+    # payment_intent.succeeded
     if event_type == "payment_intent.succeeded":
         order_res = (
             sb.table("orders")
@@ -550,7 +520,7 @@ async def stripe_webhook(
 
         _publish_paid_event(paid_order, customer_id, customer_email)
 
-    # ── payment_intent.payment_failed / payment_intent.canceled ──────────────
+    # payment_intent.payment_failed / payment_intent.canceled
     elif event_type in ("payment_intent.payment_failed", "payment_intent.canceled"):
         order_res = (
             sb.table("orders")
@@ -568,7 +538,6 @@ async def stripe_webhook(
         if order["status"] != "pending":
             return {"message": "OK"}
 
-        # Cancel first, then restore stock (order matters — see original comment)
         sb.table("orders").update({"status": "cancelled"}).eq("id", order["id"]).execute()
         logger.info("Order %.8s cancelled via webhook | event=%s", order["id"], event_type)
 
