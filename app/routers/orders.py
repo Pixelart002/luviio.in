@@ -6,7 +6,6 @@ INCLUDES FIXES FOR:
   - Customer ID correctly passed to OrderCreatedEvent and OrderShippedEvent
   - Safe Supabase data resolution to prevent 'NoneType' crashes
   - Product image_url joined via products table for order item display
-  - Idempotency support to prevent duplicate orders
 """
 import logging
 import re
@@ -68,7 +67,6 @@ class OrderItemInput(BaseModel):
 class OrderCreate(BaseModel):
     items: list[OrderItemInput] = Field(min_length=1, max_length=MAX_ITEMS_PER_ORDER)
     shipping_address_id: UUID
-    idempotency_key: UUID
     notes: str | None = Field(default=None, max_length=500)
 
     @field_validator("items")
@@ -103,16 +101,6 @@ def create_order(
 ) -> dict[str, Any]:
     sb = get_admin_supabase()
     user_id: str = current["profile"]["id"]
-
-    # Check for existing order (Idempotency)
-    existing = sb.table("orders").select("*").match({
-        "customer_id": user_id,
-        "idempotency_key": str(payload.idempotency_key)
-    }).maybe_single().execute()
-    
-    # FIX: Check if existing is not None and has data attribute
-    if existing and hasattr(existing, "data") and existing.data:
-        return existing.data
 
     try:
         addr_res = (
@@ -197,7 +185,6 @@ def create_order(
 
     order_data: dict[str, Any] = {
         "customer_id":           user_id,
-        "idempotency_key":       str(payload.idempotency_key),
         "shipping_address_id":   str(payload.shipping_address_id),
         **breakdown.as_dict(),
         "shipping_line1":        addr["line1"],
@@ -237,6 +224,7 @@ def create_order(
             detail="Order creation failed. Please try again.",
         )
 
+    # Fetch full order with product images
     full_order_res = (
         sb.table("orders")
         .select(ORDER_ITEMS_SELECT)
