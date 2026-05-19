@@ -29,6 +29,8 @@ Why /notify-failed exists:
   enabled in Stripe Dashboard. /notify-failed bypasses both requirements.
   The webhook remains as an idempotent backup for server-side failures.
 """
+from __future__ import annotations
+
 import copy
 import logging
 from decimal import Decimal, ROUND_HALF_UP
