@@ -1,17 +1,22 @@
 """
 Orders Router
 =============
-Handles order creation, user order history, cancellations, and admin updates.
-INCLUDES FIXES FOR:
-  - Customer ID correctly passed to OrderCreatedEvent and OrderShippedEvent
-  - Safe Supabase data resolution to prevent 'NoneType' crashes
-  - Product image_url joined via products table for order item display
+IDEMPOTENCY FIX:
+  - OrderCreate ab idempotency_key accept karta hai (client-generated UUID)
+  - create_order: same key pe existing order return karta hai, duplicate nahi banata
+  - orders table mein idempotency_key column hona chahiye (unique per user)
+  
+  DB migration needed:
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS orders_idempotency_key_idx 
+      ON orders (customer_id, idempotency_key) 
+      WHERE idempotency_key IS NOT NULL;
 """
 import logging
 import re
 from decimal import Decimal
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from postgrest.exceptions import APIError as PostgrestError
@@ -24,7 +29,7 @@ from app.dependencies import get_current_user, require_admin
 from app.supabase_client import get_admin_supabase
 from app.utils.stock import restore_stock, decrement_stock
 from app.services.pricing import get_default_pricing
-from app.services.events import get_event_bus, OrderCreatedEvent, OrderShippedEvent
+from app.services.events import get_event_bus, OrderCreatedEvent, OrderShippedEvent, OrderStatusChangedEvent
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
@@ -32,8 +37,6 @@ router = APIRouter(prefix="/orders", tags=["Orders"])
 
 MAX_ITEMS_PER_ORDER = 50
 
-# ── Select string with product image join ─────────────────────────────────────
-# products(image_url, slug) gives us the image without storing it in order_items
 ORDER_ITEMS_SELECT = "*, order_items(*, products(image_url, slug))"
 
 VALID_STATUSES: set[str] = {
@@ -51,7 +54,6 @@ STATUS_TRANSITIONS: dict[str, set[str]] = {
 
 
 def _sanitize_notes(notes: str | None) -> str | None:
-    """Removes HTML tags and strips whitespace from notes."""
     if notes is None:
         return None
     return re.sub(r"<[^>]+>", "", notes).strip()
@@ -69,12 +71,26 @@ class OrderCreate(BaseModel):
     shipping_address_id: UUID
     notes: str | None = Field(default=None, max_length=500)
 
+    # IDEMPOTENCY FIX: Client generates this UUID before first attempt.
+    # Same key pe retry karo — same order milega, duplicate nahi banega.
+    # Client sessionStorage mein store kare, payment success pe clear kare.
+    idempotency_key: str | None = Field(default=None, max_length=64)
+
     @field_validator("items")
     @classmethod
     def no_duplicate_products(cls, v: list[OrderItemInput]) -> list[OrderItemInput]:
         ids = [item.product_id for item in v]
         if len(ids) != len(set(ids)):
             raise ValueError("Duplicate product_id not allowed — combine quantities instead.")
+        return v
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def validate_idempotency_key(cls, v: str | None) -> str | None:
+        if v is not None:
+            # Sirf alphanumeric + hyphens allow karo
+            if not re.match(r'^[a-zA-Z0-9\-_]{8,64}$', v):
+                raise ValueError("Invalid idempotency_key format")
         return v
 
 
@@ -99,9 +115,34 @@ def create_order(
     payload: OrderCreate,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    sb = get_admin_supabase()
-    user_id: str = current["profile"]["id"]
+    sb      = get_admin_supabase()
+    user_id = current["profile"]["id"]
 
+    # ── IDEMPOTENCY CHECK ─────────────────────────────────────────────────────
+    # Same idempotency_key + same user = existing order return karo
+    # Double-click, network retry, page refresh — sab safe hai
+    if payload.idempotency_key:
+        try:
+            existing = (
+                sb.table("orders")
+                .select(ORDER_ITEMS_SELECT)
+                .eq("customer_id", user_id)
+                .eq("idempotency_key", payload.idempotency_key)
+                .maybe_single()
+                .execute()
+            )
+            if existing and existing.data:
+                logger.info(
+                    "Idempotent order returned | user=%.8s key=%s order=%.8s",
+                    user_id, payload.idempotency_key, existing.data.get("id", "")
+                )
+                # 201 nahi, 200 — indicate karta hai existing order return hua
+                return existing.data
+        except Exception as e:
+            # Idempotency check fail hua — naya order banao, log karo
+            logger.warning("Idempotency check failed (proceeding): %s", e)
+
+    # ── Address validation ────────────────────────────────────────────────────
     try:
         addr_res = (
             sb.table("addresses")
@@ -112,15 +153,19 @@ def create_order(
             .execute()
         )
     except Exception as e:
-        logger.error(f"Error fetching address {payload.shipping_address_id}: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to verify address")
+        logger.error("Error fetching address %s: %s", payload.shipping_address_id, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to verify address",
+        )
 
-    if not addr_res or not hasattr(addr_res, "data") or not addr_res.data:
+    if not addr_res or not addr_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipping address not found")
 
-    addr = addr_res.data
+    addr        = addr_res.data
     product_ids = [str(item.product_id) for item in payload.items]
 
+    # ── Product validation ────────────────────────────────────────────────────
     try:
         prods_res = (
             sb.table("products")
@@ -130,10 +175,16 @@ def create_order(
             .execute()
         )
     except PostgrestError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid product request format")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid product request format",
+        )
 
-    if not prods_res or not hasattr(prods_res, "data") or not prods_res.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="One or more products could not be found.")
+    if not prods_res or not prods_res.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="One or more products could not be found.",
+        )
 
     prod_map: dict[str, dict[str, Any]] = {p["id"]: p for p in prods_res.data}
 
@@ -152,6 +203,7 @@ def create_order(
             )
         validated.append((item_in, prod))
 
+    # ── Stock decrement + line items ──────────────────────────────────────────
     order_items: list[dict[str, Any]] = []
     subtotal = Decimal("0")
     deducted: list[tuple[str, int]] = []
@@ -165,8 +217,7 @@ def create_order(
                     detail=f"Insufficient stock for '{prod['name']}' — please try again",
                 )
             deducted.append((prod["id"], item_in.quantity))
-
-            line = Decimal(str(prod["price"])) * item_in.quantity
+            line      = Decimal(str(prod["price"])) * item_in.quantity
             subtotal += line
             order_items.append({
                 "product_id":   prod["id"],
@@ -180,34 +231,79 @@ def create_order(
             restore_stock(sb, pid, qty, "create_order_rollback")
         raise
 
+    # ── Pricing ───────────────────────────────────────────────────────────────
     pricing   = get_default_pricing()
     breakdown = pricing.calculate(subtotal)
 
     order_data: dict[str, Any] = {
-        "customer_id":           user_id,
-        "shipping_address_id":   str(payload.shipping_address_id),
+        "customer_id":          user_id,
+        "shipping_address_id":  str(payload.shipping_address_id),
         **breakdown.as_dict(),
-        "shipping_line1":        addr["line1"],
-        "shipping_line2":        addr.get("line2"),
-        "shipping_city":         addr["city"],
-        "shipping_state":        addr.get("state"),
-        "shipping_postal_code":  addr["postal_code"],
-        "shipping_country":      addr["country"],
-        "notes":                 _sanitize_notes(payload.notes),
+        "shipping_line1":       addr["line1"],
+        "shipping_line2":       addr.get("line2"),
+        "shipping_city":        addr["city"],
+        "shipping_state":       addr.get("state"),
+        "shipping_postal_code": addr["postal_code"],
+        "shipping_country":     addr["country"],
+        "notes":                _sanitize_notes(payload.notes),
+        # IDEMPOTENCY: DB mein store karo
+        "idempotency_key":      payload.idempotency_key,
     }
 
-    order_res = sb.table("orders").insert(order_data).execute()
+    # ── Order insert ──────────────────────────────────────────────────────────
+    try:
+        order_res = sb.table("orders").insert(order_data).execute()
+    except PostgrestError as e:
+        # Unique constraint violation = race condition — same key se concurrent request
+        # Existing order fetch karke return karo
+        if payload.idempotency_key and "unique" in str(e).lower():
+            logger.warning(
+                "Idempotency race condition | user=%.8s key=%s — fetching existing",
+                user_id, payload.idempotency_key,
+            )
+            for pid, qty in deducted:
+                restore_stock(sb, pid, qty, "idempotency_race_rollback")
+            try:
+                existing = (
+                    sb.table("orders")
+                    .select(ORDER_ITEMS_SELECT)
+                    .eq("customer_id", user_id)
+                    .eq("idempotency_key", payload.idempotency_key)
+                    .maybe_single()
+                    .execute()
+                )
+                if existing and existing.data:
+                    return existing.data
+            except Exception:
+                pass
+        for pid, qty in deducted:
+            restore_stock(sb, pid, qty, "order_insert_fail")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create order. Please try again.",
+        )
+    except Exception as e:
+        for pid, qty in deducted:
+            restore_stock(sb, pid, qty, "order_insert_fail")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create order record",
+        )
 
-    if not order_res or not hasattr(order_res, "data") or not order_res.data:
+    if not order_res or not order_res.data:
         for pid, qty in deducted:
             restore_stock(sb, pid, qty, "create_order_insert_fail")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create order record")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create order record",
+        )
 
     order = order_res.data[0]
 
     for item in order_items:
         item["order_id"] = order["id"]
 
+    # ── Order items insert ────────────────────────────────────────────────────
     try:
         sb.table("order_items").insert(order_items).execute()
     except Exception as e:
@@ -224,7 +320,7 @@ def create_order(
             detail="Order creation failed. Please try again.",
         )
 
-    # Fetch full order with product images
+    # ── Full order fetch ──────────────────────────────────────────────────────
     full_order_res = (
         sb.table("orders")
         .select(ORDER_ITEMS_SELECT)
@@ -232,9 +328,14 @@ def create_order(
         .maybe_single()
         .execute()
     )
-    full_order = full_order_res.data if full_order_res and hasattr(full_order_res, "data") else order
+    full_order = (
+        full_order_res.data
+        if full_order_res and full_order_res.data
+        else order
+    )
 
-    logger.info("Publishing OrderCreatedEvent | order=%s customer=%s", order["id"][:8], user_id[:8])
+    # ── Event ─────────────────────────────────────────────────────────────────
+    logger.info("OrderCreatedEvent | order=%.8s customer=%.8s", order["id"], user_id)
     try:
         get_event_bus().publish(OrderCreatedEvent(
             order=full_order,
@@ -242,7 +343,7 @@ def create_order(
             customer_id=user_id,
         ))
     except Exception as e:
-        logger.warning(f"Event bus failed to publish OrderCreatedEvent: {e}")
+        logger.warning("OrderCreatedEvent publish failed (non-critical): %s", e)
 
     return full_order
 
@@ -255,7 +356,7 @@ def my_orders(
     page_size: int = Query(20, ge=1, le=100),
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    sb = get_admin_supabase()
+    sb     = get_admin_supabase()
     offset = (page - 1) * page_size
     result = (
         sb.table("orders")
@@ -267,7 +368,7 @@ def my_orders(
     )
     total: int = result.count or 0
     return {
-        "items":     result.data if result and hasattr(result, "data") else [],
+        "items":     result.data if result and result.data else [],
         "total":     total,
         "page":      page,
         "page_size": page_size,
@@ -282,7 +383,7 @@ def get_my_order(
     order_id: UUID,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    sb = get_admin_supabase()
+    sb     = get_admin_supabase()
     result = (
         sb.table("orders")
         .select(ORDER_ITEMS_SELECT)
@@ -291,7 +392,7 @@ def get_my_order(
         .maybe_single()
         .execute()
     )
-    if not result or not hasattr(result, "data") or not result.data:
+    if not result or not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
     return result.data
 
@@ -312,12 +413,10 @@ def cancel_order(
         .maybe_single()
         .execute()
     )
-
-    if not order_res or not hasattr(order_res, "data") or not order_res.data:
+    if not order_res or not order_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
     order = order_res.data
-
     if order["status"] != "pending":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -337,7 +436,7 @@ def cancel_order(
         .maybe_single()
         .execute()
     )
-    return updated_res.data if updated_res and hasattr(updated_res, "data") else {}
+    return updated_res.data if updated_res and updated_res.data else {}
 
 
 # ── GET /orders/ (Admin) ──────────────────────────────────────────────────────
@@ -349,7 +448,7 @@ def list_all_orders(
     status_filter: str | None = None,
 ) -> dict[str, Any]:
     sb = get_admin_supabase()
-    q = (
+    q  = (
         sb.table("orders")
         .select(f"{ORDER_ITEMS_SELECT}, users(email, full_name)", count="exact")
         .order("created_at", desc=True)
@@ -366,7 +465,7 @@ def list_all_orders(
     result = q.range(offset, offset + page_size - 1).execute()
     total: int = result.count or 0
     return {
-        "items":     result.data if result and hasattr(result, "data") else [],
+        "items":     result.data if result and result.data else [],
         "total":     total,
         "page":      page,
         "page_size": page_size,
@@ -388,7 +487,7 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
         .execute()
     )
 
-    if not current_res or not hasattr(current_res, "data") or not current_res.data:
+    if not current_res or not current_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
     current_status: str = current_res.data["status"]
@@ -399,8 +498,8 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    f"Cannot move '{current_status}' to '{payload.status}'. "
-                    f"Allowed transitions: {allowed or 'none (terminal state)'}"
+                    f"Cannot move '{current_status}' → '{payload.status}'. "
+                    f"Allowed: {allowed or 'none (terminal state)'}"
                 ),
             )
 
@@ -410,7 +509,10 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
                 try:
                     import stripe
                     stripe.api_key = settings.STRIPE_SECRET_KEY
-                    stripe.Refund.create(payment_intent=pi_id)
+                    stripe.Refund.create(
+                        payment_intent=pi_id,
+                        idempotency_key=f"refund_{order_id}",  # IDEMPOTENCY
+                    )
                     logger.info("Stripe refund created for order %s", order_id)
                 except Exception as e:
                     logger.error("Stripe refund failed for order %s: %s", order_id, e)
@@ -425,28 +527,29 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
         sb.table("orders")
         .update(data)
         .eq("id", str(order_id))
-        .eq("status", current_status)
+        .eq("status", current_status)   # Atomic conditional — TOCTOU safe
         .execute()
     )
 
-    if not result or not hasattr(result, "data") or not result.data:
+    if not result or not result.data:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Order status changed by another request. Please refresh and try again.",
         )
 
+    # ── Ship event ────────────────────────────────────────────────────────────
     if payload.status == "shipped":
         try:
-            order = result.data[0]
+            order       = result.data[0]
             customer_id = current_res.data["customer_id"]
-            user_res = (
+            user_res    = (
                 sb.table("users")
                 .select("email")
                 .eq("id", customer_id)
                 .maybe_single()
                 .execute()
             )
-            if user_res and hasattr(user_res, "data") and user_res.data:
+            if user_res and user_res.data:
                 get_event_bus().publish(OrderShippedEvent(
                     order=order,
                     customer_email=user_res.data["email"],
@@ -455,5 +558,17 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
                 ))
         except Exception as e:
             logger.warning("Failed to publish shipped event: %s", e)
+
+    # ── Status change event (delivered, refunded) ─────────────────────────────
+    if payload.status in ("delivered", "refunded"):
+        try:
+            get_event_bus().publish(OrderStatusChangedEvent(
+                order=result.data[0],
+                customer_id=current_res.data["customer_id"],
+                old_status=current_status,
+                new_status=payload.status,
+            ))
+        except Exception as e:
+            logger.warning("Failed to publish status change event: %s", e)
 
     return result.data[0]
