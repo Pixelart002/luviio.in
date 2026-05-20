@@ -9,8 +9,6 @@ IDEMPOTENCY FIXES:
   5. Rate limiting added on all endpoints
   6. Stripe key guard at module import time
 """
-from __future__ import annotations
-
 import copy
 import logging
 from decimal import Decimal, ROUND_HALF_UP
