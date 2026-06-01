@@ -215,15 +215,3 @@ def get_pricing_config() -> PricingConfigResponse:
         tax_rate_pct=float(settings.TAX_RATE) * 100,
     )
     
-    
-    
-    # Isse aapka 'Save Settings' button 405 error dena band kar dega
-@router.patch("/config")
-def update_pricing_config(payload: PricingConfigResponse):
-    """
-    Kyunki pricing settings abhi .env/settings se chal rahi hain,
-    ye endpoint temporary success return karega.
-    Production mein yahan logic database update ka aayega.
-    """
-    return {"message": "Configuration received successfully"}
-    
