@@ -10,11 +10,6 @@ FIXES & ENHANCEMENTS:
   6. Rate limiting — per-endpoint throttling
   7. Metrics — success/failure tracking
   8. Graceful degradation — VAPID keys missing = silent skip
-
-Architecture:
-  send_push()          → single subscription (with retry)
-  send_push_to_user()  → parallel to all user's subscriptions
-  broadcast_to_admins() → parallel to all active admins
 """
 import os
 import json
@@ -34,29 +29,21 @@ VAPID_PUBLIC_KEY  = os.environ.get("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
 VAPID_CLAIM_EMAIL = os.environ.get("VAPID_CLAIM_EMAIL", "mailto:admin@luviio.in")
 
-_PUSH_TIMEOUT_SEC = 10          # webpush() HTTP timeout
-_MAX_RETRIES = 2                # transient failure pe retry attempts
-_RETRY_DELAY_SEC = 1.5          # first retry delay (doubles on second)
-_MAX_WORKERS = 10               # parallel push threads
+_PUSH_TIMEOUT_SEC = 10          
+_MAX_RETRIES = 2                
+_RETRY_DELAY_SEC = 1.5          
+_MAX_WORKERS = 10               
 
-# Circuit breaker settings
-_CIRCUIT_BREAKER_THRESHOLD = 5  # Consecutive failures to trip
-_CIRCUIT_BREAKER_RESET_SEC = 60 # Auto-reset after 60s
+_CIRCUIT_BREAKER_THRESHOLD = 5  
+_CIRCUIT_BREAKER_RESET_SEC = 60 
 
-# Rate limiting
-_RATE_LIMIT_PER_ENDPOINT = 3    # Max pushes per endpoint per second
-
+_RATE_LIMIT_PER_ENDPOINT = 3    
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CIRCUIT BREAKER
 # ══════════════════════════════════════════════════════════════════════════════
 
 class CircuitBreaker:
-    """
-    Prevents cascading failures.
-    After N consecutive failures, stops sending for RESET_SEC seconds.
-    """
-    
     def __init__(self, threshold: int = _CIRCUIT_BREAKER_THRESHOLD, reset_sec: int = _CIRCUIT_BREAKER_RESET_SEC):
         self.threshold = threshold
         self.reset_sec = reset_sec
@@ -65,19 +52,16 @@ class CircuitBreaker:
         self._lock = threading.Lock()
     
     def is_open(self, key: str) -> bool:
-        """Check if circuit is open (blocked) for this key"""
         with self._lock:
             tripped_until = self._tripped_until.get(key, 0)
             if tripped_until > time.time():
                 return True
-            # Auto-reset if tripped time passed
             if tripped_until > 0:
                 self._tripped_until.pop(key, None)
                 self._failures.pop(key, None)
             return False
     
     def record_failure(self, key: str) -> None:
-        """Record a failure — trips circuit if threshold exceeded"""
         with self._lock:
             self._failures[key] += 1
             if self._failures[key] >= self.threshold:
@@ -88,30 +72,21 @@ class CircuitBreaker:
                 )
     
     def record_success(self, key: str) -> None:
-        """Reset failure count on success"""
         with self._lock:
             self._failures.pop(key, None)
             self._tripped_until.pop(key, None)
 
-
-# Global instances
 _push_circuit_breaker = CircuitBreaker()
 _push_rate_limiter: dict[str, list[float]] = defaultdict(list)
 _rate_lock = threading.Lock()
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  RATE LIMITER
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _check_rate_limit(endpoint: str) -> bool:
-    """
-    Simple sliding window rate limiter.
-    Returns True if allowed, False if rate limited.
-    """
     now = time.time()
     with _rate_lock:
-        # Clean old entries
         _push_rate_limiter[endpoint] = [
             t for t in _push_rate_limiter.get(endpoint, [])
             if now - t < 1.0
@@ -121,13 +96,11 @@ def _check_rate_limit(endpoint: str) -> bool:
         _push_rate_limiter[endpoint].append(now)
         return True
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  HTTP SESSION
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _make_session() -> requests.Session:
-    """Timeout-aware requests session for pywebpush"""
     session = requests.Session()
     adapter = requests.adapters.HTTPAdapter(
         max_retries=0,
@@ -137,7 +110,6 @@ def _make_session() -> requests.Session:
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     return session
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  SINGLE PUSH
@@ -150,21 +122,6 @@ def send_push(
     icon: str = "/icon-192.png",
     url: str = "/",
 ) -> bool:
-    """
-    Send push to a single subscription.
-    
-    Features:
-      • Timeout protection (10s)
-      • Retry with exponential backoff (2 attempts)
-      • Circuit breaker (prevents cascading failures)
-      • Rate limiting (per endpoint)
-      • Dead subscription detection (404/410)
-    
-    Returns:
-        True = sent successfully
-        False = permanent failure (dead subscription or circuit open)
-    """
-    # ── Pre-checks ────────────────────────────────────────────────────────────
     if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
         return False
     
@@ -177,18 +134,15 @@ def send_push(
     endpoint = subscription.get("endpoint", "")
     endpoint_short = endpoint[:50] if endpoint else "unknown"
     
-    # Circuit breaker check
     endpoint_key = endpoint.split("/")[-1][:20] if endpoint else "unknown"
     if _push_circuit_breaker.is_open(endpoint_key):
         logger.debug("Circuit open — skipping push | endpoint=%s…", endpoint_short)
         return False
     
-    # Rate limit check
     if not _check_rate_limit(endpoint_key):
         logger.debug("Rate limited — skipping push | endpoint=%s…", endpoint_short)
         return False
     
-    # ── Build payload ─────────────────────────────────────────────────────────
     payload = json.dumps({
         "title": title,
         "body": body,
@@ -197,10 +151,9 @@ def send_push(
         "timestamp": int(time.time()),
     })
     
-    # ── Send with retry ───────────────────────────────────────────────────────
     last_error = None
     
-    for attempt in range(1, _MAX_RETRIES + 2):  # 1, 2, 3 (1 initial + 2 retries)
+    for attempt in range(1, _MAX_RETRIES + 2):
         try:
             session = _make_session()
             webpush(
@@ -213,30 +166,27 @@ def send_push(
                 timeout=_PUSH_TIMEOUT_SEC,
             )
             
-            # Success!
             _push_circuit_breaker.record_success(endpoint_key)
             logger.debug("Push sent | attempt=%d endpoint=%s…", attempt, endpoint_short)
             return True
             
         except Exception as exc:
             last_error = exc
-            
-            # Check for dead subscription (404/410)
             exc_name = exc.__class__.__name__
+            
             if exc_name == "WebPushException":
                 try:
                     status_code = exc.response.status_code if hasattr(exc, "response") and exc.response else None
                     if status_code in (404, 410):
                         logger.info("Dead subscription | endpoint=%s… status=%d", endpoint_short, status_code)
-                        return False  # Don't retry — subscription is dead
+                        return False 
                     if status_code == 429:
                         logger.warning("Rate limited by push service | endpoint=%s…", endpoint_short)
-                        time.sleep(5)  # Longer wait for server rate limit
+                        time.sleep(5) 
                         continue
                 except Exception:
                     pass
             
-            # Retry with backoff
             if attempt <= _MAX_RETRIES:
                 delay = _RETRY_DELAY_SEC * (2 ** (attempt - 1))
                 logger.warning(
@@ -253,7 +203,6 @@ def send_push(
     
     return False
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  USER PUSH (PARALLEL)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -267,20 +216,6 @@ def send_push_to_user(
     icon: str = "/icon-192.png",
     url: str = "/",
 ) -> int:
-    """
-    Send push to ALL subscriptions of a user — IN PARALLEL.
-    
-    Args:
-        sb_admin: Admin Supabase client
-        user_id: User UUID
-        title: Notification title
-        body: Notification body
-        icon: Icon URL
-        url: Click URL
-    
-    Returns:
-        Count of successfully sent pushes
-    """
     if not user_id:
         logger.warning("send_push_to_user: empty user_id")
         return 0
@@ -297,7 +232,6 @@ def send_push_to_user(
             logger.debug("No subscriptions found | user=%s", user_id[:8])
             return 0
         
-        # Parse subscriptions
         subs: list[dict] = []
         for row in result.data:
             try:
@@ -310,12 +244,8 @@ def send_push_to_user(
         if not subs:
             return 0
         
-        logger.info(
-            "Sending push to user | user=%s subs=%d title=%s",
-            user_id[:8], len(subs), title
-        )
+        logger.info("Sending push to user | user=%s subs=%d title=%s", user_id[:8], len(subs), title)
         
-        # ── Parallel send ─────────────────────────────────────────────────────
         sent = 0
         dead_endpoints: list[str] = []
         
@@ -338,7 +268,6 @@ def send_push_to_user(
                 except Exception as exc:
                     logger.error("Push future error | user=%s: %s", user_id[:8], exc)
         
-        # ── Cleanup dead subscriptions (parallel) ─────────────────────────────
         if dead_endpoints:
             logger.info("Cleaning %d dead subscriptions | user=%s", len(dead_endpoints), user_id[:8])
             
@@ -359,7 +288,6 @@ def send_push_to_user(
         logger.error("send_push_to_user failed | user=%s: %s", user_id[:8], exc, exc_info=True)
         return 0
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  BROADCAST TO ADMINS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -372,12 +300,6 @@ def broadcast_push_to_admins(
     icon: str = "/icon-192.png",
     url: str = "/admin.html",
 ) -> int:
-    """
-    Send push notification to ALL active admin users.
-    
-    Returns:
-        Total count of successfully sent pushes
-    """
     try:
         admins = (
             sb_admin.table("users")
@@ -409,11 +331,9 @@ def broadcast_push_to_admins(
         logger.error("broadcast_push_to_admins failed: %s", exc, exc_info=True)
         return 0
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  HEALTH CHECK
 # ══════════════════════════════════════════════════════════════════════════════
 
 def is_push_configured() -> bool:
-    """Check if VAPID keys are properly configured"""
     return bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and VAPID_CLAIM_EMAIL)

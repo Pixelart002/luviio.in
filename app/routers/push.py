@@ -1,15 +1,6 @@
 """
 Push Notifications Router — Production Grade
 =============================================
-Changes from original:
-  1. FIXED: Replaced unsafe current["profile"]["id"] with robust _get_user_id()
-  2. FIXED: Added try-except blocks around Supabase operations to prevent unhandled 500 crashes
-  3. ADDED: Rate limiting to prevent subscription abuse
-  4. ADDED: Duplicate subscription detection (idempotent subscribe)
-  5. ADDED: Subscription count tracking per user
-  6. ADDED: Stale subscription cleanup
-  7. ADDED: Web Push payload encryption (VAPID)
-  8. ADDED: Batch notification sending for admins
 """
 import json
 import logging
@@ -23,7 +14,7 @@ from slowapi.util import get_remote_address
 
 from app.dependencies import get_current_user, require_admin
 from app.supabase_client import get_admin_supabase
-from app.utils.push import send_push_to_user  # Existing utility
+from app.utils.push import send_push_to_user
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +26,7 @@ VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
 limiter = Limiter(key_func=get_remote_address)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-MAX_SUBSCRIPTIONS_PER_USER = 5  # Prevent abuse
-
+MAX_SUBSCRIPTIONS_PER_USER = 5
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -44,25 +34,20 @@ class SubscriptionKeys(BaseModel):
     p256dh: str
     auth: str
 
-
 class PushSubscription(BaseModel):
     endpoint: str
     keys: SubscriptionKeys
 
-
 class BatchNotificationRequest(BaseModel):
-    """Admin: send push to multiple users"""
     user_ids: list[str]
     title: str = "Luviio"
     body: str
     icon: str = "/icons/ri-notification-3-line.png"
     url: str = "/"
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _get_user_id(current_user: dict[str, Any]) -> str:
-    """Safely extract user_id from the current user object/token payload."""
     if "profile" in current_user and isinstance(current_user["profile"], dict) and "id" in current_user["profile"]:
         return str(current_user["profile"]["id"])
     if "id" in current_user:
@@ -75,29 +60,24 @@ def _get_user_id(current_user: dict[str, Any]) -> str:
 
 
 def _count_user_subscriptions(sb: Any, user_id: str) -> int:
-    """Count active subscriptions for a user"""
     try:
         res = (
             sb.table("push_subscriptions")
             .select("id", count="exact")
             .eq("user_id", user_id)
+            .limit(1)  # FIX: Prevents downloading all IDs
             .execute()
         )
-        return res.count or 0
+        return res.count if res and hasattr(res, "count") and res.count else 0
     except Exception as exc:
         logger.warning("Failed to count subscriptions for user %.8s: %s", user_id, exc)
         return 0
 
 
 def _cleanup_stale_subscriptions(sb: Any, user_id: str) -> int:
-    """
-    Remove oldest subscriptions if user exceeds limit.
-    Returns number of removed subscriptions.
-    """
     try:
         count = _count_user_subscriptions(sb, user_id)
         if count >= MAX_SUBSCRIPTIONS_PER_USER:
-            # Get oldest subscriptions to remove
             to_remove = count - MAX_SUBSCRIPTIONS_PER_USER + 1
             old = (
                 sb.table("push_subscriptions")
@@ -118,13 +98,13 @@ def _cleanup_stale_subscriptions(sb: Any, user_id: str) -> int:
 
 
 def _is_duplicate_subscription(sb: Any, endpoint: str, user_id: str) -> bool:
-    """Check if this exact endpoint already exists for this user"""
     try:
         existing = (
             sb.table("push_subscriptions")
             .select("id")
             .eq("endpoint", endpoint)
             .eq("user_id", user_id)
+            .limit(1) # FIX: Optimised query
             .execute()
         )
         return bool(existing and existing.data)
@@ -136,16 +116,6 @@ def _is_duplicate_subscription(sb: Any, endpoint: str, user_id: str) -> bool:
 
 @router.get("/vapid-key")
 def get_vapid_key() -> dict[str, str]:
-    """
-    Get VAPID public key for frontend push subscription.
-    
-    Frontend uses this to create a PushSubscription:
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidKey),
-      });
-    """
     if not VAPID_PUBLIC_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -161,26 +131,15 @@ def subscribe(
     payload: PushSubscription,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, str]:
-    """
-    Subscribe to push notifications.
-    
-    Idempotent: same endpoint = no duplicate.
-    Auto-cleanup: removes oldest if > MAX_SUBSCRIPTIONS_PER_USER.
-    """
     sb = get_admin_supabase()
-    
-    # [FIX 1] Safely get user ID to prevent KeyError
     user_id = _get_user_id(current)
 
-    # ── Duplicate check (idempotent) ──────────────────────────────────────────
     if _is_duplicate_subscription(sb, payload.endpoint, user_id):
         logger.info("Push already subscribed | user=%.8s endpoint=%.40s…", user_id, payload.endpoint)
         return {"message": "Already subscribed"}
 
-    # ── Cleanup old subscriptions if limit exceeded ────────────────────────────
     _cleanup_stale_subscriptions(sb, user_id)
 
-    # ── Validate subscription data ─────────────────────────────────────────────
     if not payload.endpoint.startswith("https://"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -195,7 +154,6 @@ def subscribe(
         },
     })
 
-    # [FIX 2] Prevent crash if database upsert fails
     try:
         sb.table("push_subscriptions").upsert(
             {
@@ -224,20 +182,12 @@ def unsubscribe(
     payload: PushSubscription,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, str]:
-    """
-    Unsubscribe from push notifications.
-    
-    Safe: silently succeeds even if subscription doesn't exist.
-    """
     sb = get_admin_supabase()
-    
-    # [FIX 1] Safely get user ID
     user_id = _get_user_id(current)
     
-    # [FIX 2] Prevent crash if database delete fails
     try:
         result = sb.table("push_subscriptions").delete().eq("endpoint", payload.endpoint).execute()
-        deleted = len(result.data) if result and result.data else 0
+        deleted = len(result.data) if result and hasattr(result, "data") and result.data else 0
     except Exception as e:
         logger.error("Failed to delete push subscription: %s", e)
         raise HTTPException(
@@ -256,11 +206,6 @@ def unsubscribe(
 def subscription_status(
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """
-    Check current user's push subscription status.
-    
-    Returns count of active subscriptions and whether push is supported.
-    """
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
     count = _count_user_subscriptions(sb, user_id)
@@ -279,19 +224,13 @@ def subscription_status(
 def send_batch_notification(
     payload: BatchNotificationRequest,
 ) -> dict[str, Any]:
-    """
-    Admin: Send push notification to multiple users.
-    
-    Used for marketing, order updates, announcements.
-    Returns success/fail counts per user.
-    """
     sb = get_admin_supabase()
     results = {"success": 0, "failed": 0, "details": []}
     
     for user_id in payload.user_ids:
         try:
             sent = send_push_to_user(
-                sb=sb,
+                sb_admin=sb,  # FIX: Correct parameter name mapping
                 user_id=user_id,
                 title=payload.title,
                 body=payload.body,
@@ -318,22 +257,17 @@ def send_batch_notification(
 
 @router.get("/admin/stats", dependencies=[Depends(require_admin)])
 def push_stats() -> dict[str, Any]:
-    """
-    Admin: Get push notification statistics.
-    
-    Returns total subscriptions, unique users, and subscription trends.
-    """
     sb = get_admin_supabase()
     
     try:
         total_res = (
             sb.table("push_subscriptions")
             .select("id", count="exact")
+            .limit(1)  # FIX: Memory safe count
             .execute()
         )
-        total = total_res.count or 0
+        total = total_res.count if total_res and hasattr(total_res, "count") and total_res.count else 0
         
-        # Count unique users
         unique_res = (
             sb.table("push_subscriptions")
             .select("user_id")
