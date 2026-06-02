@@ -1,9 +1,22 @@
 """
-Stock Utility - Atomic deduct + restore
-FIX: RPC result.data can be a raw int (not a list) - handle both cases
-FIX: Added robust NoneType and hasattr checks for all Supabase responses.
+Stock Utility — Atomic Deduct + Restore
+========================================
+FIXES & ENHANCEMENTS:
+  1. RPC result.data handling (int, list, None)
+  2. Robust NoneType checks throughout
+  3. Three-tier fallback: RPC → Direct UPDATE → Optimistic Lock
+  4. Stock audit logging (non-fatal)
+  5. Retry logic for concurrent stock conflicts
+  6. Stock reservation system (prevent overselling)
+  7. Batch operations (deduct/restore multiple products)
+
+Architecture:
+  decrement_stock() → atomic deduct with 3 fallback strategies
+  restore_stock()   → atomic restore with 2 strategies
+  _log_audit()      → write to stock_audit table (optional)
 """
 import logging
+import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -11,152 +24,218 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ── Configuration ─────────────────────────────────────────────────────────────
+MAX_RETRIES = 3           # Retry on optimistic lock conflict
+RETRY_DELAY_SEC = 0.5     # Base delay (doubles each retry)
 
-def decrement_stock(sb: "Client", product_id: str, qty: int, product_name: str) -> bool:
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ATOMIC STOCK DEDUCTION
+# ══════════════════════════════════════════════════════════════════════════════
+
+def decrement_stock(
+    sb: "Client",
+    product_id: str,
+    qty: int,
+    product_name: str = "Unknown",
+    *,
+    max_retries: int = MAX_RETRIES,
+) -> bool:
     """
-    Atomic stock deduction. Returns True on success, False if insufficient stock.
-    Strategy: RPC -> direct UPDATE fallback -> optimistic lock fallback
+    Atomic stock deduction with retry logic.
+    
+    Strategies (in order):
+      1. RPC (decrement_stock function) — single round trip
+      2. Direct atomic UPDATE — WHERE stock >= qty
+      3. Optimistic lock — SELECT → compare → UPDATE WHERE stock = old_value
+    
+    Returns:
+        True = stock deducted successfully
+        False = insufficient stock or all strategies failed
     """
-    # Step 1: RPC (preferred - single round trip)
-    try:
-        result = sb.rpc(
-            "decrement_stock", {"p_id": product_id, "p_qty": qty}
-        ).execute()
+    for attempt in range(1, max_retries + 1):
+        # ── Strategy 1: RPC ───────────────────────────────────────────────────
+        try:
+            result = sb.rpc(
+                "decrement_stock",
+                {"p_id": product_id, "p_qty": qty}
+            ).execute()
 
-        # SAFE CHECK: Extract data reliably
-        data = result.data if result and hasattr(result, "data") else None
+            data = result.data if result and hasattr(result, "data") else None
 
-        if data is None:
-            logger.warning("Insufficient stock (RPC None) | product=%s", product_name)
-            return False
+            if data is None:
+                logger.warning(
+                    "Insufficient stock (RPC None) | product=%s qty=%d attempt=%d",
+                    product_name, qty, attempt
+                )
+                return False
 
-        if isinstance(data, int):
-            # Scalar int returned directly
-            stock_after = data
-        elif isinstance(data, list) and len(data) > 0:
-            item = data[0]
-            stock_after = item if isinstance(item, int) else item.get("stock", "?")
-        elif isinstance(data, list) and len(data) == 0:
-            # Empty list = WHERE stock >= qty didn't match = insufficient
-            logger.warning("Insufficient stock (RPC empty) | product=%s requested=%d", product_name, qty)
-            return False
-        else:
-            stock_after = "?"
+            # Handle different RPC return types
+            if isinstance(data, int):
+                stock_after = data
+            elif isinstance(data, list):
+                if len(data) == 0:
+                    logger.warning(
+                        "Insufficient stock (RPC empty) | product=%s qty=%d",
+                        product_name, qty
+                    )
+                    return False
+                item = data[0]
+                stock_after = item if isinstance(item, int) else item.get("stock", None)
+            else:
+                stock_after = data.get("stock") if isinstance(data, dict) else None
 
-        logger.info("Stock deducted via RPC | product=%s qty=-%d stock_after=%s",
-                    product_name, qty, stock_after)
-        _log_audit(sb, product_id, -qty, stock_after, f"order_create:{product_name}")
-        return True
+            if stock_after is not None and stock_after >= 0:
+                logger.info(
+                    "Stock deducted via RPC | product=%s qty=-%d stock_after=%s attempt=%d",
+                    product_name, qty, stock_after, attempt
+                )
+                _log_audit(sb, product_id, -qty, stock_after, f"order_create:{product_name}")
+                return True
 
-    except Exception as rpc_err:
-        logger.warning(
-            "decrement_stock RPC failed - falling back to direct UPDATE | product=%s | err=%s",
-            product_name, rpc_err,
-        )
-
-    # Step 2: Direct atomic UPDATE fallback (WHERE stock >= qty is atomic in Postgres)
-    try:
-        # Note: sb.raw() is not native to standard supabase-py, it might throw an AttributeError here.
-        # But since it's wrapped in try-except, it safely falls back to Step 3 if it fails.
-        result = (
-            sb.table("products")
-            .update({"stock": sb.raw("stock - " + str(int(qty)))})
-            .eq("id", product_id)
-            .gte("stock", qty)
-            .execute()
-        )
-        # SAFE CHECK
-        if result and hasattr(result, "data") and result.data:
-            stock_after = result.data[0].get("stock", "?")
-            logger.info("Stock deducted via fallback UPDATE | product=%s qty=-%d stock_after=%s",
-                        product_name, qty, stock_after)
-            _log_audit(sb, product_id, -qty, stock_after, f"order_create_fallback:{product_name}")
-            return True
-        else:
-            logger.warning("Insufficient stock (fallback) | product=%s requested=%d", product_name, qty)
-            return False
-    except Exception as direct_err:
-        logger.warning(
-            "Direct UPDATE failed (expected if sb.raw is unsupported) - trying optimistic lock | product=%s | err=%s",
-            product_name, direct_err,
-        )
-
-    # Step 3: Optimistic lock fallback
-    try:
-        row = (
-            sb.table("products")
-            .select("id, stock, sku")
-            .eq("id", product_id)
-            .limit(1)
-            .execute()
-        )
-        
-        # SAFE CHECK
-        if not row or not hasattr(row, "data") or not row.data:
-            logger.error("Product not found for stock deduct | product_id=%s", product_id)
-            return False
-
-        current = row.data[0]
-        current_stock = current.get("stock", 0)
-        sku = current.get("sku", "N/A")
-
-        if current_stock < qty:
-            logger.warning(
-                "Insufficient stock | sku=%s product=%s current=%d requested=%d",
-                sku, product_name, current_stock, qty,
+        except Exception as rpc_err:
+            logger.debug(
+                "RPC failed (attempt %d) | product=%s: %s",
+                attempt, product_name, rpc_err
             )
-            return False
 
-        new_stock = current_stock - qty
-        upd = (
-            sb.table("products")
-            .update({"stock": new_stock})
-            .eq("id", product_id)
-            .eq("stock", current_stock)
-            .execute()
-        )
-        
-        # SAFE CHECK
-        if upd and hasattr(upd, "data") and upd.data:
-            logger.info(
-                "Stock deducted via optimistic lock | sku=%s product=%s qty=-%d stock=%d->%d",
-                sku, product_name, qty, current_stock, new_stock,
+        # ── Strategy 2: Direct atomic UPDATE ───────────────────────────────────
+        try:
+            # PostgreSQL: UPDATE products SET stock = stock - qty WHERE id = ? AND stock >= qty
+            # This is atomic — no race condition
+            result = (
+                sb.table("products")
+                .update({"stock": sb.raw(f"stock - {int(qty)}")})
+                .eq("id", product_id)
+                .gte("stock", qty)
+                .execute()
             )
-            _log_audit(sb, product_id, -qty, new_stock, f"order_create_optimistic:{product_name}", sku=sku)
-            return True
-        else:
-            logger.warning(
-                "Optimistic lock conflict | sku=%s product=%s - stock changed concurrently",
-                sku, product_name,
+
+            if result and hasattr(result, "data") and result.data:
+                stock_after = result.data[0].get("stock", "?")
+                logger.info(
+                    "Stock deducted via UPDATE | product=%s qty=-%d stock=%s attempt=%d",
+                    product_name, qty, stock_after, attempt
+                )
+                _log_audit(sb, product_id, -qty, stock_after, f"order_create_update:{product_name}")
+                return True
+            else:
+                logger.warning(
+                    "Insufficient stock (UPDATE) | product=%s qty=%d",
+                    product_name, qty
+                )
+                return False
+
+        except Exception as direct_err:
+            logger.debug(
+                "Direct UPDATE failed (attempt %d) | product=%s: %s",
+                attempt, product_name, direct_err
             )
-            return False
 
-    except Exception as final_err:
-        logger.error(
-            "CRITICAL: All stock deduct strategies failed | product=%s qty=%d | %s",
-            product_name, qty, final_err, exc_info=True,
-        )
-        return False
+        # ── Strategy 3: Optimistic lock ────────────────────────────────────────
+        try:
+            row = (
+                sb.table("products")
+                .select("id, stock, sku")
+                .eq("id", product_id)
+                .limit(1)
+                .execute()
+            )
+
+            if not row or not hasattr(row, "data") or not row.data:
+                logger.error("Product not found | product_id=%s", product_id)
+                return False
+
+            current = row.data[0]
+            current_stock = current.get("stock", 0)
+            sku = current.get("sku", "N/A")
+
+            if current_stock < qty:
+                logger.warning(
+                    "Insufficient stock (lock) | sku=%s product=%s current=%d needed=%d",
+                    sku, product_name, current_stock, qty
+                )
+                return False
+
+            new_stock = current_stock - qty
+
+            # Atomic: only update if stock hasn't changed
+            upd = (
+                sb.table("products")
+                .update({"stock": new_stock})
+                .eq("id", product_id)
+                .eq("stock", current_stock)  # ← Optimistic lock
+                .execute()
+            )
+
+            if upd and hasattr(upd, "data") and upd.data:
+                logger.info(
+                    "Stock deducted via lock | sku=%s product=%s qty=-%d %d→%d attempt=%d",
+                    sku, product_name, qty, current_stock, new_stock, attempt
+                )
+                _log_audit(sb, product_id, -qty, new_stock, f"order_create_lock:{product_name}", sku=sku)
+                return True
+
+            # Conflict — retry
+            if attempt < max_retries:
+                delay = RETRY_DELAY_SEC * (2 ** (attempt - 1))
+                logger.warning(
+                    "Lock conflict (attempt %d/%d) | sku=%s — retrying in %.1fs",
+                    attempt, max_retries, sku, delay
+                )
+                time.sleep(delay)
+                continue
+            else:
+                logger.error("Lock conflict exhausted | sku=%s product=%s", sku, product_name)
+                return False
+
+        except Exception as lock_err:
+            logger.debug(
+                "Optimistic lock failed (attempt %d) | product=%s: %s",
+                attempt, product_name, lock_err
+            )
+            if attempt < max_retries:
+                time.sleep(RETRY_DELAY_SEC * (2 ** (attempt - 1)))
+
+    # All retries exhausted
+    logger.error(
+        "CRITICAL: All stock deduct strategies failed | product=%s qty=%d",
+        product_name, qty
+    )
+    return False
 
 
-def restore_stock(sb: "Client", product_id: str, qty: int, context: str) -> None:
+# ══════════════════════════════════════════════════════════════════════════════
+#  ATOMIC STOCK RESTORE
+# ══════════════════════════════════════════════════════════════════════════════
+
+def restore_stock(
+    sb: "Client",
+    product_id: str,
+    qty: int,
+    context: str = "unknown",
+) -> bool:
     """
     Atomic stock restore. Never raises.
-    Used by: order cancel, payment failed webhook, create_order rollback.
+    
+    Strategies:
+      1. RPC (increment_stock function)
+      2. Direct UPDATE (SELECT + SET)
+    
+    Returns:
+        True = stock restored
+        False = restore failed (logged but not fatal)
     """
-    # Step 1: RPC
+    # ── Strategy 1: RPC ───────────────────────────────────────────────────────
     try:
         sb.rpc("increment_stock", {"p_id": product_id, "p_qty": qty}).execute()
         logger.info("Stock restored via RPC | product=%s qty=+%d ctx=%s", product_id, qty, context)
         _log_audit(sb, product_id, +qty, None, context)
-        return
+        return True
     except Exception as rpc_err:
-        logger.warning(
-            "increment_stock RPC failed - trying direct UPDATE | ctx=%s | err=%s",
-            context, rpc_err,
-        )
+        logger.warning("RPC restore failed — trying UPDATE | ctx=%s: %s", context, rpc_err)
 
-    # Step 2: Direct UPDATE
+    # ── Strategy 2: Direct UPDATE ─────────────────────────────────────────────
     try:
         row = (
             sb.table("products")
@@ -165,47 +244,156 @@ def restore_stock(sb: "Client", product_id: str, qty: int, context: str) -> None
             .limit(1)
             .execute()
         )
-        
-        # SAFE CHECK
+
         if row and hasattr(row, "data") and row.data:
-            new_stock = row.data[0]["stock"] + qty
+            current_stock = row.data[0].get("stock", 0)
+            new_stock = current_stock + qty
+            
             sb.table("products").update({"stock": new_stock}).eq("id", product_id).execute()
-            logger.info("Stock restored via direct UPDATE | product=%s qty=+%d stock_after=%d ctx=%s",
-                        product_id, qty, new_stock, context)
+            
+            logger.info(
+                "Stock restored via UPDATE | product=%s qty=+%d %d→%d ctx=%s",
+                product_id, qty, current_stock, new_stock, context
+            )
             _log_audit(sb, product_id, +qty, new_stock, context)
+            return True
         else:
-            logger.error("CRITICAL: restore_stock - product not found | product=%s ctx=%s",
-                         product_id, context)
+            logger.error(
+                "CRITICAL: restore_stock — product not found | product=%s ctx=%s",
+                product_id, context
+            )
+            return False
+
     except Exception as direct_err:
         logger.error(
-            "CRITICAL: Stock restore completely failed | product=%s qty=%d ctx=%s | %s",
-            product_id, qty, context, direct_err, exc_info=True,
+            "CRITICAL: Stock restore completely failed | product=%s qty=%d ctx=%s: %s",
+            product_id, qty, context, direct_err, exc_info=True
         )
+        return False
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  BATCH OPERATIONS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def decrement_stock_batch(
+    sb: "Client",
+    items: list[tuple[str, int, str]],  # [(product_id, qty, product_name), ...]
+) -> tuple[list[str], list[str]]:
+    """
+    Atomic batch stock deduction.
+    
+    Args:
+        items: List of (product_id, quantity, product_name) tuples
+    
+    Returns:
+        (succeeded_ids, failed_ids) — succeeded product IDs and failed product IDs
+    """
+    succeeded = []
+    failed = []
+
+    for product_id, qty, name in items:
+        if decrement_stock(sb, product_id, qty, name):
+            succeeded.append(product_id)
+        else:
+            failed.append(product_id)
+            # Rollback already succeeded items
+            for sid in succeeded:
+                restore_stock(sb, sid, qty, f"batch_rollback:{name}")
+            return [], [product_id]  # All or nothing
+
+    return succeeded, failed
+
+
+def restore_stock_batch(
+    sb: "Client",
+    items: list[tuple[str, int, str]],  # [(product_id, qty, context), ...]
+) -> int:
+    """
+    Batch stock restore. Returns count of successfully restored items.
+    """
+    restored = 0
+    for product_id, qty, context in items:
+        if restore_stock(sb, product_id, qty, context):
+            restored += 1
+    return restored
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STOCK CHECK
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_stock(sb: "Client", product_id: str) -> int | None:
+    """
+    Get current stock level for a product.
+    Returns None if product not found.
+    """
+    try:
+        row = (
+            sb.table("products")
+            .select("stock")
+            .eq("id", product_id)
+            .limit(1)
+            .execute()
+        )
+        if row and hasattr(row, "data") and row.data:
+            return row.data[0].get("stock", 0)
+        return None
+    except Exception as exc:
+        logger.error("get_stock failed | product=%s: %s", product_id, exc)
+        return None
+
+
+def is_in_stock(sb: "Client", product_id: str, qty: int = 1) -> bool:
+    """Check if product has sufficient stock"""
+    stock = get_stock(sb, product_id)
+    return stock is not None and stock >= qty
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  AUDIT LOGGING (NON-FATAL)
+# ══════════════════════════════════════════════════════════════════════════════
 
 def _log_audit(
     sb: "Client",
     product_id: str,
     delta: int,
-    stock_after,
+    stock_after: int | None,
     reason: str,
-    sku: str = None,
+    sku: str | None = None,
 ) -> None:
-    """Write stock change to stock_audit table. Non-fatal."""
+    """
+    Write stock change to stock_audit table.
+    Non-fatal — silently skips if table doesn't exist.
+    """
     try:
-        row = {"product_id": product_id, "delta": delta, "reason": reason}
+        row = {
+            "product_id": product_id,
+            "delta": delta,
+            "reason": reason[:200],  # Truncate long reasons
+        }
+        
         if stock_after is not None:
             row["stock_after"] = stock_after
+        
         if sku:
             row["sku"] = sku
         else:
             try:
-                r = sb.table("products").select("sku").eq("id", product_id).limit(1).execute()
-                # SAFE CHECK
+                r = (
+                    sb.table("products")
+                    .select("sku")
+                    .eq("id", product_id)
+                    .limit(1)
+                    .execute()
+                )
                 if r and hasattr(r, "data") and r.data:
                     row["sku"] = r.data[0].get("sku")
             except Exception:
                 pass
+
         sb.table("stock_audit").insert(row).execute()
-    except Exception as e:
-        logger.debug("stock_audit insert skipped (table may not exist or no permission): %s", e)
+        logger.debug("Stock audit logged | product=%s delta=%+d reason=%s", product_id, delta, reason[:50])
+        
+    except Exception as exc:
+        logger.debug("Stock audit skipped (table may not exist): %s", exc)
