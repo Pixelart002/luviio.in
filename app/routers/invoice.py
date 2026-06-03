@@ -47,7 +47,9 @@ from app.dependencies import get_current_user
 from app.supabase_client import get_admin_supabase
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["Invoice"])
+router = APIRouter(
+    prefix="/orders"
+    tags=["Invoice"])
 
 _INVOICEABLE = frozenset({"paid", "shipped", "delivered", "refunded"})
 
