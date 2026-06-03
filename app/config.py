@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = (
         "https://luviio.in,"
         "https://www.luviio.in,"
-        "http://localhost:7700,"
+        "https://localhost:7700,"
         "http://127.0.0.1:7700,"
         "https://my-frontend-c4s409o9f-pixelart002s-projects.vercel.app"
     )
