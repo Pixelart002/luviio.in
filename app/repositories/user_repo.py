@@ -10,6 +10,7 @@ FIXES:
   3. Consistent error handling with fallbacks
   4. Structured logging with user context
   5. updated_at column included (now exists in DB)
+  6. EXACT COUNT RAM LEAK FIXED in count_users()
 
 LLD Concepts:
   Repository Pattern  → separates data access from business logic
@@ -139,6 +140,7 @@ class UserRepository:
             }
         """
         try:
+            # Here .range() limits the data download, so count="exact" is safe
             q = (
                 self._sb.table("users")
                 .select(_USER_SELECT, count="exact")
@@ -298,9 +300,11 @@ class UserRepository:
     def count_users(self) -> int:
         """Get total count of users."""
         try:
+            # [FIX] RAM Memory Leak Fix: Added limit(1) to exact count query
             result = (
                 self._sb.table("users")
                 .select("id", count="exact")
+                .limit(1)
                 .execute()
             )
             return result.count if result and hasattr(result, "count") and result.count else 0

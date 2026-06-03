@@ -4,15 +4,15 @@ Stock Utility — Atomic Deduct + Restore
 FIXES & ENHANCEMENTS:
   1. RPC result.data handling (int, list, None)
   2. Robust NoneType checks throughout
-  3. Three-tier fallback: RPC → Direct UPDATE → Optimistic Lock
+  3. Two-tier fallback: RPC → Optimistic Lock (Supabase native atomic operations)
   4. Stock audit logging (non-fatal)
   5. Retry logic for concurrent stock conflicts
-  6. Stock reservation system (prevent overselling)
-  7. Batch operations (deduct/restore multiple products)
+  6. CRITICAL FIX: Batch rollback now restores the CORRECT quantity per product.
+  7. CRITICAL FIX: Removed invalid sb.raw() PostgREST syntax which caused crashes.
 
 Architecture:
-  decrement_stock() → atomic deduct with 3 fallback strategies
-  restore_stock()   → atomic restore with 2 strategies
+  decrement_stock() → atomic deduct with 2 fallback strategies
+  restore_stock()   → atomic restore with RPC fallback
   _log_audit()      → write to stock_audit table (optional)
 """
 import logging
@@ -45,9 +45,8 @@ def decrement_stock(
     Atomic stock deduction with retry logic.
     
     Strategies (in order):
-      1. RPC (decrement_stock function) — single round trip
-      2. Direct atomic UPDATE — WHERE stock >= qty
-      3. Optimistic lock — SELECT → compare → UPDATE WHERE stock = old_value
+      1. RPC (decrement_stock function) — single round trip execution
+      2. Optimistic lock — SELECT → compare → UPDATE WHERE stock = old_value
     
     Returns:
         True = stock deducted successfully
@@ -70,7 +69,7 @@ def decrement_stock(
                 )
                 return False
 
-            # Handle different RPC return types
+            # Handle different RPC return types safely
             if isinstance(data, int):
                 stock_after = data
             elif isinstance(data, list):
@@ -99,40 +98,7 @@ def decrement_stock(
                 attempt, product_name, rpc_err
             )
 
-        # ── Strategy 2: Direct atomic UPDATE ───────────────────────────────────
-        try:
-            # PostgreSQL: UPDATE products SET stock = stock - qty WHERE id = ? AND stock >= qty
-            # This is atomic — no race condition
-            result = (
-                sb.table("products")
-                .update({"stock": sb.raw(f"stock - {int(qty)}")})
-                .eq("id", product_id)
-                .gte("stock", qty)
-                .execute()
-            )
-
-            if result and hasattr(result, "data") and result.data:
-                stock_after = result.data[0].get("stock", "?")
-                logger.info(
-                    "Stock deducted via UPDATE | product=%s qty=-%d stock=%s attempt=%d",
-                    product_name, qty, stock_after, attempt
-                )
-                _log_audit(sb, product_id, -qty, stock_after, f"order_create_update:{product_name}")
-                return True
-            else:
-                logger.warning(
-                    "Insufficient stock (UPDATE) | product=%s qty=%d",
-                    product_name, qty
-                )
-                return False
-
-        except Exception as direct_err:
-            logger.debug(
-                "Direct UPDATE failed (attempt %d) | product=%s: %s",
-                attempt, product_name, direct_err
-            )
-
-        # ── Strategy 3: Optimistic lock ────────────────────────────────────────
+        # ── Strategy 2: Optimistic lock ────────────────────────────────────────
         try:
             row = (
                 sb.table("products")
@@ -159,12 +125,12 @@ def decrement_stock(
 
             new_stock = current_stock - qty
 
-            # Atomic: only update if stock hasn't changed
+            # Atomic: only update if stock hasn't changed since our SELECT
             upd = (
                 sb.table("products")
                 .update({"stock": new_stock})
                 .eq("id", product_id)
-                .eq("stock", current_stock)  # ← Optimistic lock
+                .eq("stock", current_stock)  # ← Optimistic lock condition
                 .execute()
             )
 
@@ -176,7 +142,7 @@ def decrement_stock(
                 _log_audit(sb, product_id, -qty, new_stock, f"order_create_lock:{product_name}", sku=sku)
                 return True
 
-            # Conflict — retry
+            # Conflict — Someone else bought it at the same millisecond, retry
             if attempt < max_retries:
                 delay = RETRY_DELAY_SEC * (2 ** (attempt - 1))
                 logger.warning(
@@ -220,7 +186,7 @@ def restore_stock(
     
     Strategies:
       1. RPC (increment_stock function)
-      2. Direct UPDATE (SELECT + SET)
+      2. Direct SELECT + UPDATE fallback
     
     Returns:
         True = stock restored
@@ -289,20 +255,23 @@ def decrement_stock_batch(
     Returns:
         (succeeded_ids, failed_ids) — succeeded product IDs and failed product IDs
     """
-    succeeded = []
-    failed = []
+    succeeded_items = []
+    failed_ids = []
 
     for product_id, qty, name in items:
         if decrement_stock(sb, product_id, qty, name):
-            succeeded.append(product_id)
+            # [FIX] Save the correct quantity and name for this specific product
+            succeeded_items.append((product_id, qty, name))
         else:
-            failed.append(product_id)
-            # Rollback already succeeded items
-            for sid in succeeded:
-                restore_stock(sb, sid, qty, f"batch_rollback:{name}")
+            failed_ids.append(product_id)
+            
+            # [FIX] Rollback already succeeded items with their EXACT original quantities
+            for sid, sqty, sname in succeeded_items:
+                restore_stock(sb, sid, sqty, f"batch_rollback:{sname}")
+                
             return [], [product_id]  # All or nothing
 
-    return succeeded, failed
+    return [item[0] for item in succeeded_items], failed_ids
 
 
 def restore_stock_batch(

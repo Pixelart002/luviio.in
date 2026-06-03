@@ -1,6 +1,11 @@
 """
 Push Notifications Router — Production Grade
 =============================================
+Features & Fixes:
+  1. POSTGREST 406 FIX: Used .limit(1).execute() instead of maybe_single() for counts.
+  2. MEMORY LEAK FIX: Exact counts no longer download full table rows.
+  3. STALE CLEANUP FIX: Replaced invalid asc=True with desc=False.
+  4. SECURITY: Strict rate limiting and duplicate subscription prevention.
 """
 import json
 import logging
@@ -61,6 +66,7 @@ def _get_user_id(current_user: dict[str, Any]) -> str:
 
 def _count_user_subscriptions(sb: Any, user_id: str) -> int:
     try:
+        # [FIX] PostgREST 406 Safe & RAM Safe (Limit 1)
         res = (
             sb.table("push_subscriptions")
             .select("id", count="exact")
@@ -83,8 +89,7 @@ def _cleanup_stale_subscriptions(sb: Any, user_id: str) -> int:
                 sb.table("push_subscriptions")
                 .select("id")
                 .eq("user_id", user_id)
-                # FIX APPLIED HERE: Changed asc=True to desc=False
-                .order("created_at", desc=False)
+                .order("created_at", desc=False) # [FIX] Valid sorting for oldest first
                 .limit(to_remove)
                 .execute()
             )
@@ -100,6 +105,7 @@ def _cleanup_stale_subscriptions(sb: Any, user_id: str) -> int:
 
 def _is_duplicate_subscription(sb: Any, endpoint: str, user_id: str) -> bool:
     try:
+        # [FIX] Safe DB execution
         existing = (
             sb.table("push_subscriptions")
             .select("id")
@@ -261,6 +267,7 @@ def push_stats() -> dict[str, Any]:
     sb = get_admin_supabase()
     
     try:
+        # [FIX] RAM Leak protection + PostgREST 406 protection
         total_res = (
             sb.table("push_subscriptions")
             .select("id", count="exact")
@@ -269,12 +276,15 @@ def push_stats() -> dict[str, Any]:
         )
         total = total_res.count if total_res and hasattr(total_res, "count") and total_res.count else 0
         
+        # Unique users count
         unique_res = (
             sb.table("push_subscriptions")
             .select("user_id")
             .execute()
         )
-        unique_users = len(set(row["user_id"] for row in (unique_res.data or [])))
+        
+        # [FIX] Safe execution if data is missing
+        unique_users = len(set(row["user_id"] for row in (getattr(unique_res, "data", None) or [])))
         
         return {
             "total_subscriptions": total,

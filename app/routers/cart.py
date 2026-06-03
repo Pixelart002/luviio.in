@@ -12,6 +12,8 @@ Design:
   • price_snapshot = price at add time
   • Pricing from pricing_config table — SINGLE source of truth
   • Cart ID, user_id NEVER exposed unnecessarily
+  • FIX: Empty cart no longer charges base shipping & tax
+  • FIX: Safe product extraction on update to prevent IndexError
 """
 from __future__ import annotations
 
@@ -151,19 +153,20 @@ def _calculate_cart_pricing(sb: Any, cart: dict[str, Any]) -> dict[str, Any]:
             "added_at": row["added_at"],
         })
 
+    # [FIX] Empty Cart Bug: Zero out shipping and tax if subtotal is 0
     shipping = Decimal("0")
-    if shipping_enabled and subtotal < shipping_threshold:
-        shipping = shipping_flat
-
     tax = Decimal("0")
-    if tax_enabled:
-        tax = (subtotal + shipping) * tax_rate
+    amount_to_free = 0.0
+
+    if subtotal > 0:
+        if shipping_enabled and subtotal < shipping_threshold:
+            shipping = shipping_flat
+            amount_to_free = max(0.0, float(shipping_threshold - subtotal))
+        
+        if tax_enabled:
+            tax = (subtotal + shipping) * tax_rate
 
     total = subtotal + shipping + tax
-
-    amount_to_free = 0.0
-    if shipping_enabled and shipping > 0:
-        amount_to_free = max(0.0, float(shipping_threshold - subtotal))
 
     # 🔥 CLEAN response — no cart_id, user_id, updated_at
     return {
@@ -173,7 +176,7 @@ def _calculate_cart_pricing(sb: Any, cart: dict[str, Any]) -> dict[str, Any]:
         "shipping_cost": round(float(shipping), 2),
         "tax_amount": round(float(tax), 2),
         "total_amount": round(float(total), 2),
-        "free_shipping_eligible": shipping == 0,
+        "free_shipping_eligible": shipping == 0 and subtotal > 0,
         "amount_to_free_shipping": round(amount_to_free, 2),
         "free_shipping_threshold": float(shipping_threshold),
         "tax_rate_pct": float(config["tax_rate"]),
@@ -259,7 +262,13 @@ def update_item(
         sb.table("products").select("stock, is_active")
         .eq("id", pid).limit(1).execute()
     )
-    prod = (getattr(prod_res, "data", None) or [{}])[0]
+    
+    # [FIX] Safe data extraction to prevent IndexError if product is missing
+    prod_data = getattr(prod_res, "data", None)
+    if not prod_data:
+        raise HTTPException(404, "Product not found")
+        
+    prod = prod_data[0]
     if not prod.get("is_active", True):
         raise HTTPException(404, "Product not found")
     if prod.get("stock", 0) < payload.quantity:

@@ -9,6 +9,10 @@ Pricing Strategy:
   ✅ Orders → settings.py fallback (DB migration pending)
   
   Fallback values match DB defaults — consistency guaranteed.
+
+FIXES APPLIED:
+  1. CRITICAL: Fixed 12-Factor App violation. `cors_origins` now dynamically 
+     parses the `ALLOWED_ORIGINS` environment variable instead of hardcoding.
 """
 import os
 from decimal import Decimal
@@ -109,15 +113,13 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         """
-        Strict CORS origins — prevents wildcard issues.
-        Koyeb environment variables cannot override this.
+        Dynamically parses ALLOWED_ORIGINS string into a list.
+        This allows Cloud hosts (Koyeb/Vercel) to override origins without code changes.
         """
         return [
-            "https://luviio.in",
-            "https://www.luviio.in",
-            "http://localhost:7700",
-            "http://127.0.0.1:7700",
-            "https://my-frontend-c4s409o9f-pixelart002s-projects.vercel.app",
+            origin.strip() 
+            for origin in self.ALLOWED_ORIGINS.split(",") 
+            if origin.strip()
         ]
 
     @property

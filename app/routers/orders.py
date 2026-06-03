@@ -5,6 +5,8 @@ Orders Router — Production Grade
 - GET /orders/my — Sanitized response (no internal fields)
 - GET /orders/my/{id} — Sanitized response (no internal fields)
 - Pricing: DB pricing_config table (same as cart) ✅
+- FIX: Prevented infinite stock inflation on cancel order race condition.
+- FIX: Prevented permanent stock deduction on system network failures.
 """
 import logging
 import re
@@ -275,8 +277,13 @@ def create_order(
             )
             if existing and existing.data:
                 return _sanitize_order(existing.data)
-        for pid, qty in deducted: restore_stock(sb, pid, qty, "fail")
-        raise HTTPException(500, "Order creation failed")
+        for pid, qty in deducted: restore_stock(sb, pid, qty, "fail_db")
+        raise HTTPException(500, "Order creation failed (Database Error)")
+    except Exception as e:
+        # Prevent stock leak if network fails during DB insert
+        logger.error("System error during order creation: %s", e)
+        for pid, qty in deducted: restore_stock(sb, pid, qty, "fail_sys")
+        raise HTTPException(500, "Order creation failed (System Error)")
 
     order = order_res.data[0]
     for item in order_items: item["order_id"] = order["id"]
@@ -286,7 +293,7 @@ def create_order(
     except Exception:
         for pid, qty in deducted: restore_stock(sb, pid, qty, "items_fail")
         sb.table("orders").update({"status": "cancelled"}).eq("id", order["id"]).execute()
-        raise HTTPException(500, "Order creation failed")
+        raise HTTPException(500, "Order items creation failed")
 
     full = (
         sb.table("orders").select(ORDER_ITEMS_SELECT)
@@ -381,11 +388,23 @@ def cancel_order(
     if order["status"] != "pending":
         raise HTTPException(409, f"Cannot cancel '{order['status']}' order")
 
+    # DB me pehle status update hoga. Race conditions block hogi.
+    update_res = (
+        sb.table("orders")
+        .update({"status": "cancelled"})
+        .eq("id", str(order_id))
+        .eq("status", "pending")
+        .execute()
+    )
+
+    if not update_res or not hasattr(update_res, "data") or not update_res.data:
+        raise HTTPException(409, "Order status could not be changed or is already updated")
+
+    # Ab perfectly safe hai stock restore karna.
     for item in order.get("order_items", []):
         if item.get("product_id"):
             restore_stock(sb, item["product_id"], item["quantity"], f"cancel:{order_id}")
 
-    sb.table("orders").update({"status": "cancelled"}).eq("id", str(order_id)).execute()
     return {"status": "cancelled", "order_id": str(order_id)}
 
 

@@ -10,7 +10,9 @@ Middleware Stack (Order Matters!):
   4. HideServerHeaderMiddleware → Mask server signature (fingerprinting)
   5. SecurityHeadersMiddleware  → Security-focused HTTP headers
 
-All middlewares skip non-HTTP requests (WebSocket, etc.)
+FIXES APPLIED:
+  1. GZipMiddleware: Fixed RAM Memory Leak (OOM) on Streaming Responses.
+  2. MaxBodySizeMiddleware: Blocked Chunked-Encoding bypass attacks.
 """
 import gzip
 import io
@@ -27,11 +29,6 @@ logger = logging.getLogger(__name__)
 class RequestIDMiddleware:
     """
     Assigns a unique 8-char ID to every request for tracing.
-    
-    Added to:
-      • Request scope (downstream access)
-      • Response header (X-Request-ID)
-      • Application logs (via context variable)
     """
 
     def __init__(self, app) -> None:
@@ -68,9 +65,6 @@ class MaxBodySizeMiddleware:
     """
     Rejects requests with body larger than max_bytes.
     Prevents memory exhaustion from oversized uploads.
-    
-    Default: 10 MB
-    Skips: OPTIONS (preflight), no Content-Length (chunked)
     """
 
     def __init__(self, app, max_bytes: int = 10 * 1024 * 1024) -> None:
@@ -89,30 +83,53 @@ class MaxBodySizeMiddleware:
         headers = dict(scope.get("headers", []))
         content_length_raw = headers.get(b"content-length")
 
+        # 1. Fast check if Content-Length header is present
         if content_length_raw:
             try:
                 content_length = int(content_length_raw)
                 if content_length > self.max_bytes:
-                    logger.warning(
-                        "Body too large | size=%d max=%d path=%s",
-                        content_length, self.max_bytes, scope.get("path", "?")
-                    )
-                    response = b'{"detail":"Request body too large","max_bytes":%d}' % self.max_bytes
-                    await send({
-                        "type": "http.response.start",
-                        "status": 413,
-                        "headers": [
-                            (b"content-type", b"application/json"),
-                            (b"content-length", str(len(response)).encode()),
-                            (b"connection", b"close"),
-                        ],
-                    })
-                    await send({"type": "http.response.body", "body": response})
+                    await self._send_413(send, scope.get("path", "?"), content_length)
                     return
             except ValueError:
-                logger.warning("Invalid Content-Length: %s", content_length_raw)
+                pass
 
-        await self.app(scope, receive, send)
+        # 2. Deep check for Chunked-Encoding bypass
+        total_bytes = 0
+
+        async def receive_wrapper():
+            nonlocal total_bytes
+            message = await receive()
+            if message["type"] == "http.request":
+                total_bytes += len(message.get("body", b""))
+                if total_bytes > self.max_bytes:
+                    # Abort reading to save memory
+                    raise RuntimeError("Request body exceeded maximum size limit")
+            return message
+
+        try:
+            await self.app(scope, receive_wrapper, send)
+        except RuntimeError as e:
+            if "maximum size limit" in str(e):
+                await self._send_413(send, scope.get("path", "?"), total_bytes)
+            else:
+                raise
+
+    async def _send_413(self, send, path, size):
+        logger.warning(
+            "Body too large | size=%d max=%d path=%s",
+            size, self.max_bytes, path
+        )
+        response = b'{"detail":"Request body too large","max_bytes":%d}' % self.max_bytes
+        await send({
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(response)).encode()),
+                (b"connection", b"close"),
+            ],
+        })
+        await send({"type": "http.response.body", "body": response})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -122,14 +139,6 @@ class MaxBodySizeMiddleware:
 class GZipMiddleware:
     """
     Compresses JSON/text responses to reduce bandwidth.
-    
-    Typical savings: 50-80% for JSON responses.
-    
-    Skip conditions:
-      • Client doesn't accept gzip
-      • Response < 500 bytes (overhead > savings)
-      • Already compressed content (images, videos, PDFs)
-      • Streaming responses
     """
 
     _COMPRESSIBLE = {
@@ -153,7 +162,6 @@ class GZipMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Check client support
         req_headers = dict(scope.get("headers", []))
         accept_encoding = req_headers.get(b"accept-encoding", b"").decode("latin-1", errors="ignore").lower()
 
@@ -161,14 +169,13 @@ class GZipMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Intercept response
         response_status = 200
         response_headers = []
-        body_chunks = []
         content_type = ""
+        started = False
 
         async def intercept_send(message):
-            nonlocal response_status, response_headers, content_type
+            nonlocal response_status, response_headers, content_type, started
 
             if message["type"] == "http.response.start":
                 response_status = message.get("status", 200)
@@ -179,18 +186,30 @@ class GZipMiddleware:
                         content_type = v.decode("latin-1", errors="ignore").split(";")[0].strip().lower()
 
             elif message["type"] == "http.response.body":
-                body_chunks.append(message.get("body", b""))
-
-                if not message.get("more_body", False):
-                    full_body = b"".join(body_chunks)
-                    await self._send_compressed(send, response_status, response_headers, full_body, content_type)
+                if not started:
+                    # [FIX] RAM Memory Leak protection for StreamingResponses
+                    if message.get("more_body", False):
+                        # This is a stream. Buffering will cause OOM. Send uncompressed instantly.
+                        await send({
+                            "type": "http.response.start", "status": response_status,
+                            "headers": response_headers,
+                        })
+                        await send(message)
+                        started = True
+                    else:
+                        # Single complete chunk — safe to buffer and compress
+                        body = message.get("body", b"")
+                        await self._send_compressed(send, response_status, response_headers, body, content_type)
+                        started = True
+                else:
+                    # Already streaming fallback, just pass the chunks through
+                    await send(message)
 
         await self.app(scope, receive, intercept_send)
 
     async def _send_compressed(self, send, status, headers, body, content_type):
         """Compress if applicable, otherwise send as-is."""
         if not self._should_compress(body, content_type):
-            # Send uncompressed
             await send({
                 "type": "http.response.start", "status": status,
                 "headers": headers,
@@ -200,15 +219,12 @@ class GZipMiddleware:
 
         try:
             original_size = len(body)
-
-            # Compress
             buf = io.BytesIO()
             with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=self.compression_level) as gz:
                 gz.write(body)
             compressed = buf.getvalue()
             compressed_size = len(compressed)
 
-            # Prepare headers
             final_headers = [
                 (k, v) for k, v in headers
                 if k.lower() not in (b"content-length", b"content-encoding")
@@ -238,14 +254,12 @@ class GZipMiddleware:
             await send({"type": "http.response.body", "body": body})
 
     def _should_compress(self, body: bytes, content_type: str) -> bool:
-        """Decide if response should be compressed."""
         if len(body) < self.min_size:
             return False
         if content_type in self._ALREADY_COMPRESSED:
             return False
         if content_type in self._COMPRESSIBLE:
             return True
-        # Default: compress text-like content
         return content_type.startswith("text/") or content_type.startswith("application/")
 
 
@@ -256,7 +270,6 @@ class GZipMiddleware:
 class HideServerHeaderMiddleware:
     """
     Masks server signature to prevent fingerprinting.
-    Server: uvicorn → Server: webserver
     """
 
     def __init__(self, app) -> None:
@@ -288,7 +301,6 @@ class HideServerHeaderMiddleware:
 class SecurityHeadersMiddleware:
     """
     Adds security headers to all HTTP responses.
-    CSP intentionally excluded — belongs on frontend, not JSON API.
     """
 
     _HEADERS = [

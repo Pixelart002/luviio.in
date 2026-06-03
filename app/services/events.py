@@ -4,30 +4,19 @@ Event Bus — Observer Pattern + Background Processing
 FIX: Handlers ab background thread mein chalte hain.
      Request thread block nahi hota — push late delivery fix.
 
-ENHANCEMENTS:
+ENHANCEMENTS & FIXES:
   1. Retry logic for failed handlers (3 attempts with exponential backoff)
   2. Dead letter queue for permanently failed events
   3. Event metrics/monitoring
-  4. Graceful shutdown for thread pool
+  4. Graceful shutdown for thread pool (compatible with FastAPI lifespan)
   5. Handler timeout protection
-  6. Event validation before dispatch
-  7. Structured logging with correlation IDs
-
-Notification Matrix:
-  ┌──────────────────────┬──────────────────────┬──────────────────────┐
-  │ Event                │ Customer             │ Admin                │
-  ├──────────────────────┼──────────────────────┼──────────────────────┤
-  │ OrderCreatedEvent    │ —                    │ Push                 │
-  │ OrderPaidEvent       │ Email + Push         │ —                    │
-  │ OrderFailedEvent     │ Push (Stripe error)  │ —                    │
-  │ OrderShippedEvent    │ Push + Email         │ —                    │
-  │ OrderStatusChanged   │ Push (status-icon)   │ —                    │
-  │ LowStockEvent        │ —                    │ Push                 │
-  └──────────────────────┴──────────────────────┴──────────────────────┘
+  6. CRITICAL FIX: Prevented Circular Imports (Lazy loading modules)
+  7. CRITICAL FIX: Safe Dataclass serialization for Dead Letter Queue
 """
 from __future__ import annotations
 
 import atexit
+import dataclasses
 import logging
 import os
 import threading
@@ -37,9 +26,6 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field
 from typing import Any, Callable
-
-from app.utils.push  import send_push_to_user, broadcast_push_to_admins
-from app.utils.email import send_order_confirmation
 
 logger = logging.getLogger(__name__)
 
@@ -330,6 +316,12 @@ class EventBus:
                     break
         logger.info("Dead letters replayed | count=%d", count)
         return count
+        
+    def shutdown(self, wait: bool = True) -> None:
+        """Explicit shutdown method for FastAPI lifespan"""
+        logger.info("Shutting down event handler thread pool...")
+        _handler_pool.shutdown(wait=wait, cancel_futures=False)
+        logger.info("Event handler thread pool shutdown complete")
 
 
 def _run_handler_with_retry(
@@ -382,10 +374,16 @@ def _run_handler_with_retry(
     event_metrics.record_failure(event_type_name)
     event_metrics.record_dead_letter(event_type_name)
     
+    # [FIX] Safe Dataclass parsing
+    try:
+        event_dict = dataclasses.asdict(event) if dataclasses.is_dataclass(event) else {"event": str(event)}
+    except Exception:
+        event_dict = {"event": str(event)}
+        
     dead_letter = DeadLetter(
         event_id=event_id,
         event_type=event_type_name,
-        event_data=event.__dict__ if hasattr(event, '__dict__') else {"event": str(event)},
+        event_data=event_dict,
         error=last_error or "Unknown error",
         retry_count=_MAX_RETRIES,
     )
@@ -431,6 +429,9 @@ def _safe_oid(order: dict[str, Any]) -> str:
 def _push_user(sb, user_id: str, *, title: str, body: str, icon: str,
                url: str = _Copy.URL_ORDERS) -> None:
     """Send push notification to a single user"""
+    # [FIX] Lazy import to prevent circular dependency
+    from app.utils.push import send_push_to_user
+    
     if not user_id:
         logger.warning("_push_user: empty user_id — skipping")
         return
@@ -441,6 +442,9 @@ def _push_user(sb, user_id: str, *, title: str, body: str, icon: str,
 def _push_admins(sb, *, title: str, body: str, icon: str,
                  url: str = _Copy.URL_ADMIN) -> None:
     """Broadcast push notification to all admins"""
+    # [FIX] Lazy import to prevent circular dependency
+    from app.utils.push import broadcast_push_to_admins
+    
     result = broadcast_push_to_admins(sb, title=title, body=body, icon=icon, url=url)
     logger.debug("Admin broadcast | sent=%d", result)
 
@@ -462,6 +466,9 @@ def _handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
 # ── Order Paid ────────────────────────────────────────────────────────────────
 
 def _handle_paid_email(event: OrderPaidEvent) -> None:
+    # [FIX] Lazy import to prevent circular dependency
+    from app.utils.email import send_order_confirmation
+    
     if not event.customer_email or not event.order:
         logger.warning("_handle_paid_email: missing data — skipping")
         return
@@ -585,10 +592,8 @@ def register_default_handlers() -> None:
 # ── Graceful Shutdown ─────────────────────────────────────────────────────────
 
 def _shutdown_thread_pool():
-    """Gracefully shutdown the thread pool on application exit"""
-    logger.info("Shutting down event handler thread pool...")
+    """Fallback graceful shutdown for atexit"""
+    logger.info("Atexit: Shutting down event handler thread pool...")
     _handler_pool.shutdown(wait=True, cancel_futures=False)
-    logger.info("Event handler thread pool shutdown complete")
-
 
 atexit.register(_shutdown_thread_pool)

@@ -10,6 +10,7 @@ Features:
   • File size limits enforcement
   • Old image cleanup on re-upload
   • Structured logging with file sizes
+  • Alpha channel (transparency) safe conversion to white background
 
 Usage:
   from app.services.image import upload_product_image
@@ -36,6 +37,9 @@ SMALL_SIZE = (200, 200)                # Thumbnail for listings
 WEBP_QUALITY = 80                      # 0-100 (80 = good balance)
 WEBP_QUALITY_SMALL = 60                # Lower quality for thumbnails
 STORAGE_BUCKET = "product-images"
+
+# Safe Resampling for all Pillow versions
+_LANCZOS = getattr(Image, "Resampling", Image).LANCZOS
 
 # Magic bytes for supported formats
 _IMAGE_MAGIC: dict[bytes, str] = {
@@ -89,7 +93,7 @@ def _process_image(
     try:
         img = Image.open(io.BytesIO(file_bytes))
         
-        # Convert to RGB (handles RGBA, P, etc.)
+        # Convert to RGB (handles RGBA, P, etc.) with White Background
         if img.mode in ("RGBA", "P", "LA"):
             background = Image.new("RGB", img.size, (255, 255, 255))
             if img.mode == "P":
@@ -107,7 +111,7 @@ def _process_image(
             raise ValueError(f"Image dimensions too large: {img.width}x{img.height}")
         
         # Resize maintaining aspect ratio
-        img.thumbnail(size, Image.Resampling.LANCZOS)
+        img.thumbnail(size, _LANCZOS)
         
         # Save as WebP
         buffer = io.BytesIO()
@@ -314,7 +318,12 @@ def delete_all_product_images(product_id: str) -> int:
         if not files:
             return 0
         
-        paths = [f"{prefix}{f['name']}" for f in files if f.get('name')]
+        # Parse names properly and ignore hidden empty placeholders
+        paths = [
+            f"{prefix}{f['name']}" for f in files 
+            if isinstance(f, dict) and f.get('name') and f['name'] != ".emptyFolderPlaceholder"
+        ]
+        
         if paths:
             sb.storage.from_(STORAGE_BUCKET).remove(paths)
             logger.info("Deleted %d images | product=%s", len(paths), product_id)

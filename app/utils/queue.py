@@ -11,22 +11,19 @@ Rules:
   - Cart reminder     → queued (non-critical, can batch)
   - Promo/Marketing   → queued (low priority)
 
-ENHANCEMENTS:
-  1. Priority queue — critical emails skip the queue
-  2. Memory-safe dedup — automatic cleanup of old entries
-  3. Graceful shutdown — flush remaining on app exit
-  4. Metrics — queue depth, sent/failed/deduped counts
-  5. Thread-safe — asyncio.Lock with safe initialization
-  6. Sync fallback — works without event loop
-  7. Configurable — batch size, flush interval, dedup window
+FIXES APPLIED:
+  1. CRITICAL: Fixed asyncio run_in_executor kwarg unpacking crash using functools.partial.
+  2. CRITICAL: Converted Enum to IntEnum to fix list sorting TypeError.
+  3. CRITICAL: Removed dataclass implicit ordering to prevent function comparison crashes.
 """
 import asyncio
 import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import IntEnum
 from typing import Callable, Any
+from functools import partial
 
 logger = logging.getLogger(__name__)
 
@@ -42,26 +39,26 @@ CLEANUP_INTERVAL = 600       # Cleanup old dedup entries every 10 minutes
 #  TYPES
 # ══════════════════════════════════════════════════════════════════════════════
 
-class EmailPriority(Enum):
-    """Email priority — higher = sent first"""
+# [FIX] Used IntEnum so it can be mathematically sorted (0 < 1 < 2 < 3)
+class EmailPriority(IntEnum):
+    """Email priority — lower value = sent first"""
     IMMEDIATE = 0   # Skip queue entirely
     HIGH = 1        # Order confirm, shipped
     NORMAL = 2      # Cart reminder
     LOW = 3         # Marketing, newsletters
 
 
-@dataclass(order=True)
+# [FIX] Removed order=True to avoid recursive dataclass comparisons on functions
+@dataclass
 class QueuedEmail:
-    """Email in queue — sortable by priority and queue time"""
+    """Email in queue"""
     priority: EmailPriority = field(default=EmailPriority.NORMAL)
     queued_at: float = field(default_factory=time.time)
     to: str = field(default="")
     subject: str = field(default="")
     html: str = field(default="")
     send_fn: Callable = field(default=lambda: None)
-    
-    # Don't use these for sorting
-    send_kwargs: dict = field(default_factory=dict, compare=False)
+    send_kwargs: dict = field(default_factory=dict)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -76,8 +73,6 @@ class EmailQueue:
       • Batch flushing (BATCH_SIZE or FLUSH_INTERVAL)
       • Memory cleanup (old dedup entries removed)
       • Graceful shutdown
-    
-    Production upgrade path: Replace _queue with Redis Sorted Set
     """
 
     def __init__(self) -> None:
@@ -158,24 +153,14 @@ class EmailQueue:
     ) -> bool:
         """
         Add email to queue.
-        
-        Args:
-            to: Recipient email
-            subject: Email subject
-            html: Email HTML body
-            send_fn: Function that sends the email (e.g., resend.Emails.send)
-            priority: EmailPriority — IMMEDIATE skips queue
-            **send_kwargs: Extra args passed to send_fn
-        
-        Returns:
-            True if queued, False if deduped
         """
         # ── IMMEDIATE: Skip queue, send now ────────────────────────────────────
         if priority == EmailPriority.IMMEDIATE:
             self._metrics["immediate"] += 1
             try:
                 loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, send_fn, **send_kwargs)
+                # [FIX] run_in_executor doesn't accept kwargs. Using partial is mandatory.
+                await loop.run_in_executor(None, partial(send_fn, **send_kwargs))
                 self._metrics["sent"] += 1
                 logger.info("✓ Immediate email sent | to=%s subject=%s", to, subject)
                 return True
@@ -209,7 +194,7 @@ class EmailQueue:
                 logger.warning("Queue full (%d) — forcing flush", len(self._queue))
                 needs_flush = True
             
-            # Add to queue (sorted by priority)
+            # Add to queue
             email = QueuedEmail(
                 priority=priority,
                 queued_at=now,
@@ -220,7 +205,10 @@ class EmailQueue:
                 send_kwargs=send_kwargs,
             )
             self._queue.append(email)
-            self._queue.sort()  # Sort by priority
+            
+            # [FIX] Safe custom sorting based strictly on priority value and timestamp
+            self._queue.sort(key=lambda x: (x.priority.value, x.queued_at))
+            
             self._sent_dedup[dedup_key] = now
             self._metrics["queued"] += 1
             
@@ -292,10 +280,10 @@ class EmailQueue:
         for email in batch:
             try:
                 if loop:
+                    # [FIX] run_in_executor kwargs wrapper
                     await loop.run_in_executor(
                         None,
-                        email.send_fn,
-                        **email.send_kwargs
+                        partial(email.send_fn, **email.send_kwargs)
                     )
                 else:
                     email.send_fn(**email.send_kwargs)

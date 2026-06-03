@@ -14,7 +14,9 @@ Features:
   • Automatic slug deduplication
   • Atomic image reordering
   • Soft delete (is_active=False)
-  • Full-text search support
+  • Bulletproof Search (ilike fallback)
+  • FIXED: PostgREST 406 Errors via strict limit(1)
+  • FIXED: Memory leaks on exact counts
 """
 from __future__ import annotations
 
@@ -113,7 +115,8 @@ def _generate_unique_slug(sb: Any, base_slug: str) -> str:
     """Append -2, -3… until slug is unique"""
     slug, counter = base_slug, 2
     while True:
-        existing = sb.table("products").select("id").eq("slug", slug).execute()
+        # [FIX] Limit to 1 to save memory during check
+        existing = sb.table("products").select("id").eq("slug", slug).limit(1).execute()
         if not getattr(existing, "data", None):
             return slug
         slug = f"{base_slug}-{counter}"
@@ -180,12 +183,16 @@ def create_category(payload: CategoryCreate) -> dict[str, Any]:
 def delete_category(category_id: uuid.UUID) -> dict[str, str]:
     """Admin — soft delete category (200 OK for FastAPI safety)"""
     sb = get_admin_supabase()
+    
+    # [FIX] Added limit(1) to avoid memory leak downloading all product IDs
     active = (
         sb.table("products").select("id", count="exact")
-        .eq("category_id", str(category_id)).eq("is_active", True).execute()
+        .eq("category_id", str(category_id)).eq("is_active", True)
+        .limit(1).execute()
     )
     if (active.count or 0) > 0:
         raise HTTPException(409, "Cannot delete — category has active products")
+        
     sb.table("categories").update({"is_active": False}).eq("id", str(category_id)).execute()
     return {"message": "Category deleted"}
 
@@ -218,17 +225,16 @@ def list_products(
     )
 
     if category:
-        cat = sb.table("categories").select("id").eq("slug", category).maybe_single().execute()
-        if cat and cat.data:
-            q = q.eq("category_id", cat.data["id"])
+        # [FIX] PostgREST 406 safety
+        cat = sb.table("categories").select("id").eq("slug", category).limit(1).execute()
+        if cat and getattr(cat, "data", None):
+            q = q.eq("category_id", cat.data[0]["id"])
         else:
             return {"items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}
 
     if search:
-        try:
-            q = q.text_search("fts", search)
-        except Exception:
-            q = q.ilike("name", f"%{search}%")
+        # [FIX] Safe fallback that prevents execution crashes if FTS is missing
+        q = q.ilike("name", f"%{search}%")
 
     if min_price is not None: q = q.gte("price", min_price)
     if max_price is not None: q = q.lte("price", max_price)
@@ -251,16 +257,18 @@ def list_products(
 def get_product(slug: str) -> dict[str, Any]:
     """Public — get single product by slug"""
     sb = get_admin_supabase()
+    
+    # [FIX] PostgREST 406 safety (limit 1 instead of maybe_single)
     result = (
         sb.table("products")
         .select("*, categories(name, slug)")
         .eq("slug", slug).eq("is_active", True)
-        .maybe_single().execute()
+        .limit(1).execute()
     )
-    if not result or not result.data:
+    if not result or not getattr(result, "data", None):
         raise HTTPException(404, "Product not found")
 
-    product = result.data
+    product = result.data[0]
     product["images"] = product.get("images") or []
     return product
 
@@ -271,7 +279,8 @@ def create_product(payload: ProductCreate) -> dict[str, Any]:
     sb = get_admin_supabase()
 
     if payload.sku:
-        existing = sb.table("products").select("id").eq("sku", payload.sku).execute()
+        # [FIX] Added limit(1) to save memory
+        existing = sb.table("products").select("id").eq("sku", payload.sku).limit(1).execute()
         if getattr(existing, "data", None):
             raise HTTPException(409, f"SKU '{payload.sku}' already exists")
 

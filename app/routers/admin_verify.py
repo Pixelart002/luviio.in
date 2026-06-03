@@ -14,13 +14,15 @@ WHY THIS EXISTS:
 
   Even if XSS steals a customer's token, they cannot get 200 here.
 
-SECURITY LAYERS:
+SECURITY & STABILITY LAYERS:
   1. Live DB lookup (no cache, no sessionStorage trust)
   2. Role + is_active double-check
   3. Rate limiting to prevent enumeration
   4. Audit logging for access attempts
   5. Timing attack mitigation
   6. Safe user_id extraction (no KeyError crashes)
+  7. FIXED: PostgREST 406 Error protection using strict .limit(1)
+  8. FIXED: Prevented massive RAM memory leak on exact counts
 """
 import logging
 import time
@@ -73,36 +75,24 @@ def verify_admin(
     Live DB check — never uses cached profile.
     
     Frontend MUST call this before rendering any admin UI.
-    
-    Usage:
-      const res = await fetch('/api/v1/admin/verify', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) { window.location.href = '/'; return; }
-      const { profile } = await res.json();
-      // Safe to render admin UI
     """
     start = time.monotonic()
     client_ip = get_remote_address(request)
     
-    # ── Safe user ID extraction ───────────────────────────────────────────────
     user_id = _get_user_id(current)
-    
-    # ── Force fresh DB read — no cache, no stale data ─────────────────────────
     sb = get_admin_supabase()
     
     try:
+        # [FIX] PostgREST 406 Error protection — Using limit(1) instead of maybe_single()
         result = (
             sb.table("users")
             .select("id, email, full_name, role, is_active, created_at")
             .eq("id", user_id)
             .limit(1)
-            .maybe_single()  # Safe — won't crash on missing
             .execute()
         )
     except Exception as exc:
         logger.error("Admin verify DB error | user=%.8s: %s", user_id, exc)
-        # Timing mitigation
         elapsed = time.monotonic() - start
         time.sleep(max(0.0, _MIN_RESPONSE_SECONDS - elapsed))
         raise HTTPException(
@@ -120,7 +110,7 @@ def verify_admin(
             detail="Access denied"
         )
 
-    profile = result.data
+    profile = result.data[0]
 
     # ── Double-check: role AND is_active ──────────────────────────────────────
     user_role = profile.get("role", "")
@@ -153,7 +143,6 @@ def verify_admin(
     # ── SUCCESS — Admin verified ──────────────────────────────────────────────
     logger.info("Admin verified | user=%.8s email=%s ip=%s", user_id, profile.get("email"), client_ip)
 
-    # ── Return fresh profile (safe fields only) ───────────────────────────────
     safe_profile = {
         "id": profile.get("id"),
         "email": profile.get("email"),
@@ -188,51 +177,53 @@ def admin_stats(
     user_id = _get_user_id(current)
     sb = get_admin_supabase()
     
-    # Quick verification (lighter than /verify)
+    # [FIX] Safer admin role check
     admin_check = (
         sb.table("users")
         .select("role, is_active")
         .eq("id", user_id)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
     
-    if not admin_check or not admin_check.data:
+    if not admin_check or not hasattr(admin_check, "data") or not admin_check.data:
         raise HTTPException(403, "Access denied")
-    if admin_check.data.get("role") != "admin" or not admin_check.data.get("is_active"):
+        
+    admin_data = admin_check.data[0]
+    if admin_data.get("role") != "admin" or not admin_data.get("is_active"):
         raise HTTPException(403, "Access denied")
 
     # ── Gather stats ──────────────────────────────────────────────────────────
     stats = {}
     
     try:
-        # Product count
-        products = sb.table("products").select("id", count="exact").eq("is_active", True).execute()
-        stats["products"] = products.count if products and hasattr(products, "count") else 0
+        # [FIX] Memory Leak Prevention: Added limit(1) to count queries
+        products = sb.table("products").select("id", count="exact").eq("is_active", True).limit(1).execute()
+        stats["products"] = products.count if products and hasattr(products, "count") and products.count else 0
     except Exception as exc:
         logger.warning("Stats: product count failed: %s", exc)
         stats["products"] = -1
 
     try:
-        # Order count
-        orders = sb.table("orders").select("id", count="exact").execute()
-        stats["orders"] = orders.count if orders and hasattr(orders, "count") else 0
+        # [FIX] Memory Leak Prevention
+        orders = sb.table("orders").select("id", count="exact").limit(1).execute()
+        stats["orders"] = orders.count if orders and hasattr(orders, "count") and orders.count else 0
     except Exception as exc:
         logger.warning("Stats: order count failed: %s", exc)
         stats["orders"] = -1
 
     try:
-        # Pending orders
-        pending = sb.table("orders").select("id", count="exact").eq("status", "pending").execute()
-        stats["pending_orders"] = pending.count if pending and hasattr(pending, "count") else 0
+        # [FIX] Memory Leak Prevention
+        pending = sb.table("orders").select("id", count="exact").eq("status", "pending").limit(1).execute()
+        stats["pending_orders"] = pending.count if pending and hasattr(pending, "count") and pending.count else 0
     except Exception as exc:
         logger.warning("Stats: pending count failed: %s", exc)
         stats["pending_orders"] = -1
 
     try:
-        # User count
-        users = sb.table("users").select("id", count="exact").execute()
-        stats["users"] = users.count if users and hasattr(users, "count") else 0
+        # [FIX] Memory Leak Prevention
+        users = sb.table("users").select("id", count="exact").limit(1).execute()
+        stats["users"] = users.count if users and hasattr(users, "count") and users.count else 0
     except Exception as exc:
         logger.warning("Stats: user count failed: %s", exc)
         stats["users"] = -1
@@ -245,7 +236,7 @@ def admin_stats(
             .in_("status", ["paid", "shipped", "delivered"])
             .execute()
         )
-        if revenue_res and revenue_res.data:
+        if revenue_res and hasattr(revenue_res, "data") and revenue_res.data:
             stats["revenue"] = round(sum(float(o.get("total_amount", 0)) for o in revenue_res.data), 2)
         else:
             stats["revenue"] = 0

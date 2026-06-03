@@ -73,15 +73,14 @@ COMPANY = {
     "logo_path": None,           # Path to logo PNG (optional)
 }
 
-# Brand colors
+# Print-Friendly Brand Colors
+# Modified to be readable on a standard white PDF page while keeping the luxury feel
 GOLD = colors.HexColor('#c9a55e')
-DARK_BG = colors.HexColor('#080808')
-SURFACE = colors.HexColor('#0d0c0a')
-BORDER = colors.HexColor('#1e1c18')
-TEXT_PRIMARY = colors.HexColor('#f0ece4')
-TEXT_MUTED = colors.HexColor('#7a7368')
-WHITE = colors.white
-BLACK = colors.black
+DARK_GREY = colors.HexColor('#2a2722')
+TEXT_PRIMARY = colors.HexColor('#141210')
+TEXT_MUTED = colors.HexColor('#5a554c')
+BORDER_COLOR = colors.HexColor('#e5e0d8')
+SURFACE_LIGHT = colors.HexColor('#faf9f6')
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -124,7 +123,7 @@ def _fetch_customer(sb: Any, user_id: str) -> dict[str, Any]:
 
 def _format_inr(amount: float | Decimal) -> str:
     """Format amount as Indian Rupees"""
-    return f"₹{float(amount):,.2f}"
+    return f"INR {float(amount):,.2f}"
 
 
 def _format_date(dt_str: str) -> str:
@@ -151,11 +150,15 @@ class LuviioInvoiceBuilder:
         self.customer = customer
         self.buffer = io.BytesIO()
         self.width, self.height = A4  # 210 x 297 mm
+        
+        # [FIX] Calculate true available width after margins (15mm on each side)
+        self.available_width = self.width - (30 * mm) 
+        
         self.styles = getSampleStyleSheet()
         self._setup_styles()
         
     def _setup_styles(self):
-        """Custom styles matching Luviio brand"""
+        """Custom print-friendly styles matching Luviio brand"""
         self.styles.add(ParagraphStyle(
             'InvoiceTitle', fontName='Helvetica-Bold', fontSize=24,
             textColor=GOLD, alignment=TA_LEFT, spaceAfter=4
@@ -166,7 +169,7 @@ class LuviioInvoiceBuilder:
         ))
         self.styles.add(ParagraphStyle(
             'SectionHeader', fontName='Helvetica-Bold', fontSize=10,
-            textColor=TEXT_PRIMARY, spaceBefore=12, spaceAfter=6,
+            textColor=DARK_GREY, spaceBefore=12, spaceAfter=6,
             borderPadding=(0, 0, 2, 0)
         ))
         self.styles.add(ParagraphStyle(
@@ -205,11 +208,12 @@ class LuviioInvoiceBuilder:
                 Paragraph(f"<b>{COMPANY['full_name']}</b>", self.styles['InvoiceTitle']),
                 Paragraph(f"<b>TAX INVOICE</b>", ParagraphStyle(
                     'RightTitle', fontName='Helvetica-Bold', fontSize=16,
-                    textColor=GOLD, alignment=TA_RIGHT
+                    textColor=DARK_GREY, alignment=TA_RIGHT
                 ))
             ]
         ]
-        t = Table(data, colWidths=[self.width * 0.6, self.width * 0.3])
+        # [FIX] Use available_width
+        t = Table(data, colWidths=[self.available_width * 0.6, self.available_width * 0.4])
         t.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
@@ -237,14 +241,15 @@ class LuviioInvoiceBuilder:
         if self.order.get('tracking_number'):
             right.append([Paragraph(f"Tracking: {self.order['tracking_number']}", self.styles['InfoValue'])])
         
-        left_table = Table(left, colWidths=[self.width * 0.45])
-        right_table = Table(right, colWidths=[self.width * 0.45])
+        # [FIX] Distribute available width properly
+        left_table = Table(left, colWidths=[self.available_width * 0.5])
+        right_table = Table(right, colWidths=[self.available_width * 0.5])
         
-        # Combine side by side
-        combined = Table([[left_table, right_table]], colWidths=[self.width * 0.48, self.width * 0.48])
+        combined = Table([[left_table, right_table]], colWidths=[self.available_width * 0.5, self.available_width * 0.5])
         combined.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
         ]))
         return combined
     
@@ -277,13 +282,16 @@ class LuviioInvoiceBuilder:
             ]
         ]
         
-        left_t = Table(data[0][0], colWidths=[self.width * 0.45])
-        right_t = Table(data[0][1], colWidths=[self.width * 0.45])
+        # [FIX] Distribute available width properly
+        left_t = Table(data[0][0], colWidths=[self.available_width * 0.5])
+        right_t = Table(data[0][1], colWidths=[self.available_width * 0.5])
         
-        t = Table([[left_t, right_t]], colWidths=[self.width * 0.48, self.width * 0.48])
+        t = Table([[left_t, right_t]], colWidths=[self.available_width * 0.5, self.available_width * 0.5])
         t.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
         ]))
         return t
     
@@ -314,30 +322,28 @@ class LuviioInvoiceBuilder:
             ]
             data.append(row)
         
+        # [FIX] Distribute available width properly for total 100%
         col_widths = [
-            self.width * 0.05,  # #
-            self.width * 0.35,  # Item
-            self.width * 0.10,  # HSN
-            self.width * 0.08,  # Qty
-            self.width * 0.15,  # Rate
-            self.width * 0.17,  # Amount
+            self.available_width * 0.05,  # #
+            self.available_width * 0.40,  # Item
+            self.available_width * 0.10,  # HSN
+            self.available_width * 0.08,  # Qty
+            self.available_width * 0.17,  # Rate
+            self.available_width * 0.20,  # Amount
         ]
         
         t = Table(data, colWidths=col_widths, repeatRows=1)
         t.setStyle(TableStyle([
-            # Header
-            ('BACKGROUND', (0, 0), (-1, 0), SURFACE),
-            ('TEXTCOLOR', (0, 0), (-1, 0), GOLD),
+            # Print-friendly Header
+            ('BACKGROUND', (0, 0), (-1, 0), SURFACE_LIGHT),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
             ('TOPPADDING', (0, 0), (-1, 0), 8),
-            # Body
-            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#0a0a0a')),
-            ('TEXTCOLOR', (0, 1), (-1, -1), TEXT_PRIMARY),
+            # Body spacing
             ('TOPPADDING', (0, 1), (-1, -1), 6),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
             # Grid
-            ('GRID', (0, 0), (-1, -1), 0.5, BORDER),
-            ('LINEBELOW', (0, 0), (-1, 0), 1, GOLD),
+            ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+            ('LINEBELOW', (0, 0), (-1, 0), 1.5, GOLD),
             # Alignment
             ('ALIGN', (0, 0), (0, -1), 'CENTER'),
             ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
@@ -363,13 +369,14 @@ class LuviioInvoiceBuilder:
              Paragraph(f"<b>{_format_inr(total)}</b>", self.styles['TotalRow'])],
         ]
         
-        t = Table(data, colWidths=[self.width * 0.30, self.width * 0.15])
+        # [FIX] Make totals table fit the right side perfectly
+        t = Table(data, colWidths=[self.available_width * 0.20, self.available_width * 0.20])
         t.setStyle(TableStyle([
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
             ('TOPPADDING', (0, 0), (-1, -1), 3),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
             ('LINEABOVE', (0, -1), (-1, -1), 1.5, GOLD),
-            ('LINEABOVE', (0, -2), (-1, -2), 0.5, BORDER),
+            ('LINEABOVE', (0, -2), (-1, -2), 0.5, BORDER_COLOR),
         ]))
         return t
     
@@ -399,7 +406,7 @@ class LuviioInvoiceBuilder:
         story.append(Spacer(1, 4*mm))
         
         # 2. Golden divider line
-        story.append(HRFlowable(width="100%", thickness=1, color=GOLD))
+        story.append(HRFlowable(width="100%", thickness=1.5, color=GOLD))
         story.append(Spacer(1, 6*mm))
         
         # 3. Company info + Order details
@@ -416,9 +423,10 @@ class LuviioInvoiceBuilder:
         story.append(Spacer(1, 4*mm))
         
         # 6. Totals (right-aligned)
+        # [FIX] Align totals block precisely to the right margin
         totals_wrapper = Table(
             [[Spacer(1, 1), self._totals_table()]],
-            colWidths=[self.width * 0.55, self.width * 0.35]
+            colWidths=[self.available_width * 0.60, self.available_width * 0.40]
         )
         totals_wrapper.setStyle(TableStyle([
             ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
@@ -434,7 +442,7 @@ class LuviioInvoiceBuilder:
         
         # 8. Footer
         story.append(Spacer(1, 15*mm))
-        story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER_COLOR))
         story.append(Spacer(1, 4*mm))
         story.append(self._footer())
         
@@ -445,7 +453,7 @@ class LuviioInvoiceBuilder:
 
 # ── Router ────────────────────────────────────────────────────────────────────
 
-@router.get("/orders/{order_id}/invoice")
+@router.get("/{order_id}/invoice")
 def download_invoice(
     order_id: UUID,
     current: dict[str, Any] = Depends(get_current_user),

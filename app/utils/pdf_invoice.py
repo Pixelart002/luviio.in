@@ -8,15 +8,9 @@ Usage:
     from app.utils.pdf_invoice import build_invoice_pdf
     pdf_bytes = build_invoice_pdf(order, customer)
 
-Design:
-  • A4 page, portrait
-  • Brand colors: Dark #080808, Gold #c9a55e, White text
-  • GST-compliant format (India)
-  • Sections: header → bill to/ship to → items table → tax breakup → total → footer
-  • Numbers always 2 decimal places, currency INR (₹)
-  • Invoice number = INV-{order_id[:8].upper()}
-  • HSN column for GST compliance
-  • Tax breakup: CGST + SGCT (or IGST for inter-state)
+FIXES APPLIED:
+  1. Safe XML Escaping: Prevented ReportLab Paragraph crashes on '&' or '<' in user inputs.
+  2. Dynamic Currency Symbol: Prevented Helvetica Unicode crashes if custom Rupee fonts are missing.
 """
 from __future__ import annotations
 
@@ -26,6 +20,7 @@ import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
+from html import escape  # [FIX] Required to safely render user inputs
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -53,6 +48,7 @@ _FONT_DIR = os.path.join(_DIR, "fonts")
 
 _FONT_REGULAR = "Helvetica"
 _FONT_BOLD = "Helvetica-Bold"
+_CURRENCY_SYMBOL = "₹"  # Default
 
 try:
     pdfmetrics.registerFont(TTFont("Roboto", os.path.join(_FONT_DIR, "Roboto-Regular.ttf")))
@@ -62,7 +58,9 @@ try:
     _FONT_BOLD = "Roboto-Bold"
     logger.info("Custom fonts loaded for Rupee symbol support")
 except Exception as e:
-    logger.warning(f"Custom fonts failed — falling back to Helvetica: {e}")
+    # [FIX] Helvetica DOES NOT support ₹. Fallback to "INR " to prevent Unicode crashes.
+    _CURRENCY_SYMBOL = "INR "
+    logger.warning(f"Custom fonts failed — falling back to Helvetica. Using 'INR ' instead of '₹': {e}")
 
 
 # ── Brand Colors (Luviio Dark Theme) ──────────────────────────────────────────
@@ -140,45 +138,43 @@ def _styles() -> dict[str, ParagraphStyle]:
         ),
     }
 
+# [FIX] Helper to safely escape user inputs for ReportLab Paragraph
+def _esc(text: Any) -> str:
+    """Escape XML characters (&, <, >) to prevent ReportLab crashes"""
+    return escape(str(text)) if text else ""
 
-def _fmt(amount: Any, symbol: str = "₹") -> str:
-    """Format a number as Indian currency string"""
+def _fmt(amount: Any, symbol: str = None) -> str:
+    """Format a number as currency string"""
+    sym = symbol if symbol is not None else _CURRENCY_SYMBOL
     try:
-        return f"{symbol}{float(amount):,.2f}"
+        return f"{sym}{float(amount):,.2f}"
     except (TypeError, ValueError):
-        return f"{symbol}0.00"
-
+        return f"{sym}0.00"
 
 def _short_id(uuid_str: str) -> str:
     """Shorten UUID for display"""
     return uuid_str[:8].upper() if uuid_str else "—"
 
-
 def _addr_block(order: dict[str, Any]) -> str:
-    """Build a shipping address block"""
+    """Build a shipping address block safely"""
     parts = [
-        order.get("shipping_line1", ""),
-        order.get("shipping_line2", ""),
-        order.get("shipping_city", ""),
-        order.get("shipping_state", ""),
-        order.get("shipping_postal_code", ""),
-        order.get("shipping_country", ""),
+        _esc(order.get("shipping_line1")),
+        _esc(order.get("shipping_line2")),
+        _esc(order.get("shipping_city")),
+        _esc(order.get("shipping_state")),
+        _esc(order.get("shipping_postal_code")),
+        _esc(order.get("shipping_country")),
     ]
     return "<br/>".join(p for p in parts if p)
 
-
 def _calculate_gst_breakdown(order: dict[str, Any]) -> dict[str, float]:
-    """
-    Calculate CGST + SGST (intra-state) or IGST (inter-state).
-    For simplicity, assumes intra-state (CGST 50% + SGST 50%).
-    """
+    """Calculate CGST + SGST."""
     tax_total = float(order.get("tax_amount", 0))
     return {
         "cgst": round(tax_total / 2, 2),
         "sgst": round(tax_total / 2, 2),
         "total": tax_total,
     }
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  PUBLIC API
@@ -190,13 +186,6 @@ def build_invoice_pdf(
 ) -> bytes:
     """
     Build a complete GST-compliant invoice PDF in memory and return raw bytes.
-    
-    Args:
-        order: Full order object with items, pricing, addresses
-        customer: User profile with email, full_name
-    
-    Returns:
-        PDF file as bytes (ready to stream to client)
     """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -213,7 +202,7 @@ def build_invoice_pdf(
     s = _styles()
     story = []
 
-    # ── Extract data ──────────────────────────────────────────────────────────
+    # ── Extract & Safely Escape data ──────────────────────────────────────────
     order_id   = str(order.get("id", ""))
     invoice_no = f"INV-{_short_id(order_id)}"
     
@@ -224,11 +213,11 @@ def build_invoice_pdf(
     except Exception:
         date_str = datetime.now(timezone.utc).strftime("%d %B %Y")
 
-    customer_name = customer.get("full_name") or "Customer"
-    customer_email = customer.get("email", "")
+    customer_name = _esc(customer.get("full_name") or "Customer")
+    customer_email = _esc(customer.get("email", ""))
     ship_addr = _addr_block(order)
-    status = str(order.get("status", "")).upper()
-    tracking = order.get("tracking_number", "")
+    status = _esc(str(order.get("status", "")).upper())
+    tracking = _esc(order.get("tracking_number", ""))
 
     # ══════════════════════════════════════════════════════════════════════════
     # 1. HEADER — Brand + Invoice Title
@@ -349,7 +338,7 @@ def build_invoice_pdf(
     ]]
 
     for i, item in enumerate(items_raw, 1):
-        name = item.get("product_name") or "—"
+        name = _esc(item.get("product_name") or "—") # Safe product name
         qty = item.get("quantity", 0)
         rate = float(item.get("unit_price", 0))
         amount = float(item.get("subtotal", rate * qty))
@@ -450,7 +439,7 @@ def build_invoice_pdf(
     story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER))
     story.append(Spacer(1, 4*mm))
     
-    notes = order.get("notes")
+    notes = _esc(order.get("notes"))
     if notes:
         story.append(Paragraph("<b>Notes:</b>", s["section_title"]))
         story.append(Paragraph(notes, s["body_muted"]))

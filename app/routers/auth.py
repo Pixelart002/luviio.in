@@ -15,6 +15,8 @@ Changes from original:
   11. ADDED: Password breach detection (basic)
   12. ADDED: Session tracking for audit
   13. ADDED: Rate limit headers in response
+  14. CRITICAL FIX: Memory leak stopped in brute-force dictionary
+  15. CRITICAL FIX: Reset password now correctly uses Admin Client
 """
 import hashlib
 import logging
@@ -60,12 +62,17 @@ def _check_brute_force(ip: str, email: str = "") -> bool:
     """Check if IP or email is blocked. Returns True if blocked."""
     now = time.time()
     
-    # Cleanup old entries
     global _login_attempts, _blocked_ips
+    
+    # Cleanup old entries (Keep only attempts within the window)
     _login_attempts = {
         k: [t for t in v if now - t < _LOGIN_WINDOW_SECONDS]
         for k, v in _login_attempts.items()
     }
+    
+    # [FIX] RAM Leak: Remove keys that have completely empty lists
+    _login_attempts = {k: v for k, v in _login_attempts.items() if v}
+    
     _blocked_ips = {k: v for k, v in _blocked_ips.items() if v > now}
     
     # Check IP block
@@ -429,10 +436,21 @@ def reset_password(
     Reset password (authenticated).
     Requires valid access token (user clicked email link).
     """
-    sb = get_supabase()
+    # [FIX] Backend client 'sb' does not have the user session context
+    # Must use admin client to securely update the specific user's password.
+    adm = get_admin_supabase()
+    
+    # Safely extract user_id from the current JWT claims
+    user_id = current.get("sub") or current.get("id") or current.get("profile", {}).get("id")
+    if not user_id:
+        raise HTTPException(401, "Valid user session not found")
+
     try:
-        sb.auth.update_user({"password": payload.new_password})
-        logger.info("Password reset successful | user=%.8s", current.get("sub", "?"))
+        adm.auth.admin.update_user_by_id(
+            user_id,
+            {"password": payload.new_password}
+        )
+        logger.info("Password reset successful | user=%.8s", user_id)
     except AuthApiError as e:
         raise HTTPException(400, f"Password reset failed: {e.message}")
     except Exception as e:

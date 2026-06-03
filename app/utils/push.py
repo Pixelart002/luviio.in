@@ -1,7 +1,12 @@
 """
 Push Notification Utility — Web Push API (VAPID)
 =================================================
-FIXES: 'vapid_public_key' error removed from webpush() call.
+Features:
+  • Circuit Breaker (stops pinging dead/blocking endpoints)
+  • Rate Limiter (respects Push Service limits)
+  • Parallel Execution (ThreadPoolExecutor)
+  • Automatic Dead Subscription Cleanup
+  • Strict Supabase NoneType Safety (AttributeError prevention)
 """
 import os
 import json
@@ -148,7 +153,6 @@ def send_push(
     for attempt in range(1, _MAX_RETRIES + 2):
         try:
             session = _make_session()
-            # FIX APPLIED HERE: Removed vapid_public_key which was crashing the app
             webpush(
                 subscription_info=subscription,
                 data=payload,
@@ -220,12 +224,14 @@ def send_push_to_user(
             .execute()
         )
         
-        if not result or not result.data:
+        # [FIX] Safe data extraction
+        rows = getattr(result, "data", None)
+        if not rows:
             logger.debug("No subscriptions found | user=%s", user_id[:8])
             return 0
         
         subs: list[dict] = []
-        for row in result.data:
+        for row in rows:
             try:
                 sub = json.loads(row.get("subscription_json", "{}"))
                 if sub.get("endpoint"):
@@ -301,11 +307,13 @@ def broadcast_push_to_admins(
             .execute()
         )
         
-        if not admins or not admins.data:
+        # [FIX] Safe data extraction
+        admin_rows = getattr(admins, "data", None)
+        if not admin_rows:
             logger.info("No active admins found for broadcast")
             return 0
         
-        admin_ids = [a["id"] for a in admins.data]
+        admin_ids = [a["id"] for a in admin_rows]
         logger.info("Broadcasting to %d admins | title=%s", len(admin_ids), title)
         
         total = 0

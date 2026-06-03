@@ -12,19 +12,9 @@ LLD concepts applied:
   Factory Pattern        → get_default_pricing() + get_pricing_from_config()
   Designing for Testability → each strategy is unit-testable in isolation
 
-Usage:
-  # Orders (settings.py config)
-  pricing = get_default_pricing()
-  breakdown = pricing.calculate(subtotal)
-  
-  # Cart (live pricing_config from DB)
-  config = _fetch_pricing_config(sb)
-  pricing = get_pricing_from_config(config)
-  breakdown = pricing.calculate(subtotal)
-  
-  # B2B (zero tax)
-  pricing = ZeroTaxPricing(threshold, flat_fee)
-  breakdown = pricing.calculate(subtotal)
+FIXES APPLIED:
+  1. Empty Cart Bug: subtotal <= 0 now safely returns 0 for all components.
+  2. Decorator Tax Bug: FreeShippingPricing now recalculates tax without charging GST on waived shipping fees.
 """
 from __future__ import annotations
 
@@ -109,9 +99,14 @@ class StandardPricing(PricingStrategy):
         self._tax_rate = tax_rate
 
     def calculate(self, subtotal: Decimal) -> PriceBreakdown:
+        # [FIX] Empty Cart Safety
+        if subtotal <= Decimal("0"):
+            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"))
+            
         shipping = Decimal("0") if subtotal >= self._threshold else self._flat
         tax = (subtotal + shipping) * self._tax_rate
         total = subtotal + shipping + tax
+        
         return PriceBreakdown(
             subtotal=subtotal,
             shipping=shipping,
@@ -131,8 +126,13 @@ class ZeroTaxPricing(PricingStrategy):
         self._flat = shipping_flat
 
     def calculate(self, subtotal: Decimal) -> PriceBreakdown:
+        # [FIX] Empty Cart Safety
+        if subtotal <= Decimal("0"):
+            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"))
+            
         shipping = Decimal("0") if subtotal >= self._threshold else self._flat
         total = subtotal + shipping
+        
         return PriceBreakdown(
             subtotal=subtotal,
             shipping=shipping,
@@ -152,6 +152,9 @@ class DiscountPricing(PricingStrategy):
         self._discount = discount_pct / Decimal("100")
 
     def calculate(self, subtotal: Decimal) -> PriceBreakdown:
+        if subtotal <= Decimal("0"):
+            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"))
+            
         discounted = subtotal * (Decimal("1") - self._discount)
         return self._base.calculate(discounted)
 
@@ -163,12 +166,20 @@ class FreeShippingPricing(PricingStrategy):
         self._base = base_strategy
 
     def calculate(self, subtotal: Decimal) -> PriceBreakdown:
+        if subtotal <= Decimal("0"):
+            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"))
+            
         original = self._base.calculate(subtotal)
+        
+        # [FIX] Properly re-calculate tax without the shipping portion
+        tax_rate = original.tax_rate_applied
+        new_tax = subtotal * tax_rate
+        
         return PriceBreakdown(
-            subtotal=original.subtotal,
+            subtotal=subtotal,
             shipping=Decimal("0"),
-            tax=original.tax,
-            total=original.total - original.shipping,
+            tax=new_tax,
+            total=subtotal + new_tax,
         )
 
 

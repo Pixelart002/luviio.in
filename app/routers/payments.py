@@ -43,6 +43,10 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
+# ── Rate limiter ──────────────────────────────────────────────────────────────
+# [FIX 1]: Using slowapi's robust builtin IP extraction
+limiter = Limiter(key_func=get_remote_address)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  BRUTE FORCE PROTECTION SYSTEM
@@ -130,20 +134,6 @@ class BruteForceGuard:
 brute_force = BruteForceGuard(max_attempts=5, window_seconds=300, cooldown_seconds=900)
 
 
-# ── Rate limiter ──────────────────────────────────────────────────────────────
-def _get_real_ip(request: Request) -> str:
-    """Extract real client IP considering proxies"""
-    fwd = request.headers.get("X-Forwarded-For")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    cf = request.headers.get("CF-Connecting-IP")  # Cloudflare
-    if cf:
-        return cf.strip()
-    return request.client.host if request.client else "unknown"
-
-limiter = Limiter(key_func=_get_real_ip)
-
-
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class PaymentIntentRequest(BaseModel):
@@ -184,7 +174,10 @@ def _get_customer_email(sb: Any, customer_id: str) -> str:
     if not customer_id: return ""
     try:
         res = sb.table("users").select("email").eq("id", customer_id).limit(1).execute()
-        return res.data[0].get("email", "") if res and res.data else ""
+        # [FIX 2]: Safe extraction to avoid IndexError
+        if res and hasattr(res, "data") and res.data:
+            return res.data[0].get("email", "")
+        return ""
     except Exception:
         return ""
 
@@ -212,7 +205,7 @@ def create_payment_intent(
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
     order_id = str(payload.order_id)
-    client_ip = _get_real_ip(request)
+    client_ip = get_remote_address(request)
     
     # ── BRUTE FORCE CHECK ─────────────────────────────────────────────────
     if brute_force.is_blocked(client_ip, user_id, "create_intent"):
@@ -304,7 +297,7 @@ def confirm_payment(
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
     order_id = str(payload.order_id)
-    client_ip = _get_real_ip(request)
+    client_ip = get_remote_address(request)
     
     # ── BRUTE FORCE CHECK ─────────────────────────────────────────────────
     if brute_force.is_blocked(client_ip, user_id, "confirm"):
@@ -411,7 +404,7 @@ def notify_payment_failed(
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
     order_id = str(payload.order_id)
-    client_ip = _get_real_ip(request)
+    client_ip = get_remote_address(request)
     
     if brute_force.is_blocked(client_ip, user_id, "notify_failed"):
         raise HTTPException(429, "Too many attempts")
@@ -460,7 +453,7 @@ async def stripe_webhook(
     """Stripe webhook — signature verified"""
     body = await request.body()
     sb = get_admin_supabase()
-    client_ip = _get_real_ip(request)
+    client_ip = get_remote_address(request)
 
     if not settings.STRIPE_WEBHOOK_SECRET:
         raise HTTPException(500, "Webhook secret not configured")

@@ -2,14 +2,15 @@
 Users Router — Production Grade
 ================================
 Changes from original:
-  1. FIXED: All .single() → .maybe_single() throughout
-  2. FIXED: Safe _get_user_id() extraction to prevent KeyError crashes
-  3. FIXED: Comprehensive NoneType checks on all Supabase responses
-  4. ADDED: Admin cannot delete/disable themselves
-  5. ADDED: Address count limit enforcement
-  6. ADDED: Active order check before address deletion
-  7. ADDED: Phone number format validation
-  8. ADDED: Audit logging for admin actions
+  1. FIXED: All .maybe_single() replaced with strict .limit(1) for PostgREST 406 protection.
+  2. FIXED: Safe _get_user_id() extraction to prevent KeyError crashes.
+  3. FIXED: Comprehensive NoneType checks on all Supabase responses.
+  4. FIXED: Memory leak prevented on exact count queries.
+  5. ADDED: Admin cannot delete/disable themselves.
+  6. ADDED: Address count limit enforcement.
+  7. ADDED: Active order check before address deletion.
+  8. ADDED: Phone number format validation.
+  9. ADDED: Audit logging for admin actions.
 """
 import logging
 from typing import Any
@@ -203,10 +204,12 @@ def add_address(
 
     # ── Count existing addresses ──────────────────────────────────────────────
     try:
+        # [FIX] Limit(1) applied for RAM safety on count
         count_res = (
             sb.table("addresses")
             .select("id", count="exact")
             .eq("user_id", user_id)
+            .limit(1)
             .execute()
         )
         current_count = count_res.count if count_res and hasattr(count_res, "count") and count_res.count else 0
@@ -265,25 +268,30 @@ def delete_address(
     user_id = _get_user_id(current)
 
     # ── Verify ownership ───────────────────────────────────────────────────────
+    # [FIX] Removed maybe_single(), used limit(1) to avoid 406 Error
     existing = (
         sb.table("addresses")
         .select("id, is_default")
         .eq("id", str(address_id))
         .eq("user_id", user_id)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
     
     if not existing or not hasattr(existing, "data") or not existing.data:
         raise HTTPException(404, "Address not found")
 
+    was_default = existing.data[0].get("is_default", False)
+
     # ── Check active orders ────────────────────────────────────────────────────
     try:
+        # [FIX] Added limit(1) as we only need to know if ANY active order exists
         active = (
             sb.table("orders")
             .select("id")
             .eq("shipping_address_id", str(address_id))
             .in_("status", ["pending", "paid", "shipped"])
+            .limit(1)
             .execute()
         )
         
@@ -296,11 +304,9 @@ def delete_address(
         raise
     except Exception as exc:
         logger.warning("Active order check failed | addr=%.8s: %s", address_id, exc)
-        # Continue with deletion on check failure (non-critical)
 
     # ── Delete address ─────────────────────────────────────────────────────────
     try:
-        was_default = existing.data.get("is_default", False)
         sb.table("addresses").delete().eq("id", str(address_id)).execute()
     except Exception as exc:
         logger.error("Address delete failed | addr=%.8s: %s", address_id, exc)
@@ -349,7 +355,9 @@ def list_users(
     )
     
     if search:
+        # [FIX] Supabase Python Client syntax for OR queries
         q = q.or_(f"email.ilike.%{search}%,full_name.ilike.%{search}%")
+        
     if role_filter:
         q = q.eq("role", role_filter)
     
@@ -403,11 +411,12 @@ def admin_update_user(
         raise HTTPException(400, "No fields to update")
 
     # ── Verify user exists ────────────────────────────────────────────────────
+    # [FIX] limit(1) instead of maybe_single()
     existing = (
         sb.table("users")
         .select("id, email, role, is_active")
         .eq("id", str(user_id))
-        .maybe_single()
+        .limit(1)
         .execute()
     )
     if not existing or not hasattr(existing, "data") or not existing.data:
@@ -424,8 +433,8 @@ def admin_update_user(
         raise HTTPException(404, "User not found")
 
     # ── Audit log ─────────────────────────────────────────────────────────────
-    old_role = existing.data.get("role", "?")
-    old_active = existing.data.get("is_active", "?")
+    old_role = existing.data[0].get("role", "?")
+    old_active = existing.data[0].get("is_active", "?")
     _audit_log(
         "USER_UPDATED", admin_id, str(user_id),
         f"role: {old_role}→{data.get('role', old_role)}, "
@@ -444,11 +453,12 @@ def get_user_detail(
     """
     sb = get_admin_supabase()
     
+    # [FIX] limit(1) instead of maybe_single()
     user = (
         sb.table("users")
         .select("id, email, full_name, phone, role, is_active, created_at")
         .eq("id", str(user_id))
-        .maybe_single()
+        .limit(1)
         .execute()
     )
     
@@ -457,17 +467,19 @@ def get_user_detail(
     
     # Count orders for this user
     try:
+        # [FIX] RAM safe exact count
         order_count = (
             sb.table("orders")
             .select("id", count="exact")
             .eq("customer_id", str(user_id))
+            .limit(1)
             .execute()
         )
-        total_orders = order_count.count if order_count and hasattr(order_count, "count") else 0
+        total_orders = order_count.count if order_count and hasattr(order_count, "count") and order_count.count else 0
     except Exception:
         total_orders = 0
     
-    result = user.data
+    result = user.data[0]
     result["total_orders"] = total_orders
     
     return result

@@ -9,22 +9,13 @@ SECURITY:
   • Server-to-server: No Origin header = allowed (not a browser request)
   • Preflight: Proper OPTIONS handling with caching
 
-FIXES:
+FIXES APPLIED:
   1. Unknown origins → 403 (was 200 — security hole)
   2. No-Origin requests properly handled (curl, Postman, server-to-server)
   3. Credentials support for cookie-based auth
   4. Preflight caching (24h) to reduce OPTIONS requests
-
-ARCHITECTURE:
-  Browser Request (Origin: https://luviio.in)
-      ↓
-  Check: Is origin in ALLOWED_ORIGINS?
-      ↓ YES → Allow, add CORS headers
-      ↓ NO  → 403 Forbidden
-      
-  Server-to-Server (No Origin header)
-      ↓
-  Allow, but don't add CORS headers (browser not involved)
+  5. CRITICAL FIX: Added 'Vary: Origin' to prevent CDN/Proxy caching issues
+  6. CRITICAL FIX: Removed '*' wildcard in dev mode when credentials are true
 """
 import logging
 
@@ -59,7 +50,9 @@ async def cors_middleware(request: Request, call_next):
     if not settings.is_production:
         # ── Development mode: Allow all origins ───────────────────────────────
         allowed = True
-        final_origin = origin or "*"
+        # [FIX] Do not use "*" if we are going to set credentials=true later.
+        # Just echo back whatever origin was sent (or None if no origin)
+        final_origin = origin 
 
     elif origin is None:
         # ── No Origin header: Server-to-server request ────────────────────────
@@ -76,10 +69,6 @@ async def cors_middleware(request: Request, call_next):
 
     else:
         # ── Unknown origin: Block with 403 ────────────────────────────────────
-        # This could be:
-        #   • Malicious site trying to access our API
-        #   • Forgotten domain that needs to be added to ALLOWED_ORIGINS
-        #   • Typo in the origin
         allowed = False
         final_origin = None
 
@@ -118,6 +107,9 @@ async def cors_middleware(request: Request, call_next):
         if final_origin:
             preflight_headers["Access-Control-Allow-Origin"] = final_origin
             preflight_headers["Access-Control-Allow-Credentials"] = "true"
+            # [FIX] Tell caches (like Cloudflare) that this response varies based on Origin
+            preflight_headers["Vary"] = "Origin" 
+            
             # Echo back the requested headers if present
             requested_headers = request.headers.get("Access-Control-Request-Headers")
             if requested_headers:
@@ -138,6 +130,9 @@ async def cors_middleware(request: Request, call_next):
     if final_origin:
         response.headers["Access-Control-Allow-Origin"] = final_origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
+        # [FIX] Tell caches that this response varies based on Origin
+        response.headers["Vary"] = "Origin"
+        
         # Expose custom headers to frontend
         response.headers["Access-Control-Expose-Headers"] = (
             "X-Request-ID, Content-Disposition, X-RateLimit-Limit, "
