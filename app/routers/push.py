@@ -65,7 +65,7 @@ def _count_user_subscriptions(sb: Any, user_id: str) -> int:
             sb.table("push_subscriptions")
             .select("id", count="exact")
             .eq("user_id", user_id)
-            .limit(1)  # FIX: Prevents downloading all IDs
+            .limit(1)
             .execute()
         )
         return res.count if res and hasattr(res, "count") and res.count else 0
@@ -83,11 +83,12 @@ def _cleanup_stale_subscriptions(sb: Any, user_id: str) -> int:
                 sb.table("push_subscriptions")
                 .select("id")
                 .eq("user_id", user_id)
-                .order("created_at", asc=True)
+                # FIX APPLIED HERE: Changed asc=True to desc=False
+                .order("created_at", desc=False)
                 .limit(to_remove)
                 .execute()
             )
-            if old and old.data:
+            if old and hasattr(old, "data") and old.data:
                 ids = [row["id"] for row in old.data]
                 sb.table("push_subscriptions").delete().in_("id", ids).execute()
                 logger.info("Cleaned %d stale subscriptions for user %.8s", len(ids), user_id)
@@ -104,10 +105,10 @@ def _is_duplicate_subscription(sb: Any, endpoint: str, user_id: str) -> bool:
             .select("id")
             .eq("endpoint", endpoint)
             .eq("user_id", user_id)
-            .limit(1) # FIX: Optimised query
+            .limit(1) 
             .execute()
         )
-        return bool(existing and existing.data)
+        return bool(existing and hasattr(existing, "data") and existing.data)
     except Exception:
         return False
 
@@ -230,7 +231,7 @@ def send_batch_notification(
     for user_id in payload.user_ids:
         try:
             sent = send_push_to_user(
-                sb_admin=sb,  # FIX: Correct parameter name mapping
+                sb_admin=sb,
                 user_id=user_id,
                 title=payload.title,
                 body=payload.body,
@@ -263,7 +264,7 @@ def push_stats() -> dict[str, Any]:
         total_res = (
             sb.table("push_subscriptions")
             .select("id", count="exact")
-            .limit(1)  # FIX: Memory safe count
+            .limit(1)  
             .execute()
         )
         total = total_res.count if total_res and hasattr(total_res, "count") and total_res.count else 0

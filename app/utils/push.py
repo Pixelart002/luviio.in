@@ -1,15 +1,7 @@
 """
 Push Notification Utility — Web Push API (VAPID)
 =================================================
-FIXES & ENHANCEMENTS:
-  1. Parallel sending — ThreadPoolExecutor se sab subscriptions ek saath
-  2. Timeout — webpush() ab 10s mein timeout hoga, hang nahi karega
-  3. Retry — transient failures pe 2 baar retry (exponential backoff)
-  4. Dead subscription cleanup bhi parallel
-  5. Circuit breaker — consecutive failures pe temporary disable
-  6. Rate limiting — per-endpoint throttling
-  7. Metrics — success/failure tracking
-  8. Graceful degradation — VAPID keys missing = silent skip
+FIXES: 'vapid_public_key' error removed from webpush() call.
 """
 import os
 import json
@@ -156,12 +148,12 @@ def send_push(
     for attempt in range(1, _MAX_RETRIES + 2):
         try:
             session = _make_session()
+            # FIX APPLIED HERE: Removed vapid_public_key which was crashing the app
             webpush(
                 subscription_info=subscription,
                 data=payload,
                 vapid_private_key=VAPID_PRIVATE_KEY,
                 vapid_claims={"sub": VAPID_CLAIM_EMAIL},
-                vapid_public_key=VAPID_PUBLIC_KEY,
                 requests_session=session,
                 timeout=_PUSH_TIMEOUT_SEC,
             )
@@ -330,10 +322,6 @@ def broadcast_push_to_admins(
     except Exception as exc:
         logger.error("broadcast_push_to_admins failed: %s", exc, exc_info=True)
         return 0
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  HEALTH CHECK
-# ══════════════════════════════════════════════════════════════════════════════
 
 def is_push_configured() -> bool:
     return bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and VAPID_CLAIM_EMAIL)
