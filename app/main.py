@@ -18,6 +18,9 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import AsyncGenerator
 
+# Sentry SDK Import
+import sentry_sdk
+
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -144,6 +147,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  SENTRY SETUP
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Yahan par apna DSN link copy karke replace karein.
+#
+# ══════════════════════════════════════════════════════════════════════════════
+
+sentry_sdk.init(
+    dsn="YOUR_SENTRY_DSN_LINK_HERE", # <--- BHAI YAHAN APNA SENTRY DSN DAALNA!
+    traces_sample_rate=1.0,          # API speed (performance) track karne ke liye
+    environment=settings.APP_ENV,    # Isse pata chalega error Dev se hai ya Prod se
+)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  FASTAPI APP
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -159,17 +177,6 @@ app = FastAPI(
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  MIDDLEWARE STACK (Order Matters!)
-# ══════════════════════════════════════════════════════════════════════════════
-#
-#  Request Flow:
-#    1. CORS          → Preflight handling, origin whitelisting
-#    2. RequestID     → Unique ID for tracing (logs + response header)
-#    3. MaxBodySize   → Reject oversized requests (anti-DoS)
-#    4. GZip          → Compress JSON responses (bandwidth savings)
-#    5. HideServer    → Mask server signature
-#    6. Security      → Security headers (HSTS, X-Frame, etc.)
-#    7. Rate Limiter  → Per-minute request limits
-#
 # ══════════════════════════════════════════════════════════════════════════════
 
 # 1. CORS — Must be first (preflight handling)
@@ -259,6 +266,7 @@ async def global_exception_handler(
     Development: Re-raise for debugging
     Production:  Return generic 500 with request_id for support
     """
+    # Sentry will automatically catch unhandled exceptions!
     if settings.APP_ENV == "development":
         raise exc
 
@@ -279,7 +287,7 @@ async def global_exception_handler(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  HEALTH CHECK
+#  HEALTH CHECK & SENTRY DEBUG
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/health", tags=["Health"])
@@ -303,3 +311,12 @@ def health_check() -> dict[str, str]:
         "app": settings.APP_NAME,
         "env": settings.APP_ENV,
     }
+
+
+@app.get("/api/v1/sentry-debug", tags=["Health"])
+async def sentry_debug():
+    """
+    Test endpoint to verify Sentry is working.
+    Hit this URL in your browser: /api/v1/sentry-debug
+    """
+    raise Exception("Bhai, Sentry ekdum mast chal raha hai! Error successfully caught.")
