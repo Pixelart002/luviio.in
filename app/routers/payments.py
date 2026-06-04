@@ -8,11 +8,11 @@ Security Layers:
   2. Brute Force Detection — consecutive failures trigger cooldown
   3. Amount Tampering Detection — Stripe amount vs DB amount
   4. PI Mismatch Detection — stored PI vs received PI
-  5. Atomic DB Updates — TOCTOU (Time-of-check to time-of-use) safe
+  5. Atomic DB Updates — TOCTOU safe
   6. Idempotency Keys — stripe level + DB level
   7. Webhook Signature Verification — Stripe's official verification
   8. IP Blacklisting — after threshold violations
-  9. Audit Logging — every action logged with user/IP context
+  9. NEW: Pure Window Logger integrated for visual terminal trails
 """
 import copy
 import hashlib
@@ -44,7 +44,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
 # ── Rate limiter ──────────────────────────────────────────────────────────────
-# [FIX 1]: Using slowapi's robust builtin IP extraction
 limiter = Limiter(key_func=get_remote_address)
 
 
@@ -57,15 +56,19 @@ class BruteForceGuard:
     In-memory brute force detection.
     Production: Replace with Redis for multi-instance support.
     """
-    def __init__(self, max_attempts: int = 5, window_seconds: int = 300, cooldown_seconds: int = 900):
+    def __init__(
+        self, 
+        max_attempts: int = 5, 
+        window_seconds: int = 300, 
+        cooldown_seconds: int = 900
+    ):
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
         self.cooldown_seconds = cooldown_seconds
         self.attempts: dict[str, list[float]] = defaultdict(list)
-        self.blocked: dict[str, float] = {}  # IP -> blocked_until timestamp
+        self.blocked: dict[str, float] = {}
     
     def _cleanup(self):
-        """Remove expired entries"""
         now = time.time()
         self.attempts = defaultdict(list, {
             k: [t for t in v if now - t < self.window_seconds]
@@ -74,36 +77,26 @@ class BruteForceGuard:
         self.blocked = {k: v for k, v in self.blocked.items() if v > now}
     
     def _fingerprint(self, ip: str, user_id: str = "", endpoint: str = "") -> str:
-        """Create unique fingerprint for tracking"""
         raw = f"{ip}:{user_id}:{endpoint}"
         return hashlib.sha256(raw.encode()).hexdigest()[:16]
     
     def is_blocked(self, ip: str, user_id: str = "", endpoint: str = "") -> bool:
-        """Check if this IP/user/endpoint combo is blocked"""
         self._cleanup()
         fp = self._fingerprint(ip, user_id, endpoint)
         if fp in self.blocked:
             return True
-        # Also check IP-level block
         if ip in self.blocked:
             return True
         return False
     
     def record_attempt(self, ip: str, user_id: str = "", endpoint: str = "") -> bool:
-        """
-        Record an attempt. Returns True if threshold exceeded (should block).
-        """
         now = time.time()
         self._cleanup()
         
-        # Record per-fingerprint
         fp = self._fingerprint(ip, user_id, endpoint)
         self.attempts[fp].append(now)
-        
-        # Record per-IP
         self.attempts[ip].append(now)
         
-        # Check fingerprint threshold
         if len(self.attempts[fp]) > self.max_attempts:
             self.blocked[fp] = now + self.cooldown_seconds
             logger.warning(
@@ -112,7 +105,6 @@ class BruteForceGuard:
             )
             return True
         
-        # Check IP threshold
         if len(self.attempts[ip]) > self.max_attempts * 3:
             self.blocked[ip] = now + self.cooldown_seconds * 2
             logger.warning(
@@ -124,13 +116,11 @@ class BruteForceGuard:
         return False
     
     def reset(self, ip: str, user_id: str = "", endpoint: str = ""):
-        """Reset attempts after successful action"""
         fp = self._fingerprint(ip, user_id, endpoint)
         self.attempts.pop(fp, None)
         self.blocked.pop(fp, None)
 
 
-# Global instance
 brute_force = BruteForceGuard(max_attempts=5, window_seconds=300, cooldown_seconds=900)
 
 
@@ -174,7 +164,6 @@ def _get_customer_email(sb: Any, customer_id: str) -> str:
     if not customer_id: return ""
     try:
         res = sb.table("users").select("email").eq("id", customer_id).limit(1).execute()
-        # [FIX 2]: Safe extraction to avoid IndexError
         if res and hasattr(res, "data") and res.data:
             return res.data[0].get("email", "")
         return ""
@@ -183,7 +172,6 @@ def _get_customer_email(sb: Any, customer_id: str) -> str:
 
 
 def _audit_log(action: str, user_id: str, ip: str, order_id: str = "", details: str = ""):
-    """Security audit trail"""
     logger.info(
         "AUDIT | action=%s user=%.8s ip=%s order=%.8s | %s",
         action, user_id, ip, order_id, details
@@ -207,10 +195,15 @@ def create_payment_intent(
     order_id = str(payload.order_id)
     client_ip = get_remote_address(request)
     
-    # ── BRUTE FORCE CHECK ─────────────────────────────────────────────────
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Requesting Payment Intent for Order #{order_id[:8].upper()}")
+    
     if brute_force.is_blocked(client_ip, user_id, "create_intent"):
         _audit_log("BLOCKED", user_id, client_ip, order_id, "brute_force_cooldown")
         raise HTTPException(429, "Too many attempts. Please try again later.")
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Passed Brute Force Guards")
     
     try:
         order_res = (
@@ -236,16 +229,17 @@ def create_payment_intent(
     amount_paise = _amount_to_paise(order["total_amount"])
     existing_pi_id = order.get("stripe_payment_intent")
 
-    # ── AMOUNT VALIDATION ──────────────────────────────────────────────────
-    if amount_paise < 50 * 100:  # Minimum ₹50 (Stripe minimum for INR)
+    if amount_paise < 50 * 100:
         raise HTTPException(400, "Order amount too low for payment processing")
-    if amount_paise > 10_00_000 * 100:  # Maximum ₹10,00,000
+    if amount_paise > 10_00_000 * 100:
         raise HTTPException(400, "Order amount exceeds maximum limit")
 
     try:
         if existing_pi_id:
             intent = stripe.PaymentIntent.retrieve(existing_pi_id)
             if intent.status in ("canceled", "succeeded"):
+                if hasattr(request.state, "actions"):
+                    request.state.actions.append("Recreating expired/invalid intent via Stripe API")
                 idem_key = f"pi_v2_{order_id}_{existing_pi_id[-8:]}"
                 intent = stripe.PaymentIntent.create(
                     amount=amount_paise, currency="inr",
@@ -255,8 +249,12 @@ def create_payment_intent(
                     idempotency_key=idem_key,
                 )
                 sb.table("orders").update({"stripe_payment_intent": intent.id}).eq("id", order_id).execute()
-            # else: reuse existing intent
+            else:
+                if hasattr(request.state, "actions"):
+                    request.state.actions.append("Re-using valid existing Stripe Payment Intent")
         else:
+            if hasattr(request.state, "actions"):
+                request.state.actions.append("Creating new intent via Stripe API")
             idem_key = f"pi_v1_{order_id}"
             intent = stripe.PaymentIntent.create(
                 amount=amount_paise, currency="inr",
@@ -275,10 +273,12 @@ def create_payment_intent(
     except stripe.error.StripeError as exc:
         raise HTTPException(502, f"Payment provider error: {exc.user_message or 'Unknown'}")
 
-    # ── SUCCESS — reset brute force counter ───────────────────────────────
     brute_force.reset(client_ip, user_id, "create_intent")
     _audit_log("INTENT_CREATED", user_id, client_ip, order_id, f"pi={intent.id}")
     
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Intent returned: {intent.id}")
+        
     return {"client_secret": intent.client_secret, "payment_intent_id": intent.id}
 
 
@@ -299,7 +299,9 @@ def confirm_payment(
     order_id = str(payload.order_id)
     client_ip = get_remote_address(request)
     
-    # ── BRUTE FORCE CHECK ─────────────────────────────────────────────────
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Starting fraud checks for Order #{order_id[:8].upper()}")
+
     if brute_force.is_blocked(client_ip, user_id, "confirm"):
         raise HTTPException(429, "Too many attempts. Please try again later.")
     
@@ -319,9 +321,10 @@ def confirm_payment(
     if order["status"] != "pending":
         raise HTTPException(409, f"Cannot confirm '{order['status']}' order")
 
-    # ── Verify Stripe ─────────────────────────────────────────────────────
     try:
         intent = stripe.PaymentIntent.retrieve(payload.payment_intent_id)
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Successfully fetched actual status from Stripe")
     except stripe.error.StripeError as exc:
         brute_force.record_attempt(client_ip, user_id, "confirm")
         raise HTTPException(502, f"Verification failed: {exc.user_message}")
@@ -331,29 +334,25 @@ def confirm_payment(
         _audit_log("PAYMENT_NOT_SUCCEEDED", user_id, client_ip, order_id, f"stripe_status={intent.status}")
         raise HTTPException(400, f"Payment not completed. Status: {intent.status}")
 
-    # ── FRAUD CHECKS ──────────────────────────────────────────────────────
     order_amount = float(order["total_amount"])
     stripe_amount = intent.amount / 100
     
-    # Amount tampering detection
     if abs(stripe_amount - order_amount) > 0.50:
-        _audit_log("AMOUNT_MISMATCH", user_id, client_ip, order_id,
-                   f"db={order_amount} stripe={stripe_amount}")
+        _audit_log("AMOUNT_MISMATCH", user_id, client_ip, order_id, f"db={order_amount} stripe={stripe_amount}")
         raise HTTPException(400, "Payment amount mismatch — contact support")
     
-    # Currency check
     if intent.currency.lower() != "inr":
         _audit_log("CURRENCY_MISMATCH", user_id, client_ip, order_id, f"currency={intent.currency}")
         raise HTTPException(400, "Invalid payment currency")
     
-    # PI mismatch detection
     stored_pi = order.get("stripe_payment_intent")
     if stored_pi and stored_pi != payload.payment_intent_id:
-        _audit_log("PI_MISMATCH", user_id, client_ip, order_id,
-                   f"stored={stored_pi} received={payload.payment_intent_id}")
+        _audit_log("PI_MISMATCH", user_id, client_ip, order_id, f"stored={stored_pi} received={payload.payment_intent_id}")
         raise HTTPException(400, "Payment intent mismatch")
+        
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Anti-fraud validation passed (Amount, Currency, PI Match)")
 
-    # ── Atomic update ─────────────────────────────────────────────────────
     update_res = (
         sb.table("orders")
         .update({"status": "paid"})
@@ -363,7 +362,6 @@ def confirm_payment(
     if not update_res or not update_res.data:
         return {"status": "paid", "order_id": order["id"], "message": "Already processed"}
 
-    # ── Payment record ────────────────────────────────────────────────────
     try:
         sb.table("payments").insert({
             "order_id": order["id"],
@@ -371,18 +369,20 @@ def confirm_payment(
             "amount": stripe_amount, "currency": "INR",
             "status": "completed", "payment_method": "stripe",
         }).execute()
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Transaction log saved in payments table")
     except Exception:
-        pass  # Duplicate OK
+        pass
 
-    # ── Success ───────────────────────────────────────────────────────────
     brute_force.reset(client_ip, user_id, "confirm")
     _audit_log("PAYMENT_CONFIRMED", user_id, client_ip, order_id, f"amount={stripe_amount}")
     
-    # Event
     try:
         paid_order = copy.copy(order); paid_order["status"] = "paid"
         email = current.get("profile", {}).get("email", "") or _get_customer_email(sb, order.get("customer_id", ""))
         get_event_bus().publish(OrderPaidEvent(order=paid_order, customer_email=email, customer_id=order.get("customer_id", "")))
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Dispatched background OrderPaidEvent")
     except Exception:
         pass
 
@@ -405,6 +405,9 @@ def notify_payment_failed(
     user_id = _get_user_id(current)
     order_id = str(payload.order_id)
     client_ip = get_remote_address(request)
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Recording payment failure for: {order_id[:8].upper()}")
     
     if brute_force.is_blocked(client_ip, user_id, "notify_failed"):
         raise HTTPException(429, "Too many attempts")
@@ -435,6 +438,8 @@ def notify_payment_failed(
             order=order, customer_email=_get_customer_email(sb, order.get("customer_id", "")),
             customer_id=order.get("customer_id", ""), reason=reason,
         ))
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"Failure logged. Reason: {reason}")
     except Exception:
         pass
 
@@ -454,17 +459,23 @@ async def stripe_webhook(
     body = await request.body()
     sb = get_admin_supabase()
     client_ip = get_remote_address(request)
+    
+    request.state.user_name = "Stripe Server"
+    request.state.user_id = "WEBHOOK"
 
     if not settings.STRIPE_WEBHOOK_SECRET:
         raise HTTPException(500, "Webhook secret not configured")
     if not stripe_signature:
         raise HTTPException(400, "Missing stripe-signature")
 
-    # ── SIGNATURE VERIFICATION ────────────────────────────────────────────
     try:
         event = stripe.Webhook.construct_event(
-            payload=body, sig_header=stripe_signature, secret=settings.STRIPE_WEBHOOK_SECRET,
+            payload=body, 
+            sig_header=stripe_signature, 
+            secret=settings.STRIPE_WEBHOOK_SECRET,
         )
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Signature verified locally using Webhook Secret")
     except (ValueError, stripe.error.SignatureVerificationError):
         _audit_log("WEBHOOK_INVALID_SIG", "system", client_ip, "", "signature_verification_failed")
         raise HTTPException(400, "Invalid signature")
@@ -473,13 +484,8 @@ async def stripe_webhook(
     data_object = event["data"]["object"]
     pi_id = data_object.get("id")
     
-    # ── Webhook IP validation (Stripe IPs only in production) ──────────────
-    # Stripe webhook IPs: https://stripe.com/docs/ips
-    # Uncomment for production:
-    # STRIPE_IPS = {"54.187.174.169", "54.187.205.235", ...}
-    # if client_ip not in STRIPE_IPS:
-    #     _audit_log("WEBHOOK_INVALID_IP", "system", client_ip, "", "non_stripe_ip")
-    #     raise HTTPException(403, "Unauthorized IP")
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Event: {event_type} | PI: {pi_id}")
     
     logger.info("Webhook | type=%s pi=%s ip=%s", event_type, pi_id, client_ip)
 
@@ -544,5 +550,8 @@ async def stripe_webhook(
 
         reason = "payment_canceled" if "canceled" in event_type else "payment_failed"
         _audit_log("WEBHOOK_FAILED", "system", client_ip, order["id"], reason)
+        
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"Auto-cancelled order and restored stock. Reason: {reason}")
 
     return {"message": "OK"}

@@ -11,6 +11,7 @@ Changes from original:
   7. ADDED: Active order check before address deletion.
   8. ADDED: Phone number format validation.
   9. ADDED: Audit logging for admin actions.
+  10. NEW: Pure Window Logger integration for clear terminal tracking.
 """
 import logging
 from typing import Any
@@ -46,8 +47,11 @@ def _get_user_id(current_user: dict[str, Any]) -> str:
     if "sub" in current_user:
         return str(current_user["sub"])
         
-    logger.error(f"Cannot find user ID in: {list(current_user.keys())}")
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found in session")
+    logger.error(f"Cannot find user ID in session keys: {list(current_user.keys())}")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, 
+        detail="User ID not found in session"
+    )
 
 
 def _audit_log(action: str, admin_id: str, target_user_id: str = "", details: str = ""):
@@ -74,7 +78,6 @@ class ProfileUpdate(BaseModel):
     @classmethod
     def validate_phone(cls, v: str | None) -> str | None:
         if v is not None:
-            # Basic phone validation (Indian format)
             cleaned = ''.join(c for c in v if c.isdigit() or c == '+')
             if len(cleaned.replace('+', '')) < 10:
                 raise ValueError("Phone number must be at least 10 digits")
@@ -114,14 +117,16 @@ class AdminUserUpdate(BaseModel):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/me")
-def get_me(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    """
-    Get current user's profile.
-    Returns nested profile if available, otherwise top-level user data.
-    """
+def get_me(
+    request: Request,
+    current: dict[str, Any] = Depends(get_current_user)
+) -> dict[str, Any]:
+    """Get current user's profile."""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Fetching current user profile")
+        
     profile = current.get("profile", current)
     
-    # 🔥 Strip sensitive internal fields
     safe_fields = {"id", "email", "full_name", "phone", "role", "is_active", "created_at"}
     return {k: v for k, v in profile.items() if k in safe_fields}
 
@@ -133,14 +138,13 @@ def update_me(
     payload: ProfileUpdate,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """
-    Update current user's profile.
-    Only full_name and phone can be updated by the user.
-    """
+    """Update current user's profile."""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Processing profile update request")
+        
     sb = get_admin_supabase()
     repo = UserRepository(sb)
     
-    # Safe user ID extraction
     user_id = _get_user_id(current)
     
     data = {k: v for k, v in payload.model_dump().items() if v is not None}
@@ -150,6 +154,10 @@ def update_me(
     try:
         updated = repo.update_profile(user_id, data)
         logger.info("Profile updated | user=%.8s fields=%s", user_id, list(data.keys()))
+        
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"Successfully updated fields: {', '.join(data.keys())}")
+            
         return updated or current.get("profile", current)
     except Exception as exc:
         logger.error("Profile update failed | user=%.8s: %s", user_id, exc)
@@ -162,12 +170,13 @@ def update_me(
 
 @router.get("/me/addresses")
 def list_addresses(
+    request: Request,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
-    """
-    List current user's saved addresses.
-    Ordered by default first, then most recently created.
-    """
+    """List current user's saved addresses."""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Fetching user's saved addresses")
+        
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
     
@@ -194,17 +203,14 @@ def add_address(
     payload: AddressCreate,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """
-    Add a new shipping address.
-    Auto-sets as default if it's the first address.
-    Max 10 addresses per user.
-    """
+    """Add a new shipping address."""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Initiating new shipping address creation")
+        
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
 
-    # ── Count existing addresses ──────────────────────────────────────────────
     try:
-        # [FIX] Limit(1) applied for RAM safety on count
         count_res = (
             sb.table("addresses")
             .select("id", count="exact")
@@ -217,23 +223,23 @@ def add_address(
         logger.error("Address count failed | user=%.8s: %s", user_id, exc)
         raise HTTPException(500, "Failed to verify address limit")
 
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Current address count: {current_count}/{MAX_ADDRESSES_PER_USER}")
+
     if current_count >= MAX_ADDRESSES_PER_USER:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Maximum {MAX_ADDRESSES_PER_USER} addresses allowed per user. Please delete an existing address first.",
+            detail=f"Maximum {MAX_ADDRESSES_PER_USER} addresses allowed. Please delete one first.",
         )
 
-    # ── If this is the first address, auto-set as default ─────────────────────
     should_be_default = payload.is_default or current_count == 0
 
-    # ── Unset other defaults if this is default ───────────────────────────────
     if should_be_default:
         try:
             sb.table("addresses").update({"is_default": False}).eq("user_id", user_id).execute()
         except Exception as exc:
             logger.warning("Failed to unset default addresses | user=%.8s: %s", user_id, exc)
 
-    # ── Insert new address ────────────────────────────────────────────────────
     try:
         res = (
             sb.table("addresses")
@@ -251,24 +257,29 @@ def add_address(
     if not res or not hasattr(res, "data") or not res.data:
         raise HTTPException(500, "Failed to add address")
 
-    logger.info("Address added | user=%.8s addr=%.8s default=%s", user_id, res.data[0]["id"], should_be_default)
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"New address saved successfully (Default: {should_be_default})")
+
+    logger.info(
+        "Address added | user=%.8s addr=%.8s default=%s", 
+        user_id, res.data[0]["id"], should_be_default
+    )
     return res.data[0]
 
 
 @router.delete("/me/addresses/{address_id}")
 def delete_address(
+    request: Request,
     address_id: UUID,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, str]:
-    """
-    Delete a shipping address.
-    Cannot delete if used in active order (pending/paid/shipped).
-    """
+    """Delete a shipping address."""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Validating address deletion: {str(address_id)[:8]}...")
+        
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
 
-    # ── Verify ownership ───────────────────────────────────────────────────────
-    # [FIX] Removed maybe_single(), used limit(1) to avoid 406 Error
     existing = (
         sb.table("addresses")
         .select("id, is_default")
@@ -283,9 +294,7 @@ def delete_address(
 
     was_default = existing.data[0].get("is_default", False)
 
-    # ── Check active orders ────────────────────────────────────────────────────
     try:
-        # [FIX] Added limit(1) as we only need to know if ANY active order exists
         active = (
             sb.table("orders")
             .select("id")
@@ -298,21 +307,22 @@ def delete_address(
         if active and hasattr(active, "data") and active.data:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot delete — this address is used in an active order. Please wait until the order is delivered or cancelled.",
+                detail="Cannot delete — this address is used in an active order.",
             )
     except HTTPException:
         raise
     except Exception as exc:
         logger.warning("Active order check failed | addr=%.8s: %s", address_id, exc)
 
-    # ── Delete address ─────────────────────────────────────────────────────────
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("No active orders found for this address. Proceeding.")
+
     try:
         sb.table("addresses").delete().eq("id", str(address_id)).execute()
     except Exception as exc:
         logger.error("Address delete failed | addr=%.8s: %s", address_id, exc)
         raise HTTPException(500, "Failed to delete address")
 
-    # ── If deleted address was default, set a new default ─────────────────────
     if was_default:
         try:
             remaining = (
@@ -327,6 +337,9 @@ def delete_address(
         except Exception as exc:
             logger.warning("Failed to set new default | user=%.8s: %s", user_id, exc)
 
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Address successfully deleted")
+
     logger.info("Address deleted | user=%.8s addr=%.8s", user_id, address_id)
     return {"message": "Address deleted successfully"}
 
@@ -337,14 +350,16 @@ def delete_address(
 
 @router.get("/", dependencies=[Depends(require_admin)])
 def list_users(
+    request: Request,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = Query(None, max_length=100),
     role_filter: str | None = Query(None, pattern="^(customer|admin)$"),
 ) -> dict[str, Any]:
-    """
-    Admin: List all users with optional search and role filter.
-    """
+    """Admin: List all users with optional search and role filter."""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Admin listing users (Page: {page})")
+        
     sb = get_admin_supabase()
     offset = (page - 1) * page_size
     
@@ -355,7 +370,6 @@ def list_users(
     )
     
     if search:
-        # [FIX] Supabase Python Client syntax for OR queries
         q = q.or_(f"email.ilike.%{search}%,full_name.ilike.%{search}%")
         
     if role_filter:
@@ -381,19 +395,18 @@ def list_users(
 
 @router.patch("/{user_id}", dependencies=[Depends(require_admin)])
 def admin_update_user(
+    request: Request,
     user_id: UUID,
     payload: AdminUserUpdate,
     current: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
-    """
-    Admin: Update user role or active status.
-    
-    Safety: Admin cannot change their own role.
-    """
+    """Admin: Update user role or active status."""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Admin modifying user: {str(user_id)[:8]}...")
+        
     sb = get_admin_supabase()
     admin_id = _get_user_id(current)
 
-    # ── Self-protection ───────────────────────────────────────────────────────
     if str(user_id) == str(admin_id):
         if payload.role and payload.role != "admin":
             raise HTTPException(
@@ -410,8 +423,6 @@ def admin_update_user(
     if not data:
         raise HTTPException(400, "No fields to update")
 
-    # ── Verify user exists ────────────────────────────────────────────────────
-    # [FIX] limit(1) instead of maybe_single()
     existing = (
         sb.table("users")
         .select("id, email, role, is_active")
@@ -422,7 +433,6 @@ def admin_update_user(
     if not existing or not hasattr(existing, "data") or not existing.data:
         raise HTTPException(404, "User not found")
 
-    # ── Update ────────────────────────────────────────────────────────────────
     try:
         result = sb.table("users").update(data).eq("id", str(user_id)).execute()
     except Exception as exc:
@@ -432,7 +442,6 @@ def admin_update_user(
     if not result or not hasattr(result, "data") or not result.data:
         raise HTTPException(404, "User not found")
 
-    # ── Audit log ─────────────────────────────────────────────────────────────
     old_role = existing.data[0].get("role", "?")
     old_active = existing.data[0].get("is_active", "?")
     _audit_log(
@@ -440,20 +449,24 @@ def admin_update_user(
         f"role: {old_role}→{data.get('role', old_role)}, "
         f"active: {old_active}→{data.get('is_active', old_active)}"
     )
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("User role/status successfully updated in database")
 
     return result.data[0]
 
 
 @router.get("/{user_id}", dependencies=[Depends(require_admin)])
 def get_user_detail(
+    request: Request,
     user_id: UUID,
 ) -> dict[str, Any]:
-    """
-    Admin: Get single user details including order count.
-    """
+    """Admin: Get single user details including order count."""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Admin fetching details for user: {str(user_id)[:8]}...")
+        
     sb = get_admin_supabase()
     
-    # [FIX] limit(1) instead of maybe_single()
     user = (
         sb.table("users")
         .select("id, email, full_name, phone, role, is_active, created_at")
@@ -465,9 +478,7 @@ def get_user_detail(
     if not user or not hasattr(user, "data") or not user.data:
         raise HTTPException(404, "User not found")
     
-    # Count orders for this user
     try:
-        # [FIX] RAM safe exact count
         order_count = (
             sb.table("orders")
             .select("id", count="exact")

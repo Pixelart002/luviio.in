@@ -9,20 +9,24 @@ SECURITY FIXES:
   5. Structured logging for all auth failures
   6. Timing-safe role comparison
 
+LOGGER INTEGRATION:
+  Automatically injects user_name and user_id into request.state 
+  for the Pure Window Logger Middleware.
+
 Architecture:
-  get_current_user → validate JWT → fetch/create profile → check active
-  require_admin   → get_current_user → FRESH DB role check → guard active
+  get_current_user → validate JWT → fetch/create profile → check active → update logger state
+  require_admin    → get_current_user → FRESH DB role check → guard active
 """
-import logging
 import hmac
+import logging
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from gotrue.errors import AuthApiError
 
-from app.supabase_client import get_admin_supabase, get_supabase
 from app.repositories.user_repo import UserRepository
+from app.supabase_client import get_admin_supabase, get_supabase
 
 logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer(auto_error=False)  # Don't auto-raise — we handle manually
@@ -125,11 +129,6 @@ async def get_current_user(
     
     Returns:
         {"auth_user": SupabaseUser, "profile": dict}
-    
-    Raises:
-        401: Invalid/missing token
-        403: Account deactivated
-        500: Profile creation failed
     """
     # ── Check if token present ────────────────────────────────────────────
     if not credentials:
@@ -144,6 +143,12 @@ async def get_current_user(
                     auth_user = _validate_token(token)
                     profile = _get_or_create_profile(auth_user)
                     if profile and profile.get("is_active", True):
+                        
+                        # Update Logger State
+                        if hasattr(request.state, "user_name"):
+                            request.state.user_name = profile.get("full_name") or profile.get("email") or "Unknown"
+                            request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
+                            
                         return {"auth_user": auth_user, "profile": profile}
             except Exception:
                 pass
@@ -171,6 +176,11 @@ async def get_current_user(
             detail="Account deactivated",
         )
 
+    # ── Update Logger State ────────────────────────────────────────────────
+    if hasattr(request.state, "user_name"):
+        request.state.user_name = profile.get("full_name") or profile.get("email") or "Unknown"
+        request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
+
     return {"auth_user": auth_user, "profile": profile}
 
 
@@ -193,6 +203,12 @@ async def get_optional_user(
         auth_user = _validate_token(credentials.credentials)
         profile = _get_or_create_profile(auth_user)
         if profile and profile.get("is_active", True):
+            
+            # ── Update Logger State ────────────────────────────────────────
+            if hasattr(request.state, "user_name"):
+                request.state.user_name = profile.get("full_name") or profile.get("email") or "Unknown"
+                request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
+                
             return {"auth_user": auth_user, "profile": profile}
     except Exception:
         pass
@@ -209,19 +225,6 @@ def require_admin(
 ) -> dict[str, Any]:
     """
     FRESH DB read for admin role — NEVER trusts cache or JWT claims.
-    
-    SECURITY:
-      • Re-fetches role + is_active from DB on EVERY admin request
-      • Prevents stale cache attacks (role downgraded but token still valid)
-      • Prevents JWT claim manipulation
-      • Uses exact string comparison (==) not 'in' to avoid type confusion
-    
-    PERFORMANCE:
-      +1 DB query per admin request. Acceptable — admin ops are low-frequency.
-    
-    Raises:
-        403: Not admin or deactivated
-        503: DB unavailable (fail-secure)
     """
     sb = get_admin_supabase()
     user_id = current.get("profile", {}).get("id", "")

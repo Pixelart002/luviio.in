@@ -2,10 +2,12 @@
 Push Notifications Router — Production Grade
 =============================================
 Features & Fixes:
-  1. POSTGREST 406 FIX: Used .limit(1).execute() instead of maybe_single() for counts.
+  1. POSTGREST 406 FIX: Used .limit(1).execute() for counts.
   2. MEMORY LEAK FIX: Exact counts no longer download full table rows.
   3. STALE CLEANUP FIX: Replaced invalid asc=True with desc=False.
   4. SECURITY: Strict rate limiting and duplicate subscription prevention.
+  5. NEW: Pure Window Logger integration for clear terminal tracking.
+  6. FIX: Suppressed spammy "Already subscribed" logs (changed to debug).
 """
 import json
 import logging
@@ -60,13 +62,15 @@ def _get_user_id(current_user: dict[str, Any]) -> str:
     if "sub" in current_user:
         return str(current_user["sub"])
         
-    logger.error(f"Cannot find user ID in: {list(current_user.keys())}")
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found in session")
+    logger.error(f"Cannot find user ID in session keys: {list(current_user.keys())}")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, 
+        detail="User ID not found in session"
+    )
 
 
 def _count_user_subscriptions(sb: Any, user_id: str) -> int:
     try:
-        # [FIX] PostgREST 406 Safe & RAM Safe (Limit 1)
         res = (
             sb.table("push_subscriptions")
             .select("id", count="exact")
@@ -89,7 +93,7 @@ def _cleanup_stale_subscriptions(sb: Any, user_id: str) -> int:
                 sb.table("push_subscriptions")
                 .select("id")
                 .eq("user_id", user_id)
-                .order("created_at", desc=False) # [FIX] Valid sorting for oldest first
+                .order("created_at", desc=False) 
                 .limit(to_remove)
                 .execute()
             )
@@ -105,7 +109,6 @@ def _cleanup_stale_subscriptions(sb: Any, user_id: str) -> int:
 
 def _is_duplicate_subscription(sb: Any, endpoint: str, user_id: str) -> bool:
     try:
-        # [FIX] Safe DB execution
         existing = (
             sb.table("push_subscriptions")
             .select("id")
@@ -122,7 +125,10 @@ def _is_duplicate_subscription(sb: Any, endpoint: str, user_id: str) -> bool:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/vapid-key")
-def get_vapid_key() -> dict[str, str]:
+def get_vapid_key(request: Request) -> dict[str, str]:
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Client requested VAPID Public Key")
+        
     if not VAPID_PUBLIC_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -141,11 +147,22 @@ def subscribe(
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
 
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Processing new push subscription request")
+
     if _is_duplicate_subscription(sb, payload.endpoint, user_id):
-        logger.info("Push already subscribed | user=%.8s endpoint=%.40s…", user_id, payload.endpoint)
+        # [FIX] Changed to debug to avoid terminal spam
+        logger.debug(
+            "Push already subscribed | user=%.8s endpoint=%.40s…", 
+            user_id, payload.endpoint
+        )
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Ignored: Device is already subscribed")
         return {"message": "Already subscribed"}
 
-    _cleanup_stale_subscriptions(sb, user_id)
+    cleaned = _cleanup_stale_subscriptions(sb, user_id)
+    if hasattr(request.state, "actions") and cleaned > 0:
+        request.state.actions.append(f"Cleaned up {cleaned} stale subscription(s)")
 
     if not payload.endpoint.startswith("https://"):
         raise HTTPException(
@@ -170,6 +187,10 @@ def subscribe(
             },
             on_conflict="endpoint",
         ).execute()
+        
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Successfully saved subscription to database")
+            
     except Exception as e:
         logger.error("Failed to save push subscription to database: %s", e)
         raise HTTPException(
@@ -186,15 +207,28 @@ def subscribe(
 
 @router.delete("/unsubscribe")
 def unsubscribe(
+    request: Request,
     payload: PushSubscription,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, str]:
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
     
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Unsubscribe request received")
+    
     try:
-        result = sb.table("push_subscriptions").delete().eq("endpoint", payload.endpoint).execute()
+        result = (
+            sb.table("push_subscriptions")
+            .delete()
+            .eq("endpoint", payload.endpoint)
+            .execute()
+        )
         deleted = len(result.data) if result and hasattr(result, "data") and result.data else 0
+        
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"Removed {deleted} subscription(s) from database")
+            
     except Exception as e:
         logger.error("Failed to delete push subscription: %s", e)
         raise HTTPException(
@@ -211,11 +245,15 @@ def unsubscribe(
 
 @router.get("/status")
 def subscription_status(
+    request: Request,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
     count = _count_user_subscriptions(sb, user_id)
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Checked status: {count} active subscriptions")
     
     return {
         "subscribed": count > 0,
@@ -229,10 +267,14 @@ def subscription_status(
 
 @router.post("/admin/send", dependencies=[Depends(require_admin)])
 def send_batch_notification(
+    request: Request,
     payload: BatchNotificationRequest,
 ) -> dict[str, Any]:
     sb = get_admin_supabase()
     results = {"success": 0, "failed": 0, "details": []}
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Admin dispatching batch push to {len(payload.user_ids)} user(s)")
     
     for user_id in payload.user_ids:
         try:
@@ -255,6 +297,9 @@ def send_batch_notification(
             results["details"].append({"user_id": user_id, "status": f"error: {str(exc)[:100]}"})
             logger.warning("Batch push failed for user %.8s: %s", user_id, exc)
     
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Push results: {results['success']} sent, {results['failed']} failed")
+        
     logger.info(
         "Batch push sent | success=%d failed=%d total=%d",
         results["success"], results["failed"], len(payload.user_ids)
@@ -263,11 +308,13 @@ def send_batch_notification(
 
 
 @router.get("/admin/stats", dependencies=[Depends(require_admin)])
-def push_stats() -> dict[str, Any]:
+def push_stats(request: Request) -> dict[str, Any]:
     sb = get_admin_supabase()
     
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Admin requested push notification statistics")
+    
     try:
-        # [FIX] RAM Leak protection + PostgREST 406 protection
         total_res = (
             sb.table("push_subscriptions")
             .select("id", count="exact")
@@ -276,14 +323,12 @@ def push_stats() -> dict[str, Any]:
         )
         total = total_res.count if total_res and hasattr(total_res, "count") and total_res.count else 0
         
-        # Unique users count
         unique_res = (
             sb.table("push_subscriptions")
             .select("user_id")
             .execute()
         )
         
-        # [FIX] Safe execution if data is missing
         unique_users = len(set(row["user_id"] for row in (getattr(unique_res, "data", None) or [])))
         
         return {

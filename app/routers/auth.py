@@ -4,112 +4,102 @@ Auth Router — Production Grade
 Changes from original:
   1. FIXED: send_welcome_email() after registration
   2. FIXED: Anti-enumeration preserved on all public endpoints
-  3. FIXED: Timing attack mitigation on login (constant-time response)
-  4. FIXED: Safe Supabase Auth response checks (NoneType protection)
-  5. FIXED: Safe user_id extraction for logout
-  6. FIXED: AuthApiError handling for refresh tokens
-  7. SECURED: Refresh token in HttpOnly cookie (XSS protection)
-  8. SECURED: samesite="none" + secure=True for cross-domain
-  9. FIXED: Logout works with expired/malformed JWT
-  10. ADDED: Brute force protection on login/register
-  11. ADDED: Password breach detection (basic)
-  12. ADDED: Session tracking for audit
-  13. ADDED: Rate limit headers in response
-  14. CRITICAL FIX: Memory leak stopped in brute-force dictionary
-  15. CRITICAL FIX: Reset password now correctly uses Admin Client
+  3. FIXED: Timing attack mitigation on login
+  4. FIXED: Safe Supabase Auth checks
+  5. FIXED: AuthApiError handling for refresh tokens
+  6. SECURED: Refresh token in HttpOnly cookie (XSS protection)
+  7. ADDED: Brute force protection & session tracking
+  8. INTEGRATED: Advanced Window Logger Actions (Terminal Box)
 """
 import hashlib
 import logging
 import time
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status, Depends, Request, Response, Cookie
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from gotrue.errors import AuthApiError
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.supabase_client import get_supabase, get_admin_supabase
-from app.repositories.user_repo import UserRepository
 from app.dependencies import get_current_user
+from app.repositories.user_repo import UserRepository
+from app.supabase_client import get_admin_supabase, get_supabase
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-_MIN_RESPONSE_SECONDS = 0.3  # Timing attack mitigation
-_MAX_LOGIN_ATTEMPTS = 5       # Brute force threshold
-_LOGIN_WINDOW_SECONDS = 300   # 5 minute window
-_LOGIN_COOLDOWN_SECONDS = 900 # 15 minute cooldown
+_MIN_RESPONSE_SECONDS = 0.3
+_MAX_LOGIN_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 300
+_LOGIN_COOLDOWN_SECONDS = 900
 
 # ── Cookie configuration ──────────────────────────────────────────────────────
 _COOKIE_KWARGS = dict(
     key="refresh_token",
-    httponly=True,      # JavaScript cannot access (XSS protection)
-    secure=True,        # HTTPS only
-    samesite="none",    # Cross-domain support
-    path="/api/v1/auth", # Only sent to auth endpoints
+    httponly=True,
+    secure=True,
+    samesite="none",
+    path="/api/v1/auth",
 )
 
 # ── Brute Force Protection (In-Memory) ────────────────────────────────────────
-# Production: Replace with Redis for multi-instance support
 _login_attempts: dict[str, list[float]] = {}
 _blocked_ips: dict[str, float] = {}
 
 
 def _check_brute_force(ip: str, email: str = "") -> bool:
-    """Check if IP or email is blocked. Returns True if blocked."""
     now = time.time()
-    
     global _login_attempts, _blocked_ips
     
-    # Cleanup old entries (Keep only attempts within the window)
     _login_attempts = {
         k: [t for t in v if now - t < _LOGIN_WINDOW_SECONDS]
         for k, v in _login_attempts.items()
     }
     
-    # [FIX] RAM Leak: Remove keys that have completely empty lists
     _login_attempts = {k: v for k, v in _login_attempts.items() if v}
-    
     _blocked_ips = {k: v for k, v in _blocked_ips.items() if v > now}
     
-    # Check IP block
     if ip in _blocked_ips:
         return True
     
-    # Check email block
     email_key = f"email:{email}" if email else None
     if email_key and email_key in _blocked_ips:
         return True
     
-    # Check attempt count
     ip_attempts = len(_login_attempts.get(ip, []))
     email_attempts = len(_login_attempts.get(email_key, [])) if email_key else 0
     
     return ip_attempts >= _MAX_LOGIN_ATTEMPTS or email_attempts >= _MAX_LOGIN_ATTEMPTS
 
 
-def _record_attempt(ip: str, email: str = ""):
-    """Record a failed login attempt"""
+def _record_attempt(ip: str, email: str = "") -> None:
     now = time.time()
     _login_attempts.setdefault(ip, []).append(now)
+    
     if email:
         _login_attempts.setdefault(f"email:{email}", []).append(now)
     
-    # Block if threshold exceeded
     if len(_login_attempts[ip]) >= _MAX_LOGIN_ATTEMPTS:
         _blocked_ips[ip] = now + _LOGIN_COOLDOWN_SECONDS
-        logger.warning("IP BLOCKED | ip=%s attempts=%d", ip, len(_login_attempts[ip]))
+        logger.warning(
+            "IP BLOCKED | ip=%s attempts=%d", 
+            ip, len(_login_attempts[ip])
+        )
     
-    if email and len(_login_attempts.get(f"email:{email}", [])) >= _MAX_LOGIN_ATTEMPTS:
-        _blocked_ips[f"email:{email}"] = now + _LOGIN_COOLDOWN_SECONDS
-        logger.warning("EMAIL BLOCKED | email=%s attempts=%d", email, len(_login_attempts[f"email:{email}"]))
+    if email:
+        email_key = f"email:{email}"
+        if len(_login_attempts.get(email_key, [])) >= _MAX_LOGIN_ATTEMPTS:
+            _blocked_ips[email_key] = now + _LOGIN_COOLDOWN_SECONDS
+            logger.warning(
+                "EMAIL BLOCKED | email=%s attempts=%d", 
+                email, len(_login_attempts[email_key])
+            )
 
 
-def _reset_attempts(ip: str, email: str = ""):
-    """Reset attempts after successful login"""
+def _reset_attempts(ip: str, email: str = "") -> None:
     _login_attempts.pop(ip, None)
     _blocked_ips.pop(ip, None)
     if email:
@@ -135,8 +125,11 @@ class RegisterRequest(BaseModel):
             raise ValueError("Password must contain at least one lowercase letter")
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
-        # Basic breach detection — check against common passwords
-        common_passwords = {"password", "password123", "12345678", "qwerty123", "admin123", "letmein123"}
+            
+        common_passwords = {
+            "password", "password123", "12345678", 
+            "qwerty123", "admin123", "letmein123"
+        }
         if v.lower() in common_passwords:
             raise ValueError("This password is too common — please choose a stronger one")
         return v
@@ -168,7 +161,6 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str
     expires_in: int | None = None
-    # refresh_token intentionally NOT in JSON — HttpOnly cookie only
 
 
 class LoginResponse(TokenResponse):
@@ -183,16 +175,18 @@ class MessageResponse(BaseModel):
 #  AUTH ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/register", status_code=status.HTTP_201_CREATED, response_model=MessageResponse)
+@router.post(
+    "/register", 
+    status_code=status.HTTP_201_CREATED, 
+    response_model=MessageResponse,
+)
 @limiter.limit("5/minute")
 def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
-    """
-    Register new user.
-    Anti-enumeration: always returns same message whether email exists or not.
-    """
     client_ip = get_remote_address(request)
     
-    # ── Brute force check ─────────────────────────────────────────────────────
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Registration initiated for: {payload.email}")
+    
     if _check_brute_force(client_ip):
         raise HTTPException(429, "Too many attempts. Please try again later.")
     
@@ -207,61 +201,70 @@ def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
         result = sb.auth.sign_up({
             "email": payload.email,
             "password": payload.password,
-            "options": {"data": {"full_name": payload.full_name or ""}},
+            "options": {"data": {"full_name": user_name}},
         })
         if result and hasattr(result, "user") and result.user:
             auth_user_id = result.user.id
-            logger.info("User registered | email=%s id=%.8s", payload.email, auth_user_id)
+            logger.info(
+                "User registered | email=%s id=%.8s", 
+                payload.email, auth_user_id
+            )
+            if hasattr(request.state, "actions"):
+                request.state.actions.append("User successfully created in Supabase Auth")
+            
     except AuthApiError as e:
         logger.info("Register AuthApiError (likely duplicate): %s", e.code)
         _record_attempt(client_ip)
     except Exception as e:
         logger.error("Registration service error: %s", e)
-        raise HTTPException(503, "Registration service unavailable. Please try again later.")
+        raise HTTPException(
+            503, "Registration service unavailable. Please try again later."
+        )
 
-    # ── Upsert profile if auth succeeded ──────────────────────────────────────
     if auth_user_id:
         try:
             repo.upsert_profile(
                 user_id=auth_user_id,
                 email=payload.email,
-                full_name=payload.full_name or "",
+                full_name=user_name,
             )
+            if hasattr(request.state, "actions"):
+                request.state.actions.append("User profile saved to database")
         except Exception as e:
-            logger.warning("Profile upsert after register failed (non-critical): %s", e)
+            logger.warning("Profile upsert after register failed: %s", e)
 
-        # ── Send welcome email ────────────────────────────────────────────────
         try:
             from app.utils.email import send_welcome_email
             send_welcome_email(payload.email, user_name)
+            if hasattr(request.state, "actions"):
+                request.state.actions.append("Welcome email dispatched")
         except Exception as e:
-            logger.warning("Welcome email failed (non-critical): %s", e)
+            logger.warning("Welcome email failed: %s", e)
 
-    # ── Anti-enumeration: always same response ────────────────────────────────
     return {"message": "If this email is new, a confirmation link has been sent."}
 
 
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit("5/minute")
-def login(request: Request, response: Response, payload: LoginRequest) -> dict[str, Any]:
-    """
-    Login with email and password.
+def login(
+    request: Request, 
+    response: Response, 
+    payload: LoginRequest
+) -> dict[str, Any]:
     
-    Security:
-      • Constant-time response (timing attack mitigation)
-      • Brute force protection (IP + email blocking)
-      • Refresh token in HttpOnly cookie (XSS safe)
-    """
     start = time.monotonic()
     client_ip = get_remote_address(request)
     
-    # ── Brute force check ─────────────────────────────────────────────────────
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Login attempt via email: {payload.email}")
+    
     if _check_brute_force(client_ip, payload.email):
         logger.warning("Login blocked | ip=%s email=%s", client_ip, payload.email)
-        # Still sleep to prevent timing analysis
         elapsed = time.monotonic() - start
         time.sleep(max(0.0, _MIN_RESPONSE_SECONDS - elapsed))
-        raise HTTPException(429, "Too many login attempts. Please try again in 15 minutes.")
+        raise HTTPException(
+            429, "Too many login attempts. Please try again in 15 minutes."
+        )
 
     sb = get_supabase()
     result = None
@@ -289,19 +292,25 @@ def login(request: Request, response: Response, payload: LoginRequest) -> dict[s
         logger.error("Login service error: %s", e)
         raise HTTPException(503, "Authentication service unavailable")
     finally:
-        # ── Timing attack mitigation ──────────────────────────────────────────
         elapsed = time.monotonic() - start
         time.sleep(max(0.0, _MIN_RESPONSE_SECONDS - elapsed))
 
-    # ── Success — reset brute force counter ───────────────────────────────────
     _reset_attempts(client_ip, payload.email)
 
-    # ── Set refresh token in HttpOnly cookie ─────────────────────────────────
     response.set_cookie(
         **_COOKIE_KWARGS,
         value=result.session.refresh_token,
-        max_age=7 * 24 * 60 * 60,  # 7 days
+        max_age=7 * 24 * 60 * 60,
     )
+
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Supabase Auth validated credentials")
+        request.state.actions.append("Refresh token securely stored in HttpOnly cookie")
+        
+    # Manually update identity for the logger since Depends() isn't used here
+    if hasattr(request.state, "user_name"):
+        request.state.user_id = result.user.id
+        request.state.user_name = result.user.email
 
     logger.info("Login successful | user=%.8s ip=%s", result.user.id, client_ip)
 
@@ -323,11 +332,10 @@ def refresh(
     response: Response,
     refresh_token: str | None = Cookie(None),
 ) -> dict[str, Any]:
-    """
-    Refresh access token using HttpOnly cookie.
     
-    No refresh token in request body — cookie only (XSS safe).
-    """
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Token refresh initiated via secure cookie")
+        
     if not refresh_token:
         raise HTTPException(401, "Refresh token missing. Please log in again.")
 
@@ -341,7 +349,9 @@ def refresh(
     except AuthApiError as e:
         logger.warning("AuthApiError during refresh: %s", e.message)
         response.delete_cookie(**_COOKIE_KWARGS)
-        raise HTTPException(401, "Invalid or expired refresh token — please log in again")
+        raise HTTPException(
+            401, "Invalid or expired refresh token — please log in again"
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -349,12 +359,19 @@ def refresh(
         response.delete_cookie(**_COOKIE_KWARGS)
         raise HTTPException(401, "Invalid or expired refresh token")
 
-    # ── Set new refresh token ─────────────────────────────────────────────────
     response.set_cookie(
         **_COOKIE_KWARGS,
         value=result.session.refresh_token,
         max_age=7 * 24 * 60 * 60,
     )
+
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Session refreshed successfully")
+
+    # Update logger context
+    if hasattr(request.state, "user_name") and hasattr(result, "user"):
+        request.state.user_id = result.user.id
+        request.state.user_name = result.user.email
 
     return {
         "access_token": result.session.access_token,
@@ -369,17 +386,12 @@ def logout(
     response: Response,
     refresh_token: str | None = Cookie(None),
 ) -> dict[str, str]:
-    """
-    Logout — works even with expired JWT.
     
-    Strategy:
-      1. Try to invalidate Supabase session via refresh token cookie
-      2. Always clear the cookie (even if step 1 fails)
-      3. Always return 200 (user perspective: logout = success)
-    """
     client_ip = get_remote_address(request)
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Logout sequence initiated")
 
-    # ── Step 1: Invalidate Supabase session ───────────────────────────────────
     if refresh_token:
         try:
             sb = get_supabase()
@@ -387,31 +399,35 @@ def logout(
             if result and hasattr(result, "session") and result.session:
                 sb.auth.sign_out()
                 logger.info("Session invalidated | ip=%s", client_ip)
+                if hasattr(request.state, "actions"):
+                    request.state.actions.append("Remote Supabase session invalidated")
         except AuthApiError:
-            # Session already expired — that's fine
             logger.info("Session already expired during logout | ip=%s", client_ip)
         except Exception as e:
-            # Non-critical — cookie will be cleared anyway
             logger.warning("Session invalidation failed (non-critical): %s", e)
     else:
         logger.info("Logout with no refresh token cookie | ip=%s", client_ip)
 
-    # ── Step 2: Always clear cookie ───────────────────────────────────────────
     response.delete_cookie(**_COOKIE_KWARGS)
-
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Secure HttpOnly cookie deleted")
+        
     return {"message": "Logged out successfully"}
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
 @limiter.limit("3/minute")
-def forgot_password(request: Request, payload: ForgotPasswordRequest) -> dict[str, str]:
-    """
-    Send password reset email.
-    Anti-enumeration: always same response whether email exists or not.
-    """
+def forgot_password(
+    request: Request, 
+    payload: ForgotPasswordRequest
+) -> dict[str, str]:
+    
     client_ip = get_remote_address(request)
     
-    # ── Brute force check ─────────────────────────────────────────────────────
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Password reset requested for: {payload.email}")
+    
     if _check_brute_force(client_ip):
         raise HTTPException(429, "Too many attempts. Please try again later.")
     
@@ -420,28 +436,29 @@ def forgot_password(request: Request, payload: ForgotPasswordRequest) -> dict[st
         sb.auth.reset_password_email(payload.email)
         logger.info("Password reset email sent | email=%s", payload.email)
     except Exception as e:
-        # Anti-enumeration: don't reveal if email exists
         logger.warning("Password reset email failed (may not exist): %s", e)
 
-    # ── Anti-enumeration: always same response ────────────────────────────────
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Triggered password reset sequence (Anti-enum active)")
+
     return {"message": "If this email exists, a password reset link has been sent."}
 
 
 @router.post("/reset-password", response_model=MessageResponse)
 def reset_password(
+    request: Request,
     payload: ResetPasswordRequest,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, str]:
-    """
-    Reset password (authenticated).
-    Requires valid access token (user clicked email link).
-    """
-    # [FIX] Backend client 'sb' does not have the user session context
-    # Must use admin client to securely update the specific user's password.
+    
     adm = get_admin_supabase()
     
-    # Safely extract user_id from the current JWT claims
-    user_id = current.get("sub") or current.get("id") or current.get("profile", {}).get("id")
+    user_id = (
+        current.get("sub") 
+        or current.get("id") 
+        or current.get("profile", {}).get("id")
+    )
+    
     if not user_id:
         raise HTTPException(401, "Valid user session not found")
 
@@ -451,6 +468,10 @@ def reset_password(
             {"password": payload.new_password}
         )
         logger.info("Password reset successful | user=%.8s", user_id)
+        
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Admin client successfully updated user password")
+            
     except AuthApiError as e:
         raise HTTPException(400, f"Password reset failed: {e.message}")
     except Exception as e:
@@ -462,12 +483,13 @@ def reset_password(
 
 @router.get("/session", response_model=dict)
 def check_session(
+    request: Request,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """
-    Check if current session is valid.
-    Returns user info if authenticated.
-    """
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Session status verified")
+        
     user_id = current.get("sub") or current.get("profile", {}).get("id", "")
     email = current.get("email") or current.get("profile", {}).get("email", "")
     

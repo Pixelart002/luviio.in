@@ -17,6 +17,7 @@ Features:
   • Bulletproof Search (ilike fallback)
   • FIXED: PostgREST 406 Errors via strict limit(1)
   • FIXED: Memory leaks on exact counts
+  • NEW: Pure Window Logger integration for clear terminal tracking
 """
 from __future__ import annotations
 
@@ -26,7 +27,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from PIL import Image
 from pydantic import BaseModel, Field, model_validator
 
@@ -115,7 +116,6 @@ def _generate_unique_slug(sb: Any, base_slug: str) -> str:
     """Append -2, -3… until slug is unique"""
     slug, counter = base_slug, 2
     while True:
-        # [FIX] Limit to 1 to save memory during check
         existing = sb.table("products").select("id").eq("slug", slug).limit(1).execute()
         if not getattr(existing, "data", None):
             return slug
@@ -162,29 +162,41 @@ def _delete_storage_file(sb: Any, url: str) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/categories")
-def list_categories() -> list[dict[str, Any]]:
+def list_categories(request: Request) -> list[dict[str, Any]]:
     """Public — list active categories"""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Fetching active categories")
+        
     sb = get_admin_supabase()
     res = sb.table("categories").select("*").eq("is_active", True).execute()
     return getattr(res, "data", None) or []
 
 
 @router.post("/categories", status_code=201, dependencies=[Depends(require_admin)])
-def create_category(payload: CategoryCreate) -> dict[str, Any]:
+def create_category(request: Request, payload: CategoryCreate) -> dict[str, Any]:
     """Admin — create category"""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Admin creating category: {payload.name}")
+        
     sb = get_admin_supabase()
     res = sb.table("categories").insert(payload.model_dump()).execute()
+    
     if not getattr(res, "data", None):
         raise HTTPException(500, "Failed to create category")
+        
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Category saved to database")
+        
     return res.data[0]
 
 
 @router.delete("/categories/{category_id}", dependencies=[Depends(require_admin)])
-def delete_category(category_id: uuid.UUID) -> dict[str, str]:
+def delete_category(request: Request, category_id: uuid.UUID) -> dict[str, str]:
     """Admin — soft delete category (200 OK for FastAPI safety)"""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Validating category {str(category_id)[:8]}... for deletion")
+        
     sb = get_admin_supabase()
-    
-    # [FIX] Added limit(1) to avoid memory leak downloading all product IDs
     active = (
         sb.table("products").select("id", count="exact")
         .eq("category_id", str(category_id)).eq("is_active", True)
@@ -194,6 +206,10 @@ def delete_category(category_id: uuid.UUID) -> dict[str, str]:
         raise HTTPException(409, "Cannot delete — category has active products")
         
     sb.table("categories").update({"is_active": False}).eq("id", str(category_id)).execute()
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Category soft deleted successfully")
+        
     return {"message": "Category deleted"}
 
 
@@ -203,6 +219,7 @@ def delete_category(category_id: uuid.UUID) -> dict[str, str]:
 
 @router.get("/products")
 def list_products(
+    request: Request,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     category: str | None = Query(None),
@@ -212,6 +229,9 @@ def list_products(
     in_stock: bool | None = None,
 ) -> dict[str, Any]:
     """Public — list products with filters"""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Fetching products list (Page: {page})")
+        
     sb = get_admin_supabase()
     q = (
         sb.table("products")
@@ -225,16 +245,18 @@ def list_products(
     )
 
     if category:
-        # [FIX] PostgREST 406 safety
         cat = sb.table("categories").select("id").eq("slug", category).limit(1).execute()
         if cat and getattr(cat, "data", None):
             q = q.eq("category_id", cat.data[0]["id"])
+            if hasattr(request.state, "actions"):
+                request.state.actions.append(f"Filter applied: Category '{category}'")
         else:
             return {"items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}
 
     if search:
-        # [FIX] Safe fallback that prevents execution crashes if FTS is missing
         q = q.ilike("name", f"%{search}%")
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"Filter applied: Search '{search}'")
 
     if min_price is not None: q = q.gte("price", min_price)
     if max_price is not None: q = q.lte("price", max_price)
@@ -254,11 +276,12 @@ def list_products(
 
 
 @router.get("/products/{slug}")
-def get_product(slug: str) -> dict[str, Any]:
+def get_product(request: Request, slug: str) -> dict[str, Any]:
     """Public — get single product by slug"""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Fetching details for product: {slug}")
+        
     sb = get_admin_supabase()
-    
-    # [FIX] PostgREST 406 safety (limit 1 instead of maybe_single)
     result = (
         sb.table("products")
         .select("*, categories(name, slug)")
@@ -274,18 +297,24 @@ def get_product(slug: str) -> dict[str, Any]:
 
 
 @router.post("/products", status_code=201, dependencies=[Depends(require_admin)])
-def create_product(payload: ProductCreate) -> dict[str, Any]:
+def create_product(request: Request, payload: ProductCreate) -> dict[str, Any]:
     """Admin — create product"""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Admin creating product: {payload.name}")
+        
     sb = get_admin_supabase()
 
     if payload.sku:
-        # [FIX] Added limit(1) to save memory
         existing = sb.table("products").select("id").eq("sku", payload.sku).limit(1).execute()
         if getattr(existing, "data", None):
             raise HTTPException(409, f"SKU '{payload.sku}' already exists")
 
     data = payload.model_dump()
     data["slug"] = _generate_unique_slug(sb, data["slug"])
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Generated unique slug: {data['slug']}")
+        
     data["price"] = float(data["price"])
     if data.get("compare_price"):
         data["compare_price"] = float(data["compare_price"])
@@ -295,12 +324,22 @@ def create_product(payload: ProductCreate) -> dict[str, Any]:
     if not getattr(res, "data", None):
         raise HTTPException(500, "Failed to create product")
 
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Product successfully inserted into DB")
+
     return res.data[0]
 
 
 @router.patch("/products/{product_id}", dependencies=[Depends(require_admin)])
-def update_product(product_id: uuid.UUID, payload: ProductUpdate) -> dict[str, Any]:
+def update_product(
+    request: Request,
+    product_id: uuid.UUID,
+    payload: ProductUpdate
+) -> dict[str, Any]:
     """Admin — update product"""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Admin updating product: {str(product_id)[:8]}...")
+        
     sb = get_admin_supabase()
     data = {k: v for k, v in payload.model_dump(exclude_unset=True).items()}
 
@@ -316,16 +355,27 @@ def update_product(product_id: uuid.UUID, payload: ProductUpdate) -> dict[str, A
     result = sb.table("products").update(data).eq("id", str(product_id)).execute()
     if not getattr(result, "data", None):
         raise HTTPException(404, "Product not found")
+        
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Product updated successfully")
+        
     return result.data[0]
 
 
 @router.delete("/products/{product_id}", dependencies=[Depends(require_admin)])
-def delete_product(product_id: uuid.UUID) -> dict[str, str]:
+def delete_product(request: Request, product_id: uuid.UUID) -> dict[str, str]:
     """Admin — soft delete product (200 OK for FastAPI safety)"""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Soft deleting product: {str(product_id)[:8]}...")
+        
     sb = get_admin_supabase()
     result = sb.table("products").update({"is_active": False}).eq("id", str(product_id)).execute()
     if not getattr(result, "data", None):
         raise HTTPException(404, "Product not found")
+        
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Product soft deleted successfully")
+        
     return {"message": "Product deleted"}
 
 
@@ -335,10 +385,14 @@ def delete_product(product_id: uuid.UUID) -> dict[str, str]:
 
 @router.post("/products/{product_id}/images", dependencies=[Depends(require_admin)])
 async def upload_product_image(
+    request: Request,
     product_id: uuid.UUID,
     file: UploadFile = File(...),
 ) -> dict[str, Any]:
     """Admin — upload single image (WebP optimized)"""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Receiving product image upload")
+        
     sb = get_admin_supabase()
     pid = str(product_id)
 
@@ -352,23 +406,36 @@ async def upload_product_image(
 
     contents = await file.read()
     if len(contents) > _MAX_FILE_BYTES:
-        raise HTTPException(400, f"File exceeds 5 MB limit")
+        raise HTTPException(400, "File exceeds 5 MB limit")
+        
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Validating Magic Bytes (MIME spoofing protection)")
+        
     if not _is_real_image(contents):
         raise HTTPException(400, "Invalid image format")
 
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Optimizing image to WebP format")
+        
     url = _upload_webp(sb, contents, pid, uuid.uuid4().hex[:12])
     all_images = existing + [url]
 
     sb.table("products").update({
         "images": all_images, "image_url": all_images[0]
     }).eq("id", pid).execute()
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Image successfully uploaded to Supabase Storage")
 
     return {"images": all_images, "image_url": all_images[0], "uploaded_url": url}
 
 
 @router.delete("/products/{product_id}/images/{index}", dependencies=[Depends(require_admin)])
-def delete_product_image(product_id: uuid.UUID, index: int) -> dict[str, Any]:
+def delete_product_image(request: Request, product_id: uuid.UUID, index: int) -> dict[str, Any]:
     """Admin — delete image by index"""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Deleting image at index {index}")
+        
     sb = get_admin_supabase()
     pid = str(product_id)
 
@@ -388,12 +455,23 @@ def delete_product_image(product_id: uuid.UUID, index: int) -> dict[str, Any]:
     }).eq("id", pid).execute()
 
     _delete_storage_file(sb, deleted_url)
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Image deleted from DB & Supabase Storage")
+        
     return {"images": images, "image_url": new_primary, "deleted_url": deleted_url}
 
 
 @router.put("/products/{product_id}/images/reorder", dependencies=[Depends(require_admin)])
-def reorder_images(product_id: uuid.UUID, ordered_urls: list[str]) -> dict[str, Any]:
+def reorder_images(
+    request: Request,
+    product_id: uuid.UUID, 
+    ordered_urls: list[str]
+) -> dict[str, Any]:
     """Admin — reorder images"""
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Atomic reordering of product images")
+        
     sb = get_admin_supabase()
     pid = str(product_id)
 
@@ -409,5 +487,8 @@ def reorder_images(product_id: uuid.UUID, ordered_urls: list[str]) -> dict[str, 
     sb.table("products").update({
         "images": ordered_urls, "image_url": new_primary
     }).eq("id", pid).execute()
+
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Image order successfully updated")
 
     return {"images": ordered_urls, "image_url": new_primary}

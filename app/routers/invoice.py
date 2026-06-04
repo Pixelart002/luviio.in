@@ -11,8 +11,8 @@ Features:
   • Company branding (Luviio logo, colors)
   • Itemized billing with tax breakup
   • Shipping address, tracking info
-  • QR code for order verification (future)
   • Streamed directly — no disk storage
+  • NEW: Pure Window Logger integration for clear terminal tracking
   
 Security:
   • Customer: only OWN paid/shipped/delivered/refunded orders
@@ -28,28 +28,22 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import mm, cm
+from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    Image as RLImage, HRFlowable
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 )
-from reportlab.platypus.flowables import KeepTogether
-from reportlab.graphics.shapes import Drawing, Line
-from reportlab.graphics import renderPDF
 
 from app.dependencies import get_current_user
 from app.supabase_client import get_admin_supabase
 
 logger = logging.getLogger(__name__)
-router = APIRouter(
-    prefix="/orders",
-    tags=["Invoice"])
+router = APIRouter(prefix="/orders", tags=["Invoice"])
 
 _INVOICEABLE = frozenset({"paid", "shipped", "delivered", "refunded"})
 
@@ -70,13 +64,11 @@ COMPANY = {
     "address": "India",
     "email": "support@luviio.in",
     "website": "luviio.in",
-    "gstin": "NOT APPLICABLE",  # Update with actual GSTIN if registered
-    "pan": "NOT APPLICABLE",     # Update with actual PAN if applicable
-    "logo_path": None,           # Path to logo PNG (optional)
+    "gstin": "NOT APPLICABLE",  
+    "pan": "NOT APPLICABLE",     
+    "logo_path": None,           
 }
 
-# Print-Friendly Brand Colors
-# Modified to be readable on a standard white PDF page while keeping the luxury feel
 GOLD = colors.HexColor('#c9a55e')
 DARK_GREY = colors.HexColor('#2a2722')
 TEXT_PRIMARY = colors.HexColor('#141210')
@@ -124,12 +116,10 @@ def _fetch_customer(sb: Any, user_id: str) -> dict[str, Any]:
 
 
 def _format_inr(amount: float | Decimal) -> str:
-    """Format amount as Indian Rupees"""
     return f"INR {float(amount):,.2f}"
 
 
 def _format_date(dt_str: str) -> str:
-    """Format ISO date to readable Indian format"""
     try:
         dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
         return dt.strftime("%d %b %Y, %I:%M %p")
@@ -138,7 +128,6 @@ def _format_date(dt_str: str) -> str:
 
 
 def _short_id(uuid_str: str) -> str:
-    """Shorten UUID for display"""
     return uuid_str[:8].upper() if uuid_str else "—"
 
 
@@ -151,16 +140,14 @@ class LuviioInvoiceBuilder:
         self.order = order
         self.customer = customer
         self.buffer = io.BytesIO()
-        self.width, self.height = A4  # 210 x 297 mm
+        self.width, self.height = A4
         
-        # [FIX] Calculate true available width after margins (15mm on each side)
         self.available_width = self.width - (30 * mm) 
         
         self.styles = getSampleStyleSheet()
         self._setup_styles()
         
     def _setup_styles(self):
-        """Custom print-friendly styles matching Luviio brand"""
         self.styles.add(ParagraphStyle(
             'InvoiceTitle', fontName='Helvetica-Bold', fontSize=24,
             textColor=GOLD, alignment=TA_LEFT, spaceAfter=4
@@ -204,18 +191,15 @@ class LuviioInvoiceBuilder:
         ))
     
     def _header_table(self) -> Table:
-        """Company name + Invoice title"""
-        data = [
-            [
-                Paragraph(f"<b>{COMPANY['full_name']}</b>", self.styles['InvoiceTitle']),
-                Paragraph(f"<b>TAX INVOICE</b>", ParagraphStyle(
-                    'RightTitle', fontName='Helvetica-Bold', fontSize=16,
-                    textColor=DARK_GREY, alignment=TA_RIGHT
-                ))
-            ]
-        ]
-        # [FIX] Use available_width
-        t = Table(data, colWidths=[self.available_width * 0.6, self.available_width * 0.4])
+        title = Paragraph(f"<b>{COMPANY['full_name']}</b>", self.styles['InvoiceTitle'])
+        invoice_lbl = Paragraph("<b>TAX INVOICE</b>", ParagraphStyle(
+            'RightTitle', fontName='Helvetica-Bold', fontSize=16,
+            textColor=DARK_GREY, alignment=TA_RIGHT
+        ))
+        data = [[title, invoice_lbl]]
+        
+        col_w = [self.available_width * 0.6, self.available_width * 0.4]
+        t = Table(data, colWidths=col_w)
         t.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
@@ -224,7 +208,6 @@ class LuviioInvoiceBuilder:
         return t
     
     def _company_info(self) -> Table:
-        """Company details + Order info side by side"""
         left = [
             [Paragraph(f"<b>{COMPANY['name']}</b>", self.styles['SectionHeader'])],
             [Paragraph(f"{COMPANY['address']}", self.styles['InfoValue'])],
@@ -241,13 +224,17 @@ class LuviioInvoiceBuilder:
             [Paragraph(f"Status: {self.order['status'].upper()}", self.styles['InfoValue'])],
         ]
         if self.order.get('tracking_number'):
-            right.append([Paragraph(f"Tracking: {self.order['tracking_number']}", self.styles['InfoValue'])])
+            right.append(
+                [Paragraph(f"Tracking: {self.order['tracking_number']}", self.styles['InfoValue'])]
+            )
         
-        # [FIX] Distribute available width properly
         left_table = Table(left, colWidths=[self.available_width * 0.5])
         right_table = Table(right, colWidths=[self.available_width * 0.5])
         
-        combined = Table([[left_table, right_table]], colWidths=[self.available_width * 0.5, self.available_width * 0.5])
+        combined = Table(
+            [[left_table, right_table]], 
+            colWidths=[self.available_width * 0.5, self.available_width * 0.5]
+        )
         combined.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
@@ -256,7 +243,6 @@ class LuviioInvoiceBuilder:
         return combined
     
     def _customer_info(self) -> Table:
-        """Bill To + Ship To"""
         customer_name = self.customer.get('full_name', '') or self.customer.get('email', 'Customer')
         customer_email = self.customer.get('email', '')
         
@@ -284,11 +270,13 @@ class LuviioInvoiceBuilder:
             ]
         ]
         
-        # [FIX] Distribute available width properly
         left_t = Table(data[0][0], colWidths=[self.available_width * 0.5])
         right_t = Table(data[0][1], colWidths=[self.available_width * 0.5])
         
-        t = Table([[left_t, right_t]], colWidths=[self.available_width * 0.5, self.available_width * 0.5])
+        t = Table(
+            [[left_t, right_t]], 
+            colWidths=[self.available_width * 0.5, self.available_width * 0.5]
+        )
         t.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('TOPPADDING', (0, 0), (-1, -1), 8),
@@ -298,10 +286,8 @@ class LuviioInvoiceBuilder:
         return t
     
     def _items_table(self) -> Table:
-        """Line items with proper GST columns"""
         items = self.order.get('order_items', [])
         
-        # Header
         header = [
             Paragraph("<b>#</b>", self.styles['TableCellBold']),
             Paragraph("<b>Item Description</b>", self.styles['TableCellBold']),
@@ -317,36 +303,31 @@ class LuviioInvoiceBuilder:
             row = [
                 Paragraph(str(i), self.styles['TableCell']),
                 Paragraph(item.get('product_name', '—'), self.styles['TableCell']),
-                Paragraph("—", self.styles['TableCell']),  # HSN code placeholder
+                Paragraph("—", self.styles['TableCell']),
                 Paragraph(str(item.get('quantity', 1)), self.styles['TableCellRight']),
                 Paragraph(_format_inr(item.get('unit_price', 0)), self.styles['TableCellRight']),
                 Paragraph(_format_inr(item.get('subtotal', 0)), self.styles['TableCellRight']),
             ]
             data.append(row)
         
-        # [FIX] Distribute available width properly for total 100%
         col_widths = [
-            self.available_width * 0.05,  # #
-            self.available_width * 0.40,  # Item
-            self.available_width * 0.10,  # HSN
-            self.available_width * 0.08,  # Qty
-            self.available_width * 0.17,  # Rate
-            self.available_width * 0.20,  # Amount
+            self.available_width * 0.05,
+            self.available_width * 0.40,
+            self.available_width * 0.10,
+            self.available_width * 0.08,
+            self.available_width * 0.17,
+            self.available_width * 0.20,
         ]
         
         t = Table(data, colWidths=col_widths, repeatRows=1)
         t.setStyle(TableStyle([
-            # Print-friendly Header
             ('BACKGROUND', (0, 0), (-1, 0), SURFACE_LIGHT),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
             ('TOPPADDING', (0, 0), (-1, 0), 8),
-            # Body spacing
             ('TOPPADDING', (0, 1), (-1, -1), 6),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
-            # Grid
             ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
             ('LINEBELOW', (0, 0), (-1, 0), 1.5, GOLD),
-            # Alignment
             ('ALIGN', (0, 0), (0, -1), 'CENTER'),
             ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -354,24 +335,38 @@ class LuviioInvoiceBuilder:
         return t
     
     def _totals_table(self) -> Table:
-        """Subtotal, Tax, Shipping, Total"""
         subtotal = float(self.order.get('subtotal', 0))
         shipping = float(self.order.get('shipping_cost', 0))
         tax = float(self.order.get('tax_amount', 0))
         total = float(self.order.get('total_amount', 0))
-        tax_rate = round((tax / (subtotal + shipping) * 100), 1) if (subtotal + shipping) > 0 else 0
+        tax_r = round((tax / (subtotal + shipping) * 100), 1) if (subtotal + shipping) > 0 else 0
         
         data = [
-            [Paragraph("Subtotal", self.styles['TableCell']), Paragraph(_format_inr(subtotal), self.styles['TableCellRight'])],
-            [Paragraph(f"GST ({tax_rate}%)", self.styles['TableCell']), Paragraph(_format_inr(tax), self.styles['TableCellRight'])],
-            [Paragraph("Shipping", self.styles['TableCell']), 
-             Paragraph("FREE" if shipping == 0 else _format_inr(shipping), self.styles['TableCellRight'])],
-            [Paragraph("", self.styles['TableCell']), Paragraph("", self.styles['TableCellRight'])],
-            [Paragraph("<b>TOTAL</b>", self.styles['TableCellBold']), 
-             Paragraph(f"<b>{_format_inr(total)}</b>", self.styles['TotalRow'])],
+            [
+                Paragraph("Subtotal", self.styles['TableCell']), 
+                Paragraph(_format_inr(subtotal), self.styles['TableCellRight'])
+            ],
+            [
+                Paragraph(f"GST ({tax_r}%)", self.styles['TableCell']), 
+                Paragraph(_format_inr(tax), self.styles['TableCellRight'])
+            ],
+            [
+                Paragraph("Shipping", self.styles['TableCell']), 
+                Paragraph(
+                    "FREE" if shipping == 0 else _format_inr(shipping), 
+                    self.styles['TableCellRight']
+                )
+            ],
+            [
+                Paragraph("", self.styles['TableCell']), 
+                Paragraph("", self.styles['TableCellRight'])
+            ],
+            [
+                Paragraph("<b>TOTAL</b>", self.styles['TableCellBold']), 
+                Paragraph(f"<b>{_format_inr(total)}</b>", self.styles['TotalRow'])
+            ],
         ]
         
-        # [FIX] Make totals table fit the right side perfectly
         t = Table(data, colWidths=[self.available_width * 0.20, self.available_width * 0.20])
         t.setStyle(TableStyle([
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
@@ -383,7 +378,6 @@ class LuviioInvoiceBuilder:
         return t
     
     def _footer(self) -> Paragraph:
-        """Terms & conditions footer"""
         text = (
             "This is a computer-generated invoice. "
             "For any queries, contact support@luviio.in. "
@@ -392,7 +386,6 @@ class LuviioInvoiceBuilder:
         return Paragraph(text, self.styles['FooterText'])
     
     def build(self) -> bytes:
-        """Build complete PDF and return bytes"""
         doc = SimpleDocTemplate(
             self.buffer, pagesize=A4,
             leftMargin=15*mm, rightMargin=15*mm,
@@ -403,29 +396,22 @@ class LuviioInvoiceBuilder:
         
         story = []
         
-        # 1. Header (Company + Invoice title)
         story.append(self._header_table())
         story.append(Spacer(1, 4*mm))
         
-        # 2. Golden divider line
         story.append(HRFlowable(width="100%", thickness=1.5, color=GOLD))
         story.append(Spacer(1, 6*mm))
         
-        # 3. Company info + Order details
         story.append(self._company_info())
         story.append(Spacer(1, 6*mm))
         
-        # 4. Bill To + Ship To
         story.append(self._customer_info())
         story.append(Spacer(1, 8*mm))
         
-        # 5. Items table
         story.append(Paragraph("<b>ORDER ITEMS</b>", self.styles['SectionHeader']))
         story.append(self._items_table())
         story.append(Spacer(1, 4*mm))
         
-        # 6. Totals (right-aligned)
-        # [FIX] Align totals block precisely to the right margin
         totals_wrapper = Table(
             [[Spacer(1, 1), self._totals_table()]],
             colWidths=[self.available_width * 0.60, self.available_width * 0.40]
@@ -436,19 +422,16 @@ class LuviioInvoiceBuilder:
         ]))
         story.append(totals_wrapper)
         
-        # 7. Notes
         if self.order.get('notes'):
             story.append(Spacer(1, 8*mm))
             story.append(Paragraph("<b>Notes:</b>", self.styles['InfoLabel']))
             story.append(Paragraph(self.order['notes'], self.styles['InfoValue']))
         
-        # 8. Footer
         story.append(Spacer(1, 15*mm))
         story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER_COLOR))
         story.append(Spacer(1, 4*mm))
         story.append(self._footer())
         
-        # Build PDF
         doc.build(story)
         return self.buffer.getvalue()
 
@@ -457,6 +440,7 @@ class LuviioInvoiceBuilder:
 
 @router.get("/{order_id}/invoice")
 def download_invoice(
+    request: Request,
     order_id: UUID,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> StreamingResponse:
@@ -471,27 +455,35 @@ def download_invoice(
     oid_str = str(order_id)
     is_admin = _is_admin(current)
     
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Invoice requested for order: {oid_str[:8]}...")
+    
     order = _fetch_order(sb, oid_str)
     
-    # Ownership check
     if not is_admin and order.get("customer_id") != user_id:
         raise HTTPException(404, "Order not found")
-    
-    # Status check
+        
     order_status = order.get("status", "")
     if order_status not in _INVOICEABLE:
         raise HTTPException(409, f"Invoice not available for '{order_status}' orders")
+        
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Order permissions & status verified")
     
-    # Fetch customer
     customer = _fetch_customer(sb, order.get("customer_id", ""))
     
-    # Build PDF
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Compiling PDF with Luviio brand standards")
+        
     try:
         builder = LuviioInvoiceBuilder(order, customer)
         pdf_bytes = builder.build()
     except Exception as exc:
         logger.error("PDF generation failed | order=%s: %s", oid_str, exc)
         raise HTTPException(500, "Could not generate invoice")
+        
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"PDF generated successfully ({len(pdf_bytes)} bytes)")
     
     filename = f"Luviio-Invoice-{oid_str[:8].upper()}.pdf"
     logger.info("Invoice downloaded | order=%s size=%d", oid_str, len(pdf_bytes))

@@ -14,6 +14,7 @@ Design:
   • Cart ID, user_id NEVER exposed unnecessarily
   • FIX: Empty cart no longer charges base shipping & tax
   • FIX: Safe product extraction on update to prevent IndexError
+  • NEW: Pure Window Logger integration for clear terminal tracking
 """
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from app.dependencies import get_current_user, require_admin
@@ -58,7 +59,10 @@ def _get_user_id(current: dict[str, Any]) -> str:
         return str(profile["id"])
     if "id" in current:
         return str(current["id"])
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, 
+        detail="User ID not found"
+    )
 
 
 def _fetch_pricing_config(sb: Any) -> dict[str, Any]:
@@ -153,7 +157,6 @@ def _calculate_cart_pricing(sb: Any, cart: dict[str, Any]) -> dict[str, Any]:
             "added_at": row["added_at"],
         })
 
-    # [FIX] Empty Cart Bug: Zero out shipping and tax if subtotal is 0
     shipping = Decimal("0")
     tax = Decimal("0")
     amount_to_free = 0.0
@@ -168,7 +171,6 @@ def _calculate_cart_pricing(sb: Any, cart: dict[str, Any]) -> dict[str, Any]:
 
     total = subtotal + shipping + tax
 
-    # 🔥 CLEAN response — no cart_id, user_id, updated_at
     return {
         "items": enriched,
         "item_count": len(enriched),
@@ -190,16 +192,28 @@ def _calculate_cart_pricing(sb: Any, cart: dict[str, Any]) -> dict[str, Any]:
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("")
-def get_cart(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+def get_cart(
+    request: Request, 
+    current: dict[str, Any] = Depends(get_current_user)
+) -> dict[str, Any]:
     """Get cart with live pricing — clean response"""
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Fetching active cart from database")
+        
     cart = _get_or_create_cart(sb, user_id)
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Applying live SSOT pricing rules")
+        
     return _calculate_cart_pricing(sb, cart)
 
 
 @router.post("/items", status_code=status.HTTP_200_OK)
 def add_item(
+    request: Request,
     payload: AddItemRequest,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
@@ -207,6 +221,9 @@ def add_item(
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
     product_id = str(payload.product_id)
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Verifying stock for product: {product_id[:8]}...")
 
     prod_res = (
         sb.table("products")
@@ -235,12 +252,17 @@ def add_item(
             raise HTTPException(400, "Maximum 100 units per item")
         if prod["stock"] < new_qty:
             raise HTTPException(409, f"Only {prod['stock']} units available")
+            
         sb.table("cart_items").update({"quantity": new_qty}).eq("id", existing[0]["id"]).execute()
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"Updated existing item quantity to {new_qty}")
     else:
         sb.table("cart_items").insert({
             "cart_id": cart["id"], "product_id": product_id,
             "quantity": payload.quantity, "price_snapshot": float(prod["price"]),
         }).execute()
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Added new product to cart")
 
     cart = _get_or_create_cart(sb, user_id)
     return _calculate_cart_pricing(sb, cart)
@@ -248,6 +270,7 @@ def add_item(
 
 @router.put("/items/{product_id}", status_code=status.HTTP_200_OK)
 def update_item(
+    request: Request,
     product_id: UUID,
     payload: UpdateItemRequest,
     current: dict[str, Any] = Depends(get_current_user),
@@ -256,6 +279,10 @@ def update_item(
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
     pid = str(product_id)
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Updating quantity to {payload.quantity}")
+
     cart = _get_or_create_cart(sb, user_id)
 
     prod_res = (
@@ -263,7 +290,6 @@ def update_item(
         .eq("id", pid).limit(1).execute()
     )
     
-    # [FIX] Safe data extraction to prevent IndexError if product is missing
     prod_data = getattr(prod_res, "data", None)
     if not prod_data:
         raise HTTPException(404, "Product not found")
@@ -282,12 +308,16 @@ def update_item(
     if not getattr(update_res, "data", None):
         raise HTTPException(404, "Item not in cart")
 
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Quantity successfully updated and totals recalculated")
+
     cart = _get_or_create_cart(sb, user_id)
     return _calculate_cart_pricing(sb, cart)
 
 
 @router.delete("/items/{product_id}", status_code=status.HTTP_200_OK)
 def remove_item(
+    request: Request,
     product_id: UUID,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
@@ -298,13 +328,19 @@ def remove_item(
     cart = _get_or_create_cart(sb, user_id)
 
     sb.table("cart_items").delete().eq("cart_id", cart["id"]).eq("product_id", pid).execute()
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Product {pid[:8]}... removed from cart")
 
     cart = _get_or_create_cart(sb, user_id)
     return _calculate_cart_pricing(sb, cart)
 
 
 @router.delete("", status_code=status.HTTP_200_OK)
-def clear_cart(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
+def clear_cart(
+    request: Request,
+    current: dict[str, Any] = Depends(get_current_user)
+) -> dict[str, str]:
     """Clear entire cart"""
     sb = get_admin_supabase()
     user_id = _get_user_id(current)
@@ -312,6 +348,10 @@ def clear_cart(current: dict[str, Any] = Depends(get_current_user)) -> dict[str,
 
     sb.table("cart_items").delete().eq("cart_id", cart["id"]).execute()
     logger.info("Cart cleared | user=%.8s", user_id)
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Entire cart cleared successfully")
+        
     return {"message": "Cart cleared"}
 
 
@@ -321,6 +361,7 @@ def clear_cart(current: dict[str, Any] = Depends(get_current_user)) -> dict[str,
 
 @router.get("/admin/abandoned", dependencies=[Depends(require_admin)])
 def list_abandoned_carts(
+    request: Request,
     hours: int = Query(default=_ABANDONED_HOURS, ge=1, le=168),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -328,6 +369,9 @@ def list_abandoned_carts(
     """List abandoned carts (admin only)"""
     sb = get_admin_supabase()
     offset = (page - 1) * page_size
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Fetching abandoned carts (Cutoff: >{hours} hours)")
 
     import datetime
     cutoff = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)).isoformat()
@@ -365,9 +409,12 @@ def list_abandoned_carts(
 
 
 @router.post("/admin/remind/{cart_id}", dependencies=[Depends(require_admin)])
-def send_cart_reminder(cart_id: UUID) -> dict[str, str]:
+def send_cart_reminder(request: Request, cart_id: UUID) -> dict[str, str]:
     """Send push + email for abandoned cart"""
     sb = get_admin_supabase()
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Initiating reminder for abandoned cart: {str(cart_id)[:8]}...")
 
     cart_res = (
         sb.table("carts")
@@ -410,6 +457,10 @@ def send_cart_reminder(cart_id: UUID) -> dict[str, str]:
             email_sent = True
         except Exception as exc:
             logger.warning("Email failed | cart=%s | %s", str(cart_id)[:8], exc)
+            
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Push Sent: {'Yes' if push_sent else 'No'}")
+        request.state.actions.append(f"Email Sent: {'Yes' if email_sent else 'No'}")
 
     logger.info("Reminder sent | cart=%s | push=%d email=%s", str(cart_id)[:8], push_sent, email_sent)
     return {"message": "Reminder sent", "push_sent": str(push_sent > 0), "email_sent": str(email_sent)}

@@ -7,6 +7,7 @@ Orders Router — Production Grade
 - Pricing: DB pricing_config table (same as cart) ✅
 - FIX: Prevented infinite stock inflation on cancel order race condition.
 - FIX: Prevented permanent stock deduction on system network failures.
+- NEW: Pure Window Logger integration for detailed transaction tracking.
 """
 import logging
 import re
@@ -24,8 +25,13 @@ from app.config import settings
 from app.dependencies import get_current_user, require_admin
 from app.supabase_client import get_admin_supabase
 from app.utils.stock import restore_stock, decrement_stock
-from app.services.pricing import get_pricing_from_config, StandardPricing, PriceBreakdown
-from app.services.events import get_event_bus, OrderCreatedEvent, OrderShippedEvent, OrderStatusChangedEvent
+from app.services.pricing import get_pricing_from_config, PriceBreakdown
+from app.services.events import (
+    get_event_bus, 
+    OrderCreatedEvent, 
+    OrderShippedEvent, 
+    OrderStatusChangedEvent
+)
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
@@ -61,10 +67,6 @@ _MASKED_FIELDS = {
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _fetch_pricing_config(sb: Any) -> dict[str, Any]:
-    """
-    Fetch pricing config from DB — SAME as cart.
-    SINGLE SOURCE OF TRUTH: pricing_config table.
-    """
     try:
         res = (
             sb.table("pricing_config")
@@ -75,7 +77,6 @@ def _fetch_pricing_config(sb: Any) -> dict[str, Any]:
     except Exception as e:
         logger.warning("pricing_config fetch failed, using fallback: %s", e)
 
-    # Fallback — matches DB defaults
     return {
         "tax_rate": 18.0,
         "shipping_flat": 99.0,
@@ -87,10 +88,6 @@ def _fetch_pricing_config(sb: Any) -> dict[str, Any]:
 
 
 def _calculate_pricing(sb: Any, subtotal: Decimal) -> PriceBreakdown:
-    """
-    Calculate pricing using DB config — SAME as cart.
-    Ensures cart and orders always produce identical pricing.
-    """
     config = _fetch_pricing_config(sb)
     pricing = get_pricing_from_config(config)
     return pricing.calculate(subtotal)
@@ -102,7 +99,6 @@ def _sanitize_notes(notes: str | None) -> str | None:
 
 
 def _sanitize_order(order: dict) -> dict:
-    """Amazon/Flipkart style — strip internal fields before response"""
     if not order: return order
 
     sanitized = {k: v for k, v in order.items() if k not in _INTERNAL_FIELDS}
@@ -172,7 +168,7 @@ class OrderAdminUpdate(BaseModel):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  POST /orders/ — Create Order (Idempotent + DB Pricing)
+#  POST /orders/ — Create Order
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
@@ -182,12 +178,16 @@ def create_order(
     payload: OrderCreate,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Create order. Idempotent + DB pricing (same as cart)."""
+    
     sb = get_admin_supabase()
     user_id = current["profile"]["id"]
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Order creation pipeline initiated")
 
-    # ── IDEMPOTENCY CHECK ─────────────────────────────────────────────────
     if payload.idempotency_key:
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"Checking idempotency key: {payload.idempotency_key[:8]}...")
         try:
             existing = (
                 sb.table("orders")
@@ -198,12 +198,13 @@ def create_order(
                 .execute()
             )
             if existing and existing.data:
+                if hasattr(request.state, "actions"):
+                    request.state.actions.append("Idempotency match found! Returning existing order.")
                 logger.info("Idempotent return | user=%.8s", user_id)
                 return _sanitize_order(existing.data)
         except Exception as e:
             logger.warning("Idempotency check failed (proceeding): %s", e)
 
-    # ── Address ───────────────────────────────────────────────────────────
     addr_res = (
         sb.table("addresses").select("*")
         .eq("id", str(payload.shipping_address_id)).eq("user_id", user_id)
@@ -212,8 +213,10 @@ def create_order(
     if not addr_res or not addr_res.data:
         raise HTTPException(404, "Shipping address not found")
     addr = addr_res.data
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Shipping address validated")
 
-    # ── Products ──────────────────────────────────────────────────────────
     product_ids = [str(item.product_id) for item in payload.items]
     prods_res = (
         sb.table("products").select("*")
@@ -223,7 +226,6 @@ def create_order(
         raise HTTPException(404, "Products not found")
     prod_map = {p["id"]: p for p in prods_res.data}
 
-    # ── Validate stock ────────────────────────────────────────────────────
     for item in payload.items:
         p = prod_map.get(str(item.product_id))
         if not p:
@@ -231,7 +233,6 @@ def create_order(
         if p["stock"] < item.quantity:
             raise HTTPException(409, f"Insufficient stock: {p['name']}")
 
-    # ── Stock deduct + line items ─────────────────────────────────────────
     order_items, subtotal, deducted = [], Decimal("0"), []
     try:
         for item in payload.items:
@@ -246,14 +247,21 @@ def create_order(
                 "unit_price": float(p["price"]), "quantity": item.quantity,
                 "subtotal": float(lt),
             })
+            
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"Successfully deducted stock for {len(payload.items)} item(s)")
+            
     except HTTPException:
         for pid, qty in deducted: restore_stock(sb, pid, qty, "rollback")
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Stock deduction failed. Rolled back changes.")
         raise
 
-    # ── 🔥 PRICING FROM DB (SAME AS CART) ────────────────────────────────
     breakdown = _calculate_pricing(sb, subtotal)
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Calculated final pricing via DB SSOT")
 
-    # ── Insert Order ──────────────────────────────────────────────────────
     order_data = {
         "customer_id": user_id,
         "shipping_address_id": str(payload.shipping_address_id),
@@ -280,7 +288,6 @@ def create_order(
         for pid, qty in deducted: restore_stock(sb, pid, qty, "fail_db")
         raise HTTPException(500, "Order creation failed (Database Error)")
     except Exception as e:
-        # Prevent stock leak if network fails during DB insert
         logger.error("System error during order creation: %s", e)
         for pid, qty in deducted: restore_stock(sb, pid, qty, "fail_sys")
         raise HTTPException(500, "Order creation failed (System Error)")
@@ -294,6 +301,9 @@ def create_order(
         for pid, qty in deducted: restore_stock(sb, pid, qty, "items_fail")
         sb.table("orders").update({"status": "cancelled"}).eq("id", order["id"]).execute()
         raise HTTPException(500, "Order items creation failed")
+        
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Order #{str(order['id'])[:8]} successfully saved to DB")
 
     full = (
         sb.table("orders").select(ORDER_ITEMS_SELECT)
@@ -305,6 +315,8 @@ def create_order(
         get_event_bus().publish(OrderCreatedEvent(
             order=result, customer_email=current["profile"]["email"], customer_id=user_id
         ))
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("OrderCreatedEvent dispatched")
     except Exception as e:
         logger.warning("Event failed: %s", e)
 
@@ -312,18 +324,23 @@ def create_order(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  GET /orders/my — List Orders (Sanitized)
+#  GET /orders/my — List Orders
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/my")
 def my_orders(
+    request: Request,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status_filter: str | None = Query(None),
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
+    
     sb = get_admin_supabase()
     offset = (page - 1) * page_size
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Fetching user orders (Page: {page}, Status: {status_filter or 'ALL'})")
 
     q = (
         sb.table("orders")
@@ -352,17 +369,25 @@ def my_orders(
 
 @router.get("/my/{order_id}")
 def get_my_order(
+    request: Request,
     order_id: UUID,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
+    
     sb = get_admin_supabase()
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Fetching details for order: {str(order_id)[:8]}...")
+        
     result = (
         sb.table("orders").select(ORDER_ITEMS_SELECT)
         .eq("id", str(order_id)).eq("customer_id", current["profile"]["id"])
         .maybe_single().execute()
     )
+    
     if not result or not result.data:
         raise HTTPException(404, "Order not found")
+        
     return _sanitize_order(result.data)
 
 
@@ -372,10 +397,16 @@ def get_my_order(
 
 @router.post("/my/{order_id}/cancel")
 def cancel_order(
+    request: Request,
     order_id: UUID,
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
+    
     sb = get_admin_supabase()
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Cancellation requested for order: {str(order_id)[:8]}...")
+        
     order_res = (
         sb.table("orders").select(ORDER_ITEMS_SELECT)
         .eq("id", str(order_id)).eq("customer_id", current["profile"]["id"])
@@ -388,7 +419,6 @@ def cancel_order(
     if order["status"] != "pending":
         raise HTTPException(409, f"Cannot cancel '{order['status']}' order")
 
-    # DB me pehle status update hoga. Race conditions block hogi.
     update_res = (
         sb.table("orders")
         .update({"status": "cancelled"})
@@ -399,11 +429,16 @@ def cancel_order(
 
     if not update_res or not hasattr(update_res, "data") or not update_res.data:
         raise HTTPException(409, "Order status could not be changed or is already updated")
+        
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Order status successfully updated to 'cancelled'")
 
-    # Ab perfectly safe hai stock restore karna.
     for item in order.get("order_items", []):
         if item.get("product_id"):
             restore_stock(sb, item["product_id"], item["quantity"], f"cancel:{order_id}")
+            
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Stock fully restored for cancelled items")
 
     return {"status": "cancelled", "order_id": str(order_id)}
 
@@ -414,10 +449,17 @@ def cancel_order(
 
 @router.get("/", dependencies=[Depends(require_admin)])
 def list_all_orders(
-    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+    request: Request,
+    page: int = Query(1, ge=1), 
+    page_size: int = Query(20, ge=1, le=100),
     status_filter: str | None = None,
 ) -> dict[str, Any]:
+    
     sb = get_admin_supabase()
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Admin fetching orders list (Status: {status_filter or 'ALL'})")
+        
     q = (
         sb.table("orders")
         .select(f"{ORDER_ITEMS_SELECT}, users(email, full_name)", count="exact")
@@ -444,8 +486,17 @@ def list_all_orders(
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.patch("/{order_id}", dependencies=[Depends(require_admin)])
-def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, Any]:
+def admin_update_order(
+    request: Request,
+    order_id: UUID, 
+    payload: OrderAdminUpdate
+) -> dict[str, Any]:
+    
     sb = get_admin_supabase()
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Admin updating order {str(order_id)[:8]}...")
+        
     current_res = (
         sb.table("orders").select("status, stripe_payment_intent, customer_id")
         .eq("id", str(order_id)).maybe_single().execute()
@@ -456,12 +507,18 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
     current_status = current_res.data["status"]
 
     if payload.status:
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"Validating transition: '{current_status}' -> '{payload.status}'")
+            
         allowed = STATUS_TRANSITIONS.get(current_status, set())
         if payload.status not in allowed:
             raise HTTPException(409, f"Cannot move '{current_status}' → '{payload.status}'")
+            
         if payload.status == "refunded":
             pi_id = current_res.data.get("stripe_payment_intent")
             if pi_id:
+                if hasattr(request.state, "actions"):
+                    request.state.actions.append(f"Processing Stripe refund for {pi_id}")
                 try:
                     import stripe
                     stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -474,8 +531,12 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
         sb.table("orders").update(data)
         .eq("id", str(order_id)).eq("status", current_status).execute()
     )
+    
     if not result or not result.data:
         raise HTTPException(409, "Order modified — refresh and retry")
+        
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Order successfully updated in database")
 
     if payload.status == "shipped":
         try:
@@ -487,6 +548,8 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
                     order=order, customer_email=user_res.data["email"],
                     customer_id=customer_id, tracking_number=payload.tracking_number,
                 ))
+                if hasattr(request.state, "actions"):
+                    request.state.actions.append("OrderShippedEvent dispatched")
         except Exception as e:
             logger.warning("Shipped event: %s", e)
 
@@ -496,6 +559,8 @@ def admin_update_order(order_id: UUID, payload: OrderAdminUpdate) -> dict[str, A
                 order=result.data[0], customer_id=current_res.data["customer_id"],
                 old_status=current_status, new_status=payload.status,
             ))
+            if hasattr(request.state, "actions"):
+                request.state.actions.append("OrderStatusChangedEvent dispatched")
         except Exception as e:
             logger.warning("Status event: %s", e)
 

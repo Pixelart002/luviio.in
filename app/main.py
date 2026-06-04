@@ -45,6 +45,8 @@ from app.middlewares.cors import cors_middleware
 # Services
 from app.services.events import register_default_handlers
 
+from app.middlewares.logger import PureWindowLoggerMiddleware 
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  LOGGING SETUP
@@ -195,6 +197,8 @@ app.add_middleware(SecurityHeadersMiddleware)
 # 7. Rate Limiter — Global rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+app.add_middleware(PureWindowLoggerMiddleware)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
