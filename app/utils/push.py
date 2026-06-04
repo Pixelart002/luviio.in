@@ -172,10 +172,17 @@ def send_push(
             
             if exc_name == "WebPushException":
                 try:
+                    # Primary: extract status from response object
                     status_code = exc.response.status_code if hasattr(exc, "response") and exc.response else None
+                    # Fallback: parse status code from exception message string (e.g. "Push failed: 410 Gone")
+                    if status_code is None:
+                        import re as _re
+                        _m = _re.search(r"\b(4\d{2}|5\d{2})\b", str(exc))
+                        if _m:
+                            status_code = int(_m.group(1))
                     if status_code in (404, 410):
-                        logger.info("Dead subscription | endpoint=%s… status=%d", endpoint_short, status_code)
-                        return False 
+                        logger.warning("Dead subscription (status=%d) — skipping retries | endpoint=%s…", status_code, endpoint_short)
+                        return False
                     if status_code == 429:
                         logger.warning("Rate limited by push service | endpoint=%s…", endpoint_short)
                         time.sleep(5) 
