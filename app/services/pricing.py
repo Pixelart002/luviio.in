@@ -1,20 +1,11 @@
 """
-Pricing Service — Strategy Pattern + Live DB Support
+Pricing Service — Top Tier Architecture (SSOT)
 =====================================================
 Pattern: Strategy (interchangeable algorithms behind a common interface)
-Why: Pricing rules change (promotions, regions, B2B) — open for extension,
-     closed for modification (Open/Closed Principle).
 
-LLD concepts applied:
-  Strategy Pattern       → swap pricing logic without changing order code
-  Single Responsibility  → pricing is its own concern, not inside the order router
-  Dependency Inversion   → OrderService depends on PricingStrategy abstraction
-  Factory Pattern        → get_default_pricing() + get_pricing_from_config()
-  Designing for Testability → each strategy is unit-testable in isolation
-
-FIXES APPLIED:
-  1. Empty Cart Bug: subtotal <= 0 now safely returns 0 for all components.
-  2. Decorator Tax Bug: FreeShippingPricing now recalculates tax without charging GST on waived shipping fees.
+✅ STRICT SINGLE SOURCE OF TRUTH (SSOT).
+✅ NO hardcoded fallbacks. All pricing MUST come from the live Database.
+✅ Fails gracefully with 503 Error if DB config is missing (No Financial Loss).
 """
 from __future__ import annotations
 
@@ -23,6 +14,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
+
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +78,6 @@ class PricingStrategy(ABC):
 class StandardPricing(PricingStrategy):
     """
     Default pricing: free shipping above threshold, flat fee below, fixed tax rate.
-    Used by: orders.py (via settings.py), cart.py (via DB config)
     """
 
     def __init__(
@@ -118,7 +110,6 @@ class StandardPricing(PricingStrategy):
 class ZeroTaxPricing(PricingStrategy):
     """
     For tax-exempt B2B customers or specific regions.
-    Swap in without touching orders/cart code.
     """
 
     def __init__(self, shipping_threshold: Decimal, shipping_flat: Decimal) -> None:
@@ -126,7 +117,6 @@ class ZeroTaxPricing(PricingStrategy):
         self._flat = shipping_flat
 
     def calculate(self, subtotal: Decimal) -> PriceBreakdown:
-        # [FIX] Empty Cart Safety
         if subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"))
             
@@ -144,7 +134,6 @@ class ZeroTaxPricing(PricingStrategy):
 class DiscountPricing(PricingStrategy):
     """
     Percentage discount on subtotal before tax & shipping.
-    Example: 15% off sale → DiscountPricing(base_strategy, discount_pct=15)
     """
 
     def __init__(self, base_strategy: PricingStrategy, discount_pct: Decimal):
@@ -184,41 +173,24 @@ class FreeShippingPricing(PricingStrategy):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  FACTORY FUNCTIONS
+#  FACTORY FUNCTIONS (STRICT DB ONLY)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def get_default_pricing() -> PricingStrategy:
+def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
     """
-    Factory — returns strategy configured in settings.py.
-    Used by: orders.py (order creation)
-    Config source: app.config.settings (environment variables)
+    Factory — returns strategy STRICTLY from pricing_config DB row.
+    🚨 FAANG RULE: Raises 503 Exception if config is missing (Prevents Financial Loss).
     """
-    from app.config import settings
-    return StandardPricing(
-        shipping_threshold=Decimal(str(settings.SHIPPING_THRESHOLD)),
-        shipping_flat=Decimal(str(settings.SHIPPING_FLAT)),
-        tax_rate=Decimal(str(settings.TAX_RATE)),
-    )
+    if not config:
+        logger.error(
+            "CRITICAL: Pricing config missing from Database. "
+            "Order rejected to prevent financial loss."
+        )
+        raise HTTPException(
+            status_code=503, 
+            detail="Pricing service is temporarily unavailable. Please try again later."
+        )
 
-
-def get_pricing_from_config(config: dict[str, Any]) -> PricingStrategy:
-    """
-    Factory — returns strategy from pricing_config DB row.
-    Used by: cart.py, orders.py (live pricing from Supabase)
-    
-    Args:
-        config: Row from pricing_config table
-            {
-                "tax_rate": 18.0,
-                "shipping_flat": 99.0,
-                "shipping_threshold": 999.0,
-                "tax_enabled": True,
-                "shipping_enabled": True,
-            }
-    
-    Returns:
-        PricingStrategy configured from DB values
-    """
     tax_enabled = config.get("tax_enabled", True)
     shipping_enabled = config.get("shipping_enabled", True)
     
@@ -249,18 +221,17 @@ def get_pricing_from_config(config: dict[str, Any]) -> PricingStrategy:
     )
 
 
-def get_pricing_for_user(user: dict[str, Any]) -> PricingStrategy:
+def get_pricing_for_user(
+    user: dict[str, Any], 
+    config: dict[str, Any] | None
+) -> PricingStrategy:
     """
-    Factory — returns strategy based on user attributes.
-    
-    Future: Check user.role, user.tax_exempt, user.region, etc.
-    Currently: returns default pricing for all users.
+    Factory — returns strategy based on user attributes AND live DB config.
+    Strictly depends on the database configuration.
     """
-    # TODO: Implement user-specific pricing logic
-    # if user.get("tax_exempt"):
-    #     return ZeroTaxPricing(...)
+    # Example: If user has a specific role, wrap the DB pricing:
     # if user.get("vip_tier") == "platinum":
-    #     base = StandardPricing(...)
+    #     base = get_pricing_from_config(config)
     #     return FreeShippingPricing(base)
     
-    return get_default_pricing()
+    return get_pricing_from_config(config)
