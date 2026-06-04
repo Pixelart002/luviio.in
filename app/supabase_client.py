@@ -21,7 +21,7 @@ import threading
 import logging
 from typing import Optional
 
-from supabase import create_client, Client
+from supabase import create_client, Client, ClientOptions
 
 from app.config import settings
 
@@ -92,10 +92,16 @@ def init_clients() -> None:
             # This prevents partial initialization — if admin client fails,
             # regular client is NOT assigned to global either.
             
-            regular_client = create_client(settings.SB_URL, settings.SB_KEY)
+            # auto_refresh_token=False: disables gotrue-py's threading.Timer-based
+            # token auto-refresh, which causes OverflowError (timestamp out of range
+            # for platform time_t) when the computed refresh interval is astronomical.
+            # Token refresh is handled explicitly via /api/v1/auth/refresh endpoint.
+            _client_options = ClientOptions(auto_refresh_token=False)
+
+            regular_client = create_client(settings.SB_URL, settings.SB_KEY, options=_client_options)
             logger.debug("Regular Supabase client created (RLS enabled)")
 
-            admin_client = create_client(settings.SB_URL, settings.SB_SERVICE_ROLE_KEY)
+            admin_client = create_client(settings.SB_URL, settings.SB_SERVICE_ROLE_KEY, options=_client_options)
             logger.debug("Admin Supabase client created (RLS bypass)")
 
             # ── Atomic assignment to globals ──────────────────────────────────
