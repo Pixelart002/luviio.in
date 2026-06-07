@@ -79,6 +79,30 @@ class PricingStrategy(ABC):
         """Calculate complete price breakdown from subtotal"""
         ...
 
+    @property
+    @abstractmethod
+    def shipping_enabled(self) -> bool:
+        """Whether shipping costs are applied."""
+        ...
+
+    @property
+    @abstractmethod
+    def shipping_threshold(self) -> Decimal:
+        """Subtotal above which shipping is free."""
+        ...
+
+    @property
+    @abstractmethod
+    def tax_rate(self) -> Decimal:
+        """Effective tax rate as a decimal fraction (e.g. 0.18 for 18%)."""
+        ...
+
+    @property
+    @abstractmethod
+    def currency(self) -> str:
+        """Currency code for this pricing strategy."""
+        ...
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONCRETE STRATEGIES
@@ -99,6 +123,22 @@ class StandardPricing(PricingStrategy):
         self._flat = shipping_flat
         self._tax_rate = tax_rate
         self._currency = currency
+
+    @property
+    def shipping_enabled(self) -> bool:
+        return self._flat > Decimal("0") or self._threshold > Decimal("0")
+
+    @property
+    def shipping_threshold(self) -> Decimal:
+        return self._threshold
+
+    @property
+    def tax_rate(self) -> Decimal:
+        return self._tax_rate
+
+    @property
+    def currency(self) -> str:
+        return self._currency
 
     def calculate(self, subtotal: Decimal | float) -> PriceBreakdown:
         sub = Decimal(str(subtotal))
@@ -129,6 +169,22 @@ class ZeroTaxPricing(PricingStrategy):
         self._flat = shipping_flat
         self._currency = currency
 
+    @property
+    def shipping_enabled(self) -> bool:
+        return self._flat > Decimal("0") or self._threshold > Decimal("0")
+
+    @property
+    def shipping_threshold(self) -> Decimal:
+        return self._threshold
+
+    @property
+    def tax_rate(self) -> Decimal:
+        return Decimal("0")
+
+    @property
+    def currency(self) -> str:
+        return self._currency
+
     def calculate(self, subtotal: Decimal | float) -> PriceBreakdown:
         sub = Decimal(str(subtotal))
         if sub <= Decimal("0"):
@@ -154,6 +210,22 @@ class DiscountPricing(PricingStrategy):
         self._base = base_strategy
         self._discount = discount_pct / Decimal("100")
 
+    @property
+    def shipping_enabled(self) -> bool:
+        return self._base.shipping_enabled
+
+    @property
+    def shipping_threshold(self) -> Decimal:
+        return self._base.shipping_threshold
+
+    @property
+    def tax_rate(self) -> Decimal:
+        return self._base.tax_rate
+
+    @property
+    def currency(self) -> str:
+        return self._base.currency
+
     def calculate(self, subtotal: Decimal | float) -> PriceBreakdown:
         sub = Decimal(str(subtotal))
         if sub <= Decimal("0"):
@@ -167,6 +239,22 @@ class FreeShippingPricing(PricingStrategy):
     """Decorator Pattern: Always free shipping — wraps another strategy (e.g., VIP customers)."""
     def __init__(self, base_strategy: PricingStrategy):
         self._base = base_strategy
+
+    @property
+    def shipping_enabled(self) -> bool:
+        return False
+
+    @property
+    def shipping_threshold(self) -> Decimal:
+        return self._base.shipping_threshold
+
+    @property
+    def tax_rate(self) -> Decimal:
+        return self._base.tax_rate
+
+    @property
+    def currency(self) -> str:
+        return self._base.currency
 
     def calculate(self, subtotal: Decimal | float) -> PriceBreakdown:
         sub = Decimal(str(subtotal))
