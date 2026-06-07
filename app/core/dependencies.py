@@ -106,6 +106,8 @@ def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
             )
             if profile:
                 logger.info("Profile auto-created for user %.8s", auth_user_id)
+            else:
+                logger.error("Profile upsert returned no data for user %.8s", auth_user_id)
         except Exception as e:
             logger.error("Profile auto-create failed for %.8s: %s", auth_user_id, e)
             return {}
