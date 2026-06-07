@@ -72,7 +72,7 @@ def handle_paid_email(event: OrderPaidEvent) -> None:
     if not event.customer_email or not event.order: return
     try:
         email_provider = get_email_provider("resend")
-        email_provider.send_payment_success(event.customer_email, event.order) # Assuming method exists in provider
+        email_provider.send_payment_success(event.customer_email, event.order)
     except Exception as e:
         logger.error(f"[HOOK] Failed to send payment email: {e}")
 

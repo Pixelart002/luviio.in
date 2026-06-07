@@ -3,7 +3,7 @@ Email Registry (Factory Pattern)
 Path: app/integrations/email/registry.py
 """
 import logging
-from .resend_impl import send_welcome_email, send_order_confirmation, send_order_shipped, send_cart_reminder_email
+from .resend_impl import send_welcome_email, send_order_confirmation, send_order_shipped, send_cart_reminder_email, send_payment_success
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,9 @@ class ResendAdapter:
         
     def send_cart_reminder_email(self, to: str, name: str, items: list):
         return send_cart_reminder_email(to, name, items)
+
+    def send_payment_success(self, to: str, order: dict):
+        return send_payment_success(to, order)
 
 # The Registry Dictionary
 EMAIL_REGISTRY = {
