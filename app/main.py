@@ -44,8 +44,8 @@ from app.api.middlewares.security import (
 from app.api.middlewares.cors import cors_middleware
 from app.api.middlewares.logger import PureWindowLoggerMiddleware 
 
-# Services
-from app.services.events import register_default_handlers
+# 🔥 ARCHITECTURE UPDATES: Hooks (Background Tasks)
+from app.hooks.registry import register_all_hooks
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -136,8 +136,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize Supabase clients (admin + public)
     init_clients()
 
-    # Register event handlers (push notifications, emails)
-    register_default_handlers()
+    # Register event handlers (push notifications, emails) mapped via Event Bus
+    register_all_hooks()
 
     logger.info("✅ Application ready")
 
