@@ -2,6 +2,11 @@
 Admin Verification Router — Enterprise Grade
 =============================================
 Path: app/api/v1/routers/admin_verify.py
+
+Architecture Upgrades:
+  1. No direct Supabase `sb.table()` queries.
+  2. Logic delegated to `AdminRepository`.
+  3. Schemas strictly enforced via `AdminVerifyResponse` and `AdminStatsResponse`.
 """
 import logging
 import time

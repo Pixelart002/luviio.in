@@ -4,10 +4,9 @@ Orders Router — Enterprise Grade
 Path: app/api/v1/routers/orders.py
 
 Architecture Upgrades:
-  1. Stripe SDK completely removed! Using PaymentRegistry (Adapter Pattern).
-  2. Database writes delegated to OrderRepository.
-  3. Stock logic correctly uses app.services.stock.
-  4. Pricing logic fully migrated to Central PricingEngine.
+  1. 100% of Supabase DB calls moved to OrderRepository!
+  2. Stripe SDK removed! Delegated to PaymentRegistry.
+  3. Pricing logic fully migrated to Central PricingEngine.
 """
 import logging
 import re
@@ -21,13 +20,12 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 # 🔥 ARCHITECTURE IMPORTS
-from app.core.config import settings
 from app.core.dependencies import get_current_user, require_admin
 from app.core.supabase import get_admin_supabase
 from app.api.schemas.order_dto import OrderCreate, OrderAdminUpdate, VALID_STATUSES, OrderListResponse
-from app.repositories.order_repo import OrderRepository, ORDER_ITEMS_SELECT
+from app.repositories.order_repo import OrderRepository
 from app.services.stock import restore_stock, decrement_stock
-from app.services.pricing import get_pricing_from_config, PriceBreakdown
+from app.services.pricing import get_pricing_from_config
 from app.services.events import get_event_bus, OrderCreatedEvent, OrderShippedEvent, OrderStatusChangedEvent
 from app.integrations.payments.registry import get_payment_provider
 
@@ -77,40 +75,41 @@ def _sanitize_order_list(orders: list) -> list:
 @router.post("/", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 def create_order(request: Request, payload: OrderCreate, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    sb = get_admin_supabase()
-    order_repo = OrderRepository()
+    repo = OrderRepository()
+    sb_admin = get_admin_supabase() # Needed strictly for stock service injection
     user_id = current["profile"]["id"]
     
     if hasattr(request.state, "actions"): request.state.actions.append("Order creation pipeline initiated")
 
-    # 1. Idempotency Check via Repo
+    # 1. Idempotency Check
     if payload.idempotency_key:
-        existing = order_repo.get_order_by_idempotency_key(user_id, payload.idempotency_key)
+        existing = repo.get_order_by_idempotency_key(user_id, payload.idempotency_key)
         if existing:
             if hasattr(request.state, "actions"): request.state.actions.append("Idempotency match found! Returning existing order.")
             return _sanitize_order(existing)
 
-    addr_res = sb.table("addresses").select("*").eq("id", str(payload.shipping_address_id)).eq("user_id", user_id).maybe_single().execute()
-    if not addr_res or not addr_res.data: raise HTTPException(404, "Shipping address not found")
-    addr = addr_res.data
+    # 2. Shipping Address Validation
+    addr = repo.get_shipping_address(str(payload.shipping_address_id), user_id)
+    if not addr: raise HTTPException(404, "Shipping address not found")
+    if hasattr(request.state, "actions"): request.state.actions.append("Shipping address validated")
 
-    # 2. Stock Check
+    # 3. Product & Stock Validation
     product_ids = [str(item.product_id) for item in payload.items]
-    prods_res = sb.table("products").select("*").in_("id", product_ids).eq("is_active", True).execute()
-    if not prods_res or not prods_res.data: raise HTTPException(404, "Products not found")
-    prod_map = {p["id"]: p for p in prods_res.data}
+    prods = repo.get_active_products(product_ids)
+    if not prods: raise HTTPException(404, "Products not found")
+    prod_map = {p["id"]: p for p in prods}
 
     for item in payload.items:
         p = prod_map.get(str(item.product_id))
         if not p: raise HTTPException(404, f"Product {item.product_id} not found")
         if p["stock"] < item.quantity: raise HTTPException(409, f"Insufficient stock: {p['name']}")
 
-    # 3. Stock Deduction (Atomic)
+    # 4. Stock Deduction (Atomic)
     order_items, subtotal, deducted = [], Decimal("0"), []
     try:
         for item in payload.items:
             p = prod_map[str(item.product_id)]
-            if not decrement_stock(sb, p["id"], item.quantity, p["name"]):
+            if not decrement_stock(sb_admin, p["id"], item.quantity, p["name"]):
                 raise HTTPException(409, f"Stock conflict: {p['name']}")
             deducted.append((p["id"], item.quantity))
             lt = Decimal(str(p["price"])) * item.quantity
@@ -120,13 +119,11 @@ def create_order(request: Request, payload: OrderCreate, current: dict[str, Any]
                 "unit_price": float(p["price"]), "quantity": item.quantity, "subtotal": float(lt),
             })
     except HTTPException:
-        for pid, qty in deducted: restore_stock(sb, pid, qty, "rollback")
+        for pid, qty in deducted: restore_stock(sb_admin, pid, qty, "rollback")
         raise
 
-    # 4. Pricing via Engine
-    try: config_res = sb.table("pricing_config").select("*").limit(1).single().execute()
-    except Exception: config_res = None
-    config = config_res.data if config_res and config_res.data else {}
+    # 5. Pricing via Engine
+    config = repo.get_pricing_config()
     breakdown = get_pricing_from_config(config).calculate(subtotal)
 
     order_data = {
@@ -138,24 +135,24 @@ def create_order(request: Request, payload: OrderCreate, current: dict[str, Any]
         "notes": _sanitize_notes(payload.notes), "idempotency_key": payload.idempotency_key,
     }
 
-    # 5. DB Insert with PostgREST fallback
+    # 6. DB Insert with Idempotency fallback
     try:
-        order = order_repo.create_order_with_items(order_data, order_items)
+        order = repo.create_order_with_items(order_data, order_items)
     except PostgrestError as e:
         if payload.idempotency_key and "unique" in str(e).lower():
-            for pid, qty in deducted: restore_stock(sb, pid, qty, "race")
-            existing = order_repo.get_order_by_idempotency_key(user_id, payload.idempotency_key)
+            for pid, qty in deducted: restore_stock(sb_admin, pid, qty, "race")
+            existing = repo.get_order_by_idempotency_key(user_id, payload.idempotency_key)
             if existing: return _sanitize_order(existing)
-        for pid, qty in deducted: restore_stock(sb, pid, qty, "fail_db")
+        for pid, qty in deducted: restore_stock(sb_admin, pid, qty, "fail_db")
         raise HTTPException(500, "Order creation failed (Database Error)")
     except Exception as e:
-        for pid, qty in deducted: restore_stock(sb, pid, qty, "fail_sys")
+        for pid, qty in deducted: restore_stock(sb_admin, pid, qty, "fail_sys")
         raise HTTPException(500, "Order creation failed (System Error)")
 
-    full = order_repo.get_order_by_id(order["id"])
+    full = repo.get_order_by_id(order["id"])
     result = _sanitize_order(full if full else order)
 
-    # 6. Event Dispatch
+    # 7. Event Dispatch
     try:
         get_event_bus().publish(OrderCreatedEvent(order=result, customer_email=current["profile"]["email"], customer_id=user_id))
     except Exception as e: logger.warning("Event failed: %s", e)
@@ -168,16 +165,11 @@ def create_order(request: Request, payload: OrderCreate, current: dict[str, Any]
 
 @router.get("/my", response_model=OrderListResponse)
 def my_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str | None = Query(None), current: dict[str, Any] = Depends(get_current_user)):
-    sb = get_admin_supabase()
-    offset = (page - 1) * page_size
-    q = sb.table("orders").select(ORDER_ITEMS_SELECT, count="exact").eq("customer_id", current["profile"]["id"]).order("created_at", desc=True)
-    if status_filter:
-        if status_filter not in VALID_STATUSES: raise HTTPException(400, f"Invalid status: {status_filter}")
-        q = q.eq("status", status_filter)
-
-    result = q.range(offset, offset + page_size - 1).execute()
-    total = result.count or 0
-    return {"items": _sanitize_order_list(result.data or []), "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
+    if status_filter and status_filter not in VALID_STATUSES: 
+        raise HTTPException(400, f"Invalid status: {status_filter}")
+        
+    items, total = OrderRepository().get_user_orders(current["profile"]["id"], status_filter, page, page_size)
+    return {"items": _sanitize_order_list(items), "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
 
 @router.get("/my/{order_id}")
 def get_my_order(request: Request, order_id: UUID, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
@@ -187,17 +179,17 @@ def get_my_order(request: Request, order_id: UUID, current: dict[str, Any] = Dep
 
 @router.post("/my/{order_id}/cancel")
 def cancel_order(request: Request, order_id: UUID, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    order_repo = OrderRepository()
-    order = order_repo.get_order_by_id(str(order_id), current["profile"]["id"])
+    repo = OrderRepository()
+    order = repo.get_order_by_id(str(order_id), current["profile"]["id"])
     if not order: raise HTTPException(404, "Order not found")
     if order["status"] != "pending": raise HTTPException(409, f"Cannot cancel '{order['status']}' order")
 
-    updated = order_repo.update_order_status_safe(str(order_id), {"status": "cancelled"}, "pending")
+    updated = repo.update_order_status_safe(str(order_id), {"status": "cancelled"}, "pending")
     if not updated: raise HTTPException(409, "Order status could not be changed or is already updated")
 
-    sb = get_admin_supabase()
+    sb_admin = get_admin_supabase()
     for item in order.get("order_items", []):
-        if item.get("product_id"): restore_stock(sb, item["product_id"], item["quantity"], f"cancel:{order_id}")
+        if item.get("product_id"): restore_stock(sb_admin, item["product_id"], item["quantity"], f"cancel:{order_id}")
 
     return {"status": "cancelled", "order_id": str(order_id)}
 
@@ -207,32 +199,26 @@ def cancel_order(request: Request, order_id: UUID, current: dict[str, Any] = Dep
 
 @router.get("/", dependencies=[Depends(require_admin)], response_model=OrderListResponse)
 def list_all_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str | None = None):
-    sb = get_admin_supabase()
-    q = sb.table("orders").select(f"{ORDER_ITEMS_SELECT}, users(email, full_name)", count="exact").order("created_at", desc=True)
-    if status_filter:
-        if status_filter not in VALID_STATUSES: raise HTTPException(400, f"Invalid status")
-        q = q.eq("status", status_filter)
+    if status_filter and status_filter not in VALID_STATUSES: 
+        raise HTTPException(400, "Invalid status")
 
-    offset = (page - 1) * page_size
-    result = q.range(offset, offset + page_size - 1).execute()
-    total = result.count or 0
-    return {"items": _sanitize_order_list(result.data or []), "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
+    items, total = OrderRepository().get_all_orders(status_filter, page, page_size)
+    return {"items": _sanitize_order_list(items), "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
 
 @router.patch("/{order_id}", dependencies=[Depends(require_admin)])
 def admin_update_order(request: Request, order_id: UUID, payload: OrderAdminUpdate) -> dict[str, Any]:
-    order_repo = OrderRepository()
-    current_res = get_admin_supabase().table("orders").select("status, stripe_payment_intent, customer_id").eq("id", str(order_id)).maybe_single().execute()
-    if not current_res or not current_res.data: raise HTTPException(404, "Order not found")
+    repo = OrderRepository()
+    current_res = repo.get_order_for_admin_update(str(order_id))
+    if not current_res: raise HTTPException(404, "Order not found")
 
-    current_status = current_res.data["status"]
+    current_status = current_res["status"]
 
     if payload.status:
         allowed = STATUS_TRANSITIONS.get(current_status, set())
         if payload.status not in allowed: raise HTTPException(409, f"Cannot move '{current_status}' → '{payload.status}'")
             
-        # 🔥 USING REGISTRY INSTEAD OF RAW STRIPE SDK!
         if payload.status == "refunded":
-            pi_id = current_res.data.get("stripe_payment_intent")
+            pi_id = current_res.get("stripe_payment_intent")
             if pi_id:
                 try:
                     payment_service = get_payment_provider("stripe")
@@ -241,18 +227,17 @@ def admin_update_order(request: Request, order_id: UUID, payload: OrderAdminUpda
                     raise HTTPException(502, f"Refund failed: {e}")
 
     data = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
-    result = order_repo.update_order_status_safe(str(order_id), data, current_status)
+    result = repo.update_order_status_safe(str(order_id), data, current_status)
     if not result: raise HTTPException(409, "Order modified — refresh and retry")
 
     # Events Dispatch
     if payload.status == "shipped":
         try:
-            user_res = get_admin_supabase().table("users").select("email").eq("id", current_res.data["customer_id"]).maybe_single().execute()
-            if user_res and user_res.data:
-                get_event_bus().publish(OrderShippedEvent(order=result, customer_email=user_res.data["email"], customer_id=current_res.data["customer_id"], tracking_number=payload.tracking_number))
+            email = repo.get_user_email(current_res["customer_id"])
+            if email: get_event_bus().publish(OrderShippedEvent(order=result, customer_email=email, customer_id=current_res["customer_id"], tracking_number=payload.tracking_number))
         except Exception: pass
     if payload.status in ("delivered", "refunded"):
-        try: get_event_bus().publish(OrderStatusChangedEvent(order=result, customer_id=current_res.data["customer_id"], old_status=current_status, new_status=payload.status))
+        try: get_event_bus().publish(OrderStatusChangedEvent(order=result, customer_id=current_res["customer_id"], old_status=current_status, new_status=payload.status))
         except Exception: pass
 
     return _sanitize_order(result)

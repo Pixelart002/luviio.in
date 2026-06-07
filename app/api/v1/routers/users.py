@@ -2,6 +2,10 @@
 Users Router — Enterprise Grade
 ================================
 Path: app/api/v1/routers/users.py
+
+Architecture Upgrades:
+  1. ALL Supabase DB logic strictly delegated to UserRepository.
+  2. Router only handles HTTP flow, Auth/Admin dependencies, and Responses.
 """
 import logging
 from typing import Any
@@ -13,7 +17,7 @@ from slowapi.util import get_remote_address
 
 # 🔥 ARCHITECTURE IMPORTS
 from app.core.dependencies import get_current_user, require_admin
-from app.core.supabase import get_admin_supabase
+from app.repositories.user_repo import UserRepository
 from app.api.schemas.user_dto import ProfileUpdate, AddressCreate, AdminUserUpdate, MessageResponse, UserListResponse
 
 logger = logging.getLogger(__name__)
@@ -52,17 +56,17 @@ def get_me(request: Request, current: dict[str, Any] = Depends(get_current_user)
 @limiter.limit("20/minute")
 def update_me(request: Request, payload: ProfileUpdate, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     if hasattr(request.state, "actions"): request.state.actions.append("Processing profile update request")
-    sb = get_admin_supabase()
     user_id = _get_user_id(current)
+    repo = UserRepository()
     
     data = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not data: return current.get("profile", current)
     
     try:
-        updated = sb.table("users").update(data).eq("id", user_id).execute()
+        updated = repo.update_profile(user_id, data)
         logger.info("Profile updated | user=%.8s fields=%s", user_id, list(data.keys()))
         if hasattr(request.state, "actions"): request.state.actions.append(f"Successfully updated fields: {', '.join(data.keys())}")
-        return updated.data[0] if updated and getattr(updated, "data", None) else current.get("profile", current)
+        return updated or current.get("profile", current)
     except Exception as exc:
         logger.error("Profile update failed | user=%.8s: %s", user_id, exc)
         raise HTTPException(500, "Failed to update profile")
@@ -74,11 +78,9 @@ def update_me(request: Request, payload: ProfileUpdate, current: dict[str, Any] 
 @router.get("/me/addresses")
 def list_addresses(request: Request, current: dict[str, Any] = Depends(get_current_user)) -> list[dict[str, Any]]:
     if hasattr(request.state, "actions"): request.state.actions.append("Fetching user's saved addresses")
-    sb = get_admin_supabase()
     user_id = _get_user_id(current)
     try:
-        res = sb.table("addresses").select("*").eq("user_id", user_id).order("is_default", desc=True).order("created_at", desc=True).limit(MAX_ADDRESSES_PER_USER).execute()
-        return res.data if res and hasattr(res, "data") and res.data else []
+        return UserRepository().get_user_addresses(user_id, MAX_ADDRESSES_PER_USER)
     except Exception as exc:
         logger.error("Failed to list addresses | user=%.8s: %s", user_id, exc)
         raise HTTPException(500, "Failed to fetch addresses")
@@ -87,13 +89,12 @@ def list_addresses(request: Request, current: dict[str, Any] = Depends(get_curre
 @limiter.limit("10/minute")
 def add_address(request: Request, payload: AddressCreate, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     if hasattr(request.state, "actions"): request.state.actions.append("Initiating new shipping address creation")
-    sb = get_admin_supabase()
     user_id = _get_user_id(current)
+    repo = UserRepository()
 
     try:
-        count_res = sb.table("addresses").select("id", count="exact").eq("user_id", user_id).limit(1).execute()
-        current_count = count_res.count if count_res and hasattr(count_res, "count") and count_res.count else 0
-    except Exception as exc:
+        current_count = repo.count_user_addresses(user_id)
+    except Exception:
         raise HTTPException(500, "Failed to verify address limit")
 
     if hasattr(request.state, "actions"): request.state.actions.append(f"Current address count: {current_count}/{MAX_ADDRESSES_PER_USER}")
@@ -103,46 +104,42 @@ def add_address(request: Request, payload: AddressCreate, current: dict[str, Any
     should_be_default = payload.is_default or current_count == 0
 
     if should_be_default:
-        try: sb.table("addresses").update({"is_default": False}).eq("user_id", user_id).execute()
+        try: repo.unset_default_address(user_id)
         except Exception: pass
 
     try:
-        res = sb.table("addresses").insert({**payload.model_dump(), "user_id": user_id, "is_default": should_be_default}).execute()
-    except Exception as exc:
+        res = repo.create_address({**payload.model_dump(), "user_id": user_id, "is_default": should_be_default})
+    except Exception:
         raise HTTPException(500, "Failed to add address")
 
-    if not res or not hasattr(res, "data") or not res.data: raise HTTPException(500, "Failed to add address")
+    if not res: raise HTTPException(500, "Failed to add address")
     if hasattr(request.state, "actions"): request.state.actions.append(f"New address saved successfully (Default: {should_be_default})")
     
-    return res.data[0]
+    return res
 
 @router.delete("/me/addresses/{address_id}", response_model=MessageResponse)
 def delete_address(request: Request, address_id: UUID, current: dict[str, Any] = Depends(get_current_user)):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Validating address deletion: {str(address_id)[:8]}...")
-    sb = get_admin_supabase()
     user_id = _get_user_id(current)
+    repo = UserRepository()
 
-    existing = sb.table("addresses").select("id, is_default").eq("id", str(address_id)).eq("user_id", user_id).limit(1).execute()
-    if not existing or not hasattr(existing, "data") or not existing.data: raise HTTPException(404, "Address not found")
-    was_default = existing.data[0].get("is_default", False)
+    existing = repo.get_address(str(address_id), user_id)
+    if not existing: raise HTTPException(404, "Address not found")
+    was_default = existing.get("is_default", False)
 
     try:
-        active = sb.table("orders").select("id").eq("shipping_address_id", str(address_id)).in_("status", ["pending", "paid", "shipped"]).limit(1).execute()
-        if active and hasattr(active, "data") and active.data:
+        if repo.is_address_in_active_order(str(address_id)):
             raise HTTPException(status_code=409, detail="Cannot delete — this address is used in an active order.")
     except HTTPException: raise
     except Exception: pass
 
     if hasattr(request.state, "actions"): request.state.actions.append("No active orders found for this address. Proceeding.")
 
-    try: sb.table("addresses").delete().eq("id", str(address_id)).execute()
+    try: repo.delete_address(str(address_id))
     except Exception: raise HTTPException(500, "Failed to delete address")
 
     if was_default:
-        try:
-            remaining = sb.table("addresses").select("id").eq("user_id", user_id).limit(1).execute()
-            if remaining and hasattr(remaining, "data") and remaining.data:
-                sb.table("addresses").update({"is_default": True}).eq("id", remaining.data[0]["id"]).execute()
+        try: repo.set_new_default_address(user_id)
         except Exception: pass
 
     if hasattr(request.state, "actions"): request.state.actions.append("Address successfully deleted")
@@ -159,24 +156,17 @@ def list_users(
     search: str | None = Query(None, max_length=100), role_filter: str | None = Query(None, pattern="^(customer|admin)$")
 ):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Admin listing users (Page: {page})")
-    sb = get_admin_supabase()
-    offset = (page - 1) * page_size
-    q = sb.table("users").select("id, email, full_name, phone, role, is_active, created_at", count="exact").order("created_at", desc=True)
-    if search: q = q.or_(f"email.ilike.%{search}%,full_name.ilike.%{search}%")
-    if role_filter: q = q.eq("role", role_filter)
-    
-    try: result = q.range(offset, offset + page_size - 1).execute()
+    try: 
+        items, total = UserRepository().get_users_paginated(page, page_size, search, role_filter)
     except Exception: raise HTTPException(500, "Failed to fetch users")
 
-    total = result.count if result and hasattr(result, "count") and result.count else 0
-    items = result.data if result and hasattr(result, "data") and result.data else []
     return {"items": items, "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
 
 @router.patch("/{user_id}", dependencies=[Depends(require_admin)])
 def admin_update_user(request: Request, user_id: UUID, payload: AdminUserUpdate, current: dict[str, Any] = Depends(require_admin)):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Admin modifying user: {str(user_id)[:8]}...")
-    sb = get_admin_supabase()
     admin_id = _get_user_id(current)
+    repo = UserRepository()
 
     if str(user_id) == str(admin_id):
         if payload.role and payload.role != "admin": raise HTTPException(status_code=403, detail="You cannot change your own role")
@@ -185,31 +175,28 @@ def admin_update_user(request: Request, user_id: UUID, payload: AdminUserUpdate,
     data = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not data: raise HTTPException(400, "No fields to update")
 
-    existing = sb.table("users").select("id, email, role, is_active").eq("id", str(user_id)).limit(1).execute()
-    if not existing or not hasattr(existing, "data") or not existing.data: raise HTTPException(404, "User not found")
+    existing = repo.get_user_by_id(str(user_id))
+    if not existing: raise HTTPException(404, "User not found")
 
-    try: result = sb.table("users").update(data).eq("id", str(user_id)).execute()
+    try: result = repo.update_profile(str(user_id), data)
     except Exception: raise HTTPException(500, "Failed to update user")
 
-    old_role, old_active = existing.data[0].get("role", "?"), existing.data[0].get("is_active", "?")
+    old_role, old_active = existing.get("role", "?"), existing.get("is_active", "?")
     _audit_log("USER_UPDATED", admin_id, str(user_id), f"role: {old_role}→{data.get('role', old_role)}, active: {old_active}→{data.get('is_active', old_active)}")
     
     if hasattr(request.state, "actions"): request.state.actions.append("User role/status successfully updated in database")
-    return result.data[0]
+    return result
 
 @router.get("/{user_id}", dependencies=[Depends(require_admin)])
 def get_user_detail(request: Request, user_id: UUID):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Admin fetching details for user: {str(user_id)[:8]}...")
-    sb = get_admin_supabase()
+    repo = UserRepository()
     
-    user = sb.table("users").select("id, email, full_name, phone, role, is_active, created_at").eq("id", str(user_id)).limit(1).execute()
-    if not user or not hasattr(user, "data") or not user.data: raise HTTPException(404, "User not found")
+    user = repo.get_user_by_id(str(user_id))
+    if not user: raise HTTPException(404, "User not found")
     
-    try:
-        order_count = sb.table("orders").select("id", count="exact").eq("customer_id", str(user_id)).limit(1).execute()
-        total_orders = order_count.count if order_count and hasattr(order_count, "count") and order_count.count else 0
+    try: total_orders = repo.count_user_orders(str(user_id))
     except Exception: total_orders = 0
     
-    result = user.data[0]
-    result["total_orders"] = total_orders
-    return result
+    user["total_orders"] = total_orders
+    return user

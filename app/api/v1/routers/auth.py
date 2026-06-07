@@ -2,6 +2,11 @@
 Auth Router — Enterprise Grade
 ===============================
 Path: app/api/v1/routers/auth.py
+
+Architecture Upgrades:
+  1. Supabase SDK imports completely removed!
+  2. All external Auth API logic delegated to AuthRepository.
+  3. Clean architecture strictly enforced.
 """
 import logging
 import time
@@ -18,8 +23,8 @@ from app.api.schemas.auth_dto import (
     ResetPasswordRequest, TokenResponse, LoginResponse, MessageResponse
 )
 from app.core.dependencies import get_current_user
-from app.core.supabase import get_admin_supabase, get_supabase
 from app.repositories.user_repo import UserRepository
+from app.repositories.auth_repo import AuthRepository
 from app.integrations.email.registry import get_email_provider
 
 logger = logging.getLogger(__name__)
@@ -95,34 +100,29 @@ def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
     if _check_brute_force(client_ip):
         raise HTTPException(429, "Too many attempts. Please try again later.")
     
-    sb = get_supabase()
-    repo = UserRepository()
+    auth_repo = AuthRepository()
+    user_repo = UserRepository()
 
     auth_user_id: str | None = None
     user_name: str = payload.full_name or ""
 
     try:
-        result = sb.auth.sign_up({
-            "email": payload.email, "password": payload.password,
-            "options": {"data": {"full_name": user_name}},
-        })
-        if result and hasattr(result, "user") and result.user:
-            auth_user_id = result.user.id
-            if hasattr(request.state, "actions"): request.state.actions.append("User successfully created in Supabase Auth")
-    except AuthApiError as e:
+        auth_user_id = auth_repo.sign_up(payload.email, payload.password, user_name)
+        if auth_user_id and hasattr(request.state, "actions"): 
+            request.state.actions.append("User successfully created via AuthRepository")
+    except AuthApiError:
         _record_attempt(client_ip)
-    except Exception as e:
+    except Exception:
         raise HTTPException(503, "Registration service unavailable. Please try again later.")
 
     if auth_user_id:
         try:
-            repo.upsert_profile(user_id=auth_user_id, email=payload.email, full_name=user_name)
+            user_repo.upsert_profile(user_id=auth_user_id, email=payload.email, full_name=user_name)
             if hasattr(request.state, "actions"): request.state.actions.append("User profile saved to database")
         except Exception as e:
             logger.warning("Profile upsert after register failed: %s", e)
 
         try:
-            # 🔥 USING THE NEW INTEGRATION LAYER
             email_service = get_email_provider("resend")
             email_service.send_welcome_email(payload.email, user_name)
             if hasattr(request.state, "actions"): request.state.actions.append("Welcome email dispatched")
@@ -137,6 +137,7 @@ def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
 def login(request: Request, response: Response, payload: LoginRequest) -> dict[str, Any]:
     start = time.monotonic()
     client_ip = get_remote_address(request)
+    auth_repo = AuthRepository()
     
     if hasattr(request.state, "actions"): request.state.actions.append(f"Login attempt via email: {payload.email}")
     
@@ -145,64 +146,64 @@ def login(request: Request, response: Response, payload: LoginRequest) -> dict[s
         time.sleep(max(0.0, _MIN_RESPONSE_SECONDS - elapsed))
         raise HTTPException(429, "Too many login attempts. Please try again in 15 minutes.")
 
-    sb = get_supabase()
     try:
-        result = sb.auth.sign_in_with_password({"email": payload.email, "password": payload.password})
-        if not result or not getattr(result, "user", None) or not getattr(result, "session", None):
+        session_data = auth_repo.sign_in(payload.email, payload.password)
+        if not session_data:
             _record_attempt(client_ip, payload.email)
             raise HTTPException(401, "Invalid email or password")
     except (HTTPException, AuthApiError):
         _record_attempt(client_ip, payload.email)
         raise HTTPException(401, "Invalid email or password")
-    except Exception as e:
+    except Exception:
         raise HTTPException(503, "Authentication service unavailable")
     finally:
         elapsed = time.monotonic() - start
         time.sleep(max(0.0, _MIN_RESPONSE_SECONDS - elapsed))
 
     _reset_attempts(client_ip, payload.email)
-    response.set_cookie(**_COOKIE_KWARGS, value=result.session.refresh_token, max_age=7 * 24 * 60 * 60)
+    response.set_cookie(**_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=7 * 24 * 60 * 60)
 
     if hasattr(request.state, "actions"):
-        request.state.actions.extend(["Supabase Auth validated credentials", "Refresh token securely stored in HttpOnly cookie"])
+        request.state.actions.extend(["Auth validated credentials", "Refresh token securely stored in HttpOnly cookie"])
     if hasattr(request.state, "user_name"):
-        request.state.user_id = result.user.id
-        request.state.user_name = result.user.email
+        request.state.user_id = session_data["user_id"]
+        request.state.user_name = session_data["email"]
 
     return {
-        "access_token": result.session.access_token, "token_type": "bearer",
-        "expires_in": result.session.expires_in, "user": {"id": result.user.id, "email": result.user.email},
+        "access_token": session_data["access_token"], "token_type": "bearer",
+        "expires_in": session_data["expires_in"], "user": {"id": session_data["user_id"], "email": session_data["email"]},
     }
 
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("10/minute")
 def refresh(request: Request, response: Response, refresh_token: str | None = Cookie(None)) -> dict[str, Any]:
     if not refresh_token: raise HTTPException(401, "Refresh token missing. Please log in again.")
-    sb = get_supabase()
+    auth_repo = AuthRepository()
+    
     try:
-        result = sb.auth.refresh_session(refresh_token)
-        if not result or not getattr(result, "session", None):
+        session_data = auth_repo.refresh_session(refresh_token)
+        if not session_data:
             response.delete_cookie(**_COOKIE_KWARGS)
             raise HTTPException(401, "Invalid refresh token")
     except Exception:
         response.delete_cookie(**_COOKIE_KWARGS)
         raise HTTPException(401, "Invalid or expired refresh token")
 
-    response.set_cookie(**_COOKIE_KWARGS, value=result.session.refresh_token, max_age=7 * 24 * 60 * 60)
+    response.set_cookie(**_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=7 * 24 * 60 * 60)
     
-    if hasattr(request.state, "user_name") and hasattr(result, "user"):
-        request.state.user_id = result.user.id
-        request.state.user_name = result.user.email
+    if hasattr(request.state, "user_name") and session_data["user_id"]:
+        request.state.user_id = session_data["user_id"]
+        request.state.user_name = session_data["email"]
 
-    return {"access_token": result.session.access_token, "token_type": "bearer", "expires_in": result.session.expires_in}
+    return {"access_token": session_data["access_token"], "token_type": "bearer", "expires_in": session_data["expires_in"]}
 
 @router.post("/logout", response_model=MessageResponse)
 def logout(request: Request, response: Response, refresh_token: str | None = Cookie(None)) -> dict[str, str]:
     if refresh_token:
         try:
-            sb = get_supabase()
-            result = sb.auth.refresh_session(refresh_token)
-            if result and getattr(result, "session", None): sb.auth.sign_out()
+            auth_repo = AuthRepository()
+            session_data = auth_repo.refresh_session(refresh_token)
+            if session_data: auth_repo.sign_out()
         except Exception: pass
 
     response.delete_cookie(**_COOKIE_KWARGS)
@@ -215,19 +216,18 @@ def forgot_password(request: Request, payload: ForgotPasswordRequest) -> dict[st
     if _check_brute_force(client_ip): raise HTTPException(429, "Too many attempts. Please try again later.")
     
     try:
-        get_supabase().auth.reset_password_email(payload.email)
+        AuthRepository().reset_password_email(payload.email)
     except Exception: pass
 
     return {"message": "If this email exists, a password reset link has been sent."}
 
 @router.post("/reset-password", response_model=MessageResponse)
 def reset_password(request: Request, payload: ResetPasswordRequest, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
-    adm = get_admin_supabase()
     user_id = current.get("sub") or current.get("id") or current.get("profile", {}).get("id")
     if not user_id: raise HTTPException(401, "Valid user session not found")
 
     try:
-        adm.auth.admin.update_user_by_id(user_id, {"password": payload.new_password})
+        AuthRepository().admin_update_password(user_id, payload.new_password)
     except AuthApiError as e: raise HTTPException(400, f"Password reset failed: {e.message}")
     except Exception: raise HTTPException(503, "Service unavailable")
 
