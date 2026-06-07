@@ -171,6 +171,24 @@ def send_order_shipped(to: str, order: dict[str, Any] | None, tracking_number: s
     params: resend.Emails.SendParams = {"from": FROM, "to": [to], "subject": f"Order #{oid} Shipped! 🚚 — {APP}", "html": _email_template(title="Your Order is on the Way! 🚚", content=content, preheader=f"Order #{oid} shipped — tracking: {tracking}")}
     _safe_send(params, f"shipped to={to} order={oid}")
 
+def send_payment_success(to: str, order: dict[str, Any] | None) -> None:
+    order = order or {}
+    oid = str(order.get("id", ""))[:8].upper()
+    total = order.get("total_amount", 0)
+
+    content = f"""
+      <p style="color:{TEXT_MUTED};line-height:1.8;font-size:14px;margin:0 0 20px;">Your payment was successful and your order is now confirmed. 🎉</p>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:{BG_DARK};border-radius:10px;margin:20px 0;"><tr><td style="padding:20px 24px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tr><td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;width:100px;">Order ID</td><td style="padding:6px 0;color:{TEXT};font-size:14px;font-weight:700;font-family:monospace;">#{oid}</td></tr>
+        <tr><td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;">Amount Paid</td><td style="padding:6px 0;color:{GOLD};font-size:18px;font-weight:700;">₹{float(total):,.2f}</td></tr>
+        <tr><td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;">Status</td><td style="padding:6px 0;color:{GOLD};font-size:13px;font-weight:600;">Paid ✓</td></tr>
+      </table></td></tr></table>
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding: 28px 0 0;"><a href="{BASE_URL}/orders.html" style="display:inline-block;padding:12px 28px;background-color:{GOLD};color:{BG_DARK};border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">View Your Order →</a></td></tr></table>
+      <p style="color:{TEXT_MUTED};font-size:11px;margin:24px 0 0;line-height:1.6;">You'll receive another email once your order ships. For any queries, contact <a href="mailto:support@luviio.in" style="color:{GOLD};text-decoration:none;">support@luviio.in</a></p>
+    """
+    params: resend.Emails.SendParams = {"from": FROM, "to": [to], "subject": f"Payment Confirmed — {APP} Order #{oid} ✓", "html": _email_template(title="Payment Successful ✓", content=content, preheader=f"Payment of ₹{float(total):,.2f} received for order #{oid}")}
+    _safe_send(params, f"payment_success to={to} order={oid}")
+
 def send_cart_reminder_email(to: str, name: str, items: list) -> None:
     name = (name or "there").strip()
     item_rows = ""
