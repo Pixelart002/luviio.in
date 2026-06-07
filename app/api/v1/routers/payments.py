@@ -292,4 +292,16 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
         for item in order.get("order_items", []):
             if item.get("product_id"): restore_stock(sb, item["product_id"], item["quantity"], f"webhook_{event_type}")
 
+        # Publish failed/cancel event for push notification
+        reason = "payment_canceled" if event_type == "payment_intent.canceled" else "payment_failed"
+        try:
+            get_event_bus().publish(OrderFailedEvent(
+                order=order,
+                customer_email=repo.get_customer_email(order.get("customer_id", "")),
+                customer_id=order.get("customer_id", ""),
+                reason=reason,
+            ))
+        except Exception:
+            pass
+
     return {"message": "OK"}
