@@ -26,7 +26,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from gotrue.errors import AuthApiError
 
 from app.repositories.user_repo import UserRepository
-from app.supabase_client import get_admin_supabase, get_supabase
+from app.supabase import get_admin_supabase, get_supabase
 
 logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer(auto_error=False)  # Don't auto-raise — we handle manually
