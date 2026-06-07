@@ -7,45 +7,45 @@ Architecture:
   • Lifespan: init clients → register event handlers → graceful shutdown
   • Middleware: CORS → RequestID → MaxBody → GZip → HideServer → Security → RateLimit
   • Routers: Modular, prefixed with /api/v1
-  • Error handling: Structured, never leaks internals in production
+  • Error handling: Handled by core/exceptions.py (Global Exception Handlers)
 
 To run:
   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
 import logging
-import uuid
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import AsyncGenerator
 
 import sentry_sdk
 from fastapi import FastAPI, Request, status, HTTPException
-from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from postgrest.exceptions import APIError as PostgrestError
 
-from app.config import settings
-from app.supabase_client import init_clients, get_admin_supabase
+# 🔥 ARCHITECTURE UPDATES: Core Imports
+from app.core.config import settings
+from app.core.supabase import init_clients, get_admin_supabase
+from app.core.exceptions import register_exception_handlers
 
-# Routers
-from app.routers import auth, users, products, orders, payments, push
-from app.routers import cart, invoice, admin_verify
+# 🔥 ARCHITECTURE UPDATES: Routers
+from app.api.v1.routers import (
+    auth, users, products, orders, payments, 
+    push, cart, invoice, admin_verify
+)
 
-# Middleware
-from app.middlewares.security import (
+# 🔥 ARCHITECTURE UPDATES: Middlewares
+from app.api.middlewares.security import (
     RequestIDMiddleware,
     MaxBodySizeMiddleware,
     GZipMiddleware,
     HideServerHeaderMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.middlewares.cors import cors_middleware
+from app.api.middlewares.cors import cors_middleware
+from app.api.middlewares.logger import PureWindowLoggerMiddleware 
 
 # Services
 from app.services.events import register_default_handlers
-
-from app.middlewares.logger import PureWindowLoggerMiddleware 
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -198,6 +198,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# 8. Pure Window Logger
 app.add_middleware(PureWindowLoggerMiddleware)
 
 
@@ -219,69 +220,11 @@ app.include_router(invoice.router,      prefix=PREFIX)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  EXCEPTION HANDLERS
+#  GLOBAL EXCEPTION HANDLERS
 # ══════════════════════════════════════════════════════════════════════════════
 
-@app.exception_handler(PostgrestError)
-async def postgrest_error_handler(
-    request: Request,
-    exc: PostgrestError,
-) -> JSONResponse:
-    """Handle Supabase/PostgREST errors gracefully."""
-    logger.warning(
-        "Database error | code=%s message=%s | %s %s",
-        exc.code, exc.message, request.method, request.url.path
-    )
-    return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": exc.message, "code": exc.code},
-    )
-
-
-@app.exception_handler(HTTPException)
-async def http_exception_handler(
-    request: Request,
-    exc: HTTPException,
-) -> JSONResponse:
-    """Handle known HTTP exceptions with request ID."""
-    request_id = _request_id_ctx.get("-")
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "detail": exc.detail,
-            "request_id": request_id,
-        },
-        headers=getattr(exc, "headers", None),
-    )
-
-
-@app.exception_handler(Exception)
-async def global_exception_handler(
-    request: Request,
-    exc: Exception,
-) -> JSONResponse:
-    """
-    Catch-all handler for unhandled exceptions.
-    Development: Re-raise for debugging
-    Production:  Return generic 500 with request_id for support
-    """
-    if settings.APP_ENV == "development":
-        raise exc
-
-    request_id = _request_id_ctx.get("-")
-    logger.error(
-        "Unhandled exception | request_id=%s | %s %s | %s",
-        request_id, request.method, request.url.path, exc,
-        exc_info=True,
-    )
-
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "detail": "An unexpected error occurred. Please try again.",
-            "request_id": request_id,
-        },
-    )
+# 🔥 Registers all global exception handlers (PostgrestError, general Exception, etc.)
+register_exception_handlers(app)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

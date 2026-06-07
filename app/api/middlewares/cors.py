@@ -22,7 +22,7 @@ import logging
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 
-from app.config import settings
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 

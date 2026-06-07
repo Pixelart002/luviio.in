@@ -1,6 +1,9 @@
 """
 Event Bus — Observer Pattern + Background Processing
 =====================================================
+Architecture Layer: Services (Domain Logic & Orchestration)
+Path: app/services/events.py
+
 FIX: Handlers ab background thread mein chalte hain.
      Request thread block nahi hota — push late delivery fix.
 
@@ -374,7 +377,7 @@ def _run_handler_with_retry(
     event_metrics.record_failure(event_type_name)
     event_metrics.record_dead_letter(event_type_name)
     
-    # [FIX] Safe Dataclass parsing
+    # Safe Dataclass parsing
     try:
         event_dict = dataclasses.asdict(event) if dataclasses.is_dataclass(event) else {"event": str(event)}
     except Exception:
@@ -429,8 +432,8 @@ def _safe_oid(order: dict[str, Any]) -> str:
 def _push_user(sb, user_id: str, *, title: str, body: str, icon: str,
                url: str = _Copy.URL_ORDERS) -> None:
     """Send push notification to a single user"""
-    # [FIX] Lazy import to prevent circular dependency
-    from app.utils.push import send_push_to_user
+    # 🔥 ARCHITECTURE CHANGE: Path updated to integrations layer
+    from app.integrations.push.webpush_impl import send_push_to_user
     
     if not user_id:
         logger.warning("_push_user: empty user_id — skipping")
@@ -442,8 +445,8 @@ def _push_user(sb, user_id: str, *, title: str, body: str, icon: str,
 def _push_admins(sb, *, title: str, body: str, icon: str,
                  url: str = _Copy.URL_ADMIN) -> None:
     """Broadcast push notification to all admins"""
-    # [FIX] Lazy import to prevent circular dependency
-    from app.utils.push import broadcast_push_to_admins
+    # 🔥 ARCHITECTURE CHANGE: Path updated to integrations layer
+    from app.integrations.push.webpush_impl import broadcast_push_to_admins
     
     result = broadcast_push_to_admins(sb, title=title, body=body, icon=icon, url=url)
     logger.debug("Admin broadcast | sent=%d", result)
@@ -452,7 +455,8 @@ def _push_admins(sb, *, title: str, body: str, icon: str,
 # ── Order Created ─────────────────────────────────────────────────────────────
 
 def _handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
-    from app.supabase_client import get_admin_supabase
+    # 🔥 ARCHITECTURE CHANGE: Core supabase path
+    from app.core.supabase import get_admin_supabase
     oid = _safe_oid(event.order or {})
     amt = (event.order or {}).get("total_amount", 0)
     _push_admins(
@@ -466,8 +470,8 @@ def _handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
 # ── Order Paid ────────────────────────────────────────────────────────────────
 
 def _handle_paid_email(event: OrderPaidEvent) -> None:
-    # [FIX] Lazy import to prevent circular dependency
-    from app.utils.email import send_order_confirmation
+    # 🔥 ARCHITECTURE CHANGE: Path updated to integrations layer
+    from app.integrations.email.resend_impl import send_order_confirmation
     
     if not event.customer_email or not event.order:
         logger.warning("_handle_paid_email: missing data — skipping")
@@ -476,7 +480,7 @@ def _handle_paid_email(event: OrderPaidEvent) -> None:
 
 
 def _handle_paid_push(event: OrderPaidEvent) -> None:
-    from app.supabase_client import get_admin_supabase
+    from app.core.supabase import get_admin_supabase
     order = event.order or {}
     uid = event.customer_id or order.get("customer_id", "")
     _push_user(
@@ -490,7 +494,7 @@ def _handle_paid_push(event: OrderPaidEvent) -> None:
 # ── Order Failed ──────────────────────────────────────────────────────────────
 
 def _handle_failed_push(event: OrderFailedEvent) -> None:
-    from app.supabase_client import get_admin_supabase
+    from app.core.supabase import get_admin_supabase
     order = event.order or {}
     uid = event.customer_id or order.get("customer_id", "")
     if not uid:
@@ -511,7 +515,7 @@ def _handle_failed_push(event: OrderFailedEvent) -> None:
 # ── Order Shipped ─────────────────────────────────────────────────────────────
 
 def _handle_shipped_push(event: OrderShippedEvent) -> None:
-    from app.supabase_client import get_admin_supabase
+    from app.core.supabase import get_admin_supabase
     order = event.order or {}
     uid = event.customer_id or order.get("customer_id", "")
     body = _Copy.SHIPPED_PUSH_BODY
@@ -534,7 +538,7 @@ def _handle_status_push(event: OrderStatusChangedEvent) -> None:
     cfg = _CONFIG.get(event.new_status)
     if not cfg:
         return
-    from app.supabase_client import get_admin_supabase
+    from app.core.supabase import get_admin_supabase
     title_tpl, body, icon = cfg
     _push_user(
         get_admin_supabase(), event.customer_id,
@@ -546,7 +550,7 @@ def _handle_status_push(event: OrderStatusChangedEvent) -> None:
 # ── Low Stock ─────────────────────────────────────────────────────────────────
 
 def _handle_low_stock_push(event: LowStockEvent) -> None:
-    from app.supabase_client import get_admin_supabase
+    from app.core.supabase import get_admin_supabase
     _push_admins(
         get_admin_supabase(),
         title=_Copy.LOW_STOCK_TITLE.format(name=event.product_name),

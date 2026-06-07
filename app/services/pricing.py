@@ -1,11 +1,19 @@
 """
 Pricing Service — Top Tier Architecture (SSOT)
 =====================================================
-Pattern: Strategy (interchangeable algorithms behind a common interface)
+Architecture Layer: Services (Domain Logic)
+Path: app/services/pricing.py
+
+Patterns Applied: 
+  - Strategy Pattern (Interchangeable algorithms behind a common interface)
+  - Decorator Pattern (Wrapping strategies for Free Shipping / Discounts)
+  - Value Object (Immutable PriceBreakdown)
+  - Single Source of Truth (SSOT via DB Config)
+  - Fail-Fast Principle (503 on missing config to prevent financial loss)
 
 ✅ STRICT SINGLE SOURCE OF TRUTH (SSOT).
 ✅ NO hardcoded fallbacks. All pricing MUST come from the live Database.
-✅ Fails gracefully with 503 Error if DB config is missing (No Financial Loss).
+✅ Fails gracefully with 503 Error if DB config is missing.
 """
 from __future__ import annotations
 
@@ -26,19 +34,21 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PriceBreakdown:
-    """Immutable value object — safe to pass around, no accidental mutation."""
+    """Immutable value object — safe to pass around, prevents accidental mutation."""
     subtotal: Decimal
     shipping: Decimal
     tax: Decimal
     total: Decimal
+    currency: str
 
-    def as_dict(self) -> dict[str, float]:
-        """Convert to dict for database insertion"""
+    def as_dict(self) -> dict[str, Any]:
+        """Convert to dict for database insertion and API responses"""
         return {
-            "subtotal":      float(self.subtotal),
-            "shipping_cost": float(self.shipping),
+            "subtotal":      float(round(self.subtotal, 2)),
+            "shipping_cost": float(round(self.shipping, 2)),
             "tax_amount":    float(round(self.tax, 2)),
             "total_amount":  float(round(self.total, 2)),
+            "currency":      self.currency
         }
     
     @property
@@ -50,7 +60,7 @@ class PriceBreakdown:
     def tax_rate_applied(self) -> Decimal:
         """Calculate effective tax rate"""
         taxable = self.subtotal + self.shipping
-        if taxable == Decimal("0"):
+        if taxable <= Decimal("0"):
             return Decimal("0")
         return self.tax / taxable
 
@@ -62,11 +72,10 @@ class PriceBreakdown:
 class PricingStrategy(ABC):
     """
     Abstract base — concrete strategies implement this.
-    Open for extension (add new strategies), closed for modification.
+    Open for extension (add new strategies), closed for modification (OCP).
     """
-
     @abstractmethod
-    def calculate(self, subtotal: Decimal) -> PriceBreakdown:
+    def calculate(self, subtotal: Decimal | float) -> PriceBreakdown:
         """Calculate complete price breakdown from subtotal"""
         ...
 
@@ -79,31 +88,35 @@ class StandardPricing(PricingStrategy):
     """
     Default pricing: free shipping above threshold, flat fee below, fixed tax rate.
     """
-
     def __init__(
         self,
         shipping_threshold: Decimal,
         shipping_flat: Decimal,
         tax_rate: Decimal,
+        currency: str
     ) -> None:
         self._threshold = shipping_threshold
         self._flat = shipping_flat
         self._tax_rate = tax_rate
+        self._currency = currency
 
-    def calculate(self, subtotal: Decimal) -> PriceBreakdown:
-        # [FIX] Empty Cart Safety
-        if subtotal <= Decimal("0"):
-            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"))
+    def calculate(self, subtotal: Decimal | float) -> PriceBreakdown:
+        sub = Decimal(str(subtotal))
+        
+        # Empty Cart Safety
+        if sub <= Decimal("0"):
+            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
             
-        shipping = Decimal("0") if subtotal >= self._threshold else self._flat
-        tax = (subtotal + shipping) * self._tax_rate
-        total = subtotal + shipping + tax
+        shipping = Decimal("0") if sub >= self._threshold else self._flat
+        tax = (sub + shipping) * self._tax_rate
+        total = sub + shipping + tax
         
         return PriceBreakdown(
-            subtotal=subtotal,
+            subtotal=sub,
             shipping=shipping,
             tax=tax,
             total=total,
+            currency=self._currency
         )
 
 
@@ -111,64 +124,67 @@ class ZeroTaxPricing(PricingStrategy):
     """
     For tax-exempt B2B customers or specific regions.
     """
-
-    def __init__(self, shipping_threshold: Decimal, shipping_flat: Decimal) -> None:
+    def __init__(self, shipping_threshold: Decimal, shipping_flat: Decimal, currency: str) -> None:
         self._threshold = shipping_threshold
         self._flat = shipping_flat
+        self._currency = currency
 
-    def calculate(self, subtotal: Decimal) -> PriceBreakdown:
-        if subtotal <= Decimal("0"):
-            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"))
+    def calculate(self, subtotal: Decimal | float) -> PriceBreakdown:
+        sub = Decimal(str(subtotal))
+        if sub <= Decimal("0"):
+            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
             
-        shipping = Decimal("0") if subtotal >= self._threshold else self._flat
-        total = subtotal + shipping
+        shipping = Decimal("0") if sub >= self._threshold else self._flat
+        total = sub + shipping
         
         return PriceBreakdown(
-            subtotal=subtotal,
+            subtotal=sub,
             shipping=shipping,
             tax=Decimal("0"),
             total=total,
+            currency=self._currency
         )
 
 
 class DiscountPricing(PricingStrategy):
     """
-    Percentage discount on subtotal before tax & shipping.
+    Decorator Pattern: Applies Percentage discount on subtotal before tax & shipping.
     """
-
     def __init__(self, base_strategy: PricingStrategy, discount_pct: Decimal):
         self._base = base_strategy
         self._discount = discount_pct / Decimal("100")
 
-    def calculate(self, subtotal: Decimal) -> PriceBreakdown:
-        if subtotal <= Decimal("0"):
-            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"))
+    def calculate(self, subtotal: Decimal | float) -> PriceBreakdown:
+        sub = Decimal(str(subtotal))
+        if sub <= Decimal("0"):
+            return self._base.calculate(Decimal("0"))
             
-        discounted = subtotal * (Decimal("1") - self._discount)
+        discounted = sub * (Decimal("1") - self._discount)
         return self._base.calculate(discounted)
 
 
 class FreeShippingPricing(PricingStrategy):
-    """Always free shipping — wraps another strategy (VIP customers)."""
-
+    """Decorator Pattern: Always free shipping — wraps another strategy (e.g., VIP customers)."""
     def __init__(self, base_strategy: PricingStrategy):
         self._base = base_strategy
 
-    def calculate(self, subtotal: Decimal) -> PriceBreakdown:
-        if subtotal <= Decimal("0"):
-            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"))
+    def calculate(self, subtotal: Decimal | float) -> PriceBreakdown:
+        sub = Decimal(str(subtotal))
+        if sub <= Decimal("0"):
+            return self._base.calculate(Decimal("0"))
             
-        original = self._base.calculate(subtotal)
+        original = self._base.calculate(sub)
         
-        # [FIX] Properly re-calculate tax without the shipping portion
+        # Properly re-calculate tax without the shipping portion
         tax_rate = original.tax_rate_applied
-        new_tax = subtotal * tax_rate
+        new_tax = sub * tax_rate
         
         return PriceBreakdown(
-            subtotal=subtotal,
+            subtotal=sub,
             shipping=Decimal("0"),
             tax=new_tax,
-            total=subtotal + new_tax,
+            total=sub + new_tax,
+            currency=original.currency
         )
 
 
@@ -193,24 +209,27 @@ def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
 
     tax_enabled = config.get("tax_enabled", True)
     shipping_enabled = config.get("shipping_enabled", True)
+    currency = config.get("currency", "INR")
     
     tax_rate = Decimal(str(config.get("tax_rate", 18.0))) / Decimal("100")
     shipping_flat = Decimal(str(config.get("shipping_flat", 99.0)))
     shipping_threshold = Decimal(str(config.get("shipping_threshold", 999.0)))
     
-    # If tax disabled → zero tax
+    # If tax disabled → zero tax strategy
     if not tax_enabled:
         return ZeroTaxPricing(
             shipping_threshold=shipping_threshold if shipping_enabled else Decimal("0"),
             shipping_flat=shipping_flat if shipping_enabled else Decimal("0"),
+            currency=currency
         )
     
-    # If shipping disabled → always free shipping
+    # If shipping disabled → flat 0 shipping strategy
     if not shipping_enabled:
         return StandardPricing(
             shipping_threshold=Decimal("0"),
             shipping_flat=Decimal("0"),
             tax_rate=tax_rate,
+            currency=currency
         )
     
     # Default: both enabled
@@ -218,6 +237,7 @@ def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
         shipping_threshold=shipping_threshold,
         shipping_flat=shipping_flat,
         tax_rate=tax_rate,
+        currency=currency
     )
 
 
@@ -227,11 +247,12 @@ def get_pricing_for_user(
 ) -> PricingStrategy:
     """
     Factory — returns strategy based on user attributes AND live DB config.
-    Strictly depends on the database configuration.
+    Example: Apply VIP Free Shipping or B2B Zero Tax decorators here.
     """
-    # Example: If user has a specific role, wrap the DB pricing:
-    # if user.get("vip_tier") == "platinum":
-    #     base = get_pricing_from_config(config)
-    #     return FreeShippingPricing(base)
-    
-    return get_pricing_from_config(config)
+    base_strategy = get_pricing_from_config(config)
+
+    # Future scaling example (Decorator Pattern in action):
+    # if user.get("role") == "vip":
+    #     return FreeShippingPricing(base_strategy)
+
+    return base_strategy
