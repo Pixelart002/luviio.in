@@ -10,8 +10,8 @@ from .base import BaseRepository
 logger = logging.getLogger(__name__)
 
 class UserRepository(BaseRepository):
-    def upsert_profile(self, user_id: str, email: str, full_name: str, phone: str = "") -> None:
-        """Create or update a user profile after registration."""
+    def upsert_profile(self, user_id: str, email: str, full_name: str, phone: str = "") -> dict[str, Any] | None:
+        """Create or update a user profile after registration. Returns the upserted profile."""
         try:
             self.admin_sb.table("users").upsert(
                 {
@@ -22,6 +22,8 @@ class UserRepository(BaseRepository):
                 },
                 on_conflict="id"
             ).execute()
+            # Fetch and return the profile so callers can use it immediately
+            return self.get_user_by_id(user_id)
         except Exception as e:
             logger.error("Failed to upsert user profile | id=%s: %s", user_id[:8], e)
             raise
@@ -34,6 +36,7 @@ class UserRepository(BaseRepository):
         except Exception as e:
             logger.error("Failed to fetch user | id=%s: %s", user_id[:8], e)
             return None
+
     def get_profile(self, user_id: str) -> dict[str, Any] | None:
         """Fetch user profile by auth user ID. Alias for get_user_by_id."""
         return self.get_user_by_id(user_id)
