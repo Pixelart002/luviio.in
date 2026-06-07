@@ -78,8 +78,7 @@ def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
     
     Returns empty dict on failure — caller handles.
     """
-    sb = get_admin_supabase()
-    repo = UserRepository(sb)
+    repo = UserRepository()
 
     auth_user_id = str(getattr(auth_user, "id", ""))
     if not auth_user_id:
