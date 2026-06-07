@@ -79,9 +79,9 @@ def _calculate_cart_pricing(repo: CartRepository, cart: dict[str, Any]) -> dict[
 
     return {
         "items": enriched, "item_count": len(enriched),
-        "subtotal": breakdown.subtotal, "shipping_cost": breakdown.shipping_cost,
-        "tax_amount": breakdown.tax_amount, "total_amount": breakdown.total_amount,
-        "free_shipping_eligible": breakdown.shipping_cost == 0 and subtotal > 0,
+        "subtotal": breakdown.subtotal, "shipping_cost": breakdown.shipping,
+        "tax_amount": breakdown.tax, "total_amount": breakdown.total,
+        "free_shipping_eligible": breakdown.shipping == 0 and subtotal > 0,
         "amount_to_free_shipping": round(amount_to_free, 2),
         "free_shipping_threshold": float(pricing_engine.shipping_threshold),
         "tax_rate_pct": float(pricing_engine.tax_rate * 100),
