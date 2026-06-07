@@ -45,6 +45,7 @@ CREATE TABLE public.orders (
   shipping_cost numeric,
   tax_amount numeric,
   total_amount numeric,
+  currency text DEFAULT 'INR',
   stripe_payment_intent text,
   shipping_line1 text,
   shipping_line2 text,
