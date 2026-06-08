@@ -1,167 +1,47 @@
 """
 Luviio — FastAPI Application Factory
 =====================================
-main.py: Application entry point, middleware stack, and lifecycle management.
-
-Architecture:
-  • Lifespan: init clients → register event handlers → graceful shutdown
-  • Middleware: CORS → RequestID → MaxBody → GZip → HideServer → Security → RateLimit
-  • Routers: Modular, prefixed with /api/v1
-  • Error handling: Handled by core/exceptions.py (Global Exception Handlers)
+Path: app/main.py
 
 To run:
   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
 import logging
 from contextlib import asynccontextmanager
-from contextvars import ContextVar
 from typing import AsyncGenerator
+from fastapi import FastAPI
 
-import sentry_sdk
-from fastapi import FastAPI, Request, status, HTTPException
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-
-# 🔥 ARCHITECTURE UPDATES: Core Imports
+# 🔥 Core Infrastructure
 from app.core.config import settings
-from app.core.supabase import init_clients, get_admin_supabase
+from app.core.logger import setup_logging
+from app.core.monitoring import init_sentry
+from app.core.supabase import init_clients
+from app.core.setup_middlewares import apply_middlewares
 from app.core.exceptions import register_exception_handlers
-
-# 🔥 ARCHITECTURE UPDATES: Routers
-from app.api.v1.routers import (
-    auth, users, products, orders, payments, 
-    push, cart, invoice, admin_verify
-)
-
-# 🔥 ARCHITECTURE UPDATES: Middlewares
-from app.api.middlewares.security import (
-    RequestIDMiddleware,
-    MaxBodySizeMiddleware,
-    GZipMiddleware,
-    HideServerHeaderMiddleware,
-    SecurityHeadersMiddleware,
-)
-from app.api.middlewares.cors import cors_middleware
-from app.api.middlewares.logger import PureWindowLoggerMiddleware 
-
-# 🔥 ARCHITECTURE UPDATES: Hooks (Background Tasks)
 from app.hooks.registry import register_all_hooks
 
+# 🔥 Routers
+from app.api.health import router as health_router
+from app.api.v1.api import api_router
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  LOGGING SETUP
-# ══════════════════════════════════════════════════════════════════════════════
-
-# Suppress noisy httpx logs in production
-logging.getLogger("httpx").setLevel(logging.WARNING)
-
-
-class HealthCheckFilter(logging.Filter):
-    """Filter out health check requests from access logs to reduce noise."""
-    def filter(self, record: logging.LogRecord) -> bool:
-        return "/health" not in record.getMessage()
-
-
-logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
-
-
-# ── Request ID Context ────────────────────────────────────────────────────────
-_request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
-
-
-class RequestIDFilter(logging.Filter):
-    """Inject request_id into every log record for tracing."""
-    def filter(self, record: logging.LogRecord) -> bool:
-        record.request_id = _request_id_ctx.get("-")
-        return True
-
-
-# Configure root logger
-logging.basicConfig(
-    level=logging.DEBUG if settings.APP_ENV == "development" else logging.INFO,
-    format="%(asctime)s | %(levelname)s | [%(request_id)s] | %(name)s | %(message)s",
-)
-
-# Apply request_id filter to all handlers
-_request_filter = RequestIDFilter()
-for handler in logging.root.handlers:
-    handler.addFilter(_request_filter)
-
+# ── Initialization ────────────────────────────────────────────────────────────
+setup_logging()
+init_sentry()
 logger = logging.getLogger(__name__)
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  RATE LIMITER
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _get_client_ip(request: Request) -> str:
-    """
-    Extract real client IP considering proxy headers.
-    Checks: X-Forwarded-For → X-Real-IP → CF-Connecting-IP → direct.
-    """
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip.strip()
-
-    cf_ip = request.headers.get("CF-Connecting-IP")
-    if cf_ip:
-        return cf_ip.strip()
-
-    return request.client.host if request.client else "unknown"
-
-
-limiter = Limiter(
-    key_func=_get_client_ip,
-    default_limits=[f"{settings.RATE_LIMIT_PER_MINUTE}/minute"],
-)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  LIFESPAN — Startup & Shutdown
-# ══════════════════════════════════════════════════════════════════════════════
-
+# ── Lifespan — Startup & Shutdown ─────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """
-    Application lifecycle:
-      Startup:  Initialize Supabase clients, register event handlers
-      Shutdown: Cleanup resources gracefully
-    """
     logger.info("🚀 Starting %s [%s]", settings.APP_NAME, settings.APP_ENV)
-
-    # Initialize Supabase clients (admin + public)
     init_clients()
-
-    # Register event handlers (push notifications, emails) mapped via Event Bus
     register_all_hooks()
-
     logger.info("✅ Application ready")
-
+    
     yield  # Application runs here
-
+    
     logger.info("👋 Shutting down %s", settings.APP_NAME)
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  SENTRY INITIALIZATION
-# ══════════════════════════════════════════════════════════════════════════════
-
-sentry_sdk.init(
-    dsn="https://8d98c50d41677e226c0ad55b901fab20@o4511499364270080.ingest.us.sentry.io/4511499512446976",
-    send_default_pii=True,           # Adds user data like IP and request headers
-    traces_sample_rate=1.0,          # 100% performance monitoring
-    environment=settings.APP_ENV,    # Tags errors with production/development
-)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  FASTAPI APP
-# ══════════════════════════════════════════════════════════════════════════════
-
+# ── FastAPI App Instance ──────────────────────────────────────────────────────
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
@@ -171,84 +51,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  MIDDLEWARE STACK (Order Matters!)
-# ══════════════════════════════════════════════════════════════════════════════
-
-# 1. CORS — Must be first (preflight handling)
-app.middleware("http")(cors_middleware)
-
-# 2. Request ID — Tracing (now as proper ASGI middleware)
-app.add_middleware(RequestIDMiddleware)
-
-# 3. Max Body Size — DoS protection
-app.add_middleware(MaxBodySizeMiddleware, max_bytes=10 * 1024 * 1024)
-
-# 4. GZip Compression — Reduce response size by 50-80%
-app.add_middleware(GZipMiddleware, min_size=500, compression_level=6)
-
-# 5. Hide Server Header — Prevent fingerprinting
-app.add_middleware(HideServerHeaderMiddleware)
-
-# 6. Security Headers — HSTS, X-Frame-Options, etc.
-app.add_middleware(SecurityHeadersMiddleware)
-
-# 7. Rate Limiter — Global rate limiting
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# 8. Pure Window Logger
-app.add_middleware(PureWindowLoggerMiddleware)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  ROUTERS — Modular & Prefixed
-# ══════════════════════════════════════════════════════════════════════════════
-
-PREFIX = "/api/v1"
-
-app.include_router(auth.router,         prefix=PREFIX)
-app.include_router(users.router,        prefix=PREFIX)
-app.include_router(products.router,     prefix=PREFIX)
-app.include_router(orders.router,       prefix=PREFIX)
-app.include_router(payments.router,     prefix=PREFIX)
-app.include_router(push.router,         prefix=PREFIX)
-app.include_router(admin_verify.router, prefix=PREFIX)
-app.include_router(cart.router,         prefix=PREFIX)
-app.include_router(invoice.router,      prefix=PREFIX)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  GLOBAL EXCEPTION HANDLERS
-# ══════════════════════════════════════════════════════════════════════════════
-
-# 🔥 Registers all global exception handlers (PostgrestError, general Exception, etc.)
+# ── App Configuration ─────────────────────────────────────────────────────────
+apply_middlewares(app)
 register_exception_handlers(app)
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  HEALTH CHECK
-# ══════════════════════════════════════════════════════════════════════════════
-
-@app.get("/health", tags=["Health"])
-def health_check() -> dict[str, str]:
-    """
-    Health check endpoint for monitoring and load balancers.
-    Verifies database connectivity. Returns 503 if DB is down.
-    """
-    try:
-        sb = get_admin_supabase()
-        sb.table("products").select("id", count="exact").limit(1).execute()
-    except Exception as exc:
-        logger.error("Health check failed — database unreachable: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database unreachable",
-        )
-
-    return {
-        "status": "ok",
-        "app": settings.APP_NAME,
-        "env": settings.APP_ENV,
-    }
+# ── Routers ───────────────────────────────────────────────────────────────────
+app.include_router(health_router)
+app.include_router(api_router, prefix="/api/v1")
