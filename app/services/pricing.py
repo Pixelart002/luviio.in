@@ -1,19 +1,24 @@
 """
-Pricing Service — Top Tier Architecture (SSOT)
-=====================================================
-Architecture Layer: Services (Domain Logic)
+Pricing Service — SSOT Architecture
+=====================================
 Path: app/services/pricing.py
 
-Patterns Applied: 
-  - Strategy Pattern (Interchangeable algorithms behind a common interface)
-  - Decorator Pattern (Wrapping strategies for Free Shipping / Discounts)
-  - Value Object (Immutable PriceBreakdown)
-  - Single Source of Truth (SSOT via DB Config)
-  - Fail-Fast Principle (503 on missing config to prevent financial loss)
+Patterns:
+  - Strategy Pattern  (Interchangeable algorithms)
+  - Decorator Pattern (Free Shipping / Discount wrappers)
+  - Value Object      (Immutable PriceBreakdown)
+  - SSOT              (All config from DB, zero hardcoded fallbacks)
+  - Fail-Fast         (503 on missing config — prevents financial loss)
 
-✅ STRICT SINGLE SOURCE OF TRUTH (SSOT).
-✅ NO hardcoded fallbacks. All pricing MUST come from the live Database.
-✅ Fails gracefully with 503 Error if DB config is missing.
+PriceBreakdown field names:
+  .subtotal   → as_dict() → "subtotal"
+  .shipping   → as_dict() → "shipping_cost"   ← NOTE: different key name!
+  .tax        → as_dict() → "tax_amount"
+  .total      → as_dict() → "total_amount"
+  .currency   → as_dict() → "currency"
+
+Callers that need API-friendly keys:  use breakdown.as_dict()
+Callers that need raw Decimal values: use breakdown.shipping (not .shipping_cost)
 """
 from __future__ import annotations
 
@@ -34,31 +39,46 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PriceBreakdown:
-    """Immutable value object — safe to pass around, prevents accidental mutation."""
+    """
+    Immutable value object — safe to pass around, prevents accidental mutation.
+
+    IMPORTANT — field names vs API response keys:
+      .shipping  ≠  "shipping_cost"
+      .tax       ≠  "tax_amount"
+      .total     ≠  "total_amount"
+
+    Always use .as_dict() when building the API JSON response.
+    Use the raw attributes (.shipping, .tax, .total) for internal logic.
+    """
     subtotal: Decimal
     shipping: Decimal
-    tax: Decimal
-    total: Decimal
+    tax:      Decimal
+    total:    Decimal
     currency: str
 
     def as_dict(self) -> dict[str, Any]:
-        """Convert to dict for database insertion and API responses"""
+        """
+        Convert to API-response dict.
+        Maps internal field names to the public API key names:
+          .shipping → "shipping_cost"
+          .tax      → "tax_amount"
+          .total    → "total_amount"
+        """
         return {
             "subtotal":      float(round(self.subtotal, 2)),
             "shipping_cost": float(round(self.shipping, 2)),
-            "tax_amount":    float(round(self.tax, 2)),
-            "total_amount":  float(round(self.total, 2)),
-            "currency":      self.currency
+            "tax_amount":    float(round(self.tax,      2)),
+            "total_amount":  float(round(self.total,    2)),
+            "currency":      self.currency,
         }
-    
+
     @property
     def shipping_is_free(self) -> bool:
-        """Check if shipping is free"""
         return self.shipping == Decimal("0")
-    
+
     @property
     def tax_rate_applied(self) -> Decimal:
-        """Calculate effective tax rate"""
+        """Effective tax rate on taxable base (subtotal + shipping)."""
         taxable = self.subtotal + self.shipping
         if taxable <= Decimal("0"):
             return Decimal("0")
@@ -66,42 +86,33 @@ class PriceBreakdown:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  STRATEGY INTERFACE
+#  ABSTRACT STRATEGY
 # ══════════════════════════════════════════════════════════════════════════════
 
 class PricingStrategy(ABC):
     """
-    Abstract base — concrete strategies implement this.
-    Open for extension (add new strategies), closed for modification (OCP).
+    Abstract base — open for extension, closed for modification (OCP).
+    Add new strategies (RegionalPricing, B2BPricing…) without touching order code.
     """
+
     @abstractmethod
-    def calculate(self, subtotal: Decimal | float) -> PriceBreakdown:
-        """Calculate complete price breakdown from subtotal"""
-        ...
+    def calculate(self, subtotal: Decimal | float) -> PriceBreakdown: ...
 
     @property
     @abstractmethod
-    def shipping_enabled(self) -> bool:
-        """Whether shipping costs are applied."""
-        ...
+    def shipping_enabled(self) -> bool: ...
 
     @property
     @abstractmethod
-    def shipping_threshold(self) -> Decimal:
-        """Subtotal above which shipping is free."""
-        ...
+    def shipping_threshold(self) -> Decimal: ...
 
     @property
     @abstractmethod
-    def tax_rate(self) -> Decimal:
-        """Effective tax rate as a decimal fraction (e.g. 0.18 for 18%)."""
-        ...
+    def tax_rate(self) -> Decimal: ...
 
     @property
     @abstractmethod
-    def currency(self) -> str:
-        """Currency code for this pricing strategy."""
-        ...
+    def currency(self) -> str: ...
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -110,19 +121,20 @@ class PricingStrategy(ABC):
 
 class StandardPricing(PricingStrategy):
     """
-    Default pricing: free shipping above threshold, flat fee below, fixed tax rate.
+    Default: free shipping above threshold, flat fee below, fixed tax rate.
     """
+
     def __init__(
         self,
         shipping_threshold: Decimal,
-        shipping_flat: Decimal,
-        tax_rate: Decimal,
-        currency: str
+        shipping_flat:      Decimal,
+        tax_rate:           Decimal,
+        currency:           str,
     ) -> None:
         self._threshold = shipping_threshold
-        self._flat = shipping_flat
-        self._tax_rate = tax_rate
-        self._currency = currency
+        self._flat      = shipping_flat
+        self._tax_rate  = tax_rate
+        self._currency  = currency
 
     @property
     def shipping_enabled(self) -> bool:
@@ -142,21 +154,19 @@ class StandardPricing(PricingStrategy):
 
     def calculate(self, subtotal: Decimal | float) -> PriceBreakdown:
         sub = Decimal(str(subtotal))
-        
-        # Empty Cart Safety
         if sub <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
-            
+
         shipping = Decimal("0") if sub >= self._threshold else self._flat
-        tax = (sub + shipping) * self._tax_rate
-        total = sub + shipping + tax
-        
+        tax      = (sub + shipping) * self._tax_rate
+        total    = sub + shipping + tax
+
         return PriceBreakdown(
             subtotal=sub,
             shipping=shipping,
             tax=tax,
             total=total,
-            currency=self._currency
+            currency=self._currency,
         )
 
 
@@ -164,10 +174,16 @@ class ZeroTaxPricing(PricingStrategy):
     """
     For tax-exempt B2B customers or specific regions.
     """
-    def __init__(self, shipping_threshold: Decimal, shipping_flat: Decimal, currency: str) -> None:
+
+    def __init__(
+        self,
+        shipping_threshold: Decimal,
+        shipping_flat:      Decimal,
+        currency:           str,
+    ) -> None:
         self._threshold = shipping_threshold
-        self._flat = shipping_flat
-        self._currency = currency
+        self._flat      = shipping_flat
+        self._currency  = currency
 
     @property
     def shipping_enabled(self) -> bool:
@@ -189,25 +205,26 @@ class ZeroTaxPricing(PricingStrategy):
         sub = Decimal(str(subtotal))
         if sub <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
-            
+
         shipping = Decimal("0") if sub >= self._threshold else self._flat
-        total = sub + shipping
-        
+        total    = sub + shipping
+
         return PriceBreakdown(
             subtotal=sub,
             shipping=shipping,
             tax=Decimal("0"),
             total=total,
-            currency=self._currency
+            currency=self._currency,
         )
 
 
 class DiscountPricing(PricingStrategy):
     """
-    Decorator Pattern: Applies Percentage discount on subtotal before tax & shipping.
+    Decorator Pattern: applies percentage discount on subtotal before tax & shipping.
     """
-    def __init__(self, base_strategy: PricingStrategy, discount_pct: Decimal):
-        self._base = base_strategy
+
+    def __init__(self, base_strategy: PricingStrategy, discount_pct: Decimal) -> None:
+        self._base     = base_strategy
         self._discount = discount_pct / Decimal("100")
 
     @property
@@ -230,14 +247,18 @@ class DiscountPricing(PricingStrategy):
         sub = Decimal(str(subtotal))
         if sub <= Decimal("0"):
             return self._base.calculate(Decimal("0"))
-            
+
         discounted = sub * (Decimal("1") - self._discount)
         return self._base.calculate(discounted)
 
 
 class FreeShippingPricing(PricingStrategy):
-    """Decorator Pattern: Always free shipping — wraps another strategy (e.g., VIP customers)."""
-    def __init__(self, base_strategy: PricingStrategy):
+    """
+    Decorator Pattern: always free shipping.
+    Use for VIP customers or promotional periods.
+    """
+
+    def __init__(self, base_strategy: PricingStrategy) -> None:
         self._base = base_strategy
 
     @property
@@ -260,87 +281,89 @@ class FreeShippingPricing(PricingStrategy):
         sub = Decimal(str(subtotal))
         if sub <= Decimal("0"):
             return self._base.calculate(Decimal("0"))
-            
+
         original = self._base.calculate(sub)
-        
-        # Properly re-calculate tax without the shipping portion
         tax_rate = original.tax_rate_applied
-        new_tax = sub * tax_rate
-        
+        new_tax  = sub * tax_rate
+
         return PriceBreakdown(
             subtotal=sub,
             shipping=Decimal("0"),
             tax=new_tax,
             total=sub + new_tax,
-            currency=original.currency
+            currency=original.currency,
         )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  FACTORY FUNCTIONS (STRICT DB ONLY)
+#  FACTORY FUNCTIONS — STRICT DB ONLY, ZERO HARDCODED FALLBACKS
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
     """
-    Factory — returns strategy STRICTLY from pricing_config DB row.
-    🚨 FAANG RULE: Raises 503 Exception if config is missing (Prevents Financial Loss).
+    Factory — builds strategy strictly from pricing_config DB row.
+
+    🚨 Raises HTTP 503 if config is None.
+       This is intentional: missing config = potential financial loss = reject order.
     """
     if not config:
         logger.error(
             "CRITICAL: Pricing config missing from Database. "
-            "Order rejected to prevent financial loss."
+            "Rejecting request to prevent financial loss."
         )
         raise HTTPException(
-            status_code=503, 
-            detail="Pricing service is temporarily unavailable. Please try again later."
+            status_code=503,
+            detail="Pricing service temporarily unavailable. Please try again.",
         )
 
-    tax_enabled = config.get("tax_enabled", True)
+    tax_enabled      = config.get("tax_enabled", True)
     shipping_enabled = config.get("shipping_enabled", True)
-    currency = config.get("currency", "INR")
-    
-    tax_rate = Decimal(str(config.get("tax_rate", 18.0))) / Decimal("100")
-    shipping_flat = Decimal(str(config.get("shipping_flat", 99.0)))
+    currency         = config.get("currency", "INR")
+
+    tax_rate           = Decimal(str(config.get("tax_rate",           18.0))) / Decimal("100")
+    shipping_flat      = Decimal(str(config.get("shipping_flat",      99.0)))
     shipping_threshold = Decimal(str(config.get("shipping_threshold", 999.0)))
-    
-    # If tax disabled → zero tax strategy
+
+    # Tax disabled → ZeroTaxPricing
     if not tax_enabled:
         return ZeroTaxPricing(
             shipping_threshold=shipping_threshold if shipping_enabled else Decimal("0"),
-            shipping_flat=shipping_flat if shipping_enabled else Decimal("0"),
-            currency=currency
+            shipping_flat=shipping_flat           if shipping_enabled else Decimal("0"),
+            currency=currency,
         )
-    
-    # If shipping disabled → flat 0 shipping strategy
+
+    # Shipping disabled → flat 0 shipping
     if not shipping_enabled:
         return StandardPricing(
             shipping_threshold=Decimal("0"),
             shipping_flat=Decimal("0"),
             tax_rate=tax_rate,
-            currency=currency
+            currency=currency,
         )
-    
+
     # Default: both enabled
     return StandardPricing(
         shipping_threshold=shipping_threshold,
         shipping_flat=shipping_flat,
         tax_rate=tax_rate,
-        currency=currency
+        currency=currency,
     )
 
 
 def get_pricing_for_user(
-    user: dict[str, Any], 
-    config: dict[str, Any] | None
+    user:   dict[str, Any],
+    config: dict[str, Any] | None,
 ) -> PricingStrategy:
     """
-    Factory — returns strategy based on user attributes AND live DB config.
-    Example: Apply VIP Free Shipping or B2B Zero Tax decorators here.
+    Factory — returns strategy based on user role AND live DB config.
+    Decorator pattern example: wrap StandardPricing with FreeShippingPricing for VIPs.
     """
     base_strategy = get_pricing_from_config(config)
 
-    # Future scaling example (Decorator Pattern in action):
+    # Scaling hook — uncomment to activate:
     # if user.get("role") == "vip":
     #     return FreeShippingPricing(base_strategy)
+    # if user.get("is_b2b"):
+    #     return ZeroTaxPricing(...)
 
     return base_strategy
