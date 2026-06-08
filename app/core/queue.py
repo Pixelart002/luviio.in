@@ -1,24 +1,21 @@
 """
 Email Batch Queue — Production Grade
 =====================================
-Architecture Layer: Core Infrastructure
 Path: app/core/queue.py
 """
 import asyncio
 import logging
 import time
-from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Callable, Any
+from typing import Callable
 from functools import partial
 
 logger = logging.getLogger(__name__)
 
-# ── Configuration ─────────────────────────────────────────────────────────────
-BATCH_SIZE     = 10
+BATCH_SIZE = 10
 FLUSH_INTERVAL = 30
-DEDUP_WINDOW   = 300
+DEDUP_WINDOW = 300
 MAX_QUEUE_SIZE = 100
 CLEANUP_INTERVAL = 600
 
@@ -76,14 +73,9 @@ class EmailQueue:
                 await loop.run_in_executor(None, partial(send_fn, **send_kwargs))
                 self._metrics["sent"] += 1
                 return True
-            except RuntimeError:
-                try:
-                    send_fn(**send_kwargs)
-                    self._metrics["sent"] += 1
-                    return True
-                except Exception as exc:
-                    self._metrics["failed"] += 1
-                    return False
+            except Exception:
+                self._metrics["failed"] += 1
+                return False
         
         dedup_key = f"{to}|{subject}"
         now = time.time()
@@ -96,11 +88,9 @@ class EmailQueue:
                 self._metrics["deduped"] += 1
                 return False
             
-            if len(self._queue) >= MAX_QUEUE_SIZE:
-                needs_flush = True
+            if len(self._queue) >= MAX_QUEUE_SIZE: needs_flush = True
             
-            email = QueuedEmail(priority=priority, queued_at=now, to=to, subject=subject, html=html, send_fn=send_fn, send_kwargs=send_kwargs)
-            self._queue.append(email)
+            self._queue.append(QueuedEmail(priority=priority, queued_at=now, to=to, subject=subject, html=html, send_fn=send_fn, send_kwargs=send_kwargs))
             self._queue.sort(key=lambda x: (x.priority.value, x.queued_at))
             self._sent_dedup[dedup_key] = now
             self._metrics["queued"] += 1
@@ -139,41 +129,14 @@ class EmailQueue:
         
         for email in batch:
             try:
-                if loop:
-                    await loop.run_in_executor(None, partial(email.send_fn, **email.send_kwargs))
-                else:
-                    email.send_fn(**email.send_kwargs)
+                if loop: await loop.run_in_executor(None, partial(email.send_fn, **email.send_kwargs))
+                else: email.send_fn(**email.send_kwargs)
                 self._metrics["sent"] += 1
-            except Exception as exc:
+            except Exception:
                 self._metrics["failed"] += 1
-
-    def flush_sync(self) -> int:
-        batch = self._queue[:]
-        self._queue.clear()
-        if not batch: return 0
-        sent = 0
-        for email in batch:
-            try:
-                email.send_fn(**email.send_kwargs)
-                sent += 1
-                self._metrics["sent"] += 1
-            except Exception as exc:
-                self._metrics["failed"] += 1
-        return sent
-
-    def get_metrics(self) -> dict[str, int]:
-        return {**self._metrics, "queue_depth": len(self._queue), "dedup_entries": len(self._sent_dedup)}
-    
-    def get_queue_depth(self) -> int:
-        return len(self._queue)
 
 _queue = EmailQueue()
-
-def get_email_queue() -> EmailQueue:
-    return _queue
+def get_email_queue() -> EmailQueue: return _queue
 
 async def queue_email(to: str, subject: str, html: str, send_fn: Callable, priority: EmailPriority = EmailPriority.NORMAL) -> bool:
     return await get_email_queue().enqueue(to, subject, html, send_fn, priority=priority)
-
-async def send_immediate_email(to: str, subject: str, html: str, send_fn: Callable) -> bool:
-    return await get_email_queue().enqueue(to, subject, html, send_fn, priority=EmailPriority.IMMEDIATE)

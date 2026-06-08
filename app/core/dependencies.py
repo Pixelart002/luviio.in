@@ -1,21 +1,20 @@
 """
-Dependencies — Hardened Production Grade
-=========================================
-SECURITY FIXES:
-  1. require_admin: FRESH DB read every call (no cache trust)
-  2. require_admin: is_active double-check
-  3. Token validation with proper error isolation
-  4. Auto-profile creation for new users
-  5. Structured logging for all auth failures
-  6. Timing-safe role comparison
+Dependencies — Async Hardened Production Grade
+==============================================
+Path: app/core/dependencies.py
+
+SECURITY & ARCHITECTURE FIXES:
+  1. ALL Supabase Auth and DB calls converted to async/await (Zero Blocking).
+  2. require_admin: FRESH DB read every call (no cache trust)
+  3. require_admin: is_active double-check
+  4. Token validation with proper error isolation
+  5. Auto-profile creation for new users
+  6. Structured logging for all auth failures
+  7. Timing-safe role comparison
 
 LOGGER INTEGRATION:
   Automatically injects user_name and user_id into request.state 
   for the Pure Window Logger Middleware.
-
-Architecture:
-  get_current_user → validate JWT → fetch/create profile → check active → update logger state
-  require_admin    → get_current_user → FRESH DB role check → guard active
 """
 import hmac
 import logging
@@ -25,8 +24,9 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from gotrue.errors import AuthApiError
 
-from app.repositories.user_repo import UserRepository
-from app.core.supabase import get_admin_supabase, get_supabase
+# 🔥 ARCHITECTURE IMPORTS (Async)
+from app.repositories.user_repo import AsyncUserRepository
+from app.core.supabase import get_async_admin_supabase, get_async_supabase
 
 logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer(auto_error=False)  # Don't auto-raise — we handle manually
@@ -36,9 +36,9 @@ bearer_scheme = HTTPBearer(auto_error=False)  # Don't auto-raise — we handle m
 #  TOKEN VALIDATION
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _validate_token(token: str) -> Any:
+async def _validate_token(token: str) -> Any:
     """
-    Validate JWT with Supabase Auth.
+    Validate JWT with Supabase Auth asynchronously.
     Returns auth user object or raises 401.
     
     Security: Never reveals WHY token is invalid (anti-enumeration).
@@ -49,9 +49,9 @@ def _validate_token(token: str) -> Any:
             detail="Authentication required",
         )
 
-    sb = get_admin_supabase()
+    sb = get_async_admin_supabase()
     try:
-        result = sb.auth.get_user(token)
+        result = await sb.auth.get_user(token)
         if not result or not hasattr(result, "user") or not result.user:
             logger.warning("Token validated but no user object returned")
             raise HTTPException(401, "Invalid token")
@@ -72,13 +72,13 @@ def _validate_token(token: str) -> Any:
 #  PROFILE MANAGEMENT
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
+async def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
     """
-    Fetch profile from DB. Auto-creates if missing (first login).
+    Fetch profile from DB asynchronously. Auto-creates if missing (first login).
     
     Returns empty dict on failure — caller handles.
     """
-    repo = UserRepository()
+    repo = AsyncUserRepository()
 
     auth_user_id = str(getattr(auth_user, "id", ""))
     if not auth_user_id:
@@ -86,7 +86,7 @@ def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
         return {}
 
     try:
-        profile = repo.get_profile(auth_user_id)
+        profile = await repo.get_profile(auth_user_id)
     except Exception as e:
         logger.error("Profile fetch failed for %s: %s", auth_user_id[:8], e)
         return {}
@@ -98,7 +98,7 @@ def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
         phone = getattr(auth_user, "phone", "") or ""
 
         try:
-            profile = repo.upsert_profile(
+            profile = await repo.upsert_profile(
                 user_id=auth_user_id,
                 email=email,
                 full_name=user_meta.get("full_name", "") or "",
@@ -127,9 +127,6 @@ async def get_current_user(
     Validate token → fetch/create profile → check active.
     
     Used by: All authenticated endpoints.
-    
-    Returns:
-        {"auth_user": SupabaseUser, "profile": dict}
     """
     # ── Check if token present ────────────────────────────────────────────
     if not credentials:
@@ -137,12 +134,12 @@ async def get_current_user(
         refresh_token = request.cookies.get("refresh_token")
         if refresh_token:
             try:
-                sb = get_supabase()
-                result = sb.auth.refresh_session(refresh_token)
+                sb = get_async_supabase()
+                result = await sb.auth.refresh_session(refresh_token)
                 if result and hasattr(result, "session") and result.session:
                     token = result.session.access_token
-                    auth_user = _validate_token(token)
-                    profile = _get_or_create_profile(auth_user)
+                    auth_user = await _validate_token(token)
+                    profile = await _get_or_create_profile(auth_user)
                     if profile and profile.get("is_active", True):
                         
                         # Update Logger State
@@ -160,8 +157,8 @@ async def get_current_user(
         )
 
     # ── Validate token ─────────────────────────────────────────────────────
-    auth_user = _validate_token(credentials.credentials)
-    profile = _get_or_create_profile(auth_user)
+    auth_user = await _validate_token(credentials.credentials)
+    profile = await _get_or_create_profile(auth_user)
 
     if not profile:
         raise HTTPException(
@@ -201,8 +198,8 @@ async def get_optional_user(
         return None
     
     try:
-        auth_user = _validate_token(credentials.credentials)
-        profile = _get_or_create_profile(auth_user)
+        auth_user = await _validate_token(credentials.credentials)
+        profile = await _get_or_create_profile(auth_user)
         if profile and profile.get("is_active", True):
             
             # ── Update Logger State ────────────────────────────────────────
@@ -221,13 +218,13 @@ async def get_optional_user(
 #  ADMIN GUARD — FRESH DB READ EVERY TIME
 # ══════════════════════════════════════════════════════════════════════════════
 
-def require_admin(
+async def require_admin(
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     FRESH DB read for admin role — NEVER trusts cache or JWT claims.
     """
-    sb = get_admin_supabase()
+    sb = get_async_admin_supabase()
     user_id = current.get("profile", {}).get("id", "")
 
     if not user_id:
@@ -236,7 +233,7 @@ def require_admin(
 
     # ── FRESH DB READ ──────────────────────────────────────────────────────
     try:
-        result = (
+        result = await (
             sb.table("users")
             .select("role, is_active")
             .eq("id", user_id)
