@@ -33,7 +33,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("🚀 Starting %s [%s]", settings.APP_NAME, settings.APP_ENV)
-    init_clients()
+    
+    # 🔥 FIX: Added 'await' here because init_clients is now an async function!
+    await init_clients()
+    
     register_all_hooks()
     logger.info("✅ Application ready")
     
