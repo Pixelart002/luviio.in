@@ -64,7 +64,7 @@ def _sanitize_order_list(orders: list) -> list:
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
- def create_order(request: Request, payload: OrderCreate, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+def create_order(request: Request, payload: OrderCreate, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     repo = OrderRepository()
     sb_admin = get_admin_supabase() 
     user_id = current["profile"]["id"]
