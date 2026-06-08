@@ -44,7 +44,7 @@ def _sanitize_notes(notes: str | None) -> str | None:
     if notes is None: return None
     return re.sub(r"<[^>]+>", "", notes).strip()
 
-def _sanitize_order(order: dict) -> dict:
+def  _sanitize_order(order: dict) -> dict:
     if not order: return order
     sanitized = {k: v for k, v in order.items() if k not in _INTERNAL_FIELDS}
     for field, mask_fn in _MASKED_FIELDS.items():
@@ -58,7 +58,7 @@ def _sanitize_order(order: dict) -> dict:
             del item["products"]
     return sanitized
 
-def _sanitize_order_list(orders: list) -> list:
+def  _sanitize_order_list(orders: list) -> list:
     return [_sanitize_order(o) for o in orders]
 
 
@@ -140,21 +140,24 @@ def create_order(request: Request, payload: OrderCreate, current: dict[str, Any]
 
 
 @router.get("/my", response_model=OrderListResponse)
- def my_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str | None = Query(None), current: dict[str, Any] = Depends(get_current_user)):
+
+def  my_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str | None = Query(None), current: dict[str, Any] = Depends(get_current_user)):
     if status_filter and status_filter not in VALID_STATUSES: raise HTTPException(400, f"Invalid status: {status_filter}")
     items, total =  OrderRepository().get_user_orders(current["profile"]["id"], status_filter, page, page_size)
     return {"items": _sanitize_order_list(items), "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
 
 
 @router.get("/my/{order_id}")
- def get_my_order(request: Request, order_id: UUID, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+
+def  get_my_order(request: Request, order_id: UUID, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     order =  OrderRepository().get_order_by_id(str(order_id), current["profile"]["id"])
     if not order: raise HTTPException(404, "Order not found")
     return _sanitize_order(order)
 
 
 @router.post("/my/{order_id}/cancel")
- def cancel_order(request: Request, order_id: UUID, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+
+def  cancel_order(request: Request, order_id: UUID, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     repo = OrderRepository()
     user_id = current["profile"]["id"]
     order =  repo.get_order_by_id(str(order_id), user_id)
@@ -181,14 +184,16 @@ def create_order(request: Request, payload: OrderCreate, current: dict[str, Any]
 
 
 @router.get("/", dependencies=[Depends(require_admin)], response_model=OrderListResponse)
- def list_all_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str | None = None):
+
+def  list_all_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str | None = None):
     if status_filter and status_filter not in VALID_STATUSES: raise HTTPException(400, "Invalid status")
     items, total =  OrderRepository().get_all_orders(status_filter, page, page_size)
     return {"items": _sanitize_order_list(items), "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
 
 
 @router.patch("/{order_id}", dependencies=[Depends(require_admin)])
- def admin_update_order(request: Request, order_id: UUID, payload: OrderAdminUpdate) -> dict[str, Any]:
+
+def  admin_update_order(request: Request, order_id: UUID, payload: OrderAdminUpdate) -> dict[str, Any]:
     repo = OrderRepository()
     current_res =  repo.get_order_for_admin_update(str(order_id))
     if not current_res: raise HTTPException(404, "Order not found")
