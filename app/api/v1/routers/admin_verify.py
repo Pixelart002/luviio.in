@@ -1,12 +1,7 @@
 """
-Admin Verification Router — Enterprise Grade
-=============================================
+Admin Verification Router — Async Enterprise Grade
+==================================================
 Path: app/api/v1/routers/admin_verify.py
-
-Architecture Upgrades:
-  1. No direct Supabase `sb.table()` queries.
-  2. Logic delegated to `AdminRepository`.
-  3. Schemas strictly enforced via `AdminVerifyResponse` and `AdminStatsResponse`.
 """
 import logging
 import time
@@ -18,7 +13,7 @@ from slowapi.util import get_remote_address
 
 # 🔥 ARCHITECTURE IMPORTS
 from app.core.dependencies import get_current_user
-from app.repositories.admin_repo import AdminRepository
+from app.repositories.admin_repo import AsyncAdminRepository
 from app.api.schemas.admin_dto import AdminVerifyResponse, AdminStatsResponse
 
 logger = logging.getLogger(__name__)
@@ -40,18 +35,13 @@ def _get_user_id(current_user: dict[str, Any]) -> str:
 
 @router.get("/verify", response_model=AdminVerifyResponse)
 @limiter.limit("30/minute")  
-def verify_admin(request: Request, current: dict[str, Any] = Depends(get_current_user)):
+async def verify_admin(request: Request, current: dict[str, Any] = Depends(get_current_user)):
     start = time.monotonic()
     client_ip = get_remote_address(request)
     user_id = _get_user_id(current)
     
-    admin_repo = AdminRepository()
-    
-    if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Admin verification requested for user: {user_id[:8]}...")
-        request.state.actions.append("Fetching live user profile via AdminRepository")
-    
-    profile = admin_repo.get_live_admin_profile(user_id)
+    admin_repo = AsyncAdminRepository()
+    profile = await admin_repo.get_live_admin_profile(user_id)
 
     if not profile:
         elapsed = time.monotonic() - start
@@ -67,9 +57,6 @@ def verify_admin(request: Request, current: dict[str, Any] = Depends(get_current
         time.sleep(max(0.0, _MIN_RESPONSE_SECONDS - elapsed))
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-    if hasattr(request.state, "actions"):
-        request.state.actions.append("Admin role and active status verified successfully ✅")
-
     safe_profile = {
         "id": profile.get("id"), "email": profile.get("email"),
         "full_name": profile.get("full_name"), "role": profile.get("role"),
@@ -78,30 +65,21 @@ def verify_admin(request: Request, current: dict[str, Any] = Depends(get_current
 
     return {"verified": True, "profile": safe_profile, "timestamp": int(time.time())}
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  ADMIN DASHBOARD STATS
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/stats", response_model=AdminStatsResponse)
 @limiter.limit("10/minute")
-def admin_stats(request: Request, current: dict[str, Any] = Depends(get_current_user)):
+async def admin_stats(request: Request, current: dict[str, Any] = Depends(get_current_user)):
     user_id = _get_user_id(current)
-    admin_repo = AdminRepository()
+    admin_repo = AsyncAdminRepository()
     
-    if hasattr(request.state, "actions"):
-        request.state.actions.append("Admin dashboard stats requested")
-    
-    profile = admin_repo.get_live_admin_profile(user_id)
+    profile = await admin_repo.get_live_admin_profile(user_id)
     if not profile or profile.get("role") != "admin" or not profile.get("is_active"):
         raise HTTPException(403, "Access denied")
 
-    if hasattr(request.state, "actions"):
-        request.state.actions.append("Aggregating metrics via AdminRepository...")
-
-    stats = admin_repo.get_dashboard_stats()
-
-    if hasattr(request.state, "actions"):
-        request.state.actions.append("Dashboard metrics aggregation complete")
+    # This now runs all 5 queries concurrently in the background!
+    stats = await admin_repo.get_dashboard_stats()
 
     return {"verified": True, "stats": stats, "timestamp": int(time.time())}
