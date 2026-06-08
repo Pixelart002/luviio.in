@@ -9,6 +9,7 @@ It MUST be awaited during initialization.
 import logging
 from typing import Optional
 from supabase import create_client, create_async_client, Client, AsyncClient, ClientOptions
+from gotrue import AsyncMemoryStorage
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -29,14 +30,15 @@ async def init_clients() -> None:
 
     try:
         opts = ClientOptions(auto_refresh_token=False)
+        async_opts = ClientOptions(auto_refresh_token=False, storage=AsyncMemoryStorage())
         
         # 1. Sync Clients
         _supabase = create_client(settings.SB_URL, settings.SB_KEY, options=opts)
         _admin_supabase = create_client(settings.SB_URL, settings.SB_SERVICE_ROLE_KEY, options=opts)
         
-        # 2. Async Clients (🔥 FIXED: Now properly awaited!)
-        _async_supabase = await create_async_client(settings.SB_URL, settings.SB_KEY, options=opts)
-        _async_admin_supabase = await create_async_client(settings.SB_URL, settings.SB_SERVICE_ROLE_KEY, options=opts)
+        # 2. Async Clients (async_opts uses AsyncMemoryStorage so await storage.remove_item() works)
+        _async_supabase = await create_async_client(settings.SB_URL, settings.SB_KEY, options=async_opts)
+        _async_admin_supabase = await create_async_client(settings.SB_URL, settings.SB_SERVICE_ROLE_KEY, options=async_opts)
         
         _initialized = True
         logger.info("✅ All Supabase clients (Sync & Async) initialized successfully")
