@@ -268,7 +268,6 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
     if event_type == "payment_intent.succeeded":
         order = repo.get_order_by_pi(pi_id)
         if not order or order["status"] != "pending": return {"message": "OK"}
-
         if not repo.update_order_status(order["id"], "paid", "pending"): return {"message": "OK"}
 
         repo.create_payment_record(order["id"], pi_id, event["amount"] / 100, "INR", "completed", "stripe")
@@ -286,22 +285,21 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
 
         repo.update_order_status(order["id"], "cancelled", "pending")
         
-        # We need raw Supabase client for stock restoration since it relies on atomic DB functions
         from app.core.supabase import get_admin_supabase
         sb = get_admin_supabase()
         for item in order.get("order_items", []):
             if item.get("product_id"): restore_stock(sb, item["product_id"], item["quantity"], f"webhook_{event_type}")
 
-        # Publish failed/cancel event for push notification
-        reason = "payment_canceled" if event_type == "payment_intent.canceled" else "payment_failed"
+        # 🔥 FIX: Trigger Order Failed Event for proper push notifications!
+        reason = "payment_canceled" if "canceled" in event_type else "payment_failed"
         try:
             get_event_bus().publish(OrderFailedEvent(
-                order=order,
+                order=order, 
                 customer_email=repo.get_customer_email(order.get("customer_id", "")),
-                customer_id=order.get("customer_id", ""),
-                reason=reason,
+                customer_id=order.get("customer_id", ""), 
+                reason=reason
             ))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Event publish failed for webhook failure: {e}")
 
     return {"message": "OK"}

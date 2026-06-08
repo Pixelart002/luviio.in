@@ -41,7 +41,7 @@ class _Copy:
     FAILED_PUSH_TITLE   = "Payment Failed — Order #{oid}"
     FAILED_PUSH_BODY    = "Your payment could not be processed. Please try again."
     CANCEL_PUSH_TITLE   = "Order #{oid} Cancelled"
-    CANCEL_PUSH_BODY    = "Your payment was cancelled. Items are still in your cart."
+    CANCEL_PUSH_BODY    = "Your order was successfully cancelled."
     SHIPPED_PUSH_TITLE  = "Order #{oid} Shipped!"
     SHIPPED_PUSH_BODY   = "Your order is on the way."
     SHIPPED_TRACKING    = " Tracking: {tracking}"
@@ -93,7 +93,7 @@ def handle_failed_push(event: OrderFailedEvent) -> None:
     oid = _safe_oid(order)
     
     if event.reason == "payment_canceled":
-        title, body, icon = _Copy.CANCEL_PUSH_TITLE.format(oid=oid), _Copy.CANCEL_PUSH_BODY, _Icon.CANCELLED
+        title, body, icon = _Copy.CANCEL_PUSH_TITLE.format(oid=oid), "Your payment was cancelled. Items are still in your cart.", _Icon.CANCELLED
     elif event.reason == "payment_failed":
         title, body, icon = _Copy.FAILED_PUSH_TITLE.format(oid=oid), _Copy.FAILED_PUSH_BODY, _Icon.FAILED
     else:
@@ -115,9 +115,11 @@ def handle_shipped_push(event: OrderShippedEvent) -> None:
     )
 
 def handle_status_push(event: OrderStatusChangedEvent) -> None:
+    # 🔥 FIX: Added 'cancelled' to status mappings!
     _CONFIG = {
         "delivered": (_Copy.DELIVERED_TITLE, _Copy.DELIVERED_BODY, _Icon.DELIVERED),
         "refunded":  (_Copy.REFUNDED_TITLE,  _Copy.REFUNDED_BODY,  _Icon.REFUNDED),
+        "cancelled": (_Copy.CANCEL_PUSH_TITLE, _Copy.CANCEL_PUSH_BODY, _Icon.CANCELLED),
     }
     cfg = _CONFIG.get(event.new_status)
     if not cfg: return
