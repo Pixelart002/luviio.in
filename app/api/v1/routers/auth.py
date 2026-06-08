@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
-from gotrue.errors import AuthApiError
+from supabase import AuthApiError  # 🔥 FIX: Use correct Supabase Exception class
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.concurrency import run_in_threadpool
@@ -84,9 +84,12 @@ async def register(request: Request, payload: RegisterRequest) -> dict[str, str]
 
     try:
         auth_user_id = await auth_repo.sign_up(payload.email, payload.password, user_name)
-    except AuthApiError:
+    except AuthApiError as e:
         _record_attempt(client_ip)
-    except Exception:
+        logger.warning(f"Registration AuthApiError: {e}")
+        raise HTTPException(400, "Registration failed: Email may already be in use or invalid.")
+    except Exception as e:
+        logger.error(f"Registration CRITICAL Error: {e}", exc_info=True)
         raise HTTPException(503, "Registration service unavailable.")
 
     if auth_user_id:
@@ -119,11 +122,20 @@ async def login(request: Request, response: Response, payload: LoginRequest) -> 
         if not session_data:
             _record_attempt(client_ip, payload.email)
             raise HTTPException(401, "Invalid email or password")
-    except (HTTPException, AuthApiError):
+            
+    except AuthApiError as e:
         _record_attempt(client_ip, payload.email)
+        logger.warning(f"Login rejected by Supabase: {e}")
         raise HTTPException(401, "Invalid email or password")
-    except Exception:
+        
+    except HTTPException:
+        raise
+        
+    except Exception as e:
+        # 🔥 FIX: Now we actually log the real error before throwing 503!
+        logger.error(f"Login CRITICAL Error: {e}", exc_info=True)
         raise HTTPException(503, "Authentication service unavailable")
+        
     finally:
         elapsed = time.monotonic() - start
         time.sleep(max(0.0, _MIN_RESPONSE_SECONDS - elapsed))
@@ -147,7 +159,8 @@ async def refresh(request: Request, response: Response, refresh_token: str | Non
         if not session_data:
             response.delete_cookie(**_COOKIE_KWARGS)
             raise HTTPException(401, "Invalid refresh token")
-    except Exception:
+    except Exception as e:
+        logger.error(f"Refresh CRITICAL Error: {e}", exc_info=True)
         response.delete_cookie(**_COOKIE_KWARGS)
         raise HTTPException(401, "Invalid or expired refresh token")
 
@@ -161,7 +174,8 @@ async def logout(request: Request, response: Response, refresh_token: str | None
             auth_repo = AsyncAuthRepository()
             session_data = await auth_repo.refresh_session(refresh_token)
             if session_data: await auth_repo.sign_out()
-        except Exception: pass
+        except Exception as e:
+            logger.error(f"Logout Error: {e}")
 
     response.delete_cookie(**_COOKIE_KWARGS)
     return {"message": "Logged out successfully"}
@@ -173,7 +187,7 @@ async def forgot_password(request: Request, payload: ForgotPasswordRequest) -> d
     if _check_brute_force(client_ip): raise HTTPException(429, "Too many attempts.")
     
     try: await AsyncAuthRepository().reset_password_email(payload.email)
-    except Exception: pass
+    except Exception as e: logger.error(f"Forgot password Error: {e}")
     return {"message": "If this email exists, a password reset link has been sent."}
 
 @router.post("/reset-password", response_model=MessageResponse)
@@ -183,7 +197,9 @@ async def reset_password(request: Request, payload: ResetPasswordRequest, curren
 
     try: await AsyncAuthRepository().admin_update_password(user_id, payload.new_password)
     except AuthApiError as e: raise HTTPException(400, f"Password reset failed: {e.message}")
-    except Exception: raise HTTPException(503, "Service unavailable")
+    except Exception as e: 
+        logger.error(f"Reset password Error: {e}")
+        raise HTTPException(503, "Service unavailable")
 
     return {"message": "Password updated successfully"}
 
