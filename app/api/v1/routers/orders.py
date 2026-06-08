@@ -39,11 +39,11 @@ STATUS_TRANSITIONS = {
 _INTERNAL_FIELDS = {"idempotency_key", "stripe_payment_intent", "customer_id", "updated_at"}
 _MASKED_FIELDS = {"stripe_payment_intent": lambda v: f"pi_***{v[-4:]}" if v and len(v) > 4 else None}
 
-def _sanitize_notes(notes: str | None) -> str | None:
+async  _sanitize_notes(notes: str | None) -> str | None:
     if notes is None: return None
     return re.sub(r"<[^>]+>", "", notes).strip()
 
-def _sanitize_order(order: dict) -> dict:
+async  _sanitize_order(order: dict) -> dict:
     if not order: return order
     sanitized = {k: v for k, v in order.items() if k not in _INTERNAL_FIELDS}
     for field, mask_fn in _MASKED_FIELDS.items():
@@ -57,12 +57,12 @@ def _sanitize_order(order: dict) -> dict:
             del item["products"]
     return sanitized
 
-def _sanitize_order_list(orders: list) -> list:
+async  _sanitize_order_list(orders: list) -> list:
     return [_sanitize_order(o) for o in orders]
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
-def create_order(request: Request, payload: OrderCreate, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+async  create_order(request: Request, payload: OrderCreate, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     repo = OrderRepository()
     sb_admin = get_admin_supabase() 
     user_id = current["profile"]["id"]
@@ -135,19 +135,19 @@ def create_order(request: Request, payload: OrderCreate, current: dict[str, Any]
     return result
 
 @router.get("/my", response_model=OrderListResponse)
-def my_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str | None = Query(None), current: dict[str, Any] = Depends(get_current_user)):
+async  my_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str | None = Query(None), current: dict[str, Any] = Depends(get_current_user)):
     if status_filter and status_filter not in VALID_STATUSES: raise HTTPException(400, f"Invalid status: {status_filter}")
     items, total = OrderRepository().get_user_orders(current["profile"]["id"], status_filter, page, page_size)
     return {"items": _sanitize_order_list(items), "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
 
 @router.get("/my/{order_id}")
-def get_my_order(request: Request, order_id: UUID, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+async  get_my_order(request: Request, order_id: UUID, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     order = OrderRepository().get_order_by_id(str(order_id), current["profile"]["id"])
     if not order: raise HTTPException(404, "Order not found")
     return _sanitize_order(order)
 
 @router.post("/my/{order_id}/cancel")
-def cancel_order(request: Request, order_id: UUID, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+async  cancel_order(request: Request, order_id: UUID, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     repo = OrderRepository()
     user_id = current["profile"]["id"]
     order = repo.get_order_by_id(str(order_id), user_id)
@@ -174,13 +174,13 @@ def cancel_order(request: Request, order_id: UUID, current: dict[str, Any] = Dep
     return {"status": "cancelled", "order_id": str(order_id)}
 
 @router.get("/", dependencies=[Depends(require_admin)], response_model=OrderListResponse)
-def list_all_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str | None = None):
+async  list_all_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str | None = None):
     if status_filter and status_filter not in VALID_STATUSES: raise HTTPException(400, "Invalid status")
     items, total = OrderRepository().get_all_orders(status_filter, page, page_size)
     return {"items": _sanitize_order_list(items), "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
 
 @router.patch("/{order_id}", dependencies=[Depends(require_admin)])
-def admin_update_order(request: Request, order_id: UUID, payload: OrderAdminUpdate) -> dict[str, Any]:
+async def admin_update_order(request: Request, order_id: UUID, payload: OrderAdminUpdate) -> dict[str, Any]:
     repo = OrderRepository()
     current_res = repo.get_order_for_admin_update(str(order_id))
     if not current_res: raise HTTPException(404, "Order not found")
