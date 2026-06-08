@@ -74,4 +74,4 @@ class OrderRepository(BaseRepository):
 
      def get_user_email(self, user_id: str) -> str | None:
         res = self.admin_sb.table("users").select("email").eq("id", user_id).maybe_single().execute()
-        return  res.data["email"] if res and res.data else None
+        return  res.data["email"] if res and res.data else None 

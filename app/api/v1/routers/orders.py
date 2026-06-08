@@ -225,4 +225,4 @@ def _sanitize_order_list(orders: list) -> list:
         except Exception: 
             pass
 
-    return _sanitize_order(result)
+    return _sanitize_order(result) 
