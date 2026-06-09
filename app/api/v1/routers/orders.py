@@ -135,4 +135,4 @@ async def admin_update_order(request: Request, order_id: UUID, payload: OrderAdm
         try: get_event_bus().publish(OrderStatusChangedEvent(order=result, customer_id=current_res["customer_id"], old_status=current_status, new_status=payload.status))
         except Exception: pass
 
-    return _sanitize_order(result)
+    return _sanitize_order(result) 
