@@ -28,13 +28,22 @@ class AsyncOrderRepository:
         if user_id: q = q.eq("customer_id", user_id)
         
         res = await q.execute()
-        if not res or not res.data: return None
+        if not res or not res.data:
+            return None
         updated_order = res.data[0]
 
+        # Restore stock — non‑fatal, best‑effort
         items_res = await self.admin_sb.table("order_items").select("product_id, quantity").eq("order_id", order_id).execute()
         for item in (items_res.data or []):
             if item.get("product_id"):
-                await self.admin_sb.rpc("increment_product_stock", {"p_id": item["product_id"], "p_qty": item["quantity"]}).execute()
+                try:
+                    await self.admin_sb.rpc("increment_product_stock", {
+                        "p_id": item["product_id"],
+                        "p_qty": item["quantity"]
+                    }).execute()
+                except Exception as e:
+                    logger.error(f"Stock restore failed for product {item['product_id']}: {e}")
+                    # Continue — order is already cancelled; stock can be corrected manually
         
         return updated_order
 
