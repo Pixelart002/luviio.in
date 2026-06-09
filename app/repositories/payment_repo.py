@@ -35,9 +35,10 @@ class AsyncPaymentRepository:
 
     async def get_order_by_idempotency_key(self, user_id: str, key: str) -> Optional[Dict[str, Any]]:
         """Check if an order was already created with this idempotency key."""
-        res = await self.admin_sb.table("orders").select("id, status, total_amount").eq("customer_id", user_id).eq("idempotency_key", key).maybe_single().execute()
-        # 🔥 FIX: Added strict safety check
-        return res.data if res and res.data else None
+        # Use limit(1) instead of maybe_single() to avoid HTTP 406 from PostgREST
+        # when duplicate rows exist (maybe_single() raises 406 if >1 row matches).
+        res = await self.admin_sb.table("orders").select("id, status, total_amount").eq("customer_id", user_id).eq("idempotency_key", key).limit(1).execute()
+        return res.data[0] if res and res.data else None
 
     async def get_shipping_address(self, address_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         res = await self.admin_sb.table("addresses").select("*").eq("id", address_id).eq("user_id", user_id).maybe_single().execute()
