@@ -3,8 +3,6 @@ Products Router — Async Enterprise Grade
 ========================================
 Path: app/api/v1/routers/products.py
 """
-from __future__ import annotations
-
 import logging
 import uuid
 from typing import Any
@@ -127,7 +125,6 @@ async def upload_image_endpoint(request: Request, product_id: uuid.UUID, file: U
     contents = await file.read()
     
     try:
-        # Offload CPU-heavy image processing to a background thread to prevent blocking the async loop
         url = await run_in_threadpool(
             upload_product_image, file_bytes=contents, product_id=pid, filename=file.filename or "unknown", generate_thumbnail=False
         )

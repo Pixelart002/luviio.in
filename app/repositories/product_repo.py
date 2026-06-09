@@ -4,8 +4,7 @@ Product Repository — Async Enterprise Grade
 Path: app/repositories/product_repo.py
 """
 import logging
-import uuid
-from typing import Any, Tuple, List
+from typing import Any
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
