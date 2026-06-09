@@ -37,7 +37,7 @@ class AsyncOrderRepository:
         for item in (items_res.data or []):
             if item.get("product_id"):
                 try:
-                    await self.admin_sb.rpc("increment_product_stock", {
+                    await self.admin_sb.rpc("increment_stock", {
                         "p_id": item["product_id"],
                         "p_qty": item["quantity"]
                     }).execute()
