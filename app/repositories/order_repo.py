@@ -21,8 +21,10 @@ class AsyncOrderRepository:
         return res.data
 
     async def cancel_order_and_restore_stock(self, order_id: str, user_id: Optional[str] = None) -> Optional[dict[str, Any]]:
-        """Atomically cancels order and restores stock using RPC."""
-        q = self.admin_sb.table("orders").update({"status": "cancelled"}).eq("id", order_id).eq("status", "pending")
+        """Atomically cancels order and restores stock — works for pending AND paid orders."""
+        q = self.admin_sb.table("orders").update({"status": "cancelled"}) \
+            .eq("id", order_id) \
+            .in_("status", ["pending", "paid"])  # ← Paid bhi allow
         if user_id: q = q.eq("customer_id", user_id)
         
         res = await q.execute()
