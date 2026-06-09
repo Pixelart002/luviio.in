@@ -56,7 +56,7 @@ class AsyncPaymentRepository:
                 qty = item["quantity"]
                 name = item.pop("product_name", "Unknown") 
                 
-                decrement_res = await self.admin_sb.rpc("decrement_product_stock", {"p_id": pid, "p_qty": qty}).execute()
+                decrement_res = await self.admin_sb.rpc("decrement_stock", {"p_id": pid, "p_qty": qty}).execute()
                 if not decrement_res or not decrement_res.data:
                     raise RuntimeError(f"Insufficient stock for {name}")
                 deducted_items.append((pid, qty))
@@ -73,7 +73,7 @@ class AsyncPaymentRepository:
         except Exception as e:
             logger.critical(f"[ROLLBACK] JIT Transaction failed: {e}")
             for pid, qty in deducted_items:
-                await self.admin_sb.rpc("increment_product_stock", {"p_id": pid, "p_qty": qty}).execute()
+                await self.admin_sb.rpc("increment_stock", {"p_id": pid, "p_qty": qty}).execute()
             raise RuntimeError(f"Order processing failed: {e}")
 
     async def create_payment_record(self, order_id: str, pi_id: str, amount: float, currency: str = "INR") -> None:
