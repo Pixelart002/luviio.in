@@ -1,6 +1,6 @@
 """
-Payment Repository — Async JIT Atomic Order Creation
-====================================================
+Payment Repository — Async JIT Atomic Order Creation (FINAL FIXED)
+==================================================================
 Path: app/repositories/payment_repo.py
 """
 import logging
@@ -29,15 +29,19 @@ class AsyncPaymentRepository:
         items_res = await self.admin_sb.table("cart_items").select(
             "product_id, quantity, price_snapshot, products(name, price, stock, is_active)"
         ).eq("cart_id", cart_id).execute()
-        return items_res.data or []
+        
+        # 🔥 FIX: Added safety check for items_res
+        return items_res.data if items_res and items_res.data else []
 
     async def get_order_by_idempotency_key(self, user_id: str, key: str) -> Optional[Dict[str, Any]]:
+        """Check if an order was already created with this idempotency key."""
         res = await self.admin_sb.table("orders").select("id, status, total_amount").eq("customer_id", user_id).eq("idempotency_key", key).maybe_single().execute()
-        return res.data
+        # 🔥 FIX: Added strict safety check
+        return res.data if res and res.data else None
 
     async def get_shipping_address(self, address_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         res = await self.admin_sb.table("addresses").select("*").eq("id", address_id).eq("user_id", user_id).maybe_single().execute()
-        return res.data
+        return res.data if res and res.data else None
 
     async def clear_user_cart(self, user_id: str) -> None:
         res = await self.admin_sb.table("carts").select("id").eq("user_id", user_id).maybe_single().execute()
@@ -47,7 +51,6 @@ class AsyncPaymentRepository:
     async def create_order_from_payment_jit(self, order_data: dict, items_to_deduct: list) -> Dict[str, Any]:
         deducted_items = []
         try:
-            # 1. Batch Stock Deduction (Awaited sequentially to ensure integrity)
             for item in items_to_deduct:
                 pid = item["product_id"]
                 qty = item["quantity"]
@@ -58,17 +61,17 @@ class AsyncPaymentRepository:
                     raise RuntimeError(f"Insufficient stock for {name}")
                 deducted_items.append((pid, qty))
 
-            # 2. Insert Order (PAID)
             order_res = await self.admin_sb.table("orders").insert(order_data).execute()
+            # 🔥 FIX: Ensure order_res has data
+            if not order_res.data: raise RuntimeError("Order creation returned empty")
             order = order_res.data[0]
             
-            # 3. Insert Items
             for item in items_to_deduct: item["order_id"] = order["id"]
             await self.admin_sb.table("order_items").insert(items_to_deduct).execute()
             return order
 
         except Exception as e:
-            logger.critical(f"[ROLLBACK] JIT Transaction failed, restoring stock: {e}")
+            logger.critical(f"[ROLLBACK] JIT Transaction failed: {e}")
             for pid, qty in deducted_items:
                 await self.admin_sb.rpc("increment_product_stock", {"p_id": pid, "p_qty": qty}).execute()
             raise RuntimeError(f"Order processing failed: {e}")
@@ -92,7 +95,7 @@ class AsyncPaymentRepository:
 
     async def get_order_by_pi(self, pi_id: str) -> Optional[Dict[str, Any]]:
         res = await self.admin_sb.table("orders").select("id, status, total_amount, customer_id, order_items(*)").eq("stripe_payment_intent", pi_id).maybe_single().execute()
-        return res.data
+        return res.data if res and res.data else None
 
     async def update_order_status(self, order_id: str, new_status: str, expected_status: str) -> bool:
         res = await self.admin_sb.table("orders").update({"status": new_status}).eq("id", order_id).eq("status", expected_status).execute()
