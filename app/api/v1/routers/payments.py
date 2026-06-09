@@ -28,16 +28,26 @@ limiter = Limiter(key_func=get_remote_address)
 
 class BruteForceGuard:
     def __init__(self):
-        self.attempts = defaultdict(list); self.blocked = {}
-    def is_blocked(self, ip: str, user_id: str = "") -> bool: return False 
-    def record_attempt(self, ip: str, user_id: str = "") -> bool: return False
-    def reset(self, ip: str, user_id: str = ""): pass
+        self.attempts = defaultdict(list)
+        self.blocked = {}
+        
+    def is_blocked(self, ip: str, user_id: str = "") -> bool:
+        return False
+        
+    def record_attempt(self, ip: str, user_id: str = "") -> bool:
+        return False
+        
+    def reset(self, ip: str, user_id: str = ""):
+        pass
+
 brute_force = BruteForceGuard()
 
 def _get_user_id(current_user: dict[str, Any]) -> str:
     profile = current_user.get("profile")
-    if isinstance(profile, dict) and "id" in profile: return str(profile["id"])
-    if "id" in current_user: return str(current_user["id"])
+    if isinstance(profile, dict) and "id" in profile:
+        return str(profile["id"])
+    if "id" in current_user:
+        return str(current_user["id"])
     raise HTTPException(401, "User ID not found in session")
 
 def _amount_to_paise(amount: Any) -> int:
@@ -55,10 +65,12 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
     user_id = _get_user_id(current)
     client_ip = get_remote_address(request)
     
-    if brute_force.is_blocked(client_ip, user_id): raise HTTPException(429, "Too many attempts.")
+    if brute_force.is_blocked(client_ip, user_id):
+        raise HTTPException(429, "Too many attempts.")
     
     cart_items = await repo.get_cart_items_for_checkout(user_id)
-    if not cart_items: raise HTTPException(400, "Your cart is empty")
+    if not cart_items:
+        raise HTTPException(400, "Your cart is empty")
 
     subtotal = Decimal("0")
     for item in cart_items:
@@ -73,18 +85,23 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
     # 🔥 FIX: Changed breakdown.total_amount to breakdown.total
     amount_paise = _amount_to_paise(breakdown.total)
 
-    if amount_paise < 50 * 100: raise HTTPException(400, "Order amount out of bounds")
+    if amount_paise < 50 * 100:
+        raise HTTPException(400, "Order amount out of bounds")
 
     idem_key = f"jit_pi_{payload.idempotency_key}"
     try:
         intent = payment_service.create_payment_intent(amount_paise, "inr", "JIT_HOLD", user_id, idem_key)
         payment_service.update_intent_metadata(intent["id"], {
-            "idempotency_key": payload.idempotency_key, "shipping_address_id": str(payload.shipping_address_id), "user_id": user_id
+            "idempotency_key": payload.idempotency_key, 
+            "shipping_address_id": str(payload.shipping_address_id), 
+            "user_id": user_id
         })
     except Exception as exc:
         brute_force.record_attempt(client_ip, user_id)
-        raise HTTPException(502, f"Payment provider error")
-
+        # 🔥 FIX: Yahan exception log hogi jisse exact line aur error pata chalega!
+        logger.error(f"Intent creation CRITICAL Error: {exc}", exc_info=True)
+        raise HTTPException(502, f"Payment provider error: {exc}") # error client ko bhi dikhega
+        
     return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"]}
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -99,7 +116,8 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
     user_id = _get_user_id(current)
     client_ip = get_remote_address(request)
     
-    if brute_force.is_blocked(client_ip, user_id): raise HTTPException(429, "Too many attempts.")
+    if brute_force.is_blocked(client_ip, user_id):
+        raise HTTPException(429, "Too many attempts.")
 
     try:
         if payload.payment_intent_id.startswith("demo_"):
@@ -120,10 +138,12 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
         brute_force.record_attempt(client_ip, user_id)
         raise HTTPException(502, "Verification failed")
 
-    if not idempotency_key: raise HTTPException(400, "Missing checkout metadata")
+    if not idempotency_key:
+        raise HTTPException(400, "Missing checkout metadata")
 
     existing_order = await repo.get_order_by_idempotency_key(user_id, idempotency_key)
-    if existing_order: return {"status": "paid", "order_id": existing_order["id"], "message": "Already processed"}
+    if existing_order:
+        return {"status": "paid", "order_id": existing_order["id"], "message": "Already processed"}
 
     # Fix: Address validation for demo mode fallback
     if address_id:
@@ -134,10 +154,12 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
         addr = addresses.data[0] if addresses.data else None
         address_id = addr.get("id") if addr else None
 
-    if not addr: raise HTTPException(404, "Shipping address lost")
+    if not addr:
+        raise HTTPException(404, "Shipping address lost")
 
     cart_items = await repo.get_cart_items_for_checkout(user_id)
-    if not cart_items: raise HTTPException(400, "Cart is empty or already processed.")
+    if not cart_items:
+        raise HTTPException(400, "Cart is empty or already processed.")
 
     subtotal, items_to_deduct = Decimal("0"), []
     for item in cart_items:
@@ -173,8 +195,10 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
 
     brute_force.reset(client_ip, user_id)
     email = current.get("profile", {}).get("email") or await repo.get_customer_email(user_id)
-    try: get_event_bus().publish(OrderPaidEvent(order=final_order, customer_email=email, customer_id=user_id))
-    except Exception: pass
+    try:
+        get_event_bus().publish(OrderPaidEvent(order=final_order, customer_email=email, customer_id=user_id))
+    except Exception:
+        pass
 
     return {"status": "paid", "order_id": final_order["id"], "message": "Payment confirmed and Order Created"}
 
@@ -193,9 +217,13 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
     repo = AsyncPaymentRepository()
     payment_service = get_payment_provider("stripe")
 
-    if not stripe_signature: raise HTTPException(400, "Missing stripe-signature")
-    try: event = payment_service.verify_webhook(body, stripe_signature)
-    except ValueError: raise HTTPException(400, "Invalid signature")
+    if not stripe_signature:
+        raise HTTPException(400, "Missing stripe-signature")
+        
+    try:
+        event = payment_service.verify_webhook(body, stripe_signature)
+    except ValueError:
+        raise HTTPException(400, "Invalid signature")
 
     event_type, pi_id = event["type"], event["pi_id"]
 
@@ -205,14 +233,17 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
         user_id = intent.get("metadata", {}).get("user_id")
         address_id = intent.get("metadata", {}).get("shipping_address_id")
 
-        if not idempotency_key or not user_id: return {"message": "OK"}
+        if not idempotency_key or not user_id:
+            return {"message": "OK"}
 
         existing = await repo.get_order_by_idempotency_key(user_id, idempotency_key)
-        if existing: return {"message": "Already processed"}
+        if existing:
+            return {"message": "Already processed"}
 
         addr = await repo.get_shipping_address(address_id, user_id)
         cart_items = await repo.get_cart_items_for_checkout(user_id)
-        if not cart_items or not addr: return {"message": "OK"}
+        if not cart_items or not addr:
+            return {"message": "OK"}
 
         subtotal, items_to_deduct = Decimal("0"), []
         for item in cart_items:
@@ -238,18 +269,21 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
             await repo.create_payment_record(final_order["id"], pi_id, event["amount"] / 100)
             await repo.clear_user_cart(user_id)
             get_event_bus().publish(OrderPaidEvent(order=final_order, customer_email=await repo.get_customer_email(user_id), customer_id=user_id))
-        except Exception: pass
+        except Exception:
+            pass
 
     elif event_type in ("payment_intent.payment_failed", "payment_intent.canceled"):
         intent = payment_service.retrieve_intent(pi_id)
         user_id = intent.get("metadata", {}).get("user_id")
-        if not user_id: return {"message": "OK"}
+        if not user_id:
+            return {"message": "OK"}
 
         try:
             get_event_bus().publish(OrderFailedEvent(
                 order={"id": "CART_SESSION"}, customer_email=await repo.get_customer_email(user_id),
                 customer_id=user_id, reason="payment_failed"
             ))
-        except Exception: pass
+        except Exception:
+            pass
 
     return {"message": "OK"}

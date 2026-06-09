@@ -25,10 +25,29 @@ class StripeProvider:
             logger.error("Stripe Intent creation failed: %s", e)
             raise
 
+    # 🔥 FIX: Added update_intent_metadata just in case the router is still trying to call it.
+    def update_intent_metadata(self, intent_id: str, metadata: dict) -> dict:
+        try:
+            intent = stripe.PaymentIntent.modify(
+                intent_id,
+                metadata=metadata
+            )
+            return {"id": intent.id, "status": intent.status}
+        except stripe.error.StripeError as e:
+            logger.error("Stripe Intent modify failed: %s", e)
+            raise
+
     def retrieve_intent(self, payment_intent_id: str) -> dict:
         try:
             intent = stripe.PaymentIntent.retrieve(payment_intent_id)
-            return {"id": intent.id, "status": intent.status, "amount": intent.amount, "currency": intent.currency}
+            # return full metadata in the retrieve response
+            return {
+                "id": intent.id, 
+                "status": intent.status, 
+                "amount": intent.amount, 
+                "currency": intent.currency,
+                "metadata": intent.metadata
+            }
         except stripe.error.StripeError as e:
             logger.error("Stripe Intent retrieval failed: %s", e)
             raise
