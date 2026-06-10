@@ -5,7 +5,9 @@ Path: app/repositories/auth_repo.py
 """
 import logging
 from typing import Any, Dict, Optional
+import httpx
 from app.core.supabase import get_async_supabase, get_async_admin_supabase
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -37,16 +39,28 @@ class AsyncAuthRepository:
         return None
 
     async def refresh_session(self, refresh_token: str) -> Optional[Dict[str, Any]]:
-        res = await self.sb.auth.refresh_session(refresh_token)
-        if res and getattr(res, "session", None):
-            return {
-                "user_id": res.user.id if getattr(res, "user", None) else None,
-                "email": res.user.email if getattr(res, "user", None) else None,
-                "access_token": res.session.access_token,
-                "refresh_token": res.session.refresh_token,
-                "expires_in": res.session.expires_in
-            }
-        return None
+        # Call Supabase token endpoint directly to avoid the shared singleton
+        # AsyncClient's in-memory session overwriting the provided refresh token.
+        url = f"{settings.SB_URL}/auth/v1/token?grant_type=refresh_token"
+        headers = {
+            "apikey": settings.SB_KEY,
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, json={"refresh_token": refresh_token})
+        if response.status_code != 200:
+            data = response.json()
+            msg = data.get("error_description") or data.get("msg") or response.text
+            raise Exception(f"Invalid Refresh Token: {msg}")
+        data = response.json()
+        user = data.get("user") or {}
+        return {
+            "user_id": user.get("id"),
+            "email": user.get("email"),
+            "access_token": data["access_token"],
+            "refresh_token": data["refresh_token"],
+            "expires_in": data.get("expires_in"),
+        }
 
     async def sign_out(self) -> None:
         await self.sb.auth.sign_out()
