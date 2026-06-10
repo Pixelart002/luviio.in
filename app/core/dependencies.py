@@ -37,12 +37,7 @@ bearer_scheme = HTTPBearer(auto_error=False)  # Don't auto-raise — we handle m
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def _validate_token(token: str) -> Any:
-    """
-    Validate JWT with Supabase Auth asynchronously.
-    Returns auth user object or raises 401.
-    
-    Security: Never reveals WHY token is invalid (anti-enumeration).
-    """
+    """Validate JWT with Supabase Auth asynchronously."""
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -52,15 +47,18 @@ async def _validate_token(token: str) -> Any:
     sb = get_async_admin_supabase()
     try:
         result = await sb.auth.get_user(token)
-        if not result or not hasattr(result, "user") or not result.user:
+        
+        # 🔥 FIX: Handle both v1.0+ UserResponse and older direct User objects
+        user = getattr(result, "user", result)
+        if not user or not hasattr(user, "id"):
             logger.warning("Token validated but no user object returned")
             raise HTTPException(401, "Invalid token")
-        return result.user
+            
+        return user
 
     except HTTPException:
         raise
     except AuthApiError as e:
-        # Don't leak specific error to client
         logger.warning("Auth API error: %s", e.message)
         raise HTTPException(401, "Invalid or expired token")
     except Exception as e:
@@ -73,11 +71,7 @@ async def _validate_token(token: str) -> Any:
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
-    """
-    Fetch profile from DB asynchronously. Auto-creates if missing (first login).
-    
-    Returns empty dict on failure — caller handles.
-    """
+    """Fetch profile from DB asynchronously. Auto-creates if missing."""
     repo = AsyncUserRepository()
 
     auth_user_id = str(getattr(auth_user, "id", ""))
@@ -91,7 +85,7 @@ async def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
         logger.error("Profile fetch failed for %s: %s", auth_user_id[:8], e)
         return {}
 
-    if profile is None:
+    if not profile:
         logger.info("Profile missing for user %.8s — auto-creating", auth_user_id)
         user_meta = getattr(auth_user, "user_metadata", None) or {}
         email = getattr(auth_user, "email", "") or ""
@@ -104,9 +98,7 @@ async def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
                 full_name=user_meta.get("full_name", "") or "",
                 phone=phone,
             )
-            if profile:
-                logger.info("Profile auto-created for user %.8s", auth_user_id)
-            else:
+            if not profile:
                 logger.error("Profile upsert returned no data for user %.8s", auth_user_id)
         except Exception as e:
             logger.error("Profile auto-create failed for %.8s: %s", auth_user_id, e)
@@ -123,14 +115,10 @@ async def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict[str, Any]:
-    """
-    Validate token → fetch/create profile → check active.
+    """Validate token → fetch/create profile → check active."""
     
-    Used by: All authenticated endpoints.
-    """
     # ── Check if token present ────────────────────────────────────────────
     if not credentials:
-        # Try cookie-based auth for browser refresh
         refresh_token = request.cookies.get("refresh_token")
         if refresh_token:
             try:
@@ -142,11 +130,10 @@ async def get_current_user(
                     profile = await _get_or_create_profile(auth_user)
                     if profile and profile.get("is_active", True):
                         
-                        # Update Logger State
-                        if hasattr(request.state, "user_name"):
-                            request.state.user_name = profile.get("full_name") or profile.get("email") or "Unknown"
-                            request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
-                            
+                        # 🔥 FIX: Directly assign to state (Removed hasattr block)
+                        request.state.user_name = profile.get("full_name") or profile.get("email") or "Unknown"
+                        request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
+                        
                         return {"auth_user": auth_user, "profile": profile}
             except Exception:
                 pass
@@ -174,26 +161,21 @@ async def get_current_user(
             detail="Account deactivated",
         )
 
-    # ── Update Logger State ────────────────────────────────────────────────
-    if hasattr(request.state, "user_name"):
-        request.state.user_name = profile.get("full_name") or profile.get("email") or "Unknown"
-        request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
+    # 🔥 FIX: Directly assign to state so logger actually receives the info
+    request.state.user_name = profile.get("full_name") or profile.get("email") or "Unknown"
+    request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
 
     return {"auth_user": auth_user, "profile": profile}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  OPTIONAL USER (doesn't fail if not logged in)
+#  OPTIONAL USER
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def get_optional_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict[str, Any] | None:
-    """
-    Like get_current_user but returns None instead of 401.
-    Used by: Public endpoints that show different content for logged-in users.
-    """
     if not credentials:
         return None
     
@@ -202,11 +184,10 @@ async def get_optional_user(
         profile = await _get_or_create_profile(auth_user)
         if profile and profile.get("is_active", True):
             
-            # ── Update Logger State ────────────────────────────────────────
-            if hasattr(request.state, "user_name"):
-                request.state.user_name = profile.get("full_name") or profile.get("email") or "Unknown"
-                request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
-                
+            # 🔥 FIX: Directly assign to state
+            request.state.user_name = profile.get("full_name") or profile.get("email") or "Unknown"
+            request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
+            
             return {"auth_user": auth_user, "profile": profile}
     except Exception:
         pass
@@ -221,11 +202,11 @@ async def get_optional_user(
 async def require_admin(
     current: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """
-    FRESH DB read for admin role — NEVER trusts cache or JWT claims.
-    """
+    """FRESH DB read for admin role — NEVER trusts cache or JWT claims."""
     sb = get_async_admin_supabase()
-    user_id = current.get("profile", {}).get("id", "")
+    
+    # 🔥 FIX: Fallback to auth_user.id if profile.id is missing
+    user_id = current.get("profile", {}).get("id") or getattr(current.get("auth_user"), "id", "")
 
     if not user_id:
         logger.warning("require_admin: no user_id in context")
@@ -245,16 +226,16 @@ async def require_admin(
         logger.error("require_admin DB check failed | user=%.8s: %s", user_id, e)
         raise HTTPException(503, "Could not verify permissions")
 
-    if not result or not result.data:
+    # 🔥 FIX: Safely extract data handling potential None values
+    row = getattr(result, "data", None)
+    if not row:
         logger.warning("require_admin: no DB row | user=%.8s", user_id)
         raise HTTPException(403, "Access denied")
 
-    row = result.data
-
-    # ── Role check (exact string comparison) ───────────────────────────────
-    db_role = row.get("role", "")
+    # ── Role check ─────────────────────────────────────────────────────────
+    # 🔥 FIX: Force string conversion to prevent HMAC TypeError if role is NULL
+    db_role = str(row.get("role") or "")
     
-    # Timing-safe comparison to prevent timing attacks
     if not hmac.compare_digest(db_role, "admin"):
         logger.warning(
             "require_admin: non-admin access attempt | user=%.8s role=%s",
@@ -263,16 +244,17 @@ async def require_admin(
         raise HTTPException(403, "Admin access required")
 
     # ── Active check ───────────────────────────────────────────────────────
-    if not row.get("is_active", False):
+    # 🔥 FIX: Default to True if is_active is missing/null in the database
+    if not row.get("is_active", True):
         logger.warning(
             "require_admin: deactivated admin | user=%.8s",
             user_id
         )
         raise HTTPException(403, "Account deactivated")
 
-    # ── Merge fresh DB data into current context ───────────────────────────
+    # Merge fresh DB data into current context
     current["profile"]["role"] = db_role
-    current["profile"]["is_active"] = row["is_active"]
+    current["profile"]["is_active"] = row.get("is_active", True)
 
     return current
 
@@ -282,11 +264,7 @@ async def require_admin(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_client_ip(request: Request) -> str:
-    """
-    Extract real client IP considering proxies.
-    Used by slowapi rate limiter.
-    """
-    # Check common proxy headers
+    """Extract real client IP considering proxies."""
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()
