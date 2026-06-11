@@ -82,7 +82,6 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
     config = await repo.get_pricing_config()
     breakdown = get_pricing_from_config(config).calculate(subtotal)
     
-    # 🔥 FIX: Changed breakdown.total_amount to breakdown.total
     amount_paise = _amount_to_paise(breakdown.total)
 
     if amount_paise < 50 * 100:
@@ -98,9 +97,8 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
         })
     except Exception as exc:
         brute_force.record_attempt(client_ip, user_id)
-        # 🔥 FIX: Yahan exception log hogi jisse exact line aur error pata chalega!
         logger.error(f"Intent creation CRITICAL Error: {exc}", exc_info=True)
-        raise HTTPException(502, f"Payment provider error: {exc}") # error client ko bhi dikhega
+        raise HTTPException(502, f"Payment provider error: {exc}")
         
     return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"]}
 
@@ -121,9 +119,7 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
 
     try:
         if payload.payment_intent_id.startswith("demo_"):
-            # Mock details for demo mode
             idempotency_key = payload.payment_intent_id.replace("demo_", "")
-            # Get address from cart context or user default for demo
             addr_fallback = await repo.get_shipping_address("dummy", user_id) 
             address_id = None
         else:
@@ -145,11 +141,9 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
     if existing_order:
         return {"status": "paid", "order_id": existing_order["id"], "message": "Already processed"}
 
-    # Fix: Address validation for demo mode fallback
     if address_id:
         addr = await repo.get_shipping_address(address_id, user_id)
     else:
-        # If in demo mode, try to fetch the first address
         addresses = await repo.admin_sb.table("addresses").select("*").eq("user_id", user_id).limit(1).execute()
         addr = addresses.data[0] if addresses.data else None
         address_id = addr.get("id") if addr else None
@@ -173,6 +167,15 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
 
     config = await repo.get_pricing_config()
     breakdown = get_pricing_from_config(config).calculate(subtotal)
+
+    # 🔥 SECURITY CHECK: Match Stripe Amount with Current Cart Total
+    if not payload.payment_intent_id.startswith("demo_"):
+        stripe_amount_charged = intent["amount"]
+        backend_calculated_amount = _amount_to_paise(breakdown.total)
+        
+        if stripe_amount_charged != backend_calculated_amount:
+            logger.critical(f"CART MODIFIED DURING CHECKOUT | User: {user_id} | Stripe: {stripe_amount_charged} | Cart: {backend_calculated_amount}")
+            raise HTTPException(400, "Your cart was modified during checkout. Payment held. Please contact support.")
 
     order_data = {
         "customer_id": user_id, "shipping_address_id": str(address_id), "status": "paid",
@@ -208,7 +211,6 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
 
 @router.post("/notify-failed")
 async def notify_payment_failed(request: Request, payload: NotifyFailedRequest, current: dict[str, Any] = Depends(get_current_user)):
-    # Simple endpoint to receive failures from frontend
     return {"message": "Failure logged"}
 
 @router.post("/webhook")
@@ -257,6 +259,13 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
 
         config = await repo.get_pricing_config()
         breakdown = get_pricing_from_config(config).calculate(subtotal)
+        
+        # 🔥 SECURITY CHECK: Match Webhook Amount with Current Cart Total
+        backend_calculated_amount = _amount_to_paise(breakdown.total)
+        if event["amount"] != backend_calculated_amount:
+            logger.critical(f"WEBHOOK CART MISMATCH | User: {user_id} | Stripe: {event['amount']} | Cart: {backend_calculated_amount}")
+            return {"message": "Cart mismatch, manual review required"}
+
         order_data = {
             "customer_id": user_id, "shipping_address_id": address_id, "status": "paid",
             **breakdown.as_dict(), "shipping_line1": addr["line1"], "shipping_city": addr["city"],
