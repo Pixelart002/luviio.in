@@ -93,7 +93,8 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
         payment_service.update_intent_metadata(intent["id"], {
             "idempotency_key": payload.idempotency_key, 
             "shipping_address_id": str(payload.shipping_address_id), 
-            "user_id": user_id
+            "user_id": user_id,
+            "amount_paise": str(amount_paise),
         })
     except Exception as exc:
         brute_force.record_attempt(client_ip, user_id)
@@ -158,24 +159,36 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
     subtotal, items_to_deduct = Decimal("0"), []
     for item in cart_items:
         prod = item.get("products") or {}
-        lt = Decimal(str(prod.get("price", 0))) * item["quantity"]
+        # Use price_snapshot (locked in at cart-add time) to avoid live-price drift
+        unit_price = Decimal(str(item.get("price_snapshot") or prod.get("price", 0)))
+        lt = unit_price * item["quantity"]
         subtotal += lt
         items_to_deduct.append({
             "product_id": item["product_id"], "product_name": prod.get("name"),
-            "unit_price": float(prod.get("price")), "quantity": item["quantity"], "subtotal": float(lt)
+            "unit_price": float(unit_price), "quantity": item["quantity"], "subtotal": float(lt)
         })
 
     config = await repo.get_pricing_config()
     breakdown = get_pricing_from_config(config).calculate(subtotal)
 
-    # 🔥 SECURITY CHECK: Match Stripe Amount with Current Cart Total
+    # 🔥 SECURITY CHECK: Match Stripe Amount with Server-Computed Amount
+    # Compare intent["amount"] against the amount we stored in metadata at intent-creation
+    # time, NOT a live recalculation — this prevents false positives from price changes.
     if not payload.payment_intent_id.startswith("demo_"):
         stripe_amount_charged = intent["amount"]
-        backend_calculated_amount = _amount_to_paise(breakdown.total)
-        
-        if stripe_amount_charged != backend_calculated_amount:
-            logger.critical(f"CART MODIFIED DURING CHECKOUT | User: {user_id} | Stripe: {stripe_amount_charged} | Cart: {backend_calculated_amount}")
-            raise HTTPException(400, "Your cart was modified during checkout. Payment held. Please contact support.")
+        stored_amount_paise = intent.get("metadata", {}).get("amount_paise")
+        if stored_amount_paise is not None:
+            # New path: compare Stripe amount against our server-locked value
+            server_locked_amount = int(stored_amount_paise)
+            if stripe_amount_charged != server_locked_amount:
+                logger.critical(f"CART MODIFIED DURING CHECKOUT | User: {user_id} | Stripe: {stripe_amount_charged} | Locked: {server_locked_amount}")
+                raise HTTPException(400, "Your cart was modified during checkout. Payment held. Please contact support.")
+        else:
+            # Fallback for intents created before this fix (no stored amount in metadata)
+            backend_calculated_amount = _amount_to_paise(breakdown.total)
+            if stripe_amount_charged != backend_calculated_amount:
+                logger.critical(f"CART MODIFIED DURING CHECKOUT | User: {user_id} | Stripe: {stripe_amount_charged} | Cart: {backend_calculated_amount}")
+                raise HTTPException(400, "Your cart was modified during checkout. Payment held. Please contact support.")
 
     order_data = {
         "customer_id": user_id, "shipping_address_id": str(address_id), "status": "paid",
