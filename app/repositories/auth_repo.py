@@ -62,8 +62,16 @@ class AsyncAuthRepository:
             "expires_in": data.get("expires_in"),
         }
 
-    async def sign_out(self) -> None:
-        await self.sb.auth.sign_out()
+    async def sign_out_with_token(self, refresh_token: str) -> None:
+        """Sign out by calling Supabase /auth/v1/logout directly via httpx,
+        avoiding the shared singleton client and its in-memory session state."""
+        url = f"{settings.SB_URL}/auth/v1/logout"
+        headers = {
+            "apikey": settings.SB_KEY,
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient() as client:
+            await client.post(url, headers=headers, json={"refresh_token": refresh_token})
 
     async def reset_password_email(self, email: str) -> None:
         await self.sb.auth.reset_password_email(email)

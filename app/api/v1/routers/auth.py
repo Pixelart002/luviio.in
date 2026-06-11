@@ -172,8 +172,7 @@ async def logout(request: Request, response: Response, refresh_token: str | None
     if refresh_token:
         try:
             auth_repo = AsyncAuthRepository()
-            session_data = await auth_repo.refresh_session(refresh_token)
-            if session_data: await auth_repo.sign_out()
+            await auth_repo.sign_out_with_token(refresh_token)
         except Exception as e:
             logger.error(f"Logout Error: {e}")
 
