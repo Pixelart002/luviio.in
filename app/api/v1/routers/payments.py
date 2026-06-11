@@ -87,7 +87,7 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
     if amount_paise < 50 * 100:
         raise HTTPException(400, "Order amount out of bounds")
 
-    idem_key = f"jit_pi_{payload.idempotency_key}_{amount_paise}"
+    idem_key = "jit_pi_" + hashlib.sha256(f"{user_id}:{amount_paise}:inr".encode()).hexdigest()[:36]
     try:
         intent = payment_service.create_payment_intent(amount_paise, "inr", "JIT_HOLD", user_id, idem_key)
         payment_service.update_intent_metadata(intent["id"], {
