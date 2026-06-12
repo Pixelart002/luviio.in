@@ -16,10 +16,12 @@ LOGGER INTEGRATION:
   Automatically injects user_name and user_id into request.state 
   for the Pure Window Logger Middleware.
 """
+import asyncio
 import hmac
 import logging
 from typing import Any
 
+from cachetools import TTLCache
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from gotrue.errors import AuthApiError
@@ -31,18 +33,27 @@ from app.core.supabase import get_async_admin_supabase, get_async_supabase
 logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer(auto_error=False)  # Don't auto-raise — we handle manually
 
+# ── Auth caches (TTL=60s) to avoid redundant Supabase HTTP calls per request ──
+_token_cache: TTLCache = TTLCache(maxsize=512, ttl=60)
+_profile_cache: TTLCache = TTLCache(maxsize=512, ttl=60)
+_cache_lock = asyncio.Lock()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  TOKEN VALIDATION
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def _validate_token(token: str) -> Any:
-    """Validate JWT with Supabase Auth asynchronously."""
+    """Validate JWT with Supabase Auth asynchronously. Result is cached for 60s."""
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
         )
+
+    # Return cached result if available (avoids ~800ms Supabase Auth HTTP call)
+    if token in _token_cache:
+        return _token_cache[token]
 
     sb = get_async_admin_supabase()
     try:
@@ -53,7 +64,8 @@ async def _validate_token(token: str) -> Any:
         if not user or not hasattr(user, "id"):
             logger.warning("Token validated but no user object returned")
             raise HTTPException(401, "Invalid token")
-            
+
+        _token_cache[token] = user
         return user
 
     except HTTPException:
@@ -71,13 +83,17 @@ async def _validate_token(token: str) -> Any:
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
-    """Fetch profile from DB asynchronously. Auto-creates if missing."""
+    """Fetch profile from DB asynchronously. Auto-creates if missing. Result cached 60s."""
     repo = AsyncUserRepository()
 
     auth_user_id = str(getattr(auth_user, "id", ""))
     if not auth_user_id:
         logger.error("Auth user has no ID")
         return {}
+
+    # Return cached profile if available (avoids ~700ms Supabase DB HTTP call)
+    if auth_user_id in _profile_cache:
+        return _profile_cache[auth_user_id]
 
     try:
         profile = await repo.get_profile(auth_user_id)
@@ -104,7 +120,10 @@ async def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
             logger.error("Profile auto-create failed for %.8s: %s", auth_user_id, e)
             return {}
 
-    return profile or {}
+    result = profile or {}
+    if result:
+        _profile_cache[auth_user_id] = result
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════════════
