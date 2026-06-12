@@ -1,5 +1,5 @@
 """
-Payment Repository — Async JIT Atomic Order Creation (HEAVILY LOGGED)
+Payment Repository — Async JIT Atomic Order Creation (HEAVILY LOGGED + UNLOCK FIX)
 ==================================================================
 Path: app/repositories/payment_repo.py
 """
@@ -79,16 +79,22 @@ class AsyncPaymentRepository:
         except Exception as e:
             logger.error(f"[REPO:CART] Failed to unlock cart for user {user_id}: {e}", exc_info=True)
 
+    # 🔥🔥 THE FIX: Clearing items AND Unlocking cart simultaneously 🔥🔥
     async def clear_user_cart(self, user_id: str) -> None:
-        logger.info(f"[REPO:CART] Attempting to clear cart for user {user_id}")
+        logger.info(f"[REPO:CART] Attempting to clear and unlock cart for user {user_id}")
         try:
             res = await self.admin_sb.table("carts").select("id").eq("user_id", user_id).maybe_single().execute()
             if res and res.data:
                 cart_id = res.data["id"]
+                # 1. Delete items
                 del_res = await self.admin_sb.table("cart_items").delete().eq("cart_id", cart_id).execute()
-                logger.info(f"[REPO:CART] ✅ Cart cleared successfully! Items deleted: {len(del_res.data) if del_res.data else 0}")
+                
+                # 2. Unlock cart automatically
+                await self.admin_sb.table("carts").update({"locked": False}).eq("id", cart_id).execute()
+                
+                logger.info(f"[REPO:CART] ✅ Cart cleared and UNLOCKED successfully! Items deleted: {len(del_res.data) if del_res.data else 0}")
         except Exception as e:
-            logger.error(f"[REPO:CART] ❌ Failed to clear cart: {e}", exc_info=True)
+            logger.error(f"[REPO:CART] ❌ Failed to clear and unlock cart: {e}", exc_info=True)
 
     async def create_order_from_payment_jit(self, order_data: dict, items_to_deduct: list) -> Dict[str, Any]:
         logger.info(f"[REPO:JIT] Starting Atomic JIT Order Creation for User: {order_data.get('customer_id')}")
@@ -131,7 +137,6 @@ class AsyncPaymentRepository:
                 await self.admin_sb.rpc("increment_stock", {"p_id": pid, "p_qty": qty}).execute()
             raise RuntimeError(f"Order processing failed: {e}")
 
-    # 🔥🔥 THE CULPRIT METHOD (Heavily Logged Now) 🔥🔥
     async def create_payment_record(self, order_id: str, pi_id: str, amount: float, currency: str = "INR") -> None:
         logger.info(f"[REPO:PAYMENTS] ⏳ Attempting to insert into 'payments' table | Order: {order_id} | Intent: {pi_id} | Amount: {amount}")
         try:
@@ -153,10 +158,7 @@ class AsyncPaymentRepository:
                 logger.error(f"[REPO:PAYMENTS] ❌ Insert executed but no data returned. Full Response: {res}")
                 
         except Exception as e:
-            # Ab error chhupega nahi! Pura stack trace console mein dikhega.
             logger.error(f"[REPO:PAYMENTS] 🚨 FATAL DB ERROR inserting payment record: {e}", exc_info=True)
-            # Optional: Uncomment below line to crash the process if payment log fails
-            # raise RuntimeError(f"Failed to save payment to DB: {e}")
 
     async def get_customer_email(self, customer_id: str) -> str:
         if not customer_id: return ""
