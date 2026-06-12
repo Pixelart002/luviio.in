@@ -63,6 +63,22 @@ class AsyncPaymentRepository:
             logger.error(f"[REPO:ADDRESS] Failed to fetch address: {e}", exc_info=True)
             return None
 
+    async def lock_cart(self, user_id: str) -> None:
+        """Lock the user's cart to prevent modifications during active checkout."""
+        logger.info(f"[REPO:CART] Locking cart for user: {user_id}")
+        try:
+            await self.admin_sb.table("carts").update({"locked": True}).eq("user_id", user_id).execute()
+        except Exception as e:
+            logger.error(f"[REPO:CART] Failed to lock cart for user {user_id}: {e}", exc_info=True)
+
+    async def unlock_cart(self, user_id: str) -> None:
+        """Unlock the user's cart, allowing modifications again."""
+        logger.info(f"[REPO:CART] Unlocking cart for user: {user_id}")
+        try:
+            await self.admin_sb.table("carts").update({"locked": False}).eq("user_id", user_id).execute()
+        except Exception as e:
+            logger.error(f"[REPO:CART] Failed to unlock cart for user {user_id}: {e}", exc_info=True)
+
     async def clear_user_cart(self, user_id: str) -> None:
         logger.info(f"[REPO:CART] Attempting to clear cart for user {user_id}")
         try:

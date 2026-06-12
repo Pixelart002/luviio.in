@@ -26,6 +26,11 @@ class AsyncCartRepository:
         ).execute()
         return res.data[0]
 
+    async def is_cart_locked(self, user_id: str) -> bool:
+        """Return True if the user's cart is locked (checkout in progress)."""
+        res = await self.admin_sb.table("carts").select("locked").eq("user_id", user_id).maybe_single().execute()
+        return bool(res and res.data and res.data.get("locked", False))
+
     async def get_cart_items_with_products(self, cart_id: str) -> list[dict[str, Any]]:
         res = await self.admin_sb.table("cart_items").select(
             "id, product_id, quantity, price_snapshot, added_at, "

@@ -129,7 +129,11 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
         brute_force.record_attempt(client_ip, user_id)
         logger.error(f"[PAYMENTS] Intent creation CRITICAL Error for user {user_id}: {exc}", exc_info=True)
         raise HTTPException(502, f"Payment provider error: {exc}")
-        
+
+    # 🔒 Lock the cart to prevent modifications during active checkout
+    await repo.lock_cart(user_id)
+    logger.info(f"[PAYMENTS] Cart locked for user {user_id} during checkout (intent: {intent['id']})")
+
     return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"]}
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -180,6 +184,7 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
     existing_order = await repo.get_order_by_idempotency_key(user_id, idempotency_key)
     if existing_order:
         logger.info(f"[PAYMENTS] Idempotent hit. Order {existing_order['id']} already processed for user {user_id}.")
+        await repo.unlock_cart(user_id)
         return {"status": "paid", "order_id": existing_order["id"], "message": "Already processed"}
 
     # Secondary idempotency check by payment_intent_id.
@@ -192,6 +197,7 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
                 logger.error(f"[PAYMENTS] PI ownership mismatch for intent {payload.payment_intent_id} | User: {user_id}")
                 raise HTTPException(403, "Order does not belong to this user")
             logger.info(f"[PAYMENTS] PI idempotency hit. Order {existing_by_pi['id']} already processed (via webhook) for user {user_id}.")
+            await repo.unlock_cart(user_id)
             return {"status": "paid", "order_id": existing_by_pi["id"], "message": "Already processed"}
 
     if address_id:
@@ -285,7 +291,11 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
 @router.post("/notify-failed")
 async def notify_payment_failed(request: Request, payload: NotifyFailedRequest, current: dict[str, Any] = Depends(get_current_user)):
     user_id = _get_user_id(current)
+    repo = AsyncPaymentRepository()
     logger.warning(f"[PAYMENTS] Payment Failure Logged | User: {user_id} | Intent: {payload.payment_intent_id} | Reason: {payload.error_message}")
+    # 🔓 Unlock cart so the user can modify it and retry checkout
+    await repo.unlock_cart(user_id)
+    logger.info(f"[PAYMENTS] Cart unlocked for user {user_id} after payment failure")
     return {"message": "Failure logged"}
 
 @router.post("/webhook")
@@ -386,6 +396,10 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
         user_id = intent.get("metadata", {}).get("user_id")
         if not user_id:
             return {"message": "OK"}
+
+        # 🔓 Unlock cart so the user can modify it and retry
+        await repo.unlock_cart(user_id)
+        logger.info(f"[WEBHOOK] Cart unlocked for user {user_id} after {event_type}")
 
         try:
             logger.info(f"[WEBHOOK] Publishing OrderFailedEvent for User: {user_id}")

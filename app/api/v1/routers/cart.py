@@ -167,6 +167,9 @@ async def add_item(
     product_id = str(payload.product_id)
     repo       = AsyncCartRepository()
 
+    if await repo.is_cart_locked(user_id):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Your cart is locked during checkout. Complete or cancel your payment before modifying the cart.")
+
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Verifying stock for product: {product_id[:8]}…")
 
@@ -213,6 +216,9 @@ async def update_item(
     pid     = str(product_id)
     repo    = AsyncCartRepository()
 
+    if await repo.is_cart_locked(user_id):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Your cart is locked during checkout. Complete or cancel your payment before modifying the cart.")
+
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Updating quantity to {payload.quantity}")
 
@@ -243,6 +249,9 @@ async def remove_item(
     user_id = _get_user_id(current)
     pid     = str(product_id)
     repo    = AsyncCartRepository()
+
+    if await repo.is_cart_locked(user_id):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Your cart is locked during checkout. Complete or cancel your payment before modifying the cart.")
 
     cart = await repo.get_or_create_cart(user_id)
     await repo.remove_item(cart["id"], pid)
