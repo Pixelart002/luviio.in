@@ -1,12 +1,21 @@
 """
-Orders Router — Async Enterprise Grade (HEAVILY LOGGED + ASYNC FIX)
-===================================================================
+Orders Router
+=============
 Path: app/api/v1/routers/orders.py
 
-Architecture Upgrades:
-  1. ALL Supabase DB logic strictly asynchronous (await).
-  2. JIT Architecture Enforced: POST /create endpoint removed permanently.
-  3. Stripe Process Refund wrapped in threadpool to prevent blocking!
+Architecture notes:
+  1. All Supabase DB logic is strictly asynchronous (await).
+  2. Order creation is handled exclusively by the JIT payment flow
+     (POST /api/v1/payments/confirm). There is no direct POST /orders/ endpoint.
+  3. Stripe refund calls are wrapped in run_in_threadpool to avoid blocking
+     the async event loop.
+
+IMPORTANT — _sanitize_order / _sanitize_order_list:
+  These helpers perform pure in-memory dict transformation (no I/O).
+  They MUST remain plain synchronous `def` functions.
+  Marking them `async def` without awaiting them at every call site causes
+  FastAPI to receive a coroutine object instead of a dict, triggering a
+  ResponseValidationError (see PYTHON-FASTAPI-C).
 """
 import logging
 import re
