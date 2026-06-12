@@ -21,12 +21,10 @@ class AsyncCartRepository:
             return {}
 
     async def get_or_create_cart(self, user_id: str) -> dict[str, Any]:
-        await self.admin_sb.table("carts").upsert(
-            {"user_id": user_id}, on_conflict="user_id", ignore_duplicates=True
+        res = await self.admin_sb.table("carts").upsert(
+            {"user_id": user_id}, on_conflict="user_id"
         ).execute()
-        
-        fetch = await self.admin_sb.table("carts").select("*").eq("user_id", user_id).limit(1).execute()
-        return fetch.data[0]
+        return res.data[0]
 
     async def get_cart_items_with_products(self, cart_id: str) -> list[dict[str, Any]]:
         res = await self.admin_sb.table("cart_items").select(
