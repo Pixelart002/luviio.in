@@ -12,6 +12,7 @@ FIX APPLIED:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import datetime
 from decimal import Decimal
@@ -59,10 +60,11 @@ async def _calculate_cart_pricing(
     which maps them to the API-friendly keys:
          subtotal / shipping_cost / tax_amount / total_amount
     """
-    config         = await repo.get_pricing_config()
+    config, raw_items = await asyncio.gather(
+        repo.get_pricing_config(),
+        repo.get_cart_items_with_products(cart["id"]),
+    )
     pricing_engine = get_pricing_from_config(config)
-
-    raw_items = await repo.get_cart_items_with_products(cart["id"])
 
     enriched: list[dict[str, Any]] = []
     subtotal        = Decimal("0")
