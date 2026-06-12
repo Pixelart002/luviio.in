@@ -171,6 +171,18 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
         logger.info(f"[PAYMENTS] Idempotent hit. Order {existing_order['id']} already processed for user {user_id}.")
         return {"status": "paid", "order_id": existing_order["id"], "message": "Already processed"}
 
+    # Secondary idempotency check by payment_intent_id.
+    # Guards against the race condition where the Stripe webhook handler creates the order
+    # and clears the cart before this /confirm endpoint's idempotency check can find the order.
+    if not payload.payment_intent_id.startswith("demo_"):
+        existing_by_pi = await repo.get_order_by_pi(payload.payment_intent_id)
+        if existing_by_pi:
+            if existing_by_pi.get("customer_id") != user_id:
+                logger.error(f"[PAYMENTS] PI ownership mismatch for intent {payload.payment_intent_id} | User: {user_id}")
+                raise HTTPException(403, "Order does not belong to this user")
+            logger.info(f"[PAYMENTS] PI idempotency hit. Order {existing_by_pi['id']} already processed (via webhook) for user {user_id}.")
+            return {"status": "paid", "order_id": existing_by_pi["id"], "message": "Already processed"}
+
     if address_id:
         addr = await repo.get_shipping_address(address_id, user_id)
     else:
@@ -184,7 +196,7 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
 
     cart_items = await repo.get_cart_items_for_checkout(user_id)
     if not cart_items:
-        logger.error(f"[PAYMENTS] Attempted checkout on empty cart for user {user_id}")
+        logger.error(f"[PAYMENTS] Attempted checkout on empty cart for user {user_id} | Intent: {payload.payment_intent_id}")
         raise HTTPException(400, "Cart is empty or already processed.")
 
     subtotal, items_to_deduct = Decimal("0"), []
