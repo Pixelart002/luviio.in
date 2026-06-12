@@ -54,6 +54,14 @@ def _get_user_id(current_user: dict[str, Any]) -> str:
 def _amount_to_paise(amount: Any) -> int:
     return int((Decimal(str(amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
+def _compute_cart_hash(cart_items: list) -> str:
+    """Fingerprint the cart at intent-creation time so we can detect modifications at confirm time."""
+    fingerprint = sorted(
+        f"{item['product_id']}:{item['quantity']}:{item.get('price_snapshot', 0)}"
+        for item in cart_items
+    )
+    return hashlib.sha256("|".join(fingerprint).encode()).hexdigest()
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  CREATE INTENT
 # ══════════════════════════════════════════════════════════════════════════════
@@ -104,13 +112,16 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
             amount_paise, "inr", "JIT_HOLD", user_id, idem_key
         )
         
+        cart_hash = _compute_cart_hash(cart_items)
         # 🔥 FIX: Threadpool wrapped for Async performance
         await run_in_threadpool(
             payment_service.update_intent_metadata,
             intent["id"], {
                 "idempotency_key": payload.idempotency_key, 
                 "shipping_address_id": str(payload.shipping_address_id), 
-                "user_id": user_id
+                "user_id": user_id,
+                "checkout_amount": str(amount_paise),
+                "cart_hash": cart_hash,
             }
         )
         logger.info(f"[PAYMENTS] Payment Intent {intent['id']} created successfully for user {user_id}")
@@ -199,27 +210,40 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
         logger.error(f"[PAYMENTS] Attempted checkout on empty cart for user {user_id} | Intent: {payload.payment_intent_id}")
         raise HTTPException(400, "Cart is empty or already processed.")
 
+    # 🔥 SECURITY CHECK: Validate cart integrity using snapshotted metadata from intent creation
+    if not payload.payment_intent_id.startswith("demo_"):
+        meta = intent.get("metadata", {})
+        stored_checkout_amount = meta.get("checkout_amount")
+        stored_cart_hash = meta.get("cart_hash")
+
+        if not stored_checkout_amount or not stored_cart_hash:
+            # Intent predates the cart-hash feature — fall back to legacy amount check
+            logger.warning(f"[PAYMENTS] Intent {payload.payment_intent_id} has no cart snapshot metadata; skipping hash check for user {user_id}")
+        else:
+            stripe_amount_charged = intent["amount"]
+            if stripe_amount_charged != int(stored_checkout_amount):
+                logger.critical(f"[SECURITY ALERT] STRIPE AMOUNT TAMPERED | User: {user_id} | Stripe: {stripe_amount_charged} | Original: {stored_checkout_amount}")
+                raise HTTPException(400, "Payment amount mismatch detected. Please contact support.")
+
+            current_cart_hash = _compute_cart_hash(cart_items)
+            if current_cart_hash != stored_cart_hash:
+                logger.critical(f"[SECURITY ALERT] CART MODIFIED DURING CHECKOUT | User: {user_id} | Stripe: {stripe_amount_charged} | Cart hash mismatch")
+                raise HTTPException(400, "Your cart was modified during checkout. Payment held. Please contact support.")
+
     subtotal, items_to_deduct = Decimal("0"), []
     for item in cart_items:
         prod = item.get("products") or {}
-        lt = Decimal(str(prod.get("price", 0))) * item["quantity"]
+        # Use price_snapshot (locked at cart-add time) rather than the live product price
+        locked_price = Decimal(str(item.get("price_snapshot") or prod.get("price", 0)))
+        lt = locked_price * item["quantity"]
         subtotal += lt
         items_to_deduct.append({
             "product_id": item["product_id"], "product_name": prod.get("name"),
-            "unit_price": float(prod.get("price")), "quantity": item["quantity"], "subtotal": float(lt)
+            "unit_price": float(locked_price), "quantity": item["quantity"], "subtotal": float(lt)
         })
 
     config = await repo.get_pricing_config()
     breakdown = get_pricing_from_config(config).calculate(subtotal)
-
-    # 🔥 SECURITY CHECK: Match Stripe Amount with Current Cart Total
-    if not payload.payment_intent_id.startswith("demo_"):
-        stripe_amount_charged = intent["amount"]
-        backend_calculated_amount = _amount_to_paise(breakdown.total)
-        
-        if stripe_amount_charged != backend_calculated_amount:
-            logger.critical(f"[SECURITY ALERT] CART MODIFIED DURING CHECKOUT | User: {user_id} | Stripe: {stripe_amount_charged} | Cart: {backend_calculated_amount}")
-            raise HTTPException(400, "Your cart was modified during checkout. Payment held. Please contact support.")
 
     order_data = {
         "customer_id": user_id, "shipping_address_id": str(address_id), "status": "paid",
@@ -311,23 +335,32 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
         subtotal, items_to_deduct = Decimal("0"), []
         for item in cart_items:
             prod = item.get("products") or {}
-            lt = Decimal(str(prod.get("price", 0))) * item["quantity"]
+            # Use price_snapshot (locked at cart-add time) rather than the live product price
+            locked_price = Decimal(str(item.get("price_snapshot") or prod.get("price", 0)))
+            lt = locked_price * item["quantity"]
             subtotal += lt
             items_to_deduct.append({
                 "product_id": item["product_id"], "product_name": prod.get("name"),
-                "unit_price": float(prod.get("price")), "quantity": item["quantity"], "subtotal": float(lt)
+                "unit_price": float(locked_price), "quantity": item["quantity"], "subtotal": float(lt)
             })
 
         config = await repo.get_pricing_config()
         breakdown = get_pricing_from_config(config).calculate(subtotal)
         
-        # 🔥 SECURITY CHECK: Match Webhook Amount with Current Cart Total
-        backend_calculated_amount = _amount_to_paise(breakdown.total)
+        # 🔥 SECURITY CHECK: Match Webhook Amount with Snapshotted Checkout Amount
         stripe_amount = intent["amount"]
+        stored_checkout_amount = intent.get("metadata", {}).get("checkout_amount")
         
-        if stripe_amount != backend_calculated_amount:
-            logger.critical(f"[WEBHOOK SECURITY] CART MISMATCH | User: {user_id} | Stripe: {stripe_amount} | Cart: {backend_calculated_amount}")
-            return {"message": "Cart mismatch, manual review required"}
+        if stored_checkout_amount and stripe_amount != int(stored_checkout_amount):
+            logger.critical(f"[WEBHOOK SECURITY] STRIPE AMOUNT TAMPERED | User: {user_id} | Stripe: {stripe_amount} | Original: {stored_checkout_amount}")
+            return {"message": "Amount mismatch, manual review required"}
+        
+        # Legacy fallback: compare against live recalculation if no metadata snapshot
+        if not stored_checkout_amount:
+            backend_calculated_amount = _amount_to_paise(breakdown.total)
+            if stripe_amount != backend_calculated_amount:
+                logger.critical(f"[WEBHOOK SECURITY] CART MISMATCH | User: {user_id} | Stripe: {stripe_amount} | Cart: {backend_calculated_amount}")
+                return {"message": "Cart mismatch, manual review required"}
 
         order_data = {
             "customer_id": user_id, "shipping_address_id": address_id, "status": "paid",
