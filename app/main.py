@@ -18,7 +18,9 @@ from app.core.monitoring import init_sentry
 from app.core.supabase import init_clients
 from app.core.setup_middlewares import apply_middlewares
 from app.core.exceptions import register_exception_handlers
-from app.hooks.registry import register_all_hooks
+
+# 🔥 FIX: Updated imports for Event Registry and Cron
+from app.events.registry import register_all_event_handlers
 from app.cron.scheduler import start_cron_jobs
 
 # 🔥 Routers
@@ -38,9 +40,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # 🔥 FIX: Added 'await' here because init_clients is now an async function!
     await init_clients()
     
-    register_all_hooks()
+    # 🔥 FIX: Calling the renamed event registry function
+    register_all_event_handlers()
     logger.info("✅ Application ready")
     
+    # 🔥 Start background cron jobs (e.g. cart unlocker)
     start_cron_jobs()
     
     yield  # Application runs here

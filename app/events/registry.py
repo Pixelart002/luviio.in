@@ -1,7 +1,7 @@
 """
-Hooks Registry
+Events Registry
 ==============
-Path: app/hooks/registry.py
+Path: app/events/registry.py
 
 Registers all background task handlers to their respective events on the EventBus.
 """
@@ -11,7 +11,8 @@ from app.services.events import (
     OrderCreatedEvent, OrderPaidEvent, OrderFailedEvent, 
     OrderShippedEvent, OrderStatusChangedEvent, LowStockEvent
 )
-from app.hooks.handlers.order_handlers import (
+# 🔥 FIX: Path updated from hooks to events
+from app.events.handlers.order_handlers import (
     handle_new_order_admin_push, handle_paid_email, 
     handle_paid_push, handle_failed_push, 
     handle_shipped_push, handle_status_push, 
@@ -21,11 +22,12 @@ from app.hooks.handlers.order_handlers import (
 logger = logging.getLogger(__name__)
 _registered: bool = False
 
-def register_all_hooks() -> None:
+# 🔥 FIX: Function renamed to make sense with 'events'
+def register_all_event_handlers() -> None:
     """Idempotent — safe for hot-reload and tests. Call once in main.py."""
     global _registered
     if _registered:
-        logger.debug("Hooks already registered — skipping")
+        logger.debug("Event handlers already registered — skipping")
         return
 
     bus = get_event_bus()
@@ -40,4 +42,4 @@ def register_all_hooks() -> None:
     bus.subscribe(LowStockEvent,           handle_low_stock_push)
 
     _registered = True
-    logger.info("✅ All Application Hooks (Event Handlers) registered successfully.")
+    logger.info("✅ All Application Event Handlers registered successfully.")
