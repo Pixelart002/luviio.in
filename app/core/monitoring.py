@@ -12,4 +12,5 @@ def init_sentry():
         send_default_pii=True,
         traces_sample_rate=1.0,
         environment=settings.APP_ENV,
+        include_local_variables=False
     )
