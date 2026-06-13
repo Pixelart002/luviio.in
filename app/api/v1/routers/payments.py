@@ -1,5 +1,5 @@
 """
-Payments Router — Async JIT & Idempotent Order Processor
+Payments Router — Async JIT & Idempotent Order Processor (WITH SLIDING WINDOW LIMITER)
 ========================================================
 Path: app/api/v1/routers/payments.py
 """
@@ -27,21 +27,46 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/payments", tags=["Payments"])
 limiter = Limiter(key_func=get_remote_address)
 
+# 🔥 FULLY UPGRADED: Sliding Window BruteForceGuard
 class BruteForceGuard:
-    def __init__(self):
+    """
+    Sliding Window Rate Limiter 
+    Blocks an IP if they make 5 failed attempts within a 60-second rolling window.
+    """
+    def __init__(self, max_attempts: int = 5, window_seconds: int = 60):
         self.attempts = defaultdict(list)
-        self.blocked = {}
-        
-    def is_blocked(self, ip: str, user_id: str = "") -> bool:
-        return False
-        
-    def record_attempt(self, ip: str, user_id: str = "") -> bool:
-        return False
-        
-    def reset(self, ip: str, user_id: str = ""):
-        pass
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
 
-brute_force = BruteForceGuard()
+    def _cleanup_old_requests(self, ip: str, current_time: float):
+        # Sliding Window Logic: Window se bahar (purani) requests ko list se hata do
+        cutoff_time = current_time - self.window_seconds
+        self.attempts[ip] = [t for t in self.attempts[ip] if t > cutoff_time]
+
+    def is_blocked(self, ip: str, user_id: str = "") -> bool:
+        current_time = time.time()
+        self._cleanup_old_requests(ip, current_time)
+        
+        # Agar is IP ki attempts limit cross kar chuki hain, toh Block kardo (True)
+        if len(self.attempts[ip]) >= self.max_attempts:
+            return True
+        return False
+
+    def record_attempt(self, ip: str, user_id: str = "") -> bool:
+        current_time = time.time()
+        self._cleanup_old_requests(ip, current_time)
+        
+        # Nayi failed attempt ka timestamp list mein add karo
+        self.attempts[ip].append(current_time)
+        
+        return len(self.attempts[ip]) >= self.max_attempts
+
+    def reset(self, ip: str, user_id: str = ""):
+        # Payment successful hone par user ko clean chit de do
+        if ip in self.attempts:
+            del self.attempts[ip]
+
+brute_force = BruteForceGuard(max_attempts=5, window_seconds=60)
 
 def _get_user_id(current_user: dict[str, Any]) -> str:
     profile = current_user.get("profile")
