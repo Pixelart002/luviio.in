@@ -19,6 +19,7 @@ from app.core.supabase import init_clients
 from app.core.setup_middlewares import apply_middlewares
 from app.core.exceptions import register_exception_handlers
 from app.hooks.registry import register_all_hooks
+from app.cron.scheduler import start_cron_jobs
 
 # 🔥 Routers
 from app.api.health import router as health_router
@@ -39,6 +40,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     register_all_hooks()
     logger.info("✅ Application ready")
+    
+    start_cron_jobs()
     
     yield  # Application runs here
     
