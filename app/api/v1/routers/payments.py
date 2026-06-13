@@ -1,10 +1,8 @@
 """
-Payments Router — Async JIT & Idempotent Order Processor (WITH SLIDING WINDOW LIMITER)
+Payments Router — AOT (Pending Order) & Idempotent Processor
 ========================================================
 Path: app/api/v1/routers/payments.py
 """
-import copy
-import hashlib
 import logging
 import time
 from collections import defaultdict
@@ -27,42 +25,29 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/payments", tags=["Payments"])
 limiter = Limiter(key_func=get_remote_address)
 
-# 🔥 FULLY UPGRADED: Sliding Window BruteForceGuard
+# 🔥 Sliding Window BruteForceGuard
 class BruteForceGuard:
-    """
-    Sliding Window Rate Limiter 
-    Blocks an IP if they make 5 failed attempts within a 60-second rolling window.
-    """
     def __init__(self, max_attempts: int = 5, window_seconds: int = 60):
         self.attempts = defaultdict(list)
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
 
     def _cleanup_old_requests(self, ip: str, current_time: float):
-        # Sliding Window Logic: Window se bahar (purani) requests ko list se hata do
         cutoff_time = current_time - self.window_seconds
         self.attempts[ip] = [t for t in self.attempts[ip] if t > cutoff_time]
 
     def is_blocked(self, ip: str, user_id: str = "") -> bool:
         current_time = time.time()
         self._cleanup_old_requests(ip, current_time)
-        
-        # Agar is IP ki attempts limit cross kar chuki hain, toh Block kardo (True)
-        if len(self.attempts[ip]) >= self.max_attempts:
-            return True
-        return False
+        return len(self.attempts[ip]) >= self.max_attempts
 
     def record_attempt(self, ip: str, user_id: str = "") -> bool:
         current_time = time.time()
         self._cleanup_old_requests(ip, current_time)
-        
-        # Nayi failed attempt ka timestamp list mein add karo
         self.attempts[ip].append(current_time)
-        
         return len(self.attempts[ip]) >= self.max_attempts
 
     def reset(self, ip: str, user_id: str = ""):
-        # Payment successful hone par user ko clean chit de do
         if ip in self.attempts:
             del self.attempts[ip]
 
@@ -79,16 +64,8 @@ def _get_user_id(current_user: dict[str, Any]) -> str:
 def _amount_to_paise(amount: Any) -> int:
     return int((Decimal(str(amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
-def _compute_cart_hash(cart_items: list) -> str:
-    """Fingerprint the cart at intent-creation time so we can detect modifications at confirm time."""
-    fingerprint = sorted(
-        f"{item['product_id']}:{item['quantity']}:{item.get('price_snapshot', 0)}"
-        for item in cart_items
-    )
-    return hashlib.sha256("|".join(fingerprint).encode()).hexdigest()
-
 # ══════════════════════════════════════════════════════════════════════════════
-#  CREATE INTENT
+#  CREATE INTENT & PENDING ORDER
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/create-intent", response_model=Dict[str, Any])
@@ -99,67 +76,82 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
     user_id = _get_user_id(current)
     client_ip = get_remote_address(request)
     
-    logger.info(f"[PAYMENTS] Initiating Payment Intent creation for user: {user_id}")
+    logger.info(f"[PAYMENTS] Initiating Checkout for user: {user_id}")
     
     if brute_force.is_blocked(client_ip, user_id):
-        logger.warning(f"[PAYMENTS] Blocked brute force attempt from IP: {client_ip}")
         raise HTTPException(429, "Too many attempts.")
     
+    # 1. Fetch Cart
     cart_items = await repo.get_cart_items_for_checkout(user_id)
     if not cart_items:
-        logger.warning(f"[PAYMENTS] User {user_id} attempted checkout with empty cart.")
         raise HTTPException(400, "Your cart is empty")
 
+    # 2. Check Stock & Calculate Amount
     subtotal = Decimal("0")
+    items_to_deduct = []
     for item in cart_items:
         prod = item.get("products") or {}
         if not prod.get("is_active") or prod.get("stock", 0) < item["quantity"]:
-            logger.error(f"[PAYMENTS] Out of stock item in cart for user {user_id}: {prod.get('name')}")
             raise HTTPException(409, f"Product '{prod.get('name')}' is out of stock.")
-        subtotal += Decimal(str(prod.get("price", 0))) * item["quantity"]
+        
+        locked_price = Decimal(str(item.get("price_snapshot") or prod.get("price", 0)))
+        lt = locked_price * item["quantity"]
+        subtotal += lt
+        items_to_deduct.append({
+            "product_id": item["product_id"], "product_name": prod.get("name"),
+            "unit_price": float(locked_price), "quantity": item["quantity"], "subtotal": float(lt)
+        })
 
     config = await repo.get_pricing_config()
     breakdown = get_pricing_from_config(config).calculate(subtotal)
-    
     amount_paise = _amount_to_paise(breakdown.total)
 
     if amount_paise < 50 * 100:
-        logger.error(f"[PAYMENTS] Amount out of bounds for user {user_id}. Amount: {amount_paise}")
         raise HTTPException(400, "Order amount out of bounds")
 
-    idem_key = f"jit_pi_{payload.idempotency_key}"
+    # 3. Fetch Shipping Address
+    addr = await repo.get_shipping_address(str(payload.shipping_address_id), user_id)
+    if not addr:
+        raise HTTPException(404, "Shipping address not found")
+
+    # 4. Create Stripe Intent First (So we have the PI ID)
+    idem_key = f"aot_pi_{payload.idempotency_key}"
     try:
-        logger.info(f"[PAYMENTS] Calling Stripe API (via threadpool) for user: {user_id} | Amount: {amount_paise}")
-        
-        # 🔥 FIX: Threadpool wrapped for Async performance
         intent = await run_in_threadpool(
             payment_service.create_payment_intent,
-            amount_paise, "inr", "JIT_HOLD", user_id, idem_key
+            amount_paise, "inr", "AOT_PENDING", user_id, idem_key
         )
+    except Exception as exc:
+        brute_force.record_attempt(client_ip, user_id)
+        raise HTTPException(502, f"Payment provider error: {exc}")
+
+    # 5. Create Pending Order in DB & Reserve Stock
+    order_data = {
+        "customer_id": user_id, "shipping_address_id": str(payload.shipping_address_id), "status": "pending",
+        **breakdown.as_dict(),
+        "shipping_line1": addr.get("line1"), "shipping_city": addr.get("city"),
+        "shipping_postal_code": addr.get("postal_code"), "shipping_country": addr.get("country"),
+        "idempotency_key": payload.idempotency_key, "stripe_payment_intent": intent["id"]
+    }
+    
+    try:
+        pending_order = await repo.create_pending_order(order_data, items_to_deduct)
+        await repo.clear_user_cart(user_id) # Cart is cleared immediately!
         
-        cart_hash = _compute_cart_hash(cart_items)
-        # 🔥 FIX: Threadpool wrapped for Async performance
+        # Link order ID to Stripe Metadata
         await run_in_threadpool(
             payment_service.update_intent_metadata,
             intent["id"], {
-                "idempotency_key": payload.idempotency_key, 
-                "shipping_address_id": str(payload.shipping_address_id), 
-                "user_id": user_id,
-                "checkout_amount": str(amount_paise),
-                "cart_hash": cart_hash,
+                "order_id": pending_order["id"],
+                "user_id": user_id
             }
         )
-        logger.info(f"[PAYMENTS] Payment Intent {intent['id']} created successfully for user {user_id}")
-    except Exception as exc:
-        brute_force.record_attempt(client_ip, user_id)
-        logger.error(f"[PAYMENTS] Intent creation CRITICAL Error for user {user_id}: {exc}", exc_info=True)
-        raise HTTPException(502, f"Payment provider error: {exc}")
+        logger.info(f"[PAYMENTS] Pending Order {pending_order['id']} created. Stock reserved.")
+    except Exception as e:
+        logger.error(f"[PAYMENTS] Order creation failed for {user_id}: {e}")
+        raise HTTPException(409, "Failed to create order")
 
-    # 🔒 Lock the cart to prevent modifications during active checkout
-    await repo.lock_cart(user_id)
-    logger.info(f"[PAYMENTS] Cart locked for user {user_id} during checkout (intent: {intent['id']})")
-
-    return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"]}
+    return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": pending_order["id"]}
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONFIRM PAYMENT
@@ -173,141 +165,42 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
     user_id = _get_user_id(current)
     client_ip = get_remote_address(request)
     
-    logger.info(f"[PAYMENTS] Confirming payment: {payload.payment_intent_id} | User: {user_id}")
-
     if brute_force.is_blocked(client_ip, user_id):
         raise HTTPException(429, "Too many attempts.")
 
     try:
-        if payload.payment_intent_id.startswith("demo_"):
-            idempotency_key = payload.payment_intent_id.replace("demo_", "")
-            addr_fallback = await repo.get_shipping_address("dummy", user_id) 
-            address_id = None
-            logger.info(f"[PAYMENTS] Processing DEMO mode payment for user: {user_id}")
-        else:
-            # 🔥 FIX: Threadpool wrapped for Async performance
-            intent = await run_in_threadpool(
-                payment_service.retrieve_intent, 
-                payload.payment_intent_id
-            )
-            idempotency_key = intent.get("metadata", {}).get("idempotency_key")
-            address_id = intent.get("metadata", {}).get("shipping_address_id")
-            if intent["status"] != "succeeded": 
-                logger.warning(f"[PAYMENTS] Attempt to confirm incomplete payment. Status: {intent['status']}")
-                raise HTTPException(400, f"Payment not completed. Status: {intent['status']}")
-    except HTTPException:
-        raise
+        intent = await run_in_threadpool(payment_service.retrieve_intent, payload.payment_intent_id)
+        order_id = intent.get("metadata", {}).get("order_id")
+        
+        if intent["status"] != "succeeded":
+            raise HTTPException(400, f"Payment not completed. Status: {intent['status']}")
     except Exception as e:
         brute_force.record_attempt(client_ip, user_id)
-        logger.error(f"[PAYMENTS] Verification failed for {payload.payment_intent_id}: {e}")
         raise HTTPException(502, "Verification failed")
 
-    if not idempotency_key:
-        logger.error(f"[PAYMENTS] Missing checkout metadata for intent {payload.payment_intent_id}")
-        raise HTTPException(400, "Missing checkout metadata")
+    if not order_id:
+        raise HTTPException(400, "Missing order metadata in payment intent")
 
-    existing_order = await repo.get_order_by_idempotency_key(user_id, idempotency_key)
-    if existing_order:
-        logger.info(f"[PAYMENTS] Idempotent hit. Order {existing_order['id']} already processed for user {user_id}.")
-        await repo.unlock_cart(user_id)
-        return {"status": "paid", "order_id": existing_order["id"], "message": "Already processed"}
-
-    # Secondary idempotency check by payment_intent_id.
-    # Guards against the race condition where the Stripe webhook handler creates the order
-    # and clears the cart before this /confirm endpoint's idempotency check can find the order.
-    if not payload.payment_intent_id.startswith("demo_"):
-        existing_by_pi = await repo.get_order_by_pi(payload.payment_intent_id)
-        if existing_by_pi:
-            if existing_by_pi.get("customer_id") != user_id:
-                logger.error(f"[PAYMENTS] PI ownership mismatch for intent {payload.payment_intent_id} | User: {user_id}")
-                raise HTTPException(403, "Order does not belong to this user")
-            logger.info(f"[PAYMENTS] PI idempotency hit. Order {existing_by_pi['id']} already processed (via webhook) for user {user_id}.")
-            await repo.unlock_cart(user_id)
-            return {"status": "paid", "order_id": existing_by_pi["id"], "message": "Already processed"}
-
-    if address_id:
-        addr = await repo.get_shipping_address(address_id, user_id)
-    else:
-        addresses = await repo.admin_sb.table("addresses").select("*").eq("user_id", user_id).limit(1).execute()
-        addr = addresses.data[0] if addresses.data else None
-        address_id = addr.get("id") if addr else None
-
-    if not addr:
-        logger.error(f"[PAYMENTS] Shipping address lost/invalid for user {user_id}")
-        raise HTTPException(404, "Shipping address lost")
-
-    cart_items = await repo.get_cart_items_for_checkout(user_id)
-    if not cart_items:
-        logger.error(f"[PAYMENTS] Attempted checkout on empty cart for user {user_id} | Intent: {payload.payment_intent_id}")
-        raise HTTPException(400, "Cart is empty or already processed.")
-
-    # 🔥 SECURITY CHECK: Validate cart integrity using snapshotted metadata from intent creation
-    if not payload.payment_intent_id.startswith("demo_"):
-        meta = intent.get("metadata", {})
-        stored_checkout_amount = meta.get("checkout_amount")
-        stored_cart_hash = meta.get("cart_hash")
-
-        if not stored_checkout_amount or not stored_cart_hash:
-            # Intent predates the cart-hash feature — fall back to legacy amount check
-            logger.warning(f"[PAYMENTS] Intent {payload.payment_intent_id} has no cart snapshot metadata; skipping hash check for user {user_id}")
-        else:
-            stripe_amount_charged = intent["amount"]
-            if stripe_amount_charged != int(stored_checkout_amount):
-                logger.critical(f"[SECURITY ALERT] STRIPE AMOUNT TAMPERED | User: {user_id} | Stripe: {stripe_amount_charged} | Original: {stored_checkout_amount}")
-                raise HTTPException(400, "Payment amount mismatch detected. Please contact support.")
-
-            current_cart_hash = _compute_cart_hash(cart_items)
-            if current_cart_hash != stored_cart_hash:
-                logger.critical(f"[SECURITY ALERT] CART MODIFIED DURING CHECKOUT | User: {user_id} | Stripe: {stripe_amount_charged} | Cart hash mismatch")
-                raise HTTPException(400, "Your cart was modified during checkout. Payment held. Please contact support.")
-
-    subtotal, items_to_deduct = Decimal("0"), []
-    for item in cart_items:
-        prod = item.get("products") or {}
-        # Use price_snapshot (locked at cart-add time) rather than the live product price
-        locked_price = Decimal(str(item.get("price_snapshot") or prod.get("price", 0)))
-        lt = locked_price * item["quantity"]
-        subtotal += lt
-        items_to_deduct.append({
-            "product_id": item["product_id"], "product_name": prod.get("name"),
-            "unit_price": float(locked_price), "quantity": item["quantity"], "subtotal": float(lt)
-        })
-
-    config = await repo.get_pricing_config()
-    breakdown = get_pricing_from_config(config).calculate(subtotal)
-
-    order_data = {
-        "customer_id": user_id, "shipping_address_id": str(address_id), "status": "paid",
-        **breakdown.as_dict(),
-        "shipping_line1": addr.get("line1"), "shipping_city": addr.get("city"),
-        "shipping_postal_code": addr.get("postal_code"), "shipping_country": addr.get("country"),
-        "idempotency_key": idempotency_key, "stripe_payment_intent": payload.payment_intent_id
-    }
-
-    try:
-        logger.info(f"[PAYMENTS] Constructing atomic JIT order for user: {user_id}")
-        final_order = await repo.create_order_from_payment_jit(order_data, items_to_deduct)
+    existing_order = await repo.get_order_by_id(order_id)
+    if not existing_order:
+        raise HTTPException(404, "Order not found")
         
-        await repo.create_payment_record(
-            final_order["id"], 
-            payload.payment_intent_id, 
-            float(breakdown.total) if payload.payment_intent_id.startswith("demo_") else (intent["amount"] / 100)
-        )
-        await repo.clear_user_cart(user_id)
-        logger.info(f"[PAYMENTS] SUCCESS! Order {final_order['id']} created. Cart cleared for user {user_id}")
-    except Exception as e:
-        logger.error(f"[PAYMENTS] Order construction failed for user {user_id}: {e}")
-        raise HTTPException(409, str(e))
+    if existing_order["status"] == "paid":
+        return {"status": "paid", "order_id": order_id, "message": "Already processed"}
 
+    # Update to Paid
+    updated_order = await repo.update_order_status(order_id, "paid", intent["id"])
+    await repo.create_payment_record(order_id, intent["id"], intent["amount"] / 100)
     brute_force.reset(client_ip, user_id)
+
     email = current.get("profile", {}).get("email") or await repo.get_customer_email(user_id)
     try:
-        logger.info(f"[PAYMENTS] Publishing OrderPaidEvent for Order {final_order['id']}")
-        get_event_bus().publish(OrderPaidEvent(order=final_order, customer_email=email, customer_id=user_id))
+        # Pass the full order object containing order_items
+        get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
     except Exception as e:
-        logger.warning(f"[PAYMENTS] Event Bus Failed to publish OrderPaidEvent: {e}")
+        logger.warning(f"[PAYMENTS] Failed to publish OrderPaidEvent: {e}")
 
-    return {"status": "paid", "order_id": final_order["id"], "message": "Payment confirmed and Order Created"}
+    return {"status": "paid", "order_id": order_id, "message": "Payment confirmed"}
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  NOTIFY FAILED & WEBHOOK
@@ -317,137 +210,68 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
 async def notify_payment_failed(request: Request, payload: NotifyFailedRequest, current: dict[str, Any] = Depends(get_current_user)):
     user_id = _get_user_id(current)
     repo = AsyncPaymentRepository()
-    logger.warning(f"[PAYMENTS] Payment Failure Logged | User: {user_id} | Intent: {payload.payment_intent_id} | Reason: {payload.error_message}")
+    payment_service = get_payment_provider("stripe")
     
-    # 🔓 Unlock cart so the user can modify it and retry checkout
-    await repo.unlock_cart(user_id)
-    logger.info(f"[PAYMENTS] Cart unlocked for user {user_id} after payment failure")
-    
-    # 🔥 FIX: Trigger the failed event so Push/Email handlers can catch it
-    try:
-        email = current.get("profile", {}).get("email") or await repo.get_customer_email(user_id)
-        logger.info(f"[PAYMENTS] Publishing OrderFailedEvent for User: {user_id}")
-        get_event_bus().publish(OrderFailedEvent(
-            order={"id": "CHECKOUT_SESSION"}, 
-            customer_email=email,
-            customer_id=user_id, 
-            reason=payload.error_message or "payment_failed"
-        ))
-    except Exception as e:
-        logger.warning(f"[PAYMENTS] Event Bus Failed to publish OrderFailedEvent: {e}")
+    intent = await run_in_threadpool(payment_service.retrieve_intent, payload.payment_intent_id)
+    order_id = intent.get("metadata", {}).get("order_id")
 
-    return {"message": "Failure logged"}
+    if order_id:
+        existing_order = await repo.get_order_by_id(order_id)
+        if existing_order and existing_order["status"] == "pending":
+            await repo.update_order_status(order_id, "failed")
+            await repo.restore_stock_for_order(order_id)
+            logger.info(f"[PAYMENTS] Order {order_id} marked as failed and stock restored.")
+
+            email = current.get("profile", {}).get("email") or await repo.get_customer_email(user_id)
+            get_event_bus().publish(OrderFailedEvent(
+                order=existing_order, customer_email=email, customer_id=user_id, reason=payload.error_message or "user_cancelled"
+            ))
+
+    return {"message": "Failure logged and stock restored"}
 
 @router.post("/webhook")
 async def stripe_webhook(request: Request, stripe_signature: str | None = Header(None, alias="stripe-signature")) -> dict[str, str]:
     body = await request.body()
     repo = AsyncPaymentRepository()
     payment_service = get_payment_provider("stripe")
-    
-    logger.info("[WEBHOOK] Incoming Stripe webhook payload received.")
 
     if not stripe_signature:
-        logger.error("[WEBHOOK] Missing Stripe signature header.")
         raise HTTPException(400, "Missing stripe-signature")
         
     try:
-        # 🔥 FIX: Threadpool wrapped
         event = await run_in_threadpool(payment_service.verify_webhook, body, stripe_signature)
-    except ValueError as e:
-        logger.error(f"[WEBHOOK] Invalid signature match: {e}")
+    except ValueError:
         raise HTTPException(400, "Invalid signature")
 
-    event_type, pi_id = event["type"], event["data"]["object"]["id"]  # Extracting intent ID correctly from Stripe Event
-    logger.info(f"[WEBHOOK] Verified event type: {event_type} | Intent ID: {pi_id}")
+    event_type, pi_id = event["type"], event["data"]["object"]["id"]
+    logger.info(f"[WEBHOOK] Event: {event_type} | Intent ID: {pi_id}")
+
+    intent = await run_in_threadpool(payment_service.retrieve_intent, pi_id)
+    order_id = intent.get("metadata", {}).get("order_id")
+    user_id = intent.get("metadata", {}).get("user_id")
+
+    if not order_id or not user_id:
+        return {"message": "OK - Missing metadata"}
+
+    existing_order = await repo.get_order_by_id(order_id)
+    if not existing_order:
+        return {"message": "OK - Order not found"}
+
+    if existing_order["status"] != "pending":
+        return {"message": "Already processed"}
 
     if event_type == "payment_intent.succeeded":
-        # 🔥 FIX: Threadpool wrapped
-        intent = await run_in_threadpool(payment_service.retrieve_intent, pi_id)
-        idempotency_key = intent.get("metadata", {}).get("idempotency_key")
-        user_id = intent.get("metadata", {}).get("user_id")
-        address_id = intent.get("metadata", {}).get("shipping_address_id")
-
-        if not idempotency_key or not user_id:
-            logger.warning("[WEBHOOK] Intent missing critical metadata (idempotency_key or user_id). Ignoring.")
-            return {"message": "OK"}
-
-        existing = await repo.get_order_by_idempotency_key(user_id, idempotency_key)
-        if existing:
-            logger.info(f"[WEBHOOK] Order already processed for User: {user_id} | Idempotency Key: {idempotency_key}. Safe ignore.")
-            return {"message": "Already processed"}
-
-        addr = await repo.get_shipping_address(address_id, user_id)
-        cart_items = await repo.get_cart_items_for_checkout(user_id)
-        if not cart_items or not addr:
-            logger.warning(f"[WEBHOOK] Missing cart items or address for User: {user_id}. State unsync.")
-            return {"message": "OK"}
-
-        subtotal, items_to_deduct = Decimal("0"), []
-        for item in cart_items:
-            prod = item.get("products") or {}
-            # Use price_snapshot (locked at cart-add time) rather than the live product price
-            locked_price = Decimal(str(item.get("price_snapshot") or prod.get("price", 0)))
-            lt = locked_price * item["quantity"]
-            subtotal += lt
-            items_to_deduct.append({
-                "product_id": item["product_id"], "product_name": prod.get("name"),
-                "unit_price": float(locked_price), "quantity": item["quantity"], "subtotal": float(lt)
-            })
-
-        config = await repo.get_pricing_config()
-        breakdown = get_pricing_from_config(config).calculate(subtotal)
+        await repo.update_order_status(order_id, "paid", pi_id)
+        await repo.create_payment_record(order_id, pi_id, intent["amount"] / 100)
         
-        # 🔥 SECURITY CHECK: Match Webhook Amount with Snapshotted Checkout Amount
-        stripe_amount = intent["amount"]
-        stored_checkout_amount = intent.get("metadata", {}).get("checkout_amount")
-        
-        if stored_checkout_amount and stripe_amount != int(stored_checkout_amount):
-            logger.critical(f"[WEBHOOK SECURITY] STRIPE AMOUNT TAMPERED | User: {user_id} | Stripe: {stripe_amount} | Original: {stored_checkout_amount}")
-            return {"message": "Amount mismatch, manual review required"}
-        
-        # Legacy fallback: compare against live recalculation if no metadata snapshot
-        if not stored_checkout_amount:
-            backend_calculated_amount = _amount_to_paise(breakdown.total)
-            if stripe_amount != backend_calculated_amount:
-                logger.critical(f"[WEBHOOK SECURITY] CART MISMATCH | User: {user_id} | Stripe: {stripe_amount} | Cart: {backend_calculated_amount}")
-                return {"message": "Cart mismatch, manual review required"}
-
-        order_data = {
-            "customer_id": user_id, "shipping_address_id": address_id, "status": "paid",
-            **breakdown.as_dict(), "shipping_line1": addr["line1"], "shipping_city": addr["city"],
-            "shipping_postal_code": addr["postal_code"], "shipping_country": addr["country"],
-            "idempotency_key": idempotency_key, "stripe_payment_intent": pi_id
-        }
-
-        try:
-            logger.info(f"[WEBHOOK] Constructing fallback JIT order for User: {user_id}")
-            final_order = await repo.create_order_from_payment_jit(order_data, items_to_deduct)
-            await repo.create_payment_record(final_order["id"], pi_id, stripe_amount / 100)
-            await repo.clear_user_cart(user_id)
-            
-            logger.info(f"[WEBHOOK] Publishing OrderPaidEvent for fallback Order {final_order['id']}")
-            get_event_bus().publish(OrderPaidEvent(order=final_order, customer_email=await repo.get_customer_email(user_id), customer_id=user_id))
-        except Exception as e:
-            logger.error(f"[WEBHOOK] Fallback order processing failed: {e}")
+        email = await repo.get_customer_email(user_id)
+        get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
 
     elif event_type in ("payment_intent.payment_failed", "payment_intent.canceled"):
-        # 🔥 FIX: Threadpool wrapped
-        intent = await run_in_threadpool(payment_service.retrieve_intent, pi_id)
-        user_id = intent.get("metadata", {}).get("user_id")
-        if not user_id:
-            return {"message": "OK"}
-
-        # 🔓 Unlock cart so the user can modify it and retry
-        await repo.unlock_cart(user_id)
-        logger.info(f"[WEBHOOK] Cart unlocked for user {user_id} after {event_type}")
-
-        try:
-            logger.info(f"[WEBHOOK] Publishing OrderFailedEvent for User: {user_id}")
-            get_event_bus().publish(OrderFailedEvent(
-                order={"id": "CART_SESSION"}, customer_email=await repo.get_customer_email(user_id),
-                customer_id=user_id, reason="payment_failed"
-            ))
-        except Exception as e:
-            logger.warning(f"[WEBHOOK] Event Bus Failed to publish OrderFailedEvent: {e}")
+        await repo.update_order_status(order_id, "failed")
+        await repo.restore_stock_for_order(order_id)
+        
+        email = await repo.get_customer_email(user_id)
+        get_event_bus().publish(OrderFailedEvent(order=existing_order, customer_email=email, customer_id=user_id, reason="webhook_failed"))
 
     return {"message": "OK"}
