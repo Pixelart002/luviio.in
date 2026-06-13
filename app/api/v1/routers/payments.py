@@ -154,6 +154,57 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
     return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": pending_order["id"]}
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  RETRY PENDING PAYMENT
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/retry/{order_id}")
+@limiter.limit("10/minute")
+async def retry_payment(request: Request, order_id: str, current: dict[str, Any] = Depends(get_current_user)):
+    repo = AsyncPaymentRepository()
+    payment_service = get_payment_provider("stripe")
+    user_id = _get_user_id(current)
+    
+    logger.info(f"[PAYMENTS] User {user_id} requested payment retry for order: {order_id}")
+
+    # 1. Database se order uthao
+    existing_order = await repo.get_order_by_id(order_id)
+    if not existing_order:
+        raise HTTPException(404, "Order not found")
+        
+    # 2. Security check: Kya yeh order ishi user ka hai?
+    if existing_order.get("customer_id") != user_id:
+        raise HTTPException(403, "Access denied")
+        
+    # 3. Check status: Order pending hona chahiye
+    if existing_order.get("status") == "paid":
+        return {"status": "paid", "message": "This order is already paid"}
+    if existing_order.get("status") in ["failed", "cancelled"]:
+        raise HTTPException(400, "Order has failed or cancelled. Please create a new cart.")
+        
+    # 4. Stripe se purana intent wapas maango
+    pi_id = existing_order.get("stripe_payment_intent")
+    if not pi_id:
+        raise HTTPException(400, "No payment intent linked to this order")
+        
+    try:
+        intent = await run_in_threadpool(payment_service.retrieve_intent, pi_id)
+        
+        # Agar Stripe par already succeed ho chuka hai (par webhook delay hua tha)
+        if intent["status"] == "succeeded":
+            await repo.update_order_status(order_id, "paid", pi_id)
+            return {"status": "paid", "message": "Payment was already successful!"}
+            
+        # Return the same client_secret to frontend so they can open Stripe again
+        return {
+            "client_secret": intent["client_secret"],
+            "payment_intent_id": intent["id"],
+            "order_id": order_id
+        }
+    except Exception as e:
+        logger.error(f"[PAYMENTS] Retry failed for order {order_id}: {e}")
+        raise HTTPException(502, "Could not contact payment provider")
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  CONFIRM PAYMENT
 # ══════════════════════════════════════════════════════════════════════════════
 
