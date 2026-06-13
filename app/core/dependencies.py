@@ -594,4 +594,4 @@ def get_client_ip(request: Request) -> str:
     if cf_ip:
         return cf_ip.strip()
     
-    return request.client.host if request.client else "unknown""
+    return request.client.host if request.client else "unknown"
