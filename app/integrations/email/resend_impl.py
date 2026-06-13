@@ -6,8 +6,12 @@ Path: app/integrations/email/resend_impl.py
 """
 import os
 import logging
+import base64
 from typing import Any
 import resend
+
+# 🔥 IMPORT ADDED FOR INVOICE PDF ATTACHMENT
+from app.utils.documents.pdf_invoice import build_invoice_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +190,29 @@ def send_payment_success(to: str, order: dict[str, Any] | None) -> None:
       <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding: 28px 0 0;"><a href="{BASE_URL}/orders.html" style="display:inline-block;padding:12px 28px;background-color:{GOLD};color:{BG_DARK};border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">View Your Order →</a></td></tr></table>
       <p style="color:{TEXT_MUTED};font-size:11px;margin:24px 0 0;line-height:1.6;">You'll receive another email once your order ships. For any queries, contact <a href="mailto:support@luviio.in" style="color:{GOLD};text-decoration:none;">support@luviio.in</a></p>
     """
-    params: resend.Emails.SendParams = {"from": FROM, "to": [to], "subject": f"Payment Confirmed — {APP} Order #{oid} ✓", "html": _email_template(title="Payment Successful ✓", content=content, preheader=f"Payment of ₹{float(total):,.2f} received for order #{oid}")}
+    
+    # ── 📄 Generate PDF and Attach it ───────────────────────────────────────────
+    attachments = []
+    try:
+        dummy_customer = {"full_name": "Customer", "email": to}
+        pdf_bytes = build_invoice_pdf(order, dummy_customer)
+        pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+        
+        attachments.append({
+            "filename": f"Luviio_Invoice_{oid}.pdf",
+            "content": pdf_b64
+        })
+    except Exception as e:
+        logger.error(f"[EMAIL] Failed to generate PDF attachment for order {oid}: {e}")
+    # ──────────────────────────────────────────────────────────────────────────
+
+    params: resend.Emails.SendParams = {
+        "from": FROM, 
+        "to": [to], 
+        "subject": f"Payment Confirmed — {APP} Order #{oid} ✓", 
+        "html": _email_template(title="Payment Successful ✓", content=content, preheader=f"Payment of ₹{float(total):,.2f} received for order #{oid}"),
+        "attachments": attachments  # 🔥 Attachment added here!
+    }
     _safe_send(params, f"payment_success to={to} order={oid}")
 
 def send_cart_reminder_email(to: str, name: str, items: list) -> None:
