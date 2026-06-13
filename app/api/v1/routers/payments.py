@@ -293,9 +293,24 @@ async def notify_payment_failed(request: Request, payload: NotifyFailedRequest, 
     user_id = _get_user_id(current)
     repo = AsyncPaymentRepository()
     logger.warning(f"[PAYMENTS] Payment Failure Logged | User: {user_id} | Intent: {payload.payment_intent_id} | Reason: {payload.error_message}")
+    
     # 🔓 Unlock cart so the user can modify it and retry checkout
     await repo.unlock_cart(user_id)
     logger.info(f"[PAYMENTS] Cart unlocked for user {user_id} after payment failure")
+    
+    # 🔥 FIX: Trigger the failed event so Push/Email handlers can catch it
+    try:
+        email = current.get("profile", {}).get("email") or await repo.get_customer_email(user_id)
+        logger.info(f"[PAYMENTS] Publishing OrderFailedEvent for User: {user_id}")
+        get_event_bus().publish(OrderFailedEvent(
+            order={"id": "CHECKOUT_SESSION"}, 
+            customer_email=email,
+            customer_id=user_id, 
+            reason=payload.error_message or "payment_failed"
+        ))
+    except Exception as e:
+        logger.warning(f"[PAYMENTS] Event Bus Failed to publish OrderFailedEvent: {e}")
+
     return {"message": "Failure logged"}
 
 @router.post("/webhook")

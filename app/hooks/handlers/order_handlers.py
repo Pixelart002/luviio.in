@@ -33,6 +33,7 @@ class _Icon:
 
 class _Copy:
     URL_ORDERS = "/orders.html"
+    URL_CART   = "/cart.html"  # 🔥 Added for failed payments
     URL_ADMIN  = "/admin.html"
     ADMIN_ORDER_TITLE   = "New Order #{oid}"
     ADMIN_ORDER_BODY    = "₹{amt} — needs processing"
@@ -71,10 +72,11 @@ def handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
 def handle_paid_email(event: OrderPaidEvent) -> None:
     if not event.customer_email or not event.order: return
     try:
+        logger.info(f"[HOOK:EMAIL] Triggering Payment Success Email for {event.customer_email}")
         email_provider = get_email_provider("resend")
         email_provider.send_payment_success(event.customer_email, event.order)
     except Exception as e:
-        logger.error(f"[HOOK] Failed to send payment email: {e}")
+        logger.error(f"[HOOK:EMAIL] Failed to send payment email: {e}", exc_info=True)
 
 def handle_paid_push(event: OrderPaidEvent) -> None:
     order = event.order or {}
@@ -90,16 +92,33 @@ def handle_failed_push(event: OrderFailedEvent) -> None:
     order = event.order or {}
     uid = event.customer_id or order.get("customer_id", "")
     if not uid: return
+    
+    raw_id = str(order.get("id", ""))
+    is_cart = "SESSION" in raw_id
     oid = _safe_oid(order)
     
-    if event.reason == "payment_canceled":
-        title, body, icon = _Copy.CANCEL_PUSH_TITLE.format(oid=oid), "Your payment was cancelled. Items are still in your cart.", _Icon.CANCELLED
-    elif event.reason == "payment_failed":
-        title, body, icon = _Copy.FAILED_PUSH_TITLE.format(oid=oid), _Copy.FAILED_PUSH_BODY, _Icon.FAILED
+    # 🔥 Smart Title Logic for Checkout Sessions
+    if is_cart:
+        base_title = "Checkout Failed ❌"
     else:
-        title, body, icon = _Copy.FAILED_PUSH_TITLE.format(oid=oid), str(event.reason)[:200], _Icon.FAILED
+        base_title = _Copy.FAILED_PUSH_TITLE.format(oid=oid)
     
-    send_push_to_user(get_admin_supabase(), uid, title=title, body=body, icon=icon, url=_Copy.URL_ORDERS)
+    if event.reason == "payment_canceled":
+        title = "Payment Cancelled" if is_cart else _Copy.CANCEL_PUSH_TITLE.format(oid=oid)
+        body = "Your payment was cancelled. Your items are safely saved in your cart."
+        icon = _Icon.CANCELLED
+    elif event.reason == "payment_failed":
+        title = base_title
+        body = _Copy.FAILED_PUSH_BODY
+        icon = _Icon.FAILED
+    else:
+        title = base_title
+        body = str(event.reason)[:200]
+        icon = _Icon.FAILED
+    
+    logger.info(f"[HOOK:PUSH] Sending Failed Push to {uid}: {title}")
+    # 🔥 Changed URL to CART instead of ORDERS so user can retry
+    send_push_to_user(get_admin_supabase(), uid, title=title, body=body, icon=icon, url=_Copy.URL_CART)
 
 def handle_shipped_push(event: OrderShippedEvent) -> None:
     order = event.order or {}
@@ -115,7 +134,6 @@ def handle_shipped_push(event: OrderShippedEvent) -> None:
     )
 
 def handle_status_push(event: OrderStatusChangedEvent) -> None:
-    # 🔥 FIX: Added 'cancelled' to status mappings!
     _CONFIG = {
         "delivered": (_Copy.DELIVERED_TITLE, _Copy.DELIVERED_BODY, _Icon.DELIVERED),
         "refunded":  (_Copy.REFUNDED_TITLE,  _Copy.REFUNDED_BODY,  _Icon.REFUNDED),
