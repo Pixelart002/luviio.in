@@ -1,5 +1,5 @@
 """
-Payments Router — AOT (Pending Order) & Idempotent Processor
+Payments Router — AOT (Pending Order) & Smart Retry Processor
 ========================================================
 Path: app/api/v1/routers/payments.py
 """
@@ -154,7 +154,7 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
     return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": pending_order["id"]}
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  RETRY PENDING PAYMENT
+#  RETRY PENDING PAYMENT (SMART RECOVERY)
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/retry/{order_id}")
@@ -178,10 +178,8 @@ async def retry_payment(request: Request, order_id: str, current: dict[str, Any]
     # 3. Check status: Order pending hona chahiye
     if existing_order.get("status") == "paid":
         return {"status": "paid", "message": "This order is already paid"}
-    if existing_order.get("status") in ["failed", "cancelled"]:
-        raise HTTPException(400, "Order has failed or cancelled. Please create a new cart.")
         
-    # 4. Stripe se purana intent wapas maango
+    # 4. Stripe se purana intent check karo
     pi_id = existing_order.get("stripe_payment_intent")
     if not pi_id:
         raise HTTPException(400, "No payment intent linked to this order")
@@ -189,20 +187,52 @@ async def retry_payment(request: Request, order_id: str, current: dict[str, Any]
     try:
         intent = await run_in_threadpool(payment_service.retrieve_intent, pi_id)
         
-        # Agar Stripe par already succeed ho chuka hai (par webhook delay hua tha)
+        # Agar Stripe par already succeed ho chuka hai (par webhook miss hua tha)
         if intent["status"] == "succeeded":
             await repo.update_order_status(order_id, "paid", pi_id)
             return {"status": "paid", "message": "Payment was already successful!"}
             
-        # Return the same client_secret to frontend so they can open Stripe again
+        client_secret = intent.get("client_secret")
+        
+        # 🔥 SMART RECOVERY: Agar purana intent cancel ho gaya ya expire ho gaya (client_secret nahi hai)
+        # Toh hum usi exact order ke liye ek NAYA fresh intent banayenge.
+        if intent["status"] == "canceled" or not client_secret:
+            logger.info(f"[PAYMENTS] Old intent {pi_id} is unusable. Generating a fresh intent for order {order_id}")
+            
+            amount_paise = _amount_to_paise(existing_order.get("total_amount", 0))
+            new_idem_key = f"retry_pi_{order_id}_{int(time.time())}" # Nayi idempotency key zaroori hai
+            
+            # Naya intent banao
+            new_intent = await run_in_threadpool(
+                payment_service.create_payment_intent,
+                amount_paise, "inr", "AOT_RETRY", user_id, new_idem_key
+            )
+            
+            # Order mein naye intent ki ID update karo
+            await repo.update_order_status(order_id, existing_order.get("status"), new_intent["id"])
+            
+            # Naye intent mein metadata attach karo
+            await run_in_threadpool(
+                payment_service.update_intent_metadata,
+                new_intent["id"], {"order_id": order_id, "user_id": user_id}
+            )
+            
+            return {
+                "client_secret": new_intent["client_secret"],
+                "payment_intent_id": new_intent["id"],
+                "order_id": order_id
+            }
+
+        # Agar purana intent abhi bhi zinda aur valid hai, toh usi ka secret bhej do
         return {
-            "client_secret": intent["client_secret"],
+            "client_secret": client_secret,
             "payment_intent_id": intent["id"],
             "order_id": order_id
         }
+        
     except Exception as e:
         logger.error(f"[PAYMENTS] Retry failed for order {order_id}: {e}")
-        raise HTTPException(502, "Could not contact payment provider")
+        raise HTTPException(502, f"Could not contact payment provider: {str(e)}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONFIRM PAYMENT
