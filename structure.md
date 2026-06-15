@@ -1,3 +1,105 @@
+
+
+# 🚀 Luviio Backend — Enterprise Architecture
+
+Welcome to the core backend of Luviio. This architecture is designed with **FAANG-level System Design** principles, strictly prioritizing **Role-Based Access Control (RBAC)**, **Separation of Concerns (SoC)**, and **Zero IDOR (Insecure Direct Object Reference) vulnerabilities**.
+
+## 🏗️ Core Architectural Philosophy
+
+1. **Strict URL Boundaries:** Routes are physically isolated by role (`admin`, `merchant`, `customer`, `staff`, `public`). A customer route will never share code with an admin route.
+2. **Scoped Repositories:** Data access is strictly scoped at the database query level. For example, customer repositories automatically append `.eq("user_id", current_user)` to prevent data leakage.
+3. **Registry Pattern (DI Container):** Repositories and external integrations are instantiated via a Dependency Registry, allowing for seamless mocking and preview environments.
+4. **Event-Driven (Pub/Sub):** Heavy, non-database tasks (e.g., sending emails, webhooks) are decoupled using an Event Registry to ensure blazing-fast API response times.
+
+---
+
+## 📂 Vectorized Folder Structure
+
+```text
+app/
+├── api/v1/                     # 🚀 ROLE-BASED ROUTING (Strict URL Boundaries)
+│   ├── admin/                  # God Mode
+│   │   └── routes/
+│   │       ├── dashboard.py
+│   │       ├── catalog.py      
+│   │       └── users.py
+│   ├── merchant/               # B2B Wholesale
+│   │   └── routes/
+│   │       ├── catalog.py      
+│   │       └── bulk_cart.py
+│   ├── staff/                  # Internal Employees
+│   │   └── routes/
+│   │       └── orders.py       
+│   ├── customer/               # B2C Retail (Normal Users)
+│   │   └── routes/
+│   │       ├── profile.py
+│   │       ├── cart.py
+│   │       └── orders.py       
+│   └── public/                 # Unauthenticated
+│       └── routes/
+│           ├── auth.py         
+│           ├── catalog.py      
+│           └── webhooks.py     
+│
+├── repositories/               # 💾 DATA LAYER (SoC + Registry Pattern)
+│   ├── registry.py             # 🔌 Repo Registry (DI Container)
+│   ├── interfaces/             
+│   ├── admin/                  # No filters (Raw Access)
+│   │   ├── product_repo.py
+│   │   └── user_repo.py
+│   ├── merchant/               # B2B specific logic & tier pricing
+│   │   └── catalog_repo.py
+│   ├── customer/               # STRICTLY scoped: .eq("user_id", current_user)
+│   │   ├── order_repo.py
+│   │   └── cart_repo.py
+│   └── public/                 # STRICTLY scoped: .eq("is_active", True)
+│       └── catalog_repo.py
+│
+├── dependencies/               # 🛡️ GUARDS & INJECTION
+│   ├── auth.py                 # JWT Parsing & Session Validation
+│   ├── roles.py                # RBAC Checkers (require_admin, require_merchant)
+│   └── get_db.py               
+│
+├── services/                   # 🧠 BUSINESS LOGIC (No DB queries here)
+│   ├── pricing_engine.py       # GST, Discounts, Wholesale logic
+│   ├── image_processor.py      
+│   └── email_service.py        
+│
+├── integrations/               # 🔗 EXTERNAL 3RD PARTY APIs
+│   ├── payments/
+│   │   ├── stripe_client.py
+│   │   └── registry.py         # Support for multiple gateways
+│   └── logistics/
+│       └── shiprocket.py
+│
+├── events/                     # 📢 PUB/SUB EVENT ARCHITECTURE
+│   ├── registry.py             # Event Bus Singleton
+│   ├── schemas.py              # Event Definitions (e.g., OrderPaidEvent)
+│   └── handlers/
+│       ├── email_handlers.py
+│       └── stock_handlers.py
+│
+├── cron/                       # ⏰ BACKGROUND SCHEDULER
+│   ├── registry.py             # APScheduler initialization
+│   └── tasks/
+│       ├── order_tasks.py      # e.g., 24hr pending order expiration
+│       └── reminder_tasks.py
+│
+├── core/                       # ⚙️ SYSTEM BOOTSTRAP
+│   ├── config.py               # Environment Variables loading
+│   ├── security.py             # Password Hashing & JWT Utils
+│   └── supabase_client.py      # Database Connection Pooling
+│
+├── utils/                      # 🛠️ PURE HELPER FUNCTIONS
+│   ├── formatters.py           
+│   └── validators.py           
+│
+├── migrations/                 # 🗄️ DATABASE MIGRATIONS
+│   └── versions/               
+│
+└── main.py                     # Application Entrypoint
+
+
 # 🏗️ Project Architecture & Folder Structure
 
 This project follows a highly scalable, **Domain-Driven Design (DDD)** and **Clean Architecture** tailored for an Enterprise E-commerce Backend (FastAPI + Supabase). It strictly enforces Separation of Concerns (SoC) and implements over 60+ industry-standard design patterns.
