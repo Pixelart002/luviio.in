@@ -20,7 +20,10 @@ class StripeProvider:
                 description=f"{settings.APP_NAME} — Order #{order_id[:8].upper()}",
                 idempotency_key=idem_key,
             )
-            return {"client_secret": intent.client_secret, "id": intent.id, "status": intent.status}
+            client_secret = intent.get("client_secret") if isinstance(intent, dict) else getattr(intent, "client_secret", None)
+            if not client_secret:
+                raise RuntimeError("Stripe did not return a client_secret for the new PaymentIntent")
+            return {"client_secret": client_secret, "id": intent.id, "status": intent.status}
         except stripe.error.StripeError as e:
             logger.error("Stripe Intent creation failed: %s", e)
             raise
@@ -46,7 +49,8 @@ class StripeProvider:
                 "status": intent.status, 
                 "amount": intent.amount, 
                 "currency": intent.currency,
-                "metadata": intent.metadata
+                "metadata": intent.metadata,
+                "client_secret": intent.client_secret,
             }
         except stripe.error.StripeError as e:
             logger.error("Stripe Intent retrieval failed: %s", e)
