@@ -19,38 +19,43 @@ class AsyncPaymentRepository:
             "id, cart_items(id, product_id, quantity, price_snapshot, products(name, price, stock, is_active))"
         ).eq("user_id", user_id).maybe_single().execute()
         
-        items = res.data.get("cart_items", []) if res.data else []
-        return items
+        data = getattr(res, "data", None)
+        return data.get("cart_items", []) if data else []
 
     async def clear_user_cart(self, user_id: str):
         cart_res = await self.admin_sb.table("carts").select("id").eq("user_id", user_id).maybe_single().execute()
-        if cart_res.data:
-            await self.admin_sb.table("cart_items").delete().eq("cart_id", cart_res.data["id"]).execute()
-            logger.info(f"[REPO:CART] Cart {cart_res.data['id']} cleared after successful payment.")
+        data = getattr(cart_res, "data", None)
+        if data:
+            await self.admin_sb.table("cart_items").delete().eq("cart_id", data["id"]).execute()
+            logger.info(f"[REPO:CART] Cart {data['id']} cleared after successful payment.")
 
     async def get_shipping_address(self, address_id: str, user_id: str) -> dict | None:
         if address_id == "dummy":
             return {"line1": "123 Demo St", "city": "Demo", "postal_code": "000000", "country": "IN"}
         res = await self.admin_sb.table("addresses").select("*").eq("id", address_id).eq("user_id", user_id).maybe_single().execute()
-        return res.data
+        return getattr(res, "data", None)
 
     async def get_pricing_config(self) -> dict:
         res = await self.admin_sb.table("pricing_config").select("*").limit(1).maybe_single().execute()
-        return res.data or {"tax_rate": 18, "shipping_flat": 50, "shipping_threshold": 999, "currency": "INR"}
+        data = getattr(res, "data", None)
+        return data or {"tax_rate": 18, "shipping_flat": 50, "shipping_threshold": 999, "currency": "INR"}
 
     async def get_customer_email(self, user_id: str) -> str:
         res = await self.admin_sb.table("users").select("email").eq("id", user_id).maybe_single().execute()
-        return res.data["email"] if res.data else ""
+        data = getattr(res, "data", None)
+        return data["email"] if data else ""
 
     # ── 1. CREATE PENDING ORDER (NO STOCK DEDUCTION YET) ──
     async def create_pending_order(self, order_data: dict, items: list) -> dict:
         logger.info(f"[REPO:ORDERS] Creating pending order for user: {order_data.get('customer_id')}")
         order_res = await self.admin_sb.table("orders").insert(order_data).execute()
-        order = order_res.data[0]
+        data = getattr(order_res, "data", None)
+        order = data[0] if data else {}
         
-        for item in items:
-            item["order_id"] = order["id"]
-        await self.admin_sb.table("order_items").insert(items).execute()
+        if order:
+            for item in items:
+                item["order_id"] = order["id"]
+            await self.admin_sb.table("order_items").insert(items).execute()
         
         # ⚠️ MBA LOGIC: WE DO NOT DEDUCT STOCK HERE. USER HASN'T PAID YET.
         return order
@@ -58,20 +63,24 @@ class AsyncPaymentRepository:
     # ── 2. DEDUCT STOCK (ONLY ON SUCCESSFUL PAYMENT) ──
     async def deduct_stock_for_order(self, order_id: str):
         items_res = await self.admin_sb.table("order_items").select("*").eq("order_id", order_id).execute()
-        for item in items_res.data or []:
+        items_data = getattr(items_res, "data", None)
+        
+        for item in items_data or []:
             prod_res = await self.admin_sb.table("products").select("stock").eq("id", item["product_id"]).maybe_single().execute()
-            if prod_res.data:
-                new_stock = max(0, prod_res.data["stock"] - item["quantity"])
+            prod_data = getattr(prod_res, "data", None)
+            if prod_data:
+                new_stock = max(0, prod_data["stock"] - item["quantity"])
                 await self.admin_sb.table("products").update({"stock": new_stock}).eq("id", item["product_id"]).execute()
         logger.info(f"[REPO:STOCK] Stock successfully deducted for Paid Order {order_id}")
 
     # ── 3. UPDATE ORDER STATUS ──
-    async def update_order_status(self, order_id: str, status: str, payment_intent: str = None) -> dict:
+    async def update_order_status(self, order_id: str, status: str, payment_intent: str = None) -> dict | None:
         data = {"status": status}
         if payment_intent:
             data["stripe_payment_intent"] = payment_intent
         res = await self.admin_sb.table("orders").update(data).eq("id", order_id).execute()
-        return res.data[0] if res.data else None
+        res_data = getattr(res, "data", None)
+        return res_data[0] if res_data else None
 
     # ── Helpers ──
     async def create_payment_record(self, order_id: str, pi_id: str, amount: float):
@@ -86,8 +95,8 @@ class AsyncPaymentRepository:
 
     async def get_order_by_idempotency_key(self, user_id: str, idempotency_key: str) -> dict | None:
         res = await self.admin_sb.table("orders").select("*").eq("customer_id", user_id).eq("idempotency_key", idempotency_key).maybe_single().execute()
-        return res.data
+        return getattr(res, "data", None)
 
     async def get_order_by_id(self, order_id: str) -> dict | None:
         res = await self.admin_sb.table("orders").select("*, order_items(*)").eq("id", order_id).maybe_single().execute()
-        return res.data
+        return getattr(res, "data", None)
