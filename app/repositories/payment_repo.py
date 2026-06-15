@@ -1,6 +1,6 @@
 """
-Payments Repository — AOT (Pending Order) Flow
-================================================
+Payments Repository — AOT & JIT Hybrid Flow (MBA UX Optimized)
+================================================================
 Path: app/repositories/payment_repo.py
 """
 import logging
@@ -20,14 +20,13 @@ class AsyncPaymentRepository:
         ).eq("user_id", user_id).maybe_single().execute()
         
         items = res.data.get("cart_items", []) if res.data else []
-        logger.info(f"[REPO:CART] Found {len(items)} items in cart {res.data.get('id') if res.data else 'N/A'}")
         return items
 
     async def clear_user_cart(self, user_id: str):
         cart_res = await self.admin_sb.table("carts").select("id").eq("user_id", user_id).maybe_single().execute()
         if cart_res.data:
             await self.admin_sb.table("cart_items").delete().eq("cart_id", cart_res.data["id"]).execute()
-            logger.info(f"[REPO:CART] Cart {cart_res.data['id']} cleared.")
+            logger.info(f"[REPO:CART] Cart {cart_res.data['id']} cleared after successful payment.")
 
     async def get_shipping_address(self, address_id: str, user_id: str) -> dict | None:
         if address_id == "dummy":
@@ -43,43 +42,36 @@ class AsyncPaymentRepository:
         res = await self.admin_sb.table("users").select("email").eq("id", user_id).maybe_single().execute()
         return res.data["email"] if res.data else ""
 
-    # ── 1. NAYA FLOW: Create Order as 'Pending' Before Payment ──
+    # ── 1. CREATE PENDING ORDER (NO STOCK DEDUCTION YET) ──
     async def create_pending_order(self, order_data: dict, items: list) -> dict:
         logger.info(f"[REPO:ORDERS] Creating pending order for user: {order_data.get('customer_id')}")
-        # Step 1: Insert Order (Status is already 'pending' by default in DB)
         order_res = await self.admin_sb.table("orders").insert(order_data).execute()
         order = order_res.data[0]
         
-        # Step 2: Insert Order Items
         for item in items:
             item["order_id"] = order["id"]
         await self.admin_sb.table("order_items").insert(items).execute()
         
-        # Step 3: Reserve Stock (Minus from DB)
-        for item in items:
+        # ⚠️ MBA LOGIC: WE DO NOT DEDUCT STOCK HERE. USER HASN'T PAID YET.
+        return order
+
+    # ── 2. DEDUCT STOCK (ONLY ON SUCCESSFUL PAYMENT) ──
+    async def deduct_stock_for_order(self, order_id: str):
+        items_res = await self.admin_sb.table("order_items").select("*").eq("order_id", order_id).execute()
+        for item in items_res.data or []:
             prod_res = await self.admin_sb.table("products").select("stock").eq("id", item["product_id"]).maybe_single().execute()
             if prod_res.data:
                 new_stock = max(0, prod_res.data["stock"] - item["quantity"])
                 await self.admin_sb.table("products").update({"stock": new_stock}).eq("id", item["product_id"]).execute()
-        
-        return order
+        logger.info(f"[REPO:STOCK] Stock successfully deducted for Paid Order {order_id}")
 
-    # ── 2. NAYA FLOW: Update Status when Webhook/Confirm Hits ──
+    # ── 3. UPDATE ORDER STATUS ──
     async def update_order_status(self, order_id: str, status: str, payment_intent: str = None) -> dict:
         data = {"status": status}
         if payment_intent:
             data["stripe_payment_intent"] = payment_intent
         res = await self.admin_sb.table("orders").update(data).eq("id", order_id).execute()
         return res.data[0] if res.data else None
-
-    # ── 3. NAYA FLOW: Restore Stock if Payment Fails ──
-    async def restore_stock_for_order(self, order_id: str):
-        items_res = await self.admin_sb.table("order_items").select("*").eq("order_id", order_id).execute()
-        for item in items_res.data or []:
-            prod_res = await self.admin_sb.table("products").select("stock").eq("id", item["product_id"]).maybe_single().execute()
-            if prod_res.data:
-                new_stock = prod_res.data["stock"] + item["quantity"]
-                await self.admin_sb.table("products").update({"stock": new_stock}).eq("id", item["product_id"]).execute()
 
     # ── Helpers ──
     async def create_payment_record(self, order_id: str, pi_id: str, amount: float):
