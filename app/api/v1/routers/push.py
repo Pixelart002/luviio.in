@@ -2,6 +2,9 @@
 Push Notifications Router — Async Enterprise Grade
 ==================================================
 Path: app/api/v1/routers/push.py
+
+🔥 SECURITY FIX: Replaced manual user_id extraction with strict ABAC 
+   guard (get_user_id_strict). Push repo requires NO changes.
 """
 import json
 import logging
@@ -13,8 +16,8 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.concurrency import run_in_threadpool
 
-# 🔥 ARCHITECTURE IMPORTS
-from app.core.dependencies import get_current_user, require_admin
+# 🔥 ARCHITECTURE IMPORTS: Added get_user_id_strict
+from app.core.dependencies import get_current_user, require_admin, get_user_id_strict
 from app.core.supabase import get_admin_supabase
 from app.repositories.push_repo import AsyncPushRepository
 from app.integrations.push.webpush_impl import send_push_to_user
@@ -33,14 +36,15 @@ MAX_SUBSCRIPTIONS_PER_USER = 5
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _get_user_id(current_user: dict[str, Any]) -> str:
-    if "profile" in current_user and isinstance(current_user["profile"], dict) and "id" in current_user["profile"]:
-        return str(current_user["profile"]["id"])
-    if "id" in current_user: return str(current_user["id"])
-    if "sub" in current_user: return str(current_user["sub"])
-        
-    logger.error(f"Cannot find user ID in session keys: {list(current_user.keys())}")
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found in session")
+# 🔥 DEPRECATED: Replaced by get_user_id_strict Dependency natively in the route
+# def _get_user_id(current_user: dict[str, Any]) -> str:
+#     if "profile" in current_user and isinstance(current_user["profile"], dict) and "id" in current_user["profile"]:
+#         return str(current_user["profile"]["id"])
+#     if "id" in current_user: return str(current_user["id"])
+#     if "sub" in current_user: return str(current_user["sub"])
+#         
+#     logger.error(f"Cannot find user ID in session keys: {list(current_user.keys())}")
+#     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found in session")
 
 async def _cleanup_stale_subscriptions(repo: AsyncPushRepository, user_id: str) -> int:
     count = await repo.count_user_subscriptions(user_id)
@@ -65,9 +69,14 @@ async def get_vapid_key(request: Request) -> dict[str, str]:
 
 @router.post("/subscribe", status_code=status.HTTP_201_CREATED, response_model=MessageResponse)
 @limiter.limit("10/minute")
-async def subscribe(request: Request, payload: PushSubscription, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
+async def subscribe(
+    request: Request, 
+    payload: PushSubscription, 
+    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
+) -> dict[str, str]:
     repo = AsyncPushRepository()
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current) <-- REPLACED
 
     if await repo.is_duplicate_subscription(user_id, payload.endpoint):
         return {"message": "Already subscribed"}
@@ -88,7 +97,12 @@ async def subscribe(request: Request, payload: PushSubscription, current: dict[s
     return {"message": "Subscribed successfully"}
 
 @router.delete("/unsubscribe", response_model=MessageResponse)
-async def unsubscribe(request: Request, payload: PushSubscription, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
+async def unsubscribe(
+    request: Request, 
+    payload: PushSubscription, 
+    current: dict[str, Any] = Depends(get_current_user)
+) -> dict[str, str]:
+    # (Original didn't extract user_id here, safely uses endpoint URL to delete)
     repo = AsyncPushRepository()
     try:
         await repo.delete_subscription_by_endpoint(payload.endpoint)
@@ -99,9 +113,13 @@ async def unsubscribe(request: Request, payload: PushSubscription, current: dict
     return {"message": "Unsubscribed successfully"}
 
 @router.get("/status", response_model=SubscriptionStatusResponse)
-async def subscription_status(request: Request, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+async def subscription_status(
+    request: Request, 
+    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
+) -> dict[str, Any]:
     repo = AsyncPushRepository()
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current) <-- REPLACED
     count = await repo.count_user_subscriptions(user_id)
     return {"subscribed": count > 0, "subscription_count": count, "max_allowed": MAX_SUBSCRIPTIONS_PER_USER, "vapid_configured": bool(VAPID_PUBLIC_KEY)}
 

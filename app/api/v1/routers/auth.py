@@ -13,12 +13,12 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.concurrency import run_in_threadpool
 
-# 🔥 ARCHITECTURE IMPORTS
+# 🔥 ADDED: get_user_id_strict
 from app.api.schemas.auth_dto import (
     RegisterRequest, LoginRequest, ForgotPasswordRequest, 
     ResetPasswordRequest, TokenResponse, LoginResponse, MessageResponse
 )
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_user_id_strict
 from app.repositories.user_repo import AsyncUserRepository
 from app.repositories.auth_repo import AsyncAuthRepository
 from app.integrations.email.registry import get_email_provider
@@ -190,9 +190,14 @@ async def forgot_password(request: Request, payload: ForgotPasswordRequest) -> d
     return {"message": "If this email exists, a password reset link has been sent."}
 
 @router.post("/reset-password", response_model=MessageResponse)
-async def reset_password(request: Request, payload: ResetPasswordRequest, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
-    user_id = current.get("sub") or current.get("id") or current.get("profile", {}).get("id")
-    if not user_id: raise HTTPException(401, "Valid user session not found")
+async def reset_password(
+    request: Request, 
+    payload: ResetPasswordRequest, 
+    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
+) -> dict[str, str]:
+    # user_id = current.get("sub") or current.get("id") or current.get("profile", {}).get("id") <-- REPLACED
+    # if not user_id: raise HTTPException(401, "Valid user session not found") <-- REPLACED
 
     try: await AsyncAuthRepository().admin_update_password(user_id, payload.new_password)
     except AuthApiError as e: raise HTTPException(400, f"Password reset failed: {e.message}")

@@ -9,6 +9,7 @@ Architecture notes:
      (POST /api/v1/payments/confirm). There is no direct POST /orders/ endpoint.
   3. Stripe refund calls are wrapped in run_in_threadpool to avoid blocking
      the async event loop.
+  4. 🔥 ENTERPRISE FIX: Added `get_user_id_strict` for IDOR elimination.
 
 IMPORTANT — _sanitize_order / _sanitize_order_list:
   These helpers perform pure in-memory dict transformation (no I/O).
@@ -27,7 +28,8 @@ from fastapi.concurrency import run_in_threadpool  # 🔥 IMPORT ADDED FOR STRIP
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.core.dependencies import get_current_user, require_admin
+# 🔥 SECURITY UPDATE: Added get_user_id_strict
+from app.core.dependencies import get_current_user, get_user_id_strict, require_admin
 from app.api.schemas.order_dto import OrderAdminUpdate, VALID_STATUSES, OrderListResponse
 from app.repositories.order_repo import AsyncOrderRepository
 from app.services.events import get_event_bus, OrderShippedEvent, OrderStatusChangedEvent
@@ -68,8 +70,14 @@ def _sanitize_order_list(orders: list) -> list:
 
 
 @router.get("/my", response_model=OrderListResponse)
-async def my_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str | None = Query(None), current: dict[str, Any] = Depends(get_current_user)):
-    user_id = current["profile"]["id"]
+async def my_orders(
+    request: Request, 
+    page: int = Query(1, ge=1), 
+    page_size: int = Query(20, ge=1, le=100), 
+    status_filter: str | None = Query(None), 
+    user_id: str = Depends(get_user_id_strict) # 🔥 ABAC ZERO-IDOR GUARD
+):
+    # user_id = current["profile"]["id"] <-- REPLACED
     logger.info(f"[ORDERS] User {user_id} fetching their orders (Page: {page}, Filter: {status_filter})")
     
     if status_filter and status_filter not in VALID_STATUSES: 
@@ -81,8 +89,12 @@ async def my_orders(request: Request, page: int = Query(1, ge=1), page_size: int
     return {"items": _sanitize_order_list(items), "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
 
 @router.get("/my/{order_id}")
-async def get_my_order(request: Request, order_id: UUID, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    user_id = current["profile"]["id"]
+async def get_my_order(
+    request: Request, 
+    order_id: UUID, 
+    user_id: str = Depends(get_user_id_strict) # 🔥 ABAC ZERO-IDOR GUARD
+) -> dict[str, Any]:
+    # user_id = current["profile"]["id"] <-- REPLACED
     logger.info(f"[ORDERS] User {user_id} requesting order details for {order_id}")
     
     repo = AsyncOrderRepository()
@@ -94,8 +106,12 @@ async def get_my_order(request: Request, order_id: UUID, current: dict[str, Any]
     return _sanitize_order(order)
 
 @router.post("/my/{order_id}/cancel")
-async def cancel_order(request: Request, order_id: UUID, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    user_id = current["profile"]["id"]
+async def cancel_order(
+    request: Request, 
+    order_id: UUID, 
+    user_id: str = Depends(get_user_id_strict) # 🔥 ABAC ZERO-IDOR GUARD
+) -> dict[str, Any]:
+    # user_id = current["profile"]["id"] <-- REPLACED
     logger.info(f"[ORDERS] User {user_id} requesting cancellation for order {order_id}")
     
     repo = AsyncOrderRepository()

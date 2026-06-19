@@ -10,6 +10,7 @@ FIX APPLIED:
   4. Used breakdown.as_dict() for clean mapping (shipping_cost key stays in response)
   5. Removed stray traceback text inside send_cart_reminder return
   6. DELETED: is_cart_locked() checks (Shifted to AOT Pending Order Flow)
+  7. 🔥 ENTERPRISE FIX: Integrated Depends(get_user_id_strict) for ABAC security
 """
 from __future__ import annotations
 
@@ -22,7 +23,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from app.core.dependencies import get_current_user, require_admin
+# 🔥 SECURITY UPDATE: Added get_user_id_strict
+from app.core.dependencies import get_user_id_strict, require_admin
 from app.api.schemas.cart_dto import (
     AddItemRequest, UpdateItemRequest, CartResponse,
     MessageResponse, AbandonedCartResponse, ReminderResponse
@@ -40,12 +42,13 @@ _ABANDONED_HOURS = 24
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _get_user_id(current: dict[str, Any]) -> str:
-    profile = current.get("profile", {})
-    user_id = profile.get("id") or current.get("id") or current.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found")
-    return str(user_id)
+# 🔥 OBSOLETE: Replaced by get_user_id_strict directly in the route parameters
+# def _get_user_id(current: dict[str, Any]) -> str:
+#     profile = current.get("profile", {})
+#     user_id = profile.get("id") or current.get("id") or current.get("sub")
+#     if not user_id:
+#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found")
+#     return str(user_id)
 
 
 async def _calculate_cart_pricing(
@@ -143,9 +146,9 @@ async def _calculate_cart_pricing(
 @router.get("", response_model=CartResponse)
 async def get_cart(
     request: Request,
-    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict), # 🔥 STRICT ABAC GUARD
 ) -> dict[str, Any]:
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current)
     repo    = AsyncCartRepository()
 
     if hasattr(request.state, "actions"):
@@ -162,9 +165,9 @@ async def get_cart(
 async def add_item(
     request: Request,
     payload: AddItemRequest,
-    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict), # 🔥 STRICT ABAC GUARD
 ) -> dict[str, Any]:
-    user_id    = _get_user_id(current)
+    # user_id    = _get_user_id(current)
     product_id = str(payload.product_id)
     repo       = AsyncCartRepository()
 
@@ -208,9 +211,9 @@ async def update_item(
     request:    Request,
     product_id: UUID,
     payload:    UpdateItemRequest,
-    current:    dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict), # 🔥 STRICT ABAC GUARD
 ) -> dict[str, Any]:
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current)
     pid     = str(product_id)
     repo    = AsyncCartRepository()
 
@@ -239,9 +242,9 @@ async def update_item(
 async def remove_item(
     request:    Request,
     product_id: UUID,
-    current:    dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict), # 🔥 STRICT ABAC GUARD
 ) -> dict[str, Any]:
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current)
     pid     = str(product_id)
     repo    = AsyncCartRepository()
 
@@ -257,9 +260,9 @@ async def remove_item(
 @router.delete("", status_code=status.HTTP_200_OK, response_model=MessageResponse)
 async def clear_cart(
     request: Request,
-    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict), # 🔥 STRICT ABAC GUARD
 ) -> dict[str, str]:
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current)
     repo    = AsyncCartRepository()
 
     cart = await repo.get_or_create_cart(user_id)

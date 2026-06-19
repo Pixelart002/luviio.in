@@ -11,8 +11,8 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-# 🔥 ARCHITECTURE IMPORTS
-from app.core.dependencies import get_current_user, require_admin
+# 🔥 ARCHITECTURE IMPORTS: Added get_user_id_strict
+from app.core.dependencies import get_current_user, require_admin, get_user_id_strict
 from app.repositories.user_repo import AsyncUserRepository
 from app.api.schemas.user_dto import ProfileUpdate, AddressCreate, AdminUserUpdate, MessageResponse, UserListResponse
 
@@ -24,12 +24,13 @@ limiter = Limiter(key_func=get_remote_address)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _get_user_id(current_user: dict[str, Any]) -> str:
-    if "profile" in current_user and isinstance(current_user["profile"], dict) and "id" in current_user["profile"]:
-        return str(current_user["profile"]["id"])
-    if "id" in current_user: return str(current_user["id"])
-    if "sub" in current_user: return str(current_user["sub"])
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found in session")
+# 🔥 DEPRECATED: Replaced by get_user_id_strict Dependency
+# def _get_user_id(current_user: dict[str, Any]) -> str:
+#     if "profile" in current_user and isinstance(current_user["profile"], dict) and "id" in current_user["profile"]:
+#         return str(current_user["profile"]["id"])
+#     if "id" in current_user: return str(current_user["id"])
+#     if "sub" in current_user: return str(current_user["sub"])
+#     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found in session")
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  PROFILE ENDPOINTS
@@ -43,8 +44,13 @@ async def get_me(request: Request, current: dict[str, Any] = Depends(get_current
 
 @router.patch("/me")
 @limiter.limit("20/minute")
-async def update_me(request: Request, payload: ProfileUpdate, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    user_id = _get_user_id(current)
+async def update_me(
+    request: Request, 
+    payload: ProfileUpdate, 
+    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
+) -> dict[str, Any]:
+    # user_id = _get_user_id(current) <-- REPLACED
     repo = AsyncUserRepository()
     
     data = {k: v for k, v in payload.model_dump().items() if v is not None}
@@ -61,8 +67,12 @@ async def update_me(request: Request, payload: ProfileUpdate, current: dict[str,
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/me/addresses")
-async def list_addresses(request: Request, current: dict[str, Any] = Depends(get_current_user)) -> list[dict[str, Any]]:
-    user_id = _get_user_id(current)
+async def list_addresses(
+    request: Request, 
+    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
+) -> list[dict[str, Any]]:
+    # user_id = _get_user_id(current) <-- REPLACED
     try:
         return await AsyncUserRepository().get_user_addresses(user_id, MAX_ADDRESSES_PER_USER)
     except Exception as exc:
@@ -70,8 +80,13 @@ async def list_addresses(request: Request, current: dict[str, Any] = Depends(get
 
 @router.post("/me/addresses", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
-async def add_address(request: Request, payload: AddressCreate, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    user_id = _get_user_id(current)
+async def add_address(
+    request: Request, 
+    payload: AddressCreate, 
+    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
+) -> dict[str, Any]:
+    # user_id = _get_user_id(current) <-- REPLACED
     repo = AsyncUserRepository()
 
     try:
@@ -97,8 +112,13 @@ async def add_address(request: Request, payload: AddressCreate, current: dict[st
     return res
 
 @router.delete("/me/addresses/{address_id}", response_model=MessageResponse)
-async def delete_address(request: Request, address_id: UUID, current: dict[str, Any] = Depends(get_current_user)):
-    user_id = _get_user_id(current)
+async def delete_address(
+    request: Request, 
+    address_id: UUID, 
+    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
+):
+    # user_id = _get_user_id(current) <-- REPLACED
     repo = AsyncUserRepository()
 
     existing = await repo.get_address(str(address_id), user_id)
@@ -137,8 +157,14 @@ async def list_users(
     return {"items": items, "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
 
 @router.patch("/{user_id}", dependencies=[Depends(require_admin)])
-async def admin_update_user(request: Request, user_id: UUID, payload: AdminUserUpdate, current: dict[str, Any] = Depends(require_admin)):
-    admin_id = _get_user_id(current)
+async def admin_update_user(
+    request: Request, 
+    user_id: UUID, 
+    payload: AdminUserUpdate, 
+    current: dict[str, Any] = Depends(require_admin),
+    admin_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
+):
+    # admin_id = _get_user_id(current) <-- REPLACED
     repo = AsyncUserRepository()
 
     if str(user_id) == str(admin_id):

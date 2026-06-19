@@ -6,6 +6,7 @@ Path: app/api/v1/routers/invoice.py
 Architecture Upgrades:
   1. ALL Supabase DB logic strictly asynchronous (await).
   2. PDF Generation offloaded to a threadpool to prevent blocking the event loop.
+  3. 🔥 SECURITY FIX: ABAC Zero-IDOR guard `get_user_id_strict` injected.
 """
 from __future__ import annotations
 
@@ -18,8 +19,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
-# 🔥 ARCHITECTURE IMPORTS
-from app.core.dependencies import get_current_user
+# 🔥 ARCHITECTURE IMPORTS: Added get_user_id_strict
+from app.core.dependencies import get_current_user, get_user_id_strict
 from app.repositories.order_repo import AsyncOrderRepository
 from app.repositories.user_repo import AsyncUserRepository
 from app.utils.documents.pdf_invoice import build_invoice_pdf
@@ -31,11 +32,12 @@ _INVOICEABLE = frozenset({"paid", "shipped", "delivered", "refunded"})
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _get_user_id(current: dict[str, Any]) -> str:
-    profile = current.get("profile", {})
-    user_id = profile.get("id") or current.get("id") or current.get("sub")
-    if not user_id: raise HTTPException(401, "User ID not found")
-    return str(user_id)
+# 🔥 DEPRECATED: Replaced by get_user_id_strict Dependency natively in the route
+# def _get_user_id(current: dict[str, Any]) -> str:
+#     profile = current.get("profile", {})
+#     user_id = profile.get("id") or current.get("id") or current.get("sub")
+#     if not user_id: raise HTTPException(401, "User ID not found")
+#     return str(user_id)
 
 def _is_admin(current: dict[str, Any]) -> bool:
     return current.get("profile", {}).get("role") == "admin"
@@ -49,13 +51,14 @@ async def download_invoice(
     request: Request,
     order_id: UUID,
     current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
 ) -> StreamingResponse:
     """
     Download PDF invoice for an order.
     Customer: own paid/shipped/delivered/refunded orders only.
     Admin: any order in invoiceable status.
     """
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current) <-- REPLACED
     oid_str = str(order_id)
     is_admin = _is_admin(current)
     

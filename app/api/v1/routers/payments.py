@@ -2,6 +2,9 @@
 Payments Router — AOT & Smart Recovery Processor (UX Focused)
 =============================================================
 Path: app/api/v1/routers/payments.py
+
+🔥 SECURITY FIX: Replaced manual user_id extraction with strict ABAC 
+   guard (get_user_id_strict) to eliminate IDOR risks natively at route level.
 """
 import logging
 import time
@@ -14,7 +17,8 @@ from fastapi.concurrency import run_in_threadpool
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.core.dependencies import get_current_user
+# 🔥 ADDED: get_user_id_strict
+from app.core.dependencies import get_current_user, get_user_id_strict
 from app.repositories.payment_repo import AsyncPaymentRepository
 from app.services.pricing import get_pricing_from_config
 from app.services.events import get_event_bus, OrderPaidEvent, OrderFailedEvent
@@ -52,13 +56,14 @@ class BruteForceGuard:
 
 brute_force = BruteForceGuard(max_attempts=5, window_seconds=60)
 
-def _get_user_id(current_user: dict[str, Any]) -> str:
-    profile = current_user.get("profile")
-    if isinstance(profile, dict) and "id" in profile:
-        return str(profile["id"])
-    if "id" in current_user:
-        return str(current_user["id"])
-    raise HTTPException(401, "User ID not found in session")
+# 🔥 DEPRECATED: Replaced by get_user_id_strict Dependency
+# def _get_user_id(current_user: dict[str, Any]) -> str:
+#     profile = current_user.get("profile")
+#     if isinstance(profile, dict) and "id" in profile:
+#         return str(profile["id"])
+#     if "id" in current_user:
+#         return str(current_user["id"])
+#     raise HTTPException(401, "User ID not found in session")
 
 def _amount_to_paise(amount: Any) -> int:
     return int((Decimal(str(amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
@@ -69,10 +74,15 @@ def _amount_to_paise(amount: Any) -> int:
 
 @router.post("/create-intent", response_model=Dict[str, Any])
 @limiter.limit("10/minute")
-async def create_payment_intent(request: Request, payload: PaymentIntentRequest, current: dict[str, Any] = Depends(get_current_user)):
+async def create_payment_intent(
+    request: Request, 
+    payload: PaymentIntentRequest, 
+    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
+):
     repo = AsyncPaymentRepository()
     payment_service = get_payment_provider("stripe")
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current) <-- REPLACED
     client_ip = get_remote_address(request)
     
     if brute_force.is_blocked(client_ip, user_id):
@@ -160,10 +170,15 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
 
 @router.post("/confirm")
 @limiter.limit("10/minute")
-async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+async def confirm_payment(
+    request: Request, 
+    payload: ConfirmPaymentRequest, 
+    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
+) -> dict[str, Any]:
     repo = AsyncPaymentRepository()
     payment_service = get_payment_provider("stripe")
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current) <-- REPLACED
     client_ip = get_remote_address(request)
     
     if brute_force.is_blocked(client_ip, user_id):
@@ -209,10 +224,15 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
 
 @router.post("/retry/{order_id}")
 @limiter.limit("10/minute")
-async def retry_payment(request: Request, order_id: str, current: dict[str, Any] = Depends(get_current_user)):
+async def retry_payment(
+    request: Request, 
+    order_id: str, 
+    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
+):
     repo = AsyncPaymentRepository()
     payment_service = get_payment_provider("stripe")
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current) <-- REPLACED
     
     existing_order = await repo.get_order_by_id(order_id)
     if not existing_order or existing_order.get("customer_id") != user_id:
