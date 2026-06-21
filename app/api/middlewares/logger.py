@@ -1,13 +1,20 @@
 """
 Pure & Colored Terminal Logger Middleware (FINAL)
 =====================================================
-Structured ASCII request logger with LUVIIO branding.
-"""
+Path: app/api/middlewares/logger.py
 
+Structured ASCII request logger with LUVIIO branding.
+UPGRADE: Wrapped call_next in Try-Except-Finally to guarantee 
+even unhandled 500 fatal crashes get painted inside the visual window.
+"""
 import time
 import logging
+from typing import Any
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
+
+# 🔥 THE SSOT BRIDGE: Injecting current request into Global Context
+from app.core.logger import current_request_ctx 
 
 
 # ── ANSI Terminal Colors ──
@@ -31,11 +38,14 @@ logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 class PureWindowLoggerMiddleware(BaseHTTPMiddleware):
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: Any) -> Any:
 
         # ── Skip noise routes ──
         if request.method == "OPTIONS" or request.url.path in ["/health", "/metrics"]:
             return await call_next(request)
+
+        # 🔥 Bind active request to global contextvar for standard loggers
+        current_request_ctx.set(request)
 
         start_time = time.time()
 
@@ -52,27 +62,35 @@ class PureWindowLoggerMiddleware(BaseHTTPMiddleware):
         if len(user_agent) > 42:
             user_agent = user_agent[:39] + "..."
 
-        # ── Execute request ──
-        response = await call_next(request)
+        status = 500
+        response = None
+        unhandled_exc = None
 
-        # ── Metrics ──
-        process_time = (time.time() - start_time) * 1000
-        status = response.status_code
+        # ── Execute request with Crash-Proof Capture ──
+        try:
+            response = await call_next(request)
+            status = response.status_code
+        except Exception as exc:
+            unhandled_exc = exc
+            status = 500
+            request.state.actions.append(f"{C.RED}💥 CRITICAL UNHANDLED CRASH: {type(exc).__name__} - {exc}{C.RESET}")
+        finally:
+            process_time = (time.time() - start_time) * 1000
 
-        status_color = C.GREEN if status < 400 else C.RED
-        status_icon = "✅" if status < 400 else "❌"
+            status_color = C.GREEN if status < 400 else C.RED
+            status_icon = "✅" if status < 400 else ("❌" if status < 500 else "☠️")
 
-        # ── Actions rendering ──
-        if request.state.actions:
-            actions_text = "\n".join(
-                f"{C.CYAN}│{C.RESET}  {C.MAGENTA}➔{C.RESET} {act}"
-                for act in request.state.actions
-            )
-        else:
-            actions_text = f"{C.CYAN}│{C.RESET}  {C.DIM}➔ (No actions recorded){C.RESET}"
+            # ── Actions rendering ──
+            if request.state.actions:
+                actions_text = "\n".join(
+                    f"{C.CYAN}│{C.RESET}  {C.MAGENTA}➔{C.RESET} {act}"
+                    for act in request.state.actions
+                )
+            else:
+                actions_text = f"{C.CYAN}│{C.RESET}  {C.DIM}➔ (No actions recorded){C.RESET}"
 
-        # ── LUVIIO ASCII HEADER ──
-        ascii_title = f"""
+            # ── LUVIIO ASCII HEADER ──
+            ascii_title = f"""
 {C.DEEP_BLUE}{C.BOLD}
 ██╗     ██╗   ██╗██╗   ██╗██╗██╗ ██████╗ 
 ██║     ██║   ██║██║   ██║██║██║██╔═══██╗
@@ -84,8 +102,8 @@ class PureWindowLoggerMiddleware(BaseHTTPMiddleware):
 {C.RESET}
 """
 
-        # ── Window ──
-        window = f"""
+            # ── Window ──
+            window = f"""
 {ascii_title}
 {C.CYAN}┌─────────────────────────────────────────────────────────────┐{C.RESET}
 {C.CYAN}│{C.RESET} 👤 {C.BOLD}{C.DEEP_BLUE}IDENTITY & NETWORK{C.RESET}
@@ -103,6 +121,10 @@ class PureWindowLoggerMiddleware(BaseHTTPMiddleware):
 {actions_text}
 {C.CYAN}└─────────────────────────────────────────────────────────────┘{C.RESET}
 """
+            print(window)
 
-        print(window)
+            # Re-raise so FastAPI still returns its 500 Internal Server Error JSON
+            if unhandled_exc:
+                raise unhandled_exc
+
         return response
