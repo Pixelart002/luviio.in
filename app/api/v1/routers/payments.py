@@ -7,6 +7,8 @@ Path: app/api/v1/routers/payments.py
    guard (get_user_id_strict) to eliminate IDOR risks natively at route level.
 🔥 OBSERVABILITY UPGRADE: Saturated all payment intent, confirmation, retry, 
    and webhook branches with explicit actions for PureWindowLogger.
+🔥 ARCHITECTURE UPGRADE: Fully ACID-compliant database logic via Supabase RPCs.
+   (Fixes Overselling, Double Settlements, and Race Conditions).
 """
 import logging
 import time
@@ -19,7 +21,6 @@ from fastapi.concurrency import run_in_threadpool
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-# 🔥 ADDED: get_user_id_strict
 from app.core.dependencies import get_current_user, get_user_id_strict
 from app.repositories.payment_repo import AsyncPaymentRepository
 from app.services.pricing import get_pricing_from_config
@@ -58,20 +59,12 @@ class BruteForceGuard:
 
 brute_force = BruteForceGuard(max_attempts=5, window_seconds=60)
 
-# 🔥 DEPRECATED: Replaced by get_user_id_strict Dependency
-# def _get_user_id(current_user: dict[str, Any]) -> str:
-#     profile = current_user.get("profile")
-#     if isinstance(profile, dict) and "id" in profile:
-#         return str(profile["id"])
-#     if "id" in current_user:
-#         return str(current_user["id"])
-#     raise HTTPException(401, "User ID not found in session")
-
 def _amount_to_paise(amount: Any) -> int:
     return int((Decimal(str(amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
+
 # ══════════════════════════════════════════════════════════════════════════════
-#  CREATE INTENT & PENDING ORDER (HANDLES REFRESH SAFELY)
+#  CREATE INTENT & PENDING ORDER (ATOMIC RESERVATION)
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/create-intent", response_model=Dict[str, Any])
@@ -83,11 +76,10 @@ async def create_payment_intent(
     user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
 ):
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Initiating AOT Checkout session -> Target UID: {user_id[:8]}...")
+        request.state.actions.append(f"Initiating Amazon-Style AOT Checkout -> Target UID: {user_id[:8]}...")
 
     repo = AsyncPaymentRepository()
     payment_service = get_payment_provider("stripe")
-    # user_id = _get_user_id(current) <-- REPLACED
     client_ip = get_remote_address(request)
     
     if brute_force.is_blocked(client_ip, user_id):
@@ -126,7 +118,7 @@ async def create_payment_intent(
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Evaluating physical stock for {len(cart_items)} cart items (Holding stock)...")
 
-    # 2. Check Stock & Calculate Amount (DO NOT DEDUCT STOCK)
+    # 2. Check Stock & Calculate Amount
     subtotal = Decimal("0")
     items_to_deduct = []
     for item in cart_items:
@@ -140,8 +132,11 @@ async def create_payment_intent(
         lt = locked_price * item["quantity"]
         subtotal += lt
         items_to_deduct.append({
-            "product_id": item["product_id"], "product_name": prod.get("name"),
-            "unit_price": float(locked_price), "quantity": item["quantity"], "subtotal": float(lt)
+            "product_id": item["product_id"], 
+            "product_name": prod.get("name"),
+            "unit_price": float(locked_price), 
+            "quantity": item["quantity"], 
+            "subtotal": float(lt)
         })
 
     config = await repo.get_pricing_config()
@@ -160,7 +155,7 @@ async def create_payment_intent(
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Dispatching AOT_PENDING Intent request to Stripe (Amount: {amount_paise} paise)...")
 
-    # 3. Create Stripe Intent
+    # 3. Create Stripe Intent FIRST
     idem_key = f"aot_pi_{payload.idempotency_key}"
     try:
         intent = await run_in_threadpool(payment_service.create_payment_intent, amount_paise, "inr", "AOT_PENDING", user_id, idem_key)
@@ -172,7 +167,7 @@ async def create_payment_intent(
             request.state.actions.append(f"💥 Stripe Gateway Failure: {exc}")
         raise HTTPException(502, f"Payment provider error: {exc}")
 
-    # 4. Create Pending Order (CART AND STOCK REMAIN UNTOUCHED)
+    # 4. 🔥 ATOMIC RESERVATION (Deduct Stock & Create Order in 1 Postgres Transaction)
     order_data = {
         "customer_id": user_id, "shipping_address_id": str(payload.shipping_address_id), "status": "pending",
         **breakdown.as_dict(),
@@ -182,9 +177,13 @@ async def create_payment_intent(
     }
     
     try:
-        pending_order = await repo.create_pending_order(order_data, items_to_deduct)
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Executing strict Atomic DB Stock Reservation & Order Generation")
+
+        pending_order = await repo.create_pending_order_with_reservation(order_data, items_to_deduct)
+        
         await run_in_threadpool(payment_service.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
-        logger.info(f"[PAYMENTS] Pending Order {pending_order['id']} created. Stock & Cart held safely.")
+        logger.info(f"[PAYMENTS] Pending Order {pending_order['id']} created. Stock locked atomically.")
         
         if hasattr(request.state, "actions"):
             request.state.actions.extend([
@@ -192,14 +191,16 @@ async def create_payment_intent(
                 "Synced DB Order ID back to Stripe Intent metadata"
             ])
     except Exception as e:
-        logger.error(f"[PAYMENTS] Order creation failed for {user_id}: {e}")
-        raise HTTPException(409, "Failed to create order")
+        logger.error(f"[PAYMENTS] Reservation Race Condition or DB Failure for {user_id}: {e}")
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"💥 Atomic Reservation Failed: Inventory depleted right before checkout")
+        raise HTTPException(409, "Inventory was depleted right before checkout. Try again.")
 
     return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": pending_order["id"]}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  CONFIRM PAYMENT (SUCCESS => DEDUCT STOCK & CLEAR CART)
+#  CONFIRM PAYMENT (ATOMIC SETTLEMENT)
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/confirm")
@@ -215,7 +216,6 @@ async def confirm_payment(
 
     repo = AsyncPaymentRepository()
     payment_service = get_payment_provider("stripe")
-    # user_id = _get_user_id(current) <-- REPLACED
     client_ip = get_remote_address(request)
     
     if brute_force.is_blocked(client_ip, user_id):
@@ -242,26 +242,26 @@ async def confirm_payment(
     if not existing_order:
         raise HTTPException(404, "Order not found")
         
-    if existing_order["status"] == "paid":
+    # 🔥 ATOMIC SETTLEMENT: Row Locks prevent Double Settlement with Webhook
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Executing Exclusive Row-Lock Transaction (Settle, Ledger, Clear Cart)")
+
+    try:
+        result = await repo.settle_order_transaction(order_id, intent["id"], intent["amount"] / 100, user_id)
+    except Exception as e:
+        logger.error(f"Atomic Settlement Failed: {e}")
+        raise HTTPException(500, "Database Settlement Failed")
+
+    if result == "ALREADY_PAID":
         if hasattr(request.state, "actions"):
-            request.state.actions.append("Transaction Idempotent -> Order was already marked PAID")
+            request.state.actions.append("Transaction Idempotent -> Webhook already settled this order")
         return {"status": "paid", "order_id": order_id, "message": "Already processed"}
 
-    # 🔥 UX FIX 2: PAYMENT SUCCESSFUL! NOW WE DEDUCT STOCK & CLEAR CART
-    if hasattr(request.state, "actions"):
-        request.state.actions.append("Executing strict Post-Payment settlement cascade...")
-
-    updated_order = await repo.update_order_status(order_id, "paid", intent["id"])
-    await repo.deduct_stock_for_order(order_id)
-    await repo.clear_user_cart(user_id)
-    await repo.create_payment_record(order_id, intent["id"], intent["amount"] / 100)
-    
     brute_force.reset(client_ip, user_id)
 
     if hasattr(request.state, "actions"):
         request.state.actions.extend([
             f"Committed DB state shift: 'PENDING' -> 'PAID' (Order: {str(order_id)[:8]}...)",
-            "Deducted purchased item quantities from master stock vault",
             "Purged user's active shopping cart ledger",
             "Generated immutable Payment Receipt record inside DB"
         ])
@@ -294,7 +294,6 @@ async def retry_payment(
 
     repo = AsyncPaymentRepository()
     payment_service = get_payment_provider("stripe")
-    # user_id = _get_user_id(current) <-- REPLACED
     
     existing_order = await repo.get_order_by_id(order_id)
     if not existing_order or existing_order.get("customer_id") != user_id:
@@ -316,11 +315,10 @@ async def retry_payment(
             if hasattr(request.state, "actions"):
                 request.state.actions.extend([
                     "Stripe API confirmed existing dead intent actually succeeded!",
-                    "Auto-reconciling Order status to PAID & wiping cart"
+                    "Auto-reconciling Order status via Atomic Settlement"
                 ])
-            await repo.update_order_status(order_id, "paid", pi_id)
-            await repo.deduct_stock_for_order(order_id)
-            await repo.clear_user_cart(user_id)
+            # Set via atomic RPC if Stripe already marked it succeeded
+            await repo.settle_order_transaction(order_id, pi_id, intent["amount"] / 100, user_id)
             return {"status": "paid", "message": "Payment was already successful!"}
             
         client_secret = intent.get("client_secret")
@@ -334,7 +332,9 @@ async def retry_payment(
             new_idem_key = f"retry_pi_{order_id}_{int(time.time())}"
             new_intent = await run_in_threadpool(payment_service.create_payment_intent, amount_paise, "inr", "AOT_RETRY", user_id, new_idem_key)
             
-            await repo.update_order_status(order_id, existing_order.get("status"), new_intent["id"])
+            # Simple blind update is safe here because it's just swapping the stripe intent ID 
+            # while status is still 'pending'
+            await repo.admin_sb.table("orders").update({"stripe_payment_intent": new_intent["id"]}).eq("id", order_id).execute()
             await run_in_threadpool(payment_service.update_intent_metadata, new_intent["id"], {"order_id": order_id, "user_id": user_id})
             
             return {"client_secret": new_intent["client_secret"], "payment_intent_id": new_intent["id"], "order_id": order_id}
@@ -349,7 +349,7 @@ async def retry_payment(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  NOTIFY FAILED & WEBHOOK (DOES NOT FAIL THE ORDER IMMEDIATELY)
+#  NOTIFY FAILED & WEBHOOK (DB ROW-LOCKED)
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/notify-failed")
@@ -395,25 +395,29 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
 
     if event_type == "payment_intent.succeeded":
         if hasattr(request.state, "actions"):
-            request.state.actions.append("Executing out-of-band Webhook settlement cascade...")
+            request.state.actions.append("Webhook executing Row-Lock Settlement")
 
-        await repo.update_order_status(order_id, "paid", pi_id)
-        await repo.deduct_stock_for_order(order_id)
-        await repo.clear_user_cart(user_id)
-        await repo.create_payment_record(order_id, pi_id, intent["amount"] / 100)
-        
-        email = await repo.get_customer_email(user_id)
-        get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
-
-        if hasattr(request.state, "actions"):
-            request.state.actions.append("Out-of-band Webhook settlement successfully completed")
+        try:
+            # 🔥 DOUBLE-SETTLEMENT DEFENSE
+            result = await repo.settle_order_transaction(order_id, pi_id, intent["amount"] / 100, user_id)
+            if result == "SUCCESS":
+                email = await repo.get_customer_email(user_id)
+                get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
+                if hasattr(request.state, "actions"):
+                    request.state.actions.append("Out-of-band Webhook settlement successfully completed")
+        except Exception as e:
+            logger.error(f"Webhook settlement failed: {e}")
 
     elif event_type == "payment_intent.canceled":
-        await repo.update_order_status(order_id, "failed")
-        email = await repo.get_customer_email(user_id)
-        get_event_bus().publish(OrderFailedEvent(order=existing_order, customer_email=email, customer_id=user_id, reason="webhook_canceled"))
-        
         if hasattr(request.state, "actions"):
-            request.state.actions.append("Stripe timeout -> Committed hard Order failure to DB")
+            request.state.actions.append("Stripe timeout -> Cancelling & Releasing Inventory Lock Atomically")
+
+        try:
+            # 🔥 ATOMIC INVENTORY RELEASE
+            await repo.release_abandoned_order(order_id)
+            email = await repo.get_customer_email(user_id)
+            get_event_bus().publish(OrderFailedEvent(order=existing_order, customer_email=email, customer_id=user_id, reason="webhook_canceled"))
+        except Exception as e:
+            logger.error(f"Webhook cancellation failed: {e}")
 
     return {"message": "OK"}
