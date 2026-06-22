@@ -2,6 +2,9 @@
 Admin Verification Router — Async Enterprise Grade
 ==================================================
 Path: app/api/v1/routers/admin_verify.py
+
+UI LOGGING UPGRADE: Explicit `request.state.actions.append(...)` hooks 
+added to live admin checks & telemetry aggregation for PureWindowLogger.
 """
 import logging
 import time
@@ -41,6 +44,9 @@ async def verify_admin(
     current: dict[str, Any] = Depends(get_current_user),
     user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
 ):
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Initiating live God-Mode verification for: {user_id[:8]}...")
+
     start = time.monotonic()
     client_ip = get_remote_address(request)
     # user_id = _get_user_id(current) <-- REPLACED
@@ -49,6 +55,8 @@ async def verify_admin(
     profile = await admin_repo.get_live_admin_profile(user_id)
 
     if not profile:
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Verification rejected: No DB profile mapped to this UID")
         elapsed = time.monotonic() - start
         time.sleep(max(0.0, _MIN_RESPONSE_SECONDS - elapsed))
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
@@ -57,10 +65,15 @@ async def verify_admin(
     is_active = profile.get("is_active", False)
 
     if user_role != "admin" or not is_active:
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"Security Alert: Non-admin or inactive access attempt ({user_role})")
         logger.warning("Admin verify failed: role=%s active=%s | ip=%s", user_role, is_active, client_ip)
         elapsed = time.monotonic() - start
         time.sleep(max(0.0, _MIN_RESPONSE_SECONDS - elapsed))
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Access Granted -> Verified as Active System Administrator")
 
     safe_profile = {
         "id": profile.get("id"), "email": profile.get("email"),
@@ -81,14 +94,25 @@ async def admin_stats(
     current: dict[str, Any] = Depends(get_current_user),
     user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
 ):
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Requesting system telemetry aggregation for: {user_id[:8]}...")
+
     # user_id = _get_user_id(current) <-- REPLACED
     admin_repo = AsyncAdminRepository()
     
     profile = await admin_repo.get_live_admin_profile(user_id)
     if not profile or profile.get("role") != "admin" or not profile.get("is_active"):
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Telemetry Denied -> Failed secondary role verification")
         raise HTTPException(403, "Access denied")
+
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Dispatching 5 concurrent async DB telemetry queries...")
 
     # This now runs all 5 queries concurrently in the background!
     stats = await admin_repo.get_dashboard_stats()
+
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Successfully aggregated & computed global dashboard metrics")
 
     return {"verified": True, "stats": stats, "timestamp": int(time.time())}

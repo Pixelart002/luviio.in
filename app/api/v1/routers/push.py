@@ -5,6 +5,8 @@ Path: app/api/v1/routers/push.py
 
 🔥 SECURITY FIX: Replaced manual user_id extraction with strict ABAC 
    guard (get_user_id_strict). Push repo requires NO changes.
+🔥 OBSERVABILITY UPGRADE: Saturated all subscription and admin-batch 
+   dispatch flows with explicit actions for PureWindowLogger.
 """
 import json
 import logging
@@ -62,9 +64,14 @@ async def _cleanup_stale_subscriptions(repo: AsyncPushRepository, user_id: str) 
 
 @router.get("/vapid-key", response_model=VapidKeyResponse)
 async def get_vapid_key(request: Request) -> dict[str, str]:
-    if hasattr(request.state, "actions"): request.state.actions.append("Client requested VAPID Public Key")
+    if hasattr(request.state, "actions"): 
+        request.state.actions.append("Client requested VAPID Public Key for WebPush handshake")
+        
     if not VAPID_PUBLIC_KEY:
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("❌ Aborted: Push notifications VAPID keys not configured in environment")
         raise HTTPException(status_code=503, detail="Push notifications not configured")
+        
     return {"public_key": VAPID_PUBLIC_KEY}
 
 @router.post("/subscribe", status_code=status.HTTP_201_CREATED, response_model=MessageResponse)
@@ -75,21 +82,32 @@ async def subscribe(
     current: dict[str, Any] = Depends(get_current_user),
     user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
 ) -> dict[str, str]:
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Validating new WebPush subscription payload for UID: {user_id[:8]}...")
+
     repo = AsyncPushRepository()
     # user_id = _get_user_id(current) <-- REPLACED
 
     if await repo.is_duplicate_subscription(user_id, payload.endpoint):
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Subscription idempotent -> Device already registered")
         return {"message": "Already subscribed"}
 
-    await _cleanup_stale_subscriptions(repo, user_id)
+    cleaned = await _cleanup_stale_subscriptions(repo, user_id)
+    if cleaned > 0 and hasattr(request.state, "actions"):
+        request.state.actions.append(f"Purged {cleaned} stale device subscriptions (Limit: {MAX_SUBSCRIPTIONS_PER_USER})")
 
     if not payload.endpoint.startswith("https://"):
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("❌ Aborted: Endpoint rejected (Non-HTTPS)")
         raise HTTPException(status_code=400, detail="Invalid push endpoint — must be HTTPS")
 
     sub_json = json.dumps({"endpoint": payload.endpoint, "keys": {"p256dh": payload.keys.p256dh, "auth": payload.keys.auth}})
 
     try:
         await repo.upsert_subscription(user_id, payload.endpoint, sub_json)
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("New device subscription securely registered to DB ledger")
     except Exception as e:
         logger.error("Failed to save push subscription to database: %s", e)
         raise HTTPException(status_code=500, detail="Failed to subscribe to push notifications")
@@ -102,10 +120,15 @@ async def unsubscribe(
     payload: PushSubscription, 
     current: dict[str, Any] = Depends(get_current_user)
 ) -> dict[str, str]:
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Targeting active device endpoint for Push unsubscription")
+
     # (Original didn't extract user_id here, safely uses endpoint URL to delete)
     repo = AsyncPushRepository()
     try:
         await repo.delete_subscription_by_endpoint(payload.endpoint)
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Subscription endpoint successfully excised from DB ledger")
     except Exception as e:
         logger.error("Failed to delete push subscription: %s", e)
         raise HTTPException(status_code=500, detail="Failed to unsubscribe")
@@ -118,15 +141,25 @@ async def subscription_status(
     current: dict[str, Any] = Depends(get_current_user),
     user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
 ) -> dict[str, Any]:
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Evaluating active push subscriptions for UID: {user_id[:8]}...")
+
     repo = AsyncPushRepository()
     # user_id = _get_user_id(current) <-- REPLACED
     count = await repo.count_user_subscriptions(user_id)
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Found {count}/{MAX_SUBSCRIPTIONS_PER_USER} active devices registered")
+
     return {"subscribed": count > 0, "subscription_count": count, "max_allowed": MAX_SUBSCRIPTIONS_PER_USER, "vapid_configured": bool(VAPID_PUBLIC_KEY)}
 
 # ── Admin Endpoints ───────────────────────────────────────────────────────────
 
 @router.post("/admin/send", dependencies=[Depends(require_admin)], response_model=BatchNotificationResponse)
 async def send_batch_notification(request: Request, payload: BatchNotificationRequest) -> dict[str, Any]:
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"God-Mode: Admin initiating Batch Push Dispatch to {len(payload.user_ids)} target user(s)...")
+
     sb = get_admin_supabase() # Requires raw sync client for external integration function
     results = {"success": 0, "failed": 0, "details": []}
     
@@ -141,14 +174,24 @@ async def send_batch_notification(request: Request, payload: BatchNotificationRe
         except Exception as exc:
             results["failed"] += 1; results["details"].append({"user_id": user_id, "status": f"error: {str(exc)[:100]}"})
     
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Batch dispatch completed -> Success: {results['success']} | Failed/No-Sub: {results['failed']}")
+
     return results
 
 @router.get("/admin/stats", dependencies=[Depends(require_admin)], response_model=PushStatsResponse)
 async def push_stats(request: Request) -> dict[str, Any]:
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("God-Mode: Admin fetching global Push telemetry")
+
     repo = AsyncPushRepository()
     try:
         total = await repo.get_total_subscriptions_count()
         unique_users = await repo.get_unique_subscribed_users()
+        
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"Aggregated {total} total subscriptions across {unique_users} unique users")
+
         return {
             "total_subscriptions": total, "unique_users": unique_users,
             "avg_per_user": round(total / unique_users, 1) if unique_users > 0 else 0,
