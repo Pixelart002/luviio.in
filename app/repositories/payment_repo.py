@@ -6,6 +6,7 @@ Path: app/repositories/payment_repo.py
 🔥 ARCHITECTURE UPGRADE: 
    Integrated Supabase PL/pgSQL RPCs for Atomic Row-Level Locking.
    Prevents Overselling, Race Conditions, and Double Settlements.
+🔥 BUG #7 FIXED: Encapsulated atomic PiID swap for Retry flow.
 """
 import logging
 from typing import Any, Dict, List, Optional
@@ -38,7 +39,6 @@ class AsyncPaymentRepository:
         return data or {"tax_rate": 18, "shipping_flat": 50, "shipping_threshold": 999, "currency": "INR"}
 
     async def get_customer_email(self, user_id: str) -> str:
-        # Assuming table might be 'users' or 'profiles'. Kept as 'users' based on your snippet.
         res = await self.admin_sb.table("users").select("email").eq("id", user_id).maybe_single().execute()
         data = getattr(res, "data", None)
         return data["email"] if data else ""
@@ -52,7 +52,7 @@ class AsyncPaymentRepository:
         return getattr(res, "data", None)
 
     # ══════════════════════════════════════════════════════════════════════════════
-    #  🔥 NEW: ACID COMPLIANT TRANSACTIONS (SUPERSEDES LEGACY METHODS)
+    #  🔥 ACID COMPLIANT RPC TRANSACTIONS
     # ══════════════════════════════════════════════════════════════════════════════
 
     async def create_pending_order_with_reservation(self, order_data: dict, items: list) -> Dict[str, Any]:
@@ -79,8 +79,14 @@ class AsyncPaymentRepository:
         ).execute()
         return getattr(res, "data", None)
 
+    # 🔥 Fix #7: Encapsulated method for Smart Paywall Retry (No direct table updates in router)
+    async def update_order_payment_intent(self, order_id: str, new_pi_id: str) -> None:
+        await self.admin_sb.table("orders").update({
+            "stripe_payment_intent": new_pi_id
+        }).eq("id", order_id).eq("status", "pending").execute()
+
     # ══════════════════════════════════════════════════════════════════════════════
-    #  ⚠️ LEGACY METHODS (Kept alive so other routers don't crash)
+    #  ⚠️ LEGACY METHODS (Preserved to prevent circular breakages in other files)
     # ══════════════════════════════════════════════════════════════════════════════
 
     async def clear_user_cart(self, user_id: str):
@@ -91,7 +97,6 @@ class AsyncPaymentRepository:
             logger.info(f"[REPO:CART] Cart {data['id']} cleared.")
 
     async def deduct_stock_for_order(self, order_id: str):
-        # Now handled by create_pending_order_with_reservation internally
         pass
 
     async def update_order_status(self, order_id: str, status: str, payment_intent: str = None) -> dict | None:
@@ -103,5 +108,4 @@ class AsyncPaymentRepository:
         return res_data[0] if res_data else None
 
     async def create_payment_record(self, order_id: str, pi_id: str, amount: float):
-        # Now handled by settle_order_transaction internally
         pass

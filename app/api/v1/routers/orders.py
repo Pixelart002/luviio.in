@@ -7,17 +7,10 @@ Architecture notes:
   1. All Supabase DB logic is strictly asynchronous (await).
   2. Order creation is handled exclusively by the JIT payment flow
      (POST /api/v1/payments/confirm). There is no direct POST /orders/ endpoint.
-  3. Stripe refund calls are wrapped in run_in_threadpool to avoid blocking
-     the async event loop.
+  3. Stripe refund calls are wrapped in run_in_threadpool to avoid blocking loop.
   4. 🔥 ENTERPRISE FIX: Added `get_user_id_strict` for IDOR elimination.
-  5. 🔥 OBSERVABILITY FIX: Saturated all self-fetch and admin overrides with PureWindowLogger hooks.
-
-IMPORTANT — _sanitize_order / _sanitize_order_list:
-  These helpers perform pure in-memory dict transformation (no I/O).
-  They MUST remain plain synchronous `def` functions.
-  Marking them `async def` without awaiting them at every call site causes
-  FastAPI to receive a coroutine object instead of a dict, triggering a
-  ResponseValidationError (see PYTHON-FASTAPI-C).
+  5. 🔥 BUG #5 FIXED: Removed `stripe_payment_intent` from internal fields so masking works.
+  6. 🔥 BUG #6 FIXED: Dynamic previous status captured for cancellation events.
 """
 import logging
 import re
@@ -25,11 +18,10 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
-from fastapi.concurrency import run_in_threadpool  # 🔥 IMPORT ADDED FOR STRIPE REFUND FIX
+from fastapi.concurrency import run_in_threadpool
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-# 🔥 SECURITY UPDATE: Added get_user_id_strict
 from app.core.dependencies import get_current_user, get_user_id_strict, require_admin
 from app.api.schemas.order_dto import OrderAdminUpdate, VALID_STATUSES, OrderListResponse
 from app.repositories.order_repo import AsyncOrderRepository
@@ -37,6 +29,8 @@ from app.services.events import get_event_bus, OrderShippedEvent, OrderStatusCha
 from app.integrations.payments.registry import get_payment_provider
 
 logger = logging.getLogger(__name__)
+
+# Uses SlowAPI default In-Memory storage (No Redis required)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -49,8 +43,12 @@ STATUS_TRANSITIONS = {
     "cancelled": set(),
 }
 
-_INTERNAL_FIELDS = {"idempotency_key", "stripe_payment_intent", "customer_id", "updated_at"}
-_MASKED_FIELDS = {"stripe_payment_intent": lambda v: f"pi_***{v[-4:]}" if v and len(v) > 4 else None}
+# 🔥 Fix #5: stripe_payment_intent removed from here so the masking function below can catch it!
+_INTERNAL_FIELDS = {"idempotency_key", "customer_id", "updated_at"}
+
+_MASKED_FIELDS = {
+    "stripe_payment_intent": lambda v: f"pi_***{v[-4:]}" if v and len(v) > 4 else None
+}
 
 def _sanitize_order(order: dict) -> dict:
     if not order: return order
@@ -76,18 +74,16 @@ async def my_orders(
     page: int = Query(1, ge=1), 
     page_size: int = Query(20, ge=1, le=100), 
     status_filter: str | None = Query(None), 
-    user_id: str = Depends(get_user_id_strict) # 🔥 ABAC ZERO-IDOR GUARD
+    user_id: str = Depends(get_user_id_strict)
 ):
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"ABAC Scoped Fetch -> Target UID: {user_id[:8]}... (Page: {page})")
 
-    # user_id = current["profile"]["id"] <-- REPLACED
     logger.info(f"[ORDERS] User {user_id} fetching their orders (Page: {page}, Filter: {status_filter})")
     
     if status_filter and status_filter not in VALID_STATUSES: 
         if hasattr(request.state, "actions"):
             request.state.actions.append(f"❌ Aborted: Invalid status filter requested ('{status_filter}')")
-        logger.warning(f"[ORDERS] Invalid status filter requested: {status_filter}")
         raise HTTPException(400, "Invalid status")
         
     repo = AsyncOrderRepository()
@@ -96,65 +92,59 @@ async def my_orders(
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Retrieved {len(items)} orders -> Executing fast in-memory dict sanitization")
 
-    return {"items": _sanitize_order_list(items), "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
+    return {
+        "items": _sanitize_order_list(items), "total": total, 
+        "page": page, "page_size": page_size, 
+        "pages": -(-total // page_size) if page_size > 0 else 0
+    }
 
 @router.get("/my/{order_id}")
-async def get_my_order(
-    request: Request, 
-    order_id: UUID, 
-    user_id: str = Depends(get_user_id_strict) # 🔥 ABAC ZERO-IDOR GUARD
-) -> dict[str, Any]:
+async def get_my_order(request: Request, order_id: UUID, user_id: str = Depends(get_user_id_strict)) -> dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Targeting Order details for ID: {str(order_id)[:8]}...")
 
-    # user_id = current["profile"]["id"] <-- REPLACED
     logger.info(f"[ORDERS] User {user_id} requesting order details for {order_id}")
-    
     repo = AsyncOrderRepository()
     order = await repo.get_order_by_id(str(order_id), user_id)
+
     if not order: 
-        if hasattr(request.state, "actions"):
-            request.state.actions.append("❌ Aborted: Order not found or does not belong to active user")
-        logger.warning(f"[ORDERS] Order {order_id} not found or denied for user {user_id}")
+        if hasattr(request.state, "actions"): request.state.actions.append("❌ Aborted: Order not found or denied")
         raise HTTPException(404, "Order not found")
         
     if hasattr(request.state, "actions"):
-        request.state.actions.append("Order ownership verified -> Stripping internal payment metadata")
+        request.state.actions.append("Order ownership verified -> Stripping internal metadata")
 
     return _sanitize_order(order)
 
 @router.post("/my/{order_id}/cancel")
-async def cancel_order(
-    request: Request, 
-    order_id: UUID, 
-    user_id: str = Depends(get_user_id_strict) # 🔥 ABAC ZERO-IDOR GUARD
-) -> dict[str, Any]:
+async def cancel_order(request: Request, order_id: UUID, user_id: str = Depends(get_user_id_strict)) -> dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Initiating Cancellation sequence for Order: {str(order_id)[:8]}...")
 
-    # user_id = current["profile"]["id"] <-- REPLACED
-    logger.info(f"[ORDERS] User {user_id} requesting cancellation for order {order_id}")
-    
     repo = AsyncOrderRepository()
-    updated = await repo.cancel_order_and_restore_stock(str(order_id), user_id)
     
+    # 🔥 Fix #6: Fetch current order first to dynamically capture its real historical state
+    current_order = await repo.get_order_by_id(str(order_id), user_id)
+    if not current_order:
+        raise HTTPException(404, "Order not found")
+
+    actual_old_status = current_order.get("status", "pending")
+
+    updated = await repo.cancel_order_and_restore_stock(str(order_id), user_id)
     if not updated: 
-        if hasattr(request.state, "actions"):
-            request.state.actions.append("❌ Aborted: Order is no longer in 'pending' or 'paid' state")
-        logger.warning(f"[ORDERS] Cannot cancel order {order_id} for user {user_id} (Invalid state)")
-        raise HTTPException(409, "Cannot cancel this order (it might not be pending)")
+        if hasattr(request.state, "actions"): request.state.actions.append("❌ Aborted: Order cannot be cancelled in its current state")
+        raise HTTPException(409, "Cannot cancel this order (it might already be shipped/cancelled)")
 
     if hasattr(request.state, "actions"):
         request.state.actions.append("Order marked Cancelled -> Stock rolled back successfully")
 
     try:
-        logger.info(f"[ORDERS] Publishing OrderStatusChangedEvent for cancelled order {order_id}")
         get_event_bus().publish(OrderStatusChangedEvent(
             order=updated, customer_id=user_id, 
-            old_status="pending", new_status="cancelled"
+            old_status=actual_old_status,  # 🔥 Fixed: Now accurately passes 'paid' or 'pending'
+            new_status="cancelled"
         ))
-        if hasattr(request.state, "actions"):
-            request.state.actions.append("Dispatched background cancellation reaction hooks")
+        if hasattr(request.state, "actions"): request.state.actions.append("Dispatched cancellation reaction hooks")
     except Exception as e:
         logger.error(f"[ORDERS] Failed to publish cancellation event for {order_id}: {e}")
 
@@ -162,57 +152,32 @@ async def cancel_order(
 
 @router.get("/", dependencies=[Depends(require_admin)], response_model=OrderListResponse)
 async def list_all_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str | None = None):
-    if hasattr(request.state, "actions"):
-        request.state.actions.append(f"God-Mode: Admin fetching global order ledger (Page: {page})")
-
-    logger.info(f"[ORDERS:ADMIN] Admin fetching all orders (Page: {page}, Filter: {status_filter})")
-    
-    if status_filter and status_filter not in VALID_STATUSES: 
-        logger.warning(f"[ORDERS:ADMIN] Invalid status filter requested: {status_filter}")
-        raise HTTPException(400, "Invalid status")
+    if hasattr(request.state, "actions"): request.state.actions.append(f"God-Mode: Admin fetching global order ledger (Page: {page})")
+    if status_filter and status_filter not in VALID_STATUSES: raise HTTPException(400, "Invalid status")
         
-    repo = AsyncOrderRepository()
-    items, total = await repo.get_all_orders(status_filter, page, page_size)
+    items, total = await AsyncOrderRepository().get_all_orders(status_filter, page, page_size)
     return {"items": _sanitize_order_list(items), "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0}
 
 @router.patch("/{order_id}", dependencies=[Depends(require_admin)])
 async def admin_update_order(request: Request, order_id: UUID, payload: OrderAdminUpdate) -> dict[str, Any]:
-    if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Admin overriding state for Order: {str(order_id)[:8]}...")
-
-    logger.info(f"[ORDERS:ADMIN] Admin updating order {order_id} with payload: {payload.model_dump(exclude_unset=True)}")
-    
+    if hasattr(request.state, "actions"): request.state.actions.append(f"Admin overriding state for Order: {str(order_id)[:8]}...")
     repo = AsyncOrderRepository()
     current_res = await repo.get_order_for_admin_update(str(order_id))
-    if not current_res: 
-        raise HTTPException(404, "Order not found")
+    if not current_res: raise HTTPException(404, "Order not found")
 
     current_status = current_res["status"]
 
     if payload.status:
-        if hasattr(request.state, "actions"):
-            request.state.actions.append(f"Attempting transition: '{current_status}' -> '{payload.status}'")
-
         allowed = STATUS_TRANSITIONS.get(current_status, set())
-        if payload.status not in allowed: 
-            if hasattr(request.state, "actions"):
-                request.state.actions.append("❌ Aborted: State transition violates hardcoded DAG rules")
-            raise HTTPException(409, f"Cannot move '{current_status}' → '{payload.status}'")
+        if payload.status not in allowed: raise HTTPException(409, f"Cannot move '{current_status}' → '{payload.status}'")
             
         if payload.status == "refunded":
             pi_id = current_res.get("stripe_payment_intent")
             if pi_id:
-                if hasattr(request.state, "actions"):
-                    request.state.actions.append(f"Offloading synchronous Stripe Refund ({pi_id[:8]}...) to Threadpool")
-                logger.info(f"[ORDERS:ADMIN] Processing Stripe Refund for Payment Intent: {pi_id}")
                 try: 
-                    # 🔥 CRITICAL FIX: Wrapped synchronous Stripe call in threadpool
                     await run_in_threadpool(get_payment_provider("stripe").process_refund, pi_id)
-                    logger.info(f"[ORDERS:ADMIN] Stripe refund processed successfully for {pi_id}")
-                    if hasattr(request.state, "actions"):
-                        request.state.actions.append("Stripe API confirmed refund success")
+                    if hasattr(request.state, "actions"): request.state.actions.append("Stripe API confirmed refund success")
                 except Exception as e: 
-                    logger.error(f"[ORDERS:ADMIN] Stripe refund failed for {pi_id}: {e}", exc_info=True)
                     raise HTTPException(502, f"Refund failed: {e}")
         
         if payload.status == "cancelled":
@@ -223,24 +188,17 @@ async def admin_update_order(request: Request, order_id: UUID, payload: OrderAdm
             result = await repo.update_order_status_safe(str(order_id), data, current_status)
             if not result: raise HTTPException(409, "Order modified — refresh and retry")
     else:
-        if hasattr(request.state, "actions"):
-            request.state.actions.append("Committing tracking metadata notes without financial state shift")
         data = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
         result = await repo.update_order_status_safe(str(order_id), data, current_status)
 
-    # Trigger events based on new status
     if payload.status == "shipped":
         try:
             email = await repo.get_user_email(current_res["customer_id"])
-            if email: 
-                get_event_bus().publish(OrderShippedEvent(order=result, customer_email=email, customer_id=current_res["customer_id"], tracking_number=payload.tracking_number))
-                if hasattr(request.state, "actions"):
-                    request.state.actions.append("Fired background OrderShipped dispatch hooks")
-        except Exception as e: logger.error(f"[ORDERS:ADMIN] Failed to publish shipped event: {e}")
+            if email: get_event_bus().publish(OrderShippedEvent(order=result, customer_email=email, customer_id=current_res["customer_id"], tracking_number=payload.tracking_number))
+        except Exception: pass
     
     if payload.status in ("delivered", "refunded", "cancelled"):
-        try: 
-            get_event_bus().publish(OrderStatusChangedEvent(order=result, customer_id=current_res["customer_id"], old_status=current_status, new_status=payload.status))
-        except Exception as e: logger.error(f"[ORDERS:ADMIN] Failed to publish status changed event: {e}")
+        try: get_event_bus().publish(OrderStatusChangedEvent(order=result, customer_id=current_res["customer_id"], old_status=current_status, new_status=payload.status))
+        except Exception: pass
 
     return _sanitize_order(result)

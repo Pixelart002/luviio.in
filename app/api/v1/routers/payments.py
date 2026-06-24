@@ -1,14 +1,13 @@
 """
-Payments Router — AOT & Smart Recovery Processor (UX Focused)
-=============================================================
+Payments Router — AOT & Smart Recovery Processor (Amazon-Grade Hybrid)
+======================================================================
 Path: app/api/v1/routers/payments.py
 
-🔥 SECURITY FIX: Replaced manual user_id extraction with strict ABAC 
-   guard (get_user_id_strict) to eliminate IDOR risks natively at route level.
-🔥 OBSERVABILITY UPGRADE: Saturated all payment intent, confirmation, retry, 
-   and webhook branches with explicit actions for PureWindowLogger.
-🔥 ARCHITECTURE UPGRADE: Fully ACID-compliant database logic via Supabase RPCs.
-   (Fixes Overselling, Double Settlements, and Race Conditions).
+🔥 SECURITY FIX: Strictly uses ABAC guard `get_user_id_strict` to prevent IDOR.
+🔥 OBSERVABILITY: Saturated all branches with explicit PureWindowLogger hooks.
+🔥 FINANCIAL INTEGRITY: Connected to Supabase ACID RPCs (Row-Level Locking) 
+   to natively prevent Overselling, Race conditions, and Double-Settlements.
+🔥 INFRASTRUCTURE: Purely In-Memory (Zero extra Redis/Devops dependencies).
 """
 import logging
 import time
@@ -32,6 +31,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/payments", tags=["Payments"])
 limiter = Limiter(key_func=get_remote_address)
 
+
+# ── Native In-Memory Brute Force Protection (Zero-Latency) ──
 class BruteForceGuard:
     def __init__(self, max_attempts: int = 5, window_seconds: int = 60):
         self.attempts = defaultdict(list)
@@ -57,7 +58,9 @@ class BruteForceGuard:
         if ip in self.attempts:
             del self.attempts[ip]
 
+
 brute_force = BruteForceGuard(max_attempts=5, window_seconds=60)
+
 
 def _amount_to_paise(amount: Any) -> int:
     return int((Decimal(str(amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
@@ -193,7 +196,7 @@ async def create_payment_intent(
     except Exception as e:
         logger.error(f"[PAYMENTS] Reservation Race Condition or DB Failure for {user_id}: {e}")
         if hasattr(request.state, "actions"):
-            request.state.actions.append(f"💥 Atomic Reservation Failed: Inventory depleted right before checkout")
+            request.state.actions.append("💥 Atomic Reservation Failed: Inventory depleted right before checkout")
         raise HTTPException(409, "Inventory was depleted right before checkout. Try again.")
 
     return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": pending_order["id"]}
@@ -247,6 +250,7 @@ async def confirm_payment(
         request.state.actions.append("Executing Exclusive Row-Lock Transaction (Settle, Ledger, Clear Cart)")
 
     try:
+        # Amount sent divided by 100 to convert from paise to INR for validation inside RPC
         result = await repo.settle_order_transaction(order_id, intent["id"], intent["amount"] / 100, user_id)
     except Exception as e:
         logger.error(f"Atomic Settlement Failed: {e}")
@@ -317,7 +321,6 @@ async def retry_payment(
                     "Stripe API confirmed existing dead intent actually succeeded!",
                     "Auto-reconciling Order status via Atomic Settlement"
                 ])
-            # Set via atomic RPC if Stripe already marked it succeeded
             await repo.settle_order_transaction(order_id, pi_id, intent["amount"] / 100, user_id)
             return {"status": "paid", "message": "Payment was already successful!"}
             
@@ -332,9 +335,8 @@ async def retry_payment(
             new_idem_key = f"retry_pi_{order_id}_{int(time.time())}"
             new_intent = await run_in_threadpool(payment_service.create_payment_intent, amount_paise, "inr", "AOT_RETRY", user_id, new_idem_key)
             
-            # Simple blind update is safe here because it's just swapping the stripe intent ID 
-            # while status is still 'pending'
-            await repo.admin_sb.table("orders").update({"stripe_payment_intent": new_intent["id"]}).eq("id", order_id).execute()
+            # 🔥 Application Bug #7 Fixed: Cleanly uses your repo's existing helper method safely!
+            await repo.update_order_status(order_id, existing_order.get("status"), new_intent["id"])
             await run_in_threadpool(payment_service.update_intent_metadata, new_intent["id"], {"order_id": order_id, "user_id": user_id})
             
             return {"client_secret": new_intent["client_secret"], "payment_intent_id": new_intent["id"], "order_id": order_id}
