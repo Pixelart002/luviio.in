@@ -10,6 +10,8 @@ FIX APPLIED:
   4. Used breakdown.as_dict() for clean mapping (shipping_cost key stays in response)
   5. Removed stray traceback text inside send_cart_reminder return
   6. DELETED: is_cart_locked() checks (Shifted to AOT Pending Order Flow)
+  7. 🔥 ENTERPRISE FIX: Integrated Depends(get_user_id_strict) for ABAC security
+  8. 🔥 OBSERVABILITY FIX: Saturated all CRUD & Admin flows with PureWindowLogger hooks.
 """
 from __future__ import annotations
 
@@ -22,7 +24,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from app.core.dependencies import get_current_user, require_admin
+# 🔥 SECURITY UPDATE: Added get_user_id_strict
+from app.core.dependencies import get_user_id_strict, require_admin
 from app.api.schemas.cart_dto import (
     AddItemRequest, UpdateItemRequest, CartResponse,
     MessageResponse, AbandonedCartResponse, ReminderResponse
@@ -40,17 +43,19 @@ _ABANDONED_HOURS = 24
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _get_user_id(current: dict[str, Any]) -> str:
-    profile = current.get("profile", {})
-    user_id = profile.get("id") or current.get("id") or current.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found")
-    return str(user_id)
+# 🔥 OBSOLETE: Replaced by get_user_id_strict directly in the route parameters
+# def _get_user_id(current: dict[str, Any]) -> str:
+#     profile = current.get("profile", {})
+#     user_id = profile.get("id") or current.get("id") or current.get("sub")
+#     if not user_id:
+#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found")
+#     return str(user_id)
 
 
 async def _calculate_cart_pricing(
     repo: AsyncCartRepository,
     cart: dict[str, Any],
+    request: Request | None = None,  # 🔥 Added safely to track financial steps
 ) -> dict[str, Any]:
     """
     Calculate cart totals using the central PricingEngine (SSOT).
@@ -66,6 +71,9 @@ async def _calculate_cart_pricing(
         repo.get_cart_items_with_products(cart["id"]),
     )
     pricing_engine = get_pricing_from_config(config)
+
+    if request and hasattr(request.state, "actions"):
+        request.state.actions.append("Applying SSOT pricing breakdown (Subtotal/Tax/Shipping)")
 
     enriched: list[dict[str, Any]] = []
     subtotal        = Decimal("0")
@@ -143,38 +151,43 @@ async def _calculate_cart_pricing(
 @router.get("", response_model=CartResponse)
 async def get_cart(
     request: Request,
-    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict), # 🔥 STRICT ABAC GUARD
 ) -> dict[str, Any]:
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current)
     repo    = AsyncCartRepository()
 
     if hasattr(request.state, "actions"):
         request.state.actions.extend([
-            "Fetching active cart via Repo",
-            "Applying live SSOT pricing rules",
+            f"ABAC Scoped -> Target UID: {user_id[:8]}...",
+            "Fetching active cart vault via Repo",
         ])
 
     cart = await repo.get_or_create_cart(user_id)
-    return await _calculate_cart_pricing(repo, cart)
+    return await _calculate_cart_pricing(repo, cart, request)
 
 
 @router.post("/items", status_code=status.HTTP_200_OK, response_model=CartResponse)
 async def add_item(
     request: Request,
     payload: AddItemRequest,
-    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict), # 🔥 STRICT ABAC GUARD
 ) -> dict[str, Any]:
-    user_id    = _get_user_id(current)
+    # user_id    = _get_user_id(current)
     product_id = str(payload.product_id)
     repo       = AsyncCartRepository()
 
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Verifying stock for product: {product_id[:8]}…")
+        request.state.actions.append(f"Verifying stock availability for product: {product_id[:8]}…")
 
     prod = await repo.get_product_stock_status(product_id)
     if not prod or not prod.get("is_active"):
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("❌ Aborted: Product does not exist or is marked inactive")
         raise HTTPException(404, "Product not found or inactive")
+
     if prod["stock"] < payload.quantity:
+        if hasattr(request.state, "actions"):
+            request.state.actions.append(f"❌ Aborted: Requested qty ({payload.quantity}) exceeds DB stock ({prod['stock']})")
         raise HTTPException(409, f"Only {prod['stock']} units available")
 
     cart     = await repo.get_or_create_cart(user_id)
@@ -183,6 +196,8 @@ async def add_item(
     if existing:
         new_qty = existing["quantity"] + payload.quantity
         if new_qty > 100:
+            if hasattr(request.state, "actions"):
+                request.state.actions.append("❌ Aborted: Hard limit of 100 units per item breached")
             raise HTTPException(400, "Maximum 100 units per item")
         if prod["stock"] < new_qty:
             raise HTTPException(
@@ -192,15 +207,15 @@ async def add_item(
             )
         await repo.update_item_quantity(existing["id"], new_qty)
         if hasattr(request.state, "actions"):
-            request.state.actions.append(f"Updated existing item quantity to {new_qty}")
+            request.state.actions.append(f"Merged with existing line item -> New Qty: {new_qty}")
     else:
         await repo.add_item_to_cart(
             cart["id"], product_id, payload.quantity, float(prod["price"])
         )
         if hasattr(request.state, "actions"):
-            request.state.actions.append("Added new product to cart")
+            request.state.actions.append("Inserted fresh product line item into Cart")
 
-    return await _calculate_cart_pricing(repo, cart)
+    return await _calculate_cart_pricing(repo, cart, request)
 
 
 @router.put("/items/{product_id}", status_code=status.HTTP_200_OK, response_model=CartResponse)
@@ -208,14 +223,14 @@ async def update_item(
     request:    Request,
     product_id: UUID,
     payload:    UpdateItemRequest,
-    current:    dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict), # 🔥 STRICT ABAC GUARD
 ) -> dict[str, Any]:
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current)
     pid     = str(product_id)
     repo    = AsyncCartRepository()
 
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Updating quantity to {payload.quantity}")
+        request.state.actions.append(f"Targeting cart line item {pid[:8]}... -> Qty: {payload.quantity}")
 
     cart = await repo.get_or_create_cart(user_id)
     prod = await repo.get_product_stock_status(pid)
@@ -227,21 +242,23 @@ async def update_item(
 
     success = await repo.update_item_quantity_by_product(cart["id"], pid, payload.quantity)
     if not success:
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("❌ Aborted: Product ID not found inside active cart vault")
         raise HTTPException(404, "Item not in cart")
 
     if hasattr(request.state, "actions"):
-        request.state.actions.append("Quantity updated and totals recalculated")
+        request.state.actions.append("Line item quantity successfully committed")
 
-    return await _calculate_cart_pricing(repo, cart)
+    return await _calculate_cart_pricing(repo, cart, request)
 
 
 @router.delete("/items/{product_id}", status_code=status.HTTP_200_OK, response_model=CartResponse)
 async def remove_item(
     request:    Request,
     product_id: UUID,
-    current:    dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict), # 🔥 STRICT ABAC GUARD
 ) -> dict[str, Any]:
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current)
     pid     = str(product_id)
     repo    = AsyncCartRepository()
 
@@ -249,24 +266,24 @@ async def remove_item(
     await repo.remove_item(cart["id"], pid)
 
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Product {pid[:8]}… removed from cart")
+        request.state.actions.append(f"Excised product {pid[:8]}… from active cart ledger")
 
-    return await _calculate_cart_pricing(repo, cart)
+    return await _calculate_cart_pricing(repo, cart, request)
 
 
 @router.delete("", status_code=status.HTTP_200_OK, response_model=MessageResponse)
 async def clear_cart(
     request: Request,
-    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict), # 🔥 STRICT ABAC GUARD
 ) -> dict[str, str]:
-    user_id = _get_user_id(current)
+    # user_id = _get_user_id(current)
     repo    = AsyncCartRepository()
 
     cart = await repo.get_or_create_cart(user_id)
     await repo.clear_cart(cart["id"])
 
     if hasattr(request.state, "actions"):
-        request.state.actions.append("Entire cart cleared successfully")
+        request.state.actions.append("Purged all line items -> Active Cart reset to zero")
 
     return {"message": "Cart cleared"}
 
@@ -290,7 +307,7 @@ async def list_abandoned_carts(
     offset = (page - 1) * page_size
 
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Fetching abandoned carts (cutoff: >{hours}h)")
+        request.state.actions.append(f"Admin sweeping abandoned carts (Threshold: >{hours}h)")
 
     cutoff = (
         datetime.datetime.now(datetime.timezone.utc)
@@ -305,6 +322,9 @@ async def list_abandoned_carts(
         row["estimated_value"] = float(
             sum(Decimal(str(i["price_snapshot"])) * i["quantity"] for i in items)
         )
+
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Aggregated {len(rows)} stranded carts & computed total value risk")
 
     return {
         "items":           rows,
@@ -328,20 +348,27 @@ async def send_cart_reminder(
     repo = AsyncCartRepository()
 
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Initiating reminder for cart: {str(cart_id)[:8]}…")
+        request.state.actions.append(f"Locking abandoned Cart target: {str(cart_id)[:8]}…")
 
     cart = await repo.get_cart_for_reminder(str(cart_id))
     if not cart:
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("❌ Aborted: Target Cart ID not found in database")
         raise HTTPException(404, "Cart not found")
 
     user_info = cart.get("users") or {}
     items     = cart.get("cart_items") or []
     if not items:
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("❌ Aborted: Cart contains 0 items, reminder unnecessary")
         raise HTTPException(400, "Cart is empty — no reminder needed")
 
     user_id = cart["user_id"]
     email   = user_info.get("email", "")
     name    = user_info.get("full_name", "there")
+
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Resolved recipient -> {name} ({email or 'No Email'})")
 
     # ── Push notification ─────────────────────────────────────────────────────
     push_sent = 0
@@ -372,8 +399,8 @@ async def send_cart_reminder(
 
     if hasattr(request.state, "actions"):
         request.state.actions.extend([
-            f"Push sent: {'Yes' if push_sent else 'No'}",
-            f"Email sent: {'Yes' if email_sent else 'No'}",
+            f"WebPush trigger status -> {'Dispatched' if push_sent else 'Skipped/Failed'}",
+            f"HTML Email trigger status -> {'Dispatched' if email_sent else 'Skipped/Failed'}",
         ])
 
     logger.info(

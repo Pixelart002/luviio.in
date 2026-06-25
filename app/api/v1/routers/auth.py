@@ -2,6 +2,9 @@
 Auth Router — Async Enterprise Grade
 ====================================
 Path: app/api/v1/routers/auth.py
+
+UI LOGGING UPGRADE: Explicit `request.state.actions.append(...)` hooks 
+added to all authentication flows for the PureWindowLogger Middleware.
 """
 import logging
 import time
@@ -13,12 +16,12 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.concurrency import run_in_threadpool
 
-# 🔥 ARCHITECTURE IMPORTS
+# 🔥 ADDED: get_user_id_strict
 from app.api.schemas.auth_dto import (
     RegisterRequest, LoginRequest, ForgotPasswordRequest, 
     ResetPasswordRequest, TokenResponse, LoginResponse, MessageResponse
 )
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_user_id_strict
 from app.repositories.user_repo import AsyncUserRepository
 from app.repositories.auth_repo import AsyncAuthRepository
 from app.integrations.email.registry import get_email_provider
@@ -74,6 +77,9 @@ def _reset_attempts(ip: str, email: str = "") -> None:
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=MessageResponse)
 @limiter.limit("5/minute")
 async def register(request: Request, payload: RegisterRequest) -> dict[str, str]:
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Initiating registration for: {payload.email}")
+
     client_ip = get_remote_address(request)
     if _check_brute_force(client_ip): raise HTTPException(429, "Too many attempts.")
     
@@ -84,6 +90,8 @@ async def register(request: Request, payload: RegisterRequest) -> dict[str, str]
 
     try:
         auth_user_id = await auth_repo.sign_up(payload.email, payload.password, user_name)
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Supabase Auth identity established")
     except AuthApiError as e:
         _record_attempt(client_ip)
         logger.warning(f"Registration AuthApiError: {e}")
@@ -93,13 +101,19 @@ async def register(request: Request, payload: RegisterRequest) -> dict[str, str]
         raise HTTPException(503, "Registration service unavailable.")
 
     if auth_user_id:
-        try: await user_repo.upsert_profile(user_id=auth_user_id, email=payload.email, full_name=user_name)
-        except Exception as e: logger.warning("Profile upsert failed: %s", e)
+        try: 
+            await user_repo.upsert_profile(user_id=auth_user_id, email=payload.email, full_name=user_name)
+            if hasattr(request.state, "actions"):
+                request.state.actions.append("Created profile metadata in DB")
+        except Exception as e: 
+            logger.warning("Profile upsert failed: %s", e)
 
         try:
             # Prevent email sending from blocking the async event loop
             email_service = get_email_provider("resend")
             await run_in_threadpool(email_service.send_welcome_email, payload.email, user_name)
+            if hasattr(request.state, "actions"):
+                request.state.actions.append("Queued async Welcome Email")
         except Exception as e:
             logger.warning("Welcome email failed: %s", e)
 
@@ -108,6 +122,9 @@ async def register(request: Request, payload: RegisterRequest) -> dict[str, str]
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit("5/minute")
 async def login(request: Request, response: Response, payload: LoginRequest) -> dict[str, Any]:
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Authenticating credentials for: {payload.email}")
+
     start = time.monotonic()
     client_ip = get_remote_address(request)
     auth_repo = AsyncAuthRepository()
@@ -123,6 +140,12 @@ async def login(request: Request, response: Response, payload: LoginRequest) -> 
             _record_attempt(client_ip, payload.email)
             raise HTTPException(401, "Invalid email or password")
             
+        if hasattr(request.state, "actions"):
+            request.state.actions.extend([
+                f"Identity verified -> UID: {session_data['user_id'][:8]}...",
+                "Issued secure HttpOnly Refresh Cookie"
+            ])
+            
     except AuthApiError as e:
         _record_attempt(client_ip, payload.email)
         logger.warning(f"Login rejected by Supabase: {e}")
@@ -132,7 +155,6 @@ async def login(request: Request, response: Response, payload: LoginRequest) -> 
         raise
         
     except Exception as e:
-        # 🔥 FIX: Now we actually log the real error before throwing 503!
         logger.error(f"Login CRITICAL Error: {e}", exc_info=True)
         raise HTTPException(503, "Authentication service unavailable")
         
@@ -151,6 +173,9 @@ async def login(request: Request, response: Response, payload: LoginRequest) -> 
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("10/minute")
 async def refresh(request: Request, response: Response, refresh_token: str | None = Cookie(None)) -> dict[str, Any]:
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Intercepted session refresh cookie")
+
     if not refresh_token: raise HTTPException(401, "Refresh token missing. Please log in again.")
     auth_repo = AsyncAuthRepository()
     
@@ -159,6 +184,10 @@ async def refresh(request: Request, response: Response, refresh_token: str | Non
         if not session_data:
             response.delete_cookie(**_COOKIE_KWARGS)
             raise HTTPException(401, "Invalid refresh token")
+            
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Session successfully refreshed & prolonged")
+            
     except Exception as e:
         logger.error(f"Refresh CRITICAL Error: {e}", exc_info=True)
         response.delete_cookie(**_COOKIE_KWARGS)
@@ -169,14 +198,22 @@ async def refresh(request: Request, response: Response, refresh_token: str | Non
 
 @router.post("/logout", response_model=MessageResponse)
 async def logout(request: Request, response: Response, refresh_token: str | None = Cookie(None)) -> dict[str, str]:
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Executing user sign-out sequence")
+
     if refresh_token:
         try:
             auth_repo = AsyncAuthRepository()
             await auth_repo.sign_out_with_token(refresh_token)
+            if hasattr(request.state, "actions"):
+                request.state.actions.append("Revoked active token in Supabase Vault")
         except Exception as e:
             logger.error(f"Logout Error: {e}")
 
     response.delete_cookie(**_COOKIE_KWARGS)
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Destroyed local HttpOnly auth cookies")
+
     return {"message": "Logged out successfully"}
 
 @router.post("/forgot-password", response_model=MessageResponse)
@@ -185,17 +222,29 @@ async def forgot_password(request: Request, payload: ForgotPasswordRequest) -> d
     client_ip = get_remote_address(request)
     if _check_brute_force(client_ip): raise HTTPException(429, "Too many attempts.")
     
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Requesting password recovery dispatch for: {payload.email}")
+
     try: await AsyncAuthRepository().reset_password_email(payload.email)
     except Exception as e: logger.error(f"Forgot password Error: {e}")
     return {"message": "If this email exists, a password reset link has been sent."}
 
 @router.post("/reset-password", response_model=MessageResponse)
-async def reset_password(request: Request, payload: ResetPasswordRequest, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
-    user_id = current.get("sub") or current.get("id") or current.get("profile", {}).get("id")
-    if not user_id: raise HTTPException(401, "Valid user session not found")
+async def reset_password(
+    request: Request, 
+    payload: ResetPasswordRequest, 
+    current: dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict) # 🔥 STRICT ABAC GUARD
+) -> dict[str, str]:
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Validating password override for user: {user_id[:8]}...")
 
-    try: await AsyncAuthRepository().admin_update_password(user_id, payload.new_password)
-    except AuthApiError as e: raise HTTPException(400, f"Password reset failed: {e.message}")
+    try: 
+        await AsyncAuthRepository().admin_update_password(user_id, payload.new_password)
+        if hasattr(request.state, "actions"):
+            request.state.actions.append("Password updated securely via Admin Hook")
+    except AuthApiError as e: 
+        raise HTTPException(400, f"Password reset failed: {e.message}")
     except Exception as e: 
         logger.error(f"Reset password Error: {e}")
         raise HTTPException(503, "Service unavailable")
@@ -206,4 +255,8 @@ async def reset_password(request: Request, payload: ResetPasswordRequest, curren
 async def check_session(request: Request, current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     user_id = current.get("sub") or current.get("profile", {}).get("id", "")
     email = current.get("email") or current.get("profile", {}).get("email", "")
+    
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Session inspected -> Valid for: {email}")
+
     return {"authenticated": True, "user_id": user_id, "email": email, "expires_at": current.get("exp")}
