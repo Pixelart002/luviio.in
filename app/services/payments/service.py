@@ -6,7 +6,7 @@ from collections import defaultdict
 from starlette.concurrency import run_in_threadpool
 
 from app.repositories.payment_repo import AsyncPaymentRepository
-from app.services.products.pricing import get_pricing_from_config
+from app.services.pricing import get_pricing_from_config
 from app.services.events import get_event_bus, OrderPaidEvent, OrderFailedEvent
 from app.integrations.payments.registry import get_payment_provider
 from app.core.exceptions import LuviioException, OutOfStockException, PaymentFailedException
