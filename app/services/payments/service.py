@@ -6,7 +6,7 @@ from collections import defaultdict
 from starlette.concurrency import run_in_threadpool
 
 from app.repositories.payment_repo import AsyncPaymentRepository
-from app.services.pricing import get_pricing_from_config
+from app.services.products.pricing import get_pricing_from_config
 from app.services.events import get_event_bus, OrderPaidEvent, OrderFailedEvent
 from app.integrations.payments.registry import get_payment_provider
 from app.core.exceptions import LuviioException, OutOfStockException, PaymentFailedException
@@ -40,7 +40,8 @@ class PaymentService:
         return int((Decimal(str(amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
     async def create_intent(self, user_id: str, client_ip: str, idempotency_key: str, address_id: str) -> Dict[str, Any]:
-        if brute_guard.is_blocked(client_ip): raise LuviioException("Too many attempts", "RATE_LIMIT", 429)
+        if brute_guard.is_blocked(client_ip): 
+            raise LuviioException("Too many attempts", "RATE_LIMIT", 429)
 
         existing = await self.repo.get_order_by_idempotency_key(user_id, idempotency_key)
         if existing:
@@ -54,7 +55,8 @@ class PaymentService:
                 raise LuviioException("This order is already paid.", "ALREADY_PAID", 400)
 
         cart_items = await self.repo.get_cart_items_for_checkout(user_id)
-        if not cart_items: raise LuviioException("Your cart is empty", "EMPTY_CART", 400)
+        if not cart_items: 
+            raise LuviioException("Your cart is empty", "EMPTY_CART", 400)
 
         subtotal = Decimal("0")
         items_to_deduct = []
@@ -66,16 +68,26 @@ class PaymentService:
             locked_price = Decimal(str(item.get("price_snapshot") or prod.get("price", 0)))
             lt = locked_price * item["quantity"]
             subtotal += lt
-            items_to_deduct.append({"product_id": item["product_id"], "quantity": item["quantity"], "subtotal": float(lt)})
+            
+            # 🔥 CRITICAL FIX: Restored missing fields required by the Supabase SQL RPC function!
+            items_to_deduct.append({
+                "product_id": item["product_id"], 
+                "product_name": prod.get("name", "Item"),
+                "unit_price": float(locked_price), 
+                "quantity": item["quantity"], 
+                "subtotal": float(lt)
+            })
 
         config = await self.repo.get_pricing_config()
         breakdown = get_pricing_from_config(config).calculate(subtotal)
         amount_paise = self._paise(breakdown.total)
 
-        if amount_paise < 5000: raise LuviioException("Order amount out of bounds", "INVALID_AMOUNT", 400)
+        if amount_paise < 5000: 
+            raise LuviioException("Order amount out of bounds", "INVALID_AMOUNT", 400)
 
         addr = await self.repo.get_shipping_address(address_id, user_id)
-        if not addr: raise LuviioException("Shipping address not found", "NOT_FOUND", 404)
+        if not addr: 
+            raise LuviioException("Shipping address not found", "NOT_FOUND", 404)
 
         try:
             intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_PENDING", user_id, f"aot_pi_{idempotency_key}")
@@ -95,7 +107,9 @@ class PaymentService:
             pending_order = await self.repo.create_pending_order_with_reservation(order_data, items_to_deduct)
             await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
         except Exception as e:
-            raise LuviioException("Inventory depleted during checkout", "RACE_CONDITION", 409)
+            # 🔥 CRITICAL FIX: Exposing the actual database error in logs instead of flying blind.
+            logger.error(f"[CRITICAL DB ERROR] Atomic Reservation Failed: {e}")
+            raise LuviioException("Inventory depleted or Database error during checkout", "RACE_CONDITION", 409)
 
         return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": pending_order["id"]}
 
