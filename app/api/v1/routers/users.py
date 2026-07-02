@@ -14,7 +14,6 @@ from app.utils.pagination import paginate
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])
 limiter = Limiter(key_func=get_remote_address)
-service = UserService()
 
 @router.get("/me")
 async def get_me(request: Request, current: dict = Depends(get_current_user)):
@@ -28,8 +27,7 @@ async def get_me(request: Request, current: dict = Depends(get_current_user)):
 async def update_me(request: Request, payload: ProfileUpdate, current: dict = Depends(get_current_user), user_id: str = Depends(get_user_id_strict)):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Validating profile update schema for -> UID: {user_id[:8]}...")
     
-    data = payload.model_dump(exclude_unset=True)
-    updated = await service.update_profile(user_id, data)
+    updated = await UserService().update_profile(user_id, payload.model_dump(exclude_unset=True))
     
     if updated and hasattr(request.state, "actions"): request.state.actions.append("Profile metadata successfully synchronized with DB")
     return success_response(updated or current.get("profile", current))
@@ -37,14 +35,14 @@ async def update_me(request: Request, payload: ProfileUpdate, current: dict = De
 @router.get("/me/addresses")
 async def list_addresses(request: Request, user_id: str = Depends(get_user_id_strict)):
     if hasattr(request.state, "actions"): request.state.actions.append("Fetching saved shipping address ledger for active user")
-    return success_response(await service.get_addresses(user_id))
+    return success_response(await UserService().get_addresses(user_id))
 
 @router.post("/me/addresses", status_code=201)
 @limiter.limit("10/minute")
 async def add_address(request: Request, payload: AddressCreate, user_id: str = Depends(get_user_id_strict)):
     if hasattr(request.state, "actions"): request.state.actions.append("Validating address limits against global maximum")
     
-    result = await service.add_address(user_id, payload.model_dump())
+    result = await UserService().add_address(user_id, payload.model_dump())
     
     if hasattr(request.state, "actions"): request.state.actions.append("New shipping address securely persisted to vault")
     return success_response(result)
@@ -53,7 +51,7 @@ async def add_address(request: Request, payload: AddressCreate, user_id: str = D
 async def delete_address(request: Request, address_id: UUID, user_id: str = Depends(get_user_id_strict)):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Targeting address {str(address_id)[:8]}... for deletion")
     
-    await service.delete_address(user_id, str(address_id))
+    await UserService().delete_address(user_id, str(address_id))
     
     if hasattr(request.state, "actions"): request.state.actions.append("Address successfully purged from DB ledger")
     return success_response({"message": "Address deleted successfully"})
@@ -62,14 +60,14 @@ async def delete_address(request: Request, address_id: UUID, user_id: str = Depe
 async def list_users(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), search: str = Query(None, max_length=100), role_filter: str = Query(None, pattern="^(customer|admin|manager|support)$")):
     if hasattr(request.state, "actions"): request.state.actions.append(f"God-Mode: Admin scanning global user registry (Page: {page})")
     
-    items, total = await service.get_users_paginated(page, page_size, search, role_filter)
+    items, total = await UserService().get_users_paginated(page, page_size, search, role_filter)
     return paginate(items, total, page, page_size)
 
 @router.patch("/{user_id}", dependencies=[Depends(require_permission(UserPermissions.UPDATE))])
 async def admin_update_user(request: Request, user_id: UUID, payload: AdminUserUpdate, admin_id: str = Depends(get_user_id_strict)):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Admin overriding user profile -> Target ID: {str(user_id)[:8]}...")
     
-    result = await service.admin_update_user(admin_id, str(user_id), payload.model_dump(exclude_unset=True))
+    result = await UserService().admin_update_user(admin_id, str(user_id), payload.model_dump(exclude_unset=True))
     
     if hasattr(request.state, "actions"): request.state.actions.append("User profile override successfully committed")
     return success_response(result)
@@ -78,7 +76,7 @@ async def admin_update_user(request: Request, user_id: UUID, payload: AdminUserU
 async def get_user_detail(request: Request, user_id: UUID):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Admin fetching full detail & telemetry for User -> {str(user_id)[:8]}...")
     
-    result = await service.get_user_detail(str(user_id))
+    result = await UserService().get_user_detail(str(user_id))
     
     if hasattr(request.state, "actions"): request.state.actions.append(f"Aggregated user profile & historical order count ({result.get('total_orders')} orders)")
     return success_response(result)
