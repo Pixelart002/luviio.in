@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any, Dict
 
 from app.repositories.cart_repo import AsyncCartRepository
-from app.services.products.pricing import get_pricing_from_config
+from app.services.pricing import get_pricing_from_config
 from app.integrations.push.webpush_impl import send_push_to_user
 from app.integrations.email.registry import get_email_provider
 from app.core.exceptions import ProductNotFound, OutOfStockException, LuviioException
