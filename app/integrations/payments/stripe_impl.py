@@ -2,11 +2,8 @@
 Stripe Implementation
 Path: app/integrations/payments/stripe_impl.py
 """
-
 import logging
-
 import stripe
-
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -104,8 +101,7 @@ class StripeProvider:
 
             return {
                 "type": event["type"],
-                "pi_id": event["data"]["object"].get("id"),
-                "amount": event["data"]["object"].get("amount", 0),
+                "data": event["data"]
             }
 
         except (ValueError, stripe.error.SignatureVerificationError):
