@@ -1,153 +1,200 @@
-
-
-# 🚀 Luviio Backend — Enterprise Architecture
-
-Welcome to the core backend of Luviio. This architecture is designed with **FAANG-level System Design** principles, strictly prioritizing **Role-Based Access Control (RBAC)**, **Separation of Concerns (SoC)**, and **Zero IDOR (Insecure Direct Object Reference) vulnerabilities**.
-
-## 🏗️ Core Architectural Philosophy
-
-1. **Strict URL Boundaries:** Routes are physically isolated by role (`admin`, `merchant`, `customer`, `staff`, `public`). A customer route will never share code with an admin route.
-2. **Scoped Repositories:** Data access is strictly scoped at the database query level. For example, customer repositories automatically append `.eq("user_id", current_user)` to prevent data leakage.
-3. **Registry Pattern (DI Container):** Repositories and external integrations are instantiated via a Dependency Registry, allowing for seamless mocking and preview environments.
-4. **Event-Driven (Pub/Sub):** Heavy, non-database tasks (e.g., sending emails, webhooks) are decoupled using an Event Registry to ensure blazing-fast API response times.
-
----
-
-## 📂 Vectorized Folder Structure
-
-```text
-app/
-├── api/v1/                     # 🚀 ROLE-BASED ROUTING (Strict URL Boundaries)
-│   ├── admin/                  # God Mode
-│   │   └── routes/
-│   │       ├── dashboard.py
-│   │       ├── catalog.py      
-│   │       └── users.py
-│   ├── merchant/               # B2B Wholesale
-│   │   └── routes/
-│   │       ├── catalog.py      
-│   │       └── bulk_cart.py
-│   ├── staff/                  # Internal Employees
-│   │   └── routes/
-│   │       └── orders.py       
-│   ├── customer/               # B2C Retail (Normal Users)
-│   │   └── routes/
-│   │       ├── profile.py
-│   │       ├── cart.py
-│   │       └── orders.py       
-│   └── public/                 # Unauthenticated
-│       └── routes/
-│           ├── auth.py         
-│           ├── catalog.py      
-│           └── webhooks.py     
+Ye final hai  luviio/
 │
-├── repositories/               # 💾 DATA LAYER (SoC + Registry Pattern)
-│   ├── registry.py             # 🔌 Repo Registry (DI Container)
-│   ├── interfaces/             
-│   ├── admin/                  # No filters (Raw Access)
-│   │   ├── product_repo.py
-│   │   └── user_repo.py
-│   ├── merchant/               # B2B specific logic & tier pricing
-│   │   └── catalog_repo.py
-│   ├── customer/               # STRICTLY scoped: .eq("user_id", current_user)
-│   │   ├── order_repo.py
-│   │   └── cart_repo.py
-│   └── public/                 # STRICTLY scoped: .eq("is_active", True)
-│       └── catalog_repo.py
+├── app.py
+├── .env.example
+├── requirements.txt
+├── Procfile
+├── README.md
 │
-├── dependencies/               # 🛡️ GUARDS & INJECTION
-│   ├── auth.py                 # JWT Parsing & Session Validation
-│   ├── roles.py                # RBAC Checkers (require_admin, require_merchant)
-│   └── get_db.py               
+├── app/
 │
-├── services/                   # 🧠 BUSINESS LOGIC (No DB queries here)
-│   ├── pricing_engine.py       # GST, Discounts, Wholesale logic
-│   ├── image_processor.py      
-│   └── email_service.py        
+│   ├── api/
+│   │   ├── middlewares/
+│   │   │   ├── cors.py
+│   │   │   ├── logger.py
+│   │   │   └── security.py
+│   │   │
+│   │   ├── schemas/
+│   │   │   ├── admin_dto.py
+│   │   │   ├── auth_dto.py
+│   │   │   ├── cart_dto.py
+│   │   │   ├── order_dto.py
+│   │   │   ├── payment_dto.py
+│   │   │   ├── product_dto.py
+│   │   │   ├── push_dto.py
+│   │   │   └── user_dto.py
+│   │   │
+│   │   └── v1/
+│   │       ├── routers/
+│   │       │   ├── admin_verify.py
+│   │       │   ├── auth.py
+│   │       │   ├── cart.py
+│   │       │   ├── inventory.py
+│   │       │   ├── orders.py
+│   │       │   ├── payments.py
+│   │       │   ├── products.py
+│   │       │   ├── push.py
+│   │       │   └── users.py
+│   │       │
+│   │       ├── app.py
+│   │       └── health.py
 │
-├── integrations/               # 🔗 EXTERNAL 3RD PARTY APIs
-│   ├── payments/
-│   │   ├── stripe_client.py
-│   │   └── registry.py         # Support for multiple gateways
-│   └── logistics/
-│       └── shiprocket.py
+│   ├── core/
+│   │   ├── config.py
+│   │   ├── dependencies.py
+│   │   ├── exceptions.py
+│   │   ├── logger.py
+│   │   ├── monitoring.py
+│   │   ├── queue.py
+│   │   ├── rate_limit.py
+│   │   ├── security.py
+│   │   ├── setup_middlewares.py
+│   │   └── supabase.py
 │
-├── events/                     # 📢 PUB/SUB EVENT ARCHITECTURE
-│   ├── registry.py             # Event Bus Singleton
-│   ├── schemas.py              # Event Definitions (e.g., OrderPaidEvent)
-│   └── handlers/
-│       ├── email_handlers.py
-│       └── stock_handlers.py
+│   ├── constants/
+│   │   ├── roles.py
+│   │   ├── permissions.py
+│   │   ├── status.py
+│   │   ├── messages.py
+│   │   ├── regex.py
+│   │   ├── cache_keys.py
+│   │   ├── headers.py
+│   │   └── event_names.py
 │
-├── cron/                       # ⏰ BACKGROUND SCHEDULER
-│   ├── registry.py             # APScheduler initialization
-│   └── tasks/
-│       ├── order_tasks.py      # e.g., 24hr pending order expiration
-│       └── reminder_tasks.py
+│   ├── enums/
+│   │   ├── roles.py
+│   │   ├── order_status.py
+│   │   ├── payment_status.py
+│   │   ├── notification.py
+│   │   └── stock_status.py
 │
-├── core/                       # ⚙️ SYSTEM BOOTSTRAP
-│   ├── config.py               # Environment Variables loading
-│   ├── security.py             # Password Hashing & JWT Utils
-│   └── supabase_client.py      # Database Connection Pooling
+│   ├── permissions/
+│   │   ├── base.py
+│   │   ├── admin.py
+│   │   ├── products.py
+│   │   ├── orders.py
+│   │   ├── users.py
+│   │   └── payments.py
 │
-├── utils/                      # 🛠️ PURE HELPER FUNCTIONS
-│   ├── formatters.py           
-│   └── validators.py           
+│   ├── policies/
+│   │   ├── admin_policy.py
+│   │   ├── product_policy.py
+│   │   ├── order_policy.py
+│   │   ├── payment_policy.py
+│   │   ├── user_policy.py
+│   │   └── support_policy.py
 │
-├── migrations/                 # 🗄️ DATABASE MIGRATIONS
-│   └── versions/               
+│   ├── integrations/
+│   │   ├── email/
+│   │   │   ├── base.py
+│   │   │   ├── registry.py
+│   │   │   └── resend_impl.py
+│   │   │
+│   │   ├── payments/
+│   │   │   ├── base.py
+│   │   │   ├── registry.py
+│   │   │   └── stripe_impl.py
+│   │   │
+│   │   ├── push/
+│   │   │   ├── base.py
+│   │   │   ├── registry.py
+│   │   │   └── webpush_impl.py
+│   │   │
+│   │   └── storage/
+│   │       ├── base.py
+│   │       ├── registry.py
+│   │       └── supabase_impl.py
 │
-└── main.py                     # Application Entrypoint
-
-
-# 🏗️ Project Architecture & Folder Structure
-
-This project follows a highly scalable, **Domain-Driven Design (DDD)** and **Clean Architecture** tailored for an Enterprise E-commerce Backend (FastAPI + Supabase). It strictly enforces Separation of Concerns (SoC) and implements over 60+ industry-standard design patterns.
-
-## 📂 Directory Tree
-
-```text
-luviio.in/
- ├── app/
- │    ├── api/                     # 🌐 API Presentation Layer (No Business Logic)
- │    │    ├── v1/                 # API Versioning Pattern
- │    │    │    └── routers/       # Controllers (auth.py, orders.py, cart.py, invoice.py)
- │    │    ├── schemas/            # DTO Pattern (Data Transfer Objects / Pydantic Models)
- │    │    └── middlewares/        # Chain of Responsibility (cors.py, security.py, logger.py)
- │    │
- │    ├── core/                    # ⚙️ Application Core & 12-Factor Configurations
- │    │    ├── config.py           # Environment variables (Single Source of Truth)
- │    │    ├── dependencies.py     # Dependency Injection (get_current_user, require_admin)
- │    │    └── exceptions.py       # Global Exception Handlers (Fail-Fast Principle)
- │    │
- │    ├── integrations/            # 🔌 External Services Layer (Registry & Adapter Patterns)
- │    │    ├── email/              # Email Service (base.py, resend_impl.py, registry.py)
- │    │    ├── payments/           # Payment Gateways (base.py, stripe_impl.py, registry.py)
- │    │    └── push/               # Push Notifications (registry.py, webpush_impl.py)
- │    │
- │    ├── repositories/            # 📦 Data Access Layer (Repository Pattern)
- │    │    ├── base.py             # Supabase Client Injection Base Class
- │    │    ├── admin_repo.py       # Admin queries & Analytics
- │    │    ├── cart_repo.py        # Cart & Cart Items logic
- │    │    ├── order_repo.py       # Orders & Transaction handling (Optimistic Locking)
- │    │    └── user_repo.py        # User profiles & authentication states
- │    │
- │    ├── services/                # 🧠 Business Logic Layer (Orchestration & Pub/Sub)
- │    │    ├── events.py           # Event-Driven Architecture (Event Bus, Observers)
- │    │    └── pricing.py          # Pricing Engine (Single Source of Truth for calculations)
- │    │
- │    ├── utils/                   # 🛠️ Pure Functions & Facades (Zero DB Dependencies)
- │    │    ├── documents/          
- │    │    │    ├── fonts/         # Custom TTF Fonts
- │    │    │    └── pdf_invoice.py # Facade Pattern (ReportLab PDF Generation)
- │    │    ├── image.py            # Image processing/compression
- │    │    ├── queue.py            # Async background tasks/workers
- │    │    └── stock.py            # Inventory math
- │    │
- │    └── main.py                  # 🚀 Application Entrypoint (FastAPI Bootstrap)
- │
- ├── .env.example                  # Environment template
- ├── app.sql                       # Database Schema & RLS Policies
- ├── Procfile                      # Deployment configuration (Render/Heroku)
- ├── requirements.txt              # Python Dependencies
- └── Readme.md                     # Documentation
+│   ├── repositories/
+│   │   ├── base_repo.py
+│   │   ├── admin_repo.py
+│   │   ├── auth_repo.py
+│   │   ├── cart_repo.py
+│   │   ├── order_repo.py
+│   │   ├── payment_repo.py
+│   │   ├── product_repo.py
+│   │   ├── push_repo.py
+│   │   └── user_repo.py
+│
+│   ├── services/
+│   │   ├── auth/
+│   │   │   └── service.py
+│   │   │
+│   │   ├── users/
+│   │   │   └── service.py
+│   │   │
+│   │   ├── admin/
+│   │   │   └── service.py
+│   │   │
+│   │   ├── products/
+│   │   │   ├── service.py
+│   │   │   ├── pricing.py
+│   │   │   ├── stock.py
+│   │   │   ├── image.py
+│   │   │   └── search.py
+│   │   │
+│   │   ├── cart/
+│   │   │   └── service.py
+│   │   │
+│   │   ├── orders/
+│   │   │   ├── service.py
+│   │   │   ├── invoice.py
+│   │   │   ├── fulfillment.py
+│   │   │   └── tracking.py
+│   │   │
+│   │   ├── payments/
+│   │   │   ├── service.py
+│   │   │   ├── refunds.py
+│   │   │   └── webhooks.py
+│   │   │
+│   │   ├── notifications/
+│   │   │   ├── email.py
+│   │   │   └── push.py
+│   │   │
+│   │   └── events/
+│   │       └── publisher.py
+│
+│   ├── events/
+│   │   ├── dispatcher.py
+│   │   └── handlers/
+│   │       ├── order.py
+│   │       ├── payment.py
+│   │       ├── push.py
+│   │       ├── registration.py
+│   │       └── user.py
+│
+│   ├── cron/
+│   │   ├── scheduler.py
+│   │   ├── registry.py
+│   │   └── tasks/
+│   │       ├── order_tasks.py
+│   │       ├── cleanup.py
+│   │       ├── notifications.py
+│   │       └── reports.py
+│
+│   ├── utils/
+│   │   ├── pagination.py
+│   │   ├── response.py
+│   │   ├── formatter.py
+│   │   ├── validators.py
+│   │   ├── slug.py
+│   │   ├── crypto.py
+│   │   └── documents/
+│   │       ├── fonts/
+│   │       └── pdf_invoice.py
+│
+│   ├── tests/
+│   │   ├── unit/
+│   │   ├── integration/
+│   │   └── api/
+│
+│   ├── docs/
+│   │   ├── architecture.md
+│   │   ├── api.md
+│   │   ├── deployment.md
+│   │   ├── security.md
+│   │   └── database.md
+│
+│   └── migrations/
+│
+└── .gitignore 
