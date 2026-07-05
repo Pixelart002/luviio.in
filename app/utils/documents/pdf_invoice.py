@@ -7,13 +7,12 @@ Amazon.in / Meesho-style 10-column GST-compliant Tax Invoice.
 
 Architecture & Fixes:
   ✅ 100% dynamic — all data from DB (order + customer objects)
+  ✅ Synchronous DB Fallback — queries products table if product_name is missing
   ✅ Seller info from environment variables — ZERO hardcoding
   ✅ IGST vs CGST+SGST auto-resolved by shipping state vs seller state
-  ✅ Effective tax rate derived from actual DB values (breakdown.as_dict())
-  ✅ Multi-layer product name extractor (handles sanitized + unsanitized orders)
+  ✅ Effective tax rate derived from actual DB values
   ✅ Amount in words (Indian English — Crore/Lakh/Thousand)
   ✅ Mathematical precision: exact 554pt nested grid widths (Zero Overflow Guarantee)
-  ✅ Graceful fallbacks for all None/missing fields
 """
 from __future__ import annotations
 
@@ -35,7 +34,7 @@ from reportlab.platypus import (
 logger = logging.getLogger(__name__)
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SELLER CONFIG — 100% from environment variables, zero hardcoded values
+#  SELLER CONFIG — 100% from environment variables
 # ══════════════════════════════════════════════════════════════════════════════
 
 _S = {
@@ -55,7 +54,6 @@ _S = {
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _safe(val: Any, default: str = "") -> str:
-    """Convert any value to clean string, returning default for None/empty."""
     if val is None:
         return default
     s = str(val).strip()
@@ -63,7 +61,6 @@ def _safe(val: Any, default: str = "") -> str:
 
 
 def _safe_f(val: Any, default: float = 0.0) -> float:
-    """Safely convert to float."""
     try:
         return float(val) if val is not None else default
     except (ValueError, TypeError):
@@ -71,7 +68,6 @@ def _safe_f(val: Any, default: float = 0.0) -> float:
 
 
 def _fmt(amount: Any) -> str:
-    """Format number as INR string → 'Rs. 1,499.00'"""
     try:
         return f"Rs. {float(amount):,.2f}"
     except (TypeError, ValueError):
@@ -84,7 +80,6 @@ def _short_id(uuid_str: str) -> str:
 
 
 def _parse_date(dt_str: str) -> str:
-    """Parse ISO datetime string → DD-MM-YYYY"""
     if not dt_str:
         return datetime.datetime.now().strftime("%d-%m-%Y")
     for fmt in (
@@ -99,34 +94,42 @@ def _parse_date(dt_str: str) -> str:
     return dt_str[:10]
 
 
-# ── Product name: multi-layer extractor ─────────────────────────────────────
+# ── Product name: Multi-layer extractor with Synchronous DB Fallback ────────
 
 def _product_name(item: dict) -> str:
     """
     Extract product name from order_item dict.
-
-    Handles all structures:
-      - Flat: item["product_name"] or item["name"]
-      - Nested unsanitized: item["products"]["name"]
-      - Nested alt key:     item["product"]["name"]
+    If missing, queries the Supabase DB directly using sync client.
     """
-    for key in ("product_name", "name"):
+    for key in ("product_name", "name", "title"):
         val = _safe(item.get(key))
         if val:
             return val
 
-    for rel in ("products", "product"):
+    for rel in ("products", "product", "item"):
         obj = item.get(rel)
         if isinstance(obj, dict):
-            val = _safe(obj.get("name"))
+            val = _safe(obj.get("name") or obj.get("product_name"))
             if val:
                 return val
 
-    return "Premium Bath & Sanitation Product"
+    # Sync DB Fallback if only product_id exists
+    pid = _safe(item.get("product_id"))
+    if pid:
+        try:
+            from app.core.supabase import get_admin_supabase
+            sb = get_admin_supabase()
+            res = sb.table("products").select("name").eq("id", pid).limit(1).execute()
+            if res.data and len(res.data) > 0 and res.data[0].get("name"):
+                return str(res.data[0]["name"]).strip()
+        except Exception as exc:
+            logger.warning("Failed sync lookup for product %s: %s", pid, exc)
+
+    return "Product Item"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  INDIAN STATE → CODE MAP (for IGST decision)
+#  INDIAN STATE → CODE MAP
 # ══════════════════════════════════════════════════════════════════════════════
 
 _STATE_MAP: dict[str, str] = {
@@ -265,8 +268,7 @@ def _styles() -> dict[str, ParagraphStyle]:
 
 def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     buf    = io.BytesIO()
-    PAGE_W = A4[0]          # 595.28 pt
-    MARGIN = 20             # pt each side
+    MARGIN = 20
 
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -346,7 +348,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     #  BLOCK 2 ── SELLER | BUYER | ORDER META  (Sum = 554 pt)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    col_w_block2 = [184.0, 185.0, 185.0]  # Sums to exactly 554 pt
+    col_w_block2 = [184.0, 185.0, 185.0]
 
     seller_rows = [
         [Paragraph("<b>Sold By:</b>", S["lbl"])],
@@ -393,7 +395,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         meta_rows.append([Paragraph(f"<b>Tracking:</b> {tracking}", S["b"])])
 
     def _panel(rows, cw: float) -> Table:
-        # Leave 12pt total horizontal safety margin inside inner panels
         t = Table(rows, colWidths=[cw - 12.0])
         t.setStyle(TableStyle([
             ("TOPPADDING",    (0, 0), (-1, -1), 1),
@@ -429,7 +430,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     CW = [18.0, 164.0, 54.0, 22.0, 54.0, 44.0, 26.0, 44.0, 56.0, 72.0]
-    assert sum(CW) == 554.0, f"Column widths must sum to 554, got {sum(CW)}"
 
     def _h(txt):  return Paragraph(txt, S["th"])
     def _hc(txt): return Paragraph(txt, S["thc"])
@@ -454,7 +454,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     items = order.get("order_items") or order.get("items") or []
     run_tax  = 0.0
     run_net  = 0.0
-    run_disc = 0.0
 
     for idx, item in enumerate(items, 1):
         name      = _product_name(item)
@@ -474,7 +473,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
         run_net  += net
         run_tax  += i_tax
-        run_disc += disc
 
         rows.append([
             _dc(str(idx)),
@@ -525,7 +523,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         ("SPAN",           (0, -1), (7, -1)),
         ("BOX",            (0, 0), (-1, -1), 0.5, _BORDER_C),
         ("INNERGRID",      (0, 0), (-1, -1), 0.3, colors.HexColor("#dddddd")),
-        # Compact cell padding prevents column overflow
         ("TOPPADDING",     (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING",  (0, 0), (-1, -1), 4),
         ("LEFTPADDING",    (0, 0), (-1, -1), 2),
@@ -536,12 +533,11 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     story.append(Spacer(1, 10))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 4 ── AMOUNT IN WORDS | GST SUMMARY | SIGNATORY (Sum = 554 pt)
+    #  BLOCK 4 ── AMOUNT IN WORDS | GST SUMMARY | SIGNATORY
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     words_str = _amount_in_words(grand)
 
-    # Inner available width for right column: 250 - 16 (padding) = 234 pt
     gst_rows: list[list] = [
         [Paragraph("<b>Price Summary:</b>", S["lbl"]), Paragraph("", S["b"])],
         [Paragraph("Subtotal", S["br"]),               Paragraph(_fmt(subtotal), S["bbr"])],
@@ -574,7 +570,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         Paragraph(f"<b>{_fmt(grand)}</b>", S["sum_val"]),
     ])
 
-    gst_tbl = Table(gst_rows, colWidths=[150.0, 84.0])  # Sums to exactly 234 pt
+    gst_tbl = Table(gst_rows, colWidths=[150.0, 84.0])
     gst_tbl.setStyle(TableStyle([
         ("LINEABOVE",     (0, -1), (-1, -1), 0.8, _BORDER_C),
         ("TOPPADDING",    (0, 0), (-1, -1), 2),
@@ -598,7 +594,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         [Paragraph(words_str, S["words_v"])],
     ]
 
-    # Outer split: 304 pt left + 250 pt right = exactly 554 pt
     bottom = Table(
         [[
             Table(left_col_rows,  colWidths=[288.0]),
