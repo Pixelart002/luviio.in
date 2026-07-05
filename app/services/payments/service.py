@@ -107,7 +107,6 @@ class PaymentService:
             pending_order = await self.repo.create_pending_order_with_reservation(order_data, items_to_deduct)
             await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
         except Exception as e:
-            # 🔥 CRITICAL FIX: Exposing the actual database error in logs instead of flying blind.
             logger.error(f"[CRITICAL DB ERROR] Atomic Reservation Failed: {e}")
             raise LuviioException("Inventory depleted or Database error during checkout", "RACE_CONDITION", 409)
 
@@ -138,8 +137,14 @@ class PaymentService:
 
         brute_guard.reset(client_ip)
         
-        try: get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
-        except Exception: pass
+        # 🔥 RACE-CONDITION FIX: Explicitly mutate existing order dictionary to reflect new state
+        # before pushing onto the event bus to prevent stale data reading downstream.
+        existing_order["status"] = "paid"
+        
+        try: 
+            get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
+        except Exception as e: 
+            logger.error(f"Event bus failed during publish: {e}")
 
         return {"status": "paid", "order_id": order_id, "message": "Payment confirmed"}
 
