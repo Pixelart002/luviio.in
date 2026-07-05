@@ -13,6 +13,7 @@ Architecture & Fixes:
   ✅ Effective tax rate derived from actual DB values
   ✅ Amount in words (Indian English — Crore/Lakh/Thousand)
   ✅ Mathematical precision: exact 554pt nested grid widths (Zero Overflow Guarantee)
+  ✅ Automatic Discount Computation via Compare Price vs Unit Price
 """
 from __future__ import annotations
 
@@ -461,7 +462,10 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         unit_p    = _safe_f(
             item.get("unit_price") or item.get("price_snapshot") or item.get("price")
         )
-        compare_p = _safe_f(item.get("compare_price"))
+        # Check flat compare_price, or check nested inside products dict
+        compare_p = _safe_f(
+            item.get("compare_price") or (item.get("products") or {}).get("compare_price")
+        )
         disc      = _safe_f(item.get("discount_amount") or item.get("discount"))
 
         if disc == 0.0 and compare_p > unit_p > 0:
