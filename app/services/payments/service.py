@@ -74,7 +74,7 @@ class PaymentService:
                 "product_id": item["product_id"], 
                 "product_name": prod.get("name", "Item"),
                 "unit_price": float(locked_price),
-                "compare_price": float(prod.get("compare_price")),
+                "compare_price": float(prod.get("compare_price") or 0.0),
                 "quantity": item["quantity"], 
                 "subtotal": float(lt)
             })
