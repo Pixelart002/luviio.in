@@ -4,7 +4,7 @@ Cart Schemas (DTOs)
 Path: app/api/schemas/cart_dto.py
 """
 from pydantic import BaseModel, Field
-from typing import List, Any
+from typing import List, Any, Optional # 🔥 FIX: Imported Optional here
 from uuid import UUID
 
 # ── Requests ──────────────────────────────────────────────────────────────────
@@ -23,10 +23,10 @@ class CartItemDTO(BaseModel):
     product_id: str
     name: str
     slug: str
-    image_url: str | None
+    image_url: Optional[str] = None
     quantity: int
     unit_price: float
-    compare_price: Optional[float] = 0.0
+    compare_price: Optional[float] = 0.0 # 🔥 Ab Optional yahan perfectly kaam karega
     price_snapshot: float
     line_total: float
     stock: int
