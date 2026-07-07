@@ -51,9 +51,24 @@ class PaymentService:
                     intent = await run_in_threadpool(self.provider.retrieve_intent, existing["stripe_payment_intent"])
                     if intent["status"] in ["requires_payment_method", "requires_confirmation", "requires_action"]:
                         return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": existing["id"]}
-                except Exception: pass 
+                    else:
+                        # Stripe intent is in a terminal or unexpected state (e.g. succeeded, canceled, processing).
+                        # Do not fall through to create a duplicate order.
+                        raise LuviioException(
+                            f"Payment intent is in an unrecoverable state: {intent['status']}",
+                            "PAYMENT_INTENT_STATE_ERROR",
+                            409,
+                        )
+                except LuviioException:
+                    raise
+                except Exception as exc:
+                    logger.error(f"[PAYMENT ERROR] Failed to retrieve Stripe intent for order {existing['id']}: {exc}")
+                    raise LuviioException("Could not retrieve payment intent status. Please try again.", "PAYMENT_ERROR", 502)
             elif existing["status"] == "paid":
                 raise LuviioException("This order is already paid.", "ALREADY_PAID", 400)
+            else:
+                # Order exists in an unrecognised status — never proceed to create a duplicate.
+                raise LuviioException("An order with this idempotency key already exists.", "DUPLICATE_ORDER", 409)
 
         cart_items = await self.repo.get_cart_items_for_checkout(user_id)
         if not cart_items: 
