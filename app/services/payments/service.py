@@ -73,7 +73,8 @@ class PaymentService:
             items_to_deduct.append({
                 "product_id": item["product_id"], 
                 "product_name": prod.get("name", "Item"),
-                "unit_price": float(locked_price), 
+                "unit_price": float(locked_price),
+                "compare_price": float(prod.get("compare_price"),
                 "quantity": item["quantity"], 
                 "subtotal": float(lt)
             })

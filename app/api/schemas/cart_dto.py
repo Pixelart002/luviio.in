@@ -26,6 +26,7 @@ class CartItemDTO(BaseModel):
     image_url: str | None
     quantity: int
     unit_price: float
+    compare_price: Optional[float] = 0.0
     price_snapshot: float
     line_total: float
     stock: int
