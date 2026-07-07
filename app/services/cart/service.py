@@ -33,6 +33,11 @@ class CartService:
             qty = row["quantity"]
             snapshot = Decimal(str(row["price_snapshot"]))
             current_price = Decimal(str(prod.get("price", snapshot)))
+            
+            # 🔥 FIX: Safely retrieve compare_price from the product
+            comp_p = prod.get("compare_price")
+            compare_price = float(comp_p) if comp_p is not None else 0.0
+            
             line_total = current_price * qty
             subtotal += line_total
 
@@ -49,6 +54,7 @@ class CartService:
                 "image_url": prod.get("image_url"),
                 "quantity": qty,
                 "unit_price": float(current_price),
+                "compare_price": compare_price, # 🎯 Now correctly passed to the frontend & payment service
                 "price_snapshot": float(snapshot),
                 "line_total": float(line_total),
                 "stock": prod.get("stock", 0),

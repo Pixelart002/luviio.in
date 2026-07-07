@@ -26,12 +26,11 @@ class AsyncCartRepository:
         ).execute()
         return res.data[0]
 
-    # 🔥 DELETED: is_cart_locked() function has been completely removed.
-
     async def get_cart_items_with_products(self, cart_id: str) -> list[dict[str, Any]]:
+        # 🔥 FIX: Added 'compare_price' to the product selection query
         res = await self.admin_sb.table("cart_items").select(
             "id, product_id, quantity, price_snapshot, added_at, "
-            "products(id, name, slug, price, stock, image_url, is_active)"
+            "products(id, name, slug, price, compare_price, stock, image_url, is_active)"
         ).eq("cart_id", cart_id).order("added_at", desc=False).execute()
         return getattr(res, "data", None) or []
 
