@@ -1,5 +1,6 @@
 import time
 import logging
+from uuid import UUID
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict
 from collections import defaultdict
@@ -101,7 +102,7 @@ class PaymentService:
             **breakdown.as_dict(),
             "shipping_line1": addr.get("line1"), "shipping_city": addr.get("city"),
             "shipping_postal_code": addr.get("postal_code"), "shipping_country": addr.get("country"),
-            "idempotency_key": idempotency_key, "stripe_payment_intent": intent["id"]
+            "idempotency_key": str(UUID(idempotency_key)), "stripe_payment_intent": intent["id"]
         }
         
         try:
