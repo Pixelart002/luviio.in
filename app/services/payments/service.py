@@ -69,7 +69,7 @@ class PaymentService:
             lt = locked_price * item["quantity"]
             subtotal += lt
             
-            # 🔥 CRITICAL FIX: Restored missing fields required by the Supabase SQL RPC function!
+            # 🔥 FIXED: Corrected parenthesis and added default for compare_price
             items_to_deduct.append({
                 "product_id": item["product_id"], 
                 "product_name": prod.get("name", "Item"),
@@ -138,8 +138,6 @@ class PaymentService:
 
         brute_guard.reset(client_ip)
         
-        # 🔥 RACE-CONDITION FIX: Explicitly mutate existing order dictionary to reflect new state
-        # before pushing onto the event bus to prevent stale data reading downstream.
         existing_order["status"] = "paid"
         
         try: 
