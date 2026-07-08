@@ -14,6 +14,7 @@ Architecture & Fixes:
   ✅ Amount in words (Indian English — Crore/Lakh/Thousand)
   ✅ Mathematical precision: exact 554pt nested grid widths (Zero Overflow Guarantee)
   ✅ Automatic Discount Computation via Compare Price vs Unit Price
+  ✅ Tax-Free Shipping Logic Applied
 """
 from __future__ import annotations
 
@@ -310,7 +311,9 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     c_phone = _safe(customer.get("phone"))
 
     tax_type      = _resolve_tax_type(state or city)
-    taxable_base  = subtotal + ship_cost
+    
+    # 🔥 FIX: Taxable base exclude shipping cost to prevent double taxation
+    taxable_base  = subtotal
     eff_rate_pct  = (
         round((tax_amt / taxable_base) * 100)
         if taxable_base > 0 and tax_amt > 0
@@ -491,9 +494,10 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
             _dr(_fmt(total)),
         ])
 
+    # 🔥 FIX: Make Shipping completely tax-free 
     if ship_cost > 0:
-        s_tax  = round(ship_cost * eff_rate_pct / 100, 2)
-        s_tot  = ship_cost + s_tax
+        s_tax  = 0.0
+        s_tot  = ship_cost
         run_net += ship_cost
         run_tax += s_tax
         rows.append([
@@ -503,8 +507,8 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
             _dc("1"),
             _dr(_fmt(ship_cost)),
             _dr("—"),
-            _dc(f"{int(eff_rate_pct)}%"),
-            _dc(tax_type),
+            _dc("0%"),
+            _dc("-"),
             _dr(_fmt(s_tax)),
             _dr(_fmt(s_tot)),
         ])
@@ -551,6 +555,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     else:
         gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph("FREE", S["bbr"])])
 
+    # 🔥 FIX: GST computation logic purely depends on product tax_amount
     if tax_type == "CGST+SGST":
         half_rate = eff_rate_pct / 2
         half_tax  = round(tax_amt / 2, 2)
