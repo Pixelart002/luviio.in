@@ -5,8 +5,7 @@ Path: app/repositories/payment_repo.py
 
 🔥 ARCHITECTURE UPGRADE: 
    Integrated Supabase PL/pgSQL RPCs for Atomic Row-Level Locking.
-   Prevents Overselling, Race Conditions, and Double Settlements.
-🔥 BUG #7 FIXED: Encapsulated atomic PiID swap for Retry flow.
+🔥 DISCOUNT SANITIZE FIX: Enriched all queries to include 'compare_price'.
 """
 import logging
 from typing import Any, Dict, List, Optional
@@ -20,8 +19,9 @@ class AsyncPaymentRepository:
 
     async def get_cart_items_for_checkout(self, user_id: str) -> List[Dict]:
         logger.info(f"[REPO:CART] Fetching cart for user: {user_id}")
+        # 🔥 FIX: Added 'compare_price' to the product selection query
         res = await self.admin_sb.table("carts").select(
-            "id, cart_items(id, product_id, quantity, price_snapshot, products(name, price, stock, is_active))"
+            "id, cart_items(id, product_id, quantity, price_snapshot, products(name, price, compare_price, stock, is_active))"
         ).eq("user_id", user_id).maybe_single().execute()
         
         data = getattr(res, "data", None)
@@ -48,7 +48,8 @@ class AsyncPaymentRepository:
         return getattr(res, "data", None)
 
     async def get_order_by_id(self, order_id: str) -> dict | None:
-        res = await self.admin_sb.table("orders").select("*, order_items(*)").eq("id", order_id).maybe_single().execute()
+        # 🔥 FIX: Join with products(name, compare_price) to ensure invoice/pdf gets the data
+        res = await self.admin_sb.table("orders").select("*, order_items(*, products(name, compare_price))").eq("id", order_id).maybe_single().execute()
         return getattr(res, "data", None)
 
     # ══════════════════════════════════════════════════════════════════════════════
@@ -64,7 +65,6 @@ class AsyncPaymentRepository:
         return getattr(res, "data", None)
 
     async def settle_order_transaction(self, order_id: str, pi_id: str, amount: float, user_id: str) -> str:
-        """Executes row-locking update, creates ledger, and drops cart instantly."""
         res = await self.admin_sb.rpc(
             "settle_order_transaction",
             {"p_order_id": order_id, "p_pi_id": pi_id, "p_amount": amount, "p_user_id": user_id}
@@ -72,21 +72,19 @@ class AsyncPaymentRepository:
         return getattr(res, "data", None)
 
     async def release_abandoned_order(self, order_id: str) -> str:
-        """Restores stock and marks order as cancelled upon intent expiration."""
         res = await self.admin_sb.rpc(
             "cancel_order_and_release_stock",
             {"p_order_id": order_id}
         ).execute()
         return getattr(res, "data", None)
 
-    # 🔥 Fix #7: Encapsulated method for Smart Paywall Retry (No direct table updates in router)
     async def update_order_payment_intent(self, order_id: str, new_pi_id: str) -> None:
         await self.admin_sb.table("orders").update({
             "stripe_payment_intent": new_pi_id
         }).eq("id", order_id).eq("status", "pending").execute()
 
     # ══════════════════════════════════════════════════════════════════════════════
-    #  ⚠️ LEGACY METHODS (Preserved to prevent circular breakages in other files)
+    #  ⚠️ LEGACY METHODS
     # ══════════════════════════════════════════════════════════════════════════════
 
     async def clear_user_cart(self, user_id: str):
