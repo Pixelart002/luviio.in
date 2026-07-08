@@ -1,7 +1,7 @@
 """
 Payments Repository — ACID & JIT Hybrid Flow (Enterprise Grade)
 ===============================================================
-Path: app/repositories/payment_repo.py
+Path:  app/repositories/payment_repo.py
 
 🔥 ARCHITECTURE UPGRADE: 
    Integrated Supabase PL/pgSQL RPCs for Atomic Row-Level Locking.
