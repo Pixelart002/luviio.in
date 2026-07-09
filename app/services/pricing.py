@@ -158,7 +158,7 @@ class StandardPricing(PricingStrategy):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
 
         shipping = Decimal("0") if sub >= self._threshold else self._flat
-        tax      = (sub + shipping) * self._tax_rate
+        tax      = sub * self._tax_rate
         total    = sub + shipping + tax
 
         return PriceBreakdown(
