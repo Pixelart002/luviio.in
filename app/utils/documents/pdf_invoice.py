@@ -10,11 +10,11 @@ Architecture & Fixes:
   ✅ Synchronous DB Fallback — queries products table if product_name is missing
   ✅ Seller info from environment variables — ZERO hardcoding
   ✅ IGST vs CGST+SGST auto-resolved by shipping state vs seller state
-  ✅ Effective tax rate derived from actual DB values
+  ✅ Smart Auto-Detect Tax Engine to prevent historical order percentage glitches
   ✅ Amount in words (Indian English — Crore/Lakh/Thousand)
   ✅ Mathematical precision: exact 554pt nested grid widths (Zero Overflow Guarantee)
   ✅ Automatic Discount Computation via Compare Price vs Unit Price
-  ✅ Tax-Free Shipping Logic Applied
+  ✅ Displays MRP in "Unit Price" column if discount is applied for clear UX math
 """
 from __future__ import annotations
 
@@ -312,13 +312,31 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
     tax_type      = _resolve_tax_type(state or city)
     
-    # 🔥 FIX: Taxable base exclude shipping cost to prevent double taxation
-    taxable_base  = subtotal
-    eff_rate_pct  = (
-        round((tax_amt / taxable_base) * 100)
-        if taxable_base > 0 and tax_amt > 0
-        else 18
-    )
+    # 🔥 SMART TAX AUTO-DETECT LOGIC (Prevents 28% math glitch on old orders)
+    shipping_is_taxed = False
+    eff_rate_pct = 18
+
+    if tax_amt > 0:
+        # Scenario 1: Only products were taxed (New system rule)
+        rate_on_sub = (tax_amt / subtotal) * 100 if subtotal > 0 else 0
+        diff_sub = abs(rate_on_sub - round(rate_on_sub))
+        
+        # Scenario 2: Both products and shipping were taxed (Old historical orders)
+        rate_on_both = (tax_amt / (subtotal + ship_cost)) * 100 if (subtotal + ship_cost) > 0 else 0
+        diff_both = abs(rate_on_both - round(rate_on_both))
+
+        if diff_sub <= 0.05:
+            eff_rate_pct = round(rate_on_sub)
+            shipping_is_taxed = False
+        elif diff_both <= 0.05:
+            eff_rate_pct = round(rate_on_both)
+            shipping_is_taxed = True
+        else:
+            eff_rate_pct = round(rate_on_sub)
+            shipping_is_taxed = False
+    else:
+        eff_rate_pct = 0
+        shipping_is_taxed = False
 
     doc_type = (
         "Refund Note / Credit Note"
@@ -481,10 +499,13 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         run_net  += net
         run_tax  += i_tax
 
+        # 🔥 FIX: Display MRP (compare_price) as the Unit Price in the PDF if a discount exists
+        display_unit_p = compare_p if (compare_p > unit_p) else unit_p
+
         rows.append([
             _dc(str(idx)),
             _d(name),
-            _dr(_fmt(unit_p)),
+            _dr(_fmt(display_unit_p)),
             _dc(str(qty)),
             _dr(_fmt(net)),
             _dr(_fmt(disc) if disc > 0 else "—"),
@@ -494,10 +515,15 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
             _dr(_fmt(total)),
         ])
 
-    # 🔥 FIX: Make Shipping completely tax-free 
     if ship_cost > 0:
-        s_tax  = 0.0
-        s_tot  = ship_cost
+        if shipping_is_taxed:
+            s_tax = round(ship_cost * eff_rate_pct / 100, 2)
+            gst_pct_str, tax_type_str = f"{int(eff_rate_pct)}%", tax_type
+        else:
+            s_tax = 0.0
+            gst_pct_str, tax_type_str = "0%", "-"
+            
+        s_tot = ship_cost + s_tax
         run_net += ship_cost
         run_tax += s_tax
         rows.append([
@@ -507,8 +533,8 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
             _dc("1"),
             _dr(_fmt(ship_cost)),
             _dr("—"),
-            _dc("0%"),
-            _dc("-"),
+            _dc(gst_pct_str),
+            _dc(tax_type_str),
             _dr(_fmt(s_tax)),
             _dr(_fmt(s_tot)),
         ])
@@ -555,10 +581,13 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     else:
         gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph("FREE", S["bbr"])])
 
-    # 🔥 FIX: GST computation logic purely depends on product tax_amount
+    # GST Summary reflects actual breakdown based on what was taxed
+    product_tax_only = round(subtotal * eff_rate_pct / 100, 2)
+    display_tax = tax_amt if tax_amt > 0 else product_tax_only
+
     if tax_type == "CGST+SGST":
         half_rate = eff_rate_pct / 2
-        half_tax  = round(tax_amt / 2, 2)
+        half_tax  = round(display_tax / 2, 2)
         gst_rows.append([
             Paragraph(f"CGST @ {half_rate:.1f}%", S["br"]),
             Paragraph(_fmt(half_tax), S["bbr"]),
@@ -570,7 +599,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     else:
         gst_rows.append([
             Paragraph(f"IGST @ {eff_rate_pct:.0f}%", S["br"]),
-            Paragraph(_fmt(tax_amt), S["bbr"]),
+            Paragraph(_fmt(display_tax), S["bbr"]),
         ])
 
     gst_rows.append([Paragraph("", S["b"]), Paragraph("", S["b"])])
