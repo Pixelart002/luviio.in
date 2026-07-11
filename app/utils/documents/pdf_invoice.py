@@ -15,6 +15,8 @@ Architecture & Fixes:
   ✅ Mathematical precision: exact 554pt nested grid widths (Zero Overflow Guarantee)
   ✅ Automatic Discount Computation via Compare Price vs Unit Price
   ✅ Displays MRP in "Unit Price" column if discount is applied for clear UX math
+  ✅ Column reordered: Unit Price -> Qty -> Discount -> Net Amount for customer clarity
+  ✅ Sequential Invoice Number support from Database
 """
 from __future__ import annotations
 
@@ -272,11 +274,28 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     buf    = io.BytesIO()
     MARGIN = 20
 
+    # ── Extract values ────────────────────────────────────────────────────────
+    order_id     = _safe(order.get("id"))
+    order_date   = _parse_date(_safe(order.get("created_at")))
+    invoice_date = datetime.datetime.now().strftime("%d-%m-%Y")
+    status_raw   = _safe(order.get("status"), "paid").upper()
+    is_refund    = status_raw in ("REFUNDED", "CANCELLED")
+
+    # 🔥 FIX: Sequential Invoice Number support from DB
+    db_invoice_no = _safe(order.get("invoice_number"))
+    if db_invoice_no:
+        invoice_no = f"{db_invoice_no}"
+    else:
+        # Fallback Amazon/Flipkart format if DB number isn't present
+        seller_state_prefix = _S["state"][:2].upper() or "DL"
+        fy_year = datetime.datetime.now().strftime("%y")
+        invoice_no = f"LV{seller_state_prefix}{fy_year}{_short_id(order_id)[:6]}"
+
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
         leftMargin=MARGIN, rightMargin=MARGIN,
         topMargin=MARGIN, bottomMargin=MARGIN,
-        title=f"Luviio Invoice {_short_id(order.get('id', ''))}",
+        title=f"Luviio Invoice #{invoice_no}",
         author="Luviio Commerce",
         subject="Tax Invoice — GST Compliant",
         creator="Luviio Invoice System",
@@ -285,14 +304,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     W = 554.0               # Explicit safe width: 595.28 - 40 = 555.28 -> anchor at 554 pt
     S = _styles()
     story: list = []
-
-    # ── Extract values ────────────────────────────────────────────────────────
-    order_id     = _safe(order.get("id"))
-    invoice_no   = f"LV-{_short_id(order_id)}"
-    order_date   = _parse_date(_safe(order.get("created_at")))
-    invoice_date = datetime.datetime.now().strftime("%d-%m-%Y")
-    status_raw   = _safe(order.get("status"), "paid").upper()
-    is_refund    = status_raw in ("REFUNDED", "CANCELLED")
 
     subtotal    = _safe_f(order.get("subtotal"))
     ship_cost   = _safe_f(order.get("shipping_cost"))
@@ -449,9 +460,10 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     #  BLOCK 3 ── 10-COLUMN ITEMS TABLE (Exact Sum = 554 pt)
+    #  🔥 REORDERED: Unit Price -> Qty -> Discount -> Net Amount
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    CW = [18.0, 164.0, 54.0, 22.0, 54.0, 44.0, 26.0, 44.0, 56.0, 72.0]
+    CW = [18.0, 164.0, 54.0, 22.0, 44.0, 54.0, 26.0, 44.0, 56.0, 72.0]
 
     def _h(txt):  return Paragraph(txt, S["th"])
     def _hc(txt): return Paragraph(txt, S["thc"])
@@ -465,8 +477,8 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         _h("Description"),
         _hr("Unit Price"),
         _hc("Qty"),
-        _hr("Net Amount"),
-        _hr("Discount"),
+        _hr("Discount"),    # 🔥 MOVED AHEAD OF NET AMOUNT
+        _hr("Net Amount"),  # 🔥 MOVED AFTER DISCOUNT
         _hc("GST %"),
         _hc("Tax Type"),
         _hr("Tax Amt"),
@@ -507,8 +519,8 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
             _d(name),
             _dr(_fmt(display_unit_p)),
             _dc(str(qty)),
-            _dr(_fmt(net)),
-            _dr(_fmt(disc) if disc > 0 else "—"),
+            _dr(_fmt(disc) if disc > 0 else "—"), # Discount Column
+            _dr(_fmt(net)),                       # Net Amount Column
             _dc(f"{int(eff_rate_pct)}%"),
             _dc(tax_type),
             _dr(_fmt(i_tax)),
@@ -531,8 +543,8 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
             Paragraph("<b>Shipping Charges</b>", S["td"]),
             _dr(_fmt(ship_cost)),
             _dc("1"),
-            _dr(_fmt(ship_cost)),
             _dr("—"),
+            _dr(_fmt(ship_cost)),
             _dc(gst_pct_str),
             _dc(tax_type_str),
             _dr(_fmt(s_tax)),
