@@ -6,11 +6,12 @@ Path: app/core/dependencies.py
 Architecture & Fixes:
   ✅ 100% Backward Compatible — Preserves all existing PBAC & ABAC Guards
   ✅ High-Traffic Optimization — Retains TTLCache for token & profile lookups
-  ✅ Fix Applied — Integrated safe Base64URL JWT Decoder to extract 'exp', 'sub', 'iat'
-  ✅ Zero Structure Breaking — Returns existing {"auth_user", "profile"} + JWT claims
+  ✅ Safe Base64URL JWT Decoder — Extracts 'exp', 'sub', 'iat', 'role' post-verification
+  ✅ ISO-8601 Timestamp Conversion — Automatically converts raw UNIX timestamps to UTC Date Strings
 """
 import asyncio
 import base64
+import datetime
 import json
 import logging
 from typing import Any, Dict
@@ -32,6 +33,26 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 _token_cache: TTLCache = TTLCache(maxsize=512, ttl=60)
 _profile_cache: TTLCache = TTLCache(maxsize=512, ttl=60)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  TIMESTAMP CONVERSION HELPER
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _ts_to_iso(val: Any) -> str | None:
+    """
+    Safely converts Unix timestamp (int/float) to a readable ISO-8601 UTC date string.
+    Example: 1784091623 -> '2026-07-15T05:00:23+00:00'
+    """
+    if val is None:
+        return None
+    try:
+        if isinstance(val, (int, float)):
+            return datetime.datetime.fromtimestamp(val, tz=datetime.timezone.utc).isoformat()
+        return str(val)
+    except Exception as e:
+        logger.debug("Timestamp conversion fallback: %s", e)
+        return str(val) if val is not None else None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -62,10 +83,10 @@ def _build_context(auth_user: Any, profile: dict[str, Any], claims: dict[str, An
     return {
         "auth_user": auth_user,
         "profile": profile,
-        # 🔥 FIX: Injected claims required for /auth/session endpoint
-        "exp": claims.get("exp"),
+        # 🔥 FIX: Injected claims converted to readable ISO-8601 UTC date strings
+        "exp": _ts_to_iso(claims.get("exp")),
         "sub": claims.get("sub"),
-        "iat": claims.get("iat"),
+        "iat": _ts_to_iso(claims.get("iat")),
         "jwt_role": claims.get("role"),
     }
 
