@@ -18,7 +18,7 @@ class AdminProfile(BaseModel):
 class AdminVerifyResponse(BaseModel):
     verified: bool
     profile: AdminProfile
-    timestamp: int
+    timestamp: str
 
 class AdminDashboardStats(BaseModel):
     products: int | float
@@ -30,4 +30,4 @@ class AdminDashboardStats(BaseModel):
 class AdminStatsResponse(BaseModel):
     verified: bool
     stats: AdminDashboardStats
-    timestamp: int
+    timestamp: str
