@@ -8,6 +8,7 @@ Architecture & Fixes:
   ✅ High-Traffic Optimization — Retains TTLCache for token & profile lookups
   ✅ Safe Base64URL JWT Decoder — Extracts 'exp', 'sub', 'iat', 'role' post-verification
   ✅ ISO-8601 Timestamp Conversion — Automatically converts raw UNIX timestamps to UTC Date Strings
+  ✅ Resolves Coroutine Crash — Properly awaits async Supabase client getters across all validators
 """
 import asyncio
 import base64
@@ -22,7 +23,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from gotrue.errors import AuthApiError
 
 from app.repositories.user_repo import AsyncUserRepository
-from app.core.supabase import get_async_admin_supabase, get_async_supabase_on_demand as get_async_supabase
+from app.core.supabase import get_async_admin_supabase, get_async_supabase
 from app.core.exceptions import UnauthorizedAction, UnauthenticatedUser
 from app.permissions.base import ROLE_PERMISSIONS
 from app.enums.roles import UserRole
@@ -101,7 +102,8 @@ async def _validate_token(token: str) -> Any:
     if token in _token_cache:
         return _token_cache[token]
 
-    sb = get_async_admin_supabase()
+    # 🔥 FIX: Added await to prevent coroutine AttributeError
+    sb = await get_async_admin_supabase()
     try:
         result = await sb.auth.get_user(token)
         user = getattr(result, "user", result)
@@ -163,7 +165,8 @@ async def get_current_user(
         refresh_token = request.cookies.get("refresh_token")
         if refresh_token:
             try:
-                sb = get_async_supabase()
+                # 🔥 FIX: Added await to prevent coroutine AttributeError
+                sb = await get_async_supabase()
                 result = await sb.auth.refresh_session(refresh_token)
                 if result and hasattr(result, "session") and result.session:
                     token = result.session.access_token
@@ -249,8 +252,38 @@ def require_permission(required_perm: str):
         
     return permission_checker
 
-# Backward compatibility wrapper for existing routes
-require_admin = require_permission(AdminPermissions.MANAGE_SETTINGS)
+
+async def require_admin(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Admin role verification — NEVER trusts cache or JWT claims blindly.
+    Makes a fresh DB read on every call to ensure account hasn't been deactivated.
+    """
+    # 🔥 FIX: Added await to prevent coroutine AttributeError
+    sb = await get_async_admin_supabase()
+    user_id = current.get("profile", {}).get("id", "")
+
+    if not user_id:
+        raise UnauthorizedAction("Access denied")
+
+    try:
+        result = await sb.table("users").select("role, is_active").eq("id", user_id).limit(1).maybe_single().execute()
+    except Exception as e:
+        logger.error("require_admin DB check failed | user=%.8s: %s", user_id, e)
+        raise UnauthorizedAction("Could not verify permissions")
+
+    if not result or not result.data:
+        raise UnauthorizedAction("Access denied")
+
+    row = result.data
+    if row.get("role") != "admin":
+        raise UnauthorizedAction("Admin access required")
+
+    if not row.get("is_active", False):
+        raise UnauthorizedAction("Account deactivated")
+
+    current["profile"]["role"] = row.get("role")
+    current["profile"]["is_active"] = row["is_active"]
+    return current
 
 
 def get_client_ip(request: Request) -> str:
