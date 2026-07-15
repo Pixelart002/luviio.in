@@ -23,8 +23,12 @@ async def health_check() -> dict:
     Verifies database connectivity asynchronously. Returns 503 if DB is down.
     """
     try:
-        sb = get_async_admin_supabase()
+        # 🔥 FIX: Awaiting async client factory
+        sb = await get_async_admin_supabase()
+        
+        # Lightweight check: selecting count from a known table
         await sb.table("products").select("id", count="exact").limit(1).execute()
+        
     except Exception as exc:
         logger.error("Health check failed — database unreachable: %s", exc)
         raise HTTPException(
@@ -39,6 +43,7 @@ async def health_check() -> dict:
             "status": "ok",
             "app": settings.APP_NAME,
             "env": settings.APP_ENV,
-            "uptime_seconds": uptime
+            "uptime_seconds": uptime,
+            "version": getattr(settings, "APP_VERSION", "1.0.0") # Optional: add versioning
         }
     )
