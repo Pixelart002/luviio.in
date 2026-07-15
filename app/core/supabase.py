@@ -7,6 +7,7 @@ Architecture & Fixes:
   ✅ Prevents Auth Session Bleeding — Regular client is fetched statelessly/on-demand.
   ✅ Thread-Safe Admin — Admin (service-role) clients are safely pooled as singletons.
   ✅ Zero Session Collision — Solves the "Admin session appearing for unlogged users" bug.
+  ✅ Backward Compatibility — Retains `get_async_supabase` alias to prevent ImportError crashes.
 """
 import logging
 from typing import Optional
@@ -90,3 +91,8 @@ async def get_async_admin_supabase() -> AsyncClient:
     if not _initialized_admins:
         await init_admin_clients()
     return _async_admin_supabase
+
+
+# ── COMPATIBILITY ALIASES ───────────────────────────────────────────────────
+# 🔥 Prevents "cannot import name 'get_async_supabase'" in dependencies.py and existing routers
+get_async_supabase = get_async_supabase_on_demand

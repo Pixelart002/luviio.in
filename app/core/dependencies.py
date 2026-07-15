@@ -22,7 +22,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from gotrue.errors import AuthApiError
 
 from app.repositories.user_repo import AsyncUserRepository
-from app.core.supabase import get_async_admin_supabase, get_async_supabase
+from app.core.supabase import get_async_admin_supabase, get_async_supabase_on_demand as get_async_supabase
 from app.core.exceptions import UnauthorizedAction, UnauthenticatedUser
 from app.permissions.base import ROLE_PERMISSIONS
 from app.enums.roles import UserRole
