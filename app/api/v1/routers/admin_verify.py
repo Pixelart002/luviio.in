@@ -10,7 +10,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
-from app.services.admin_service import AdminService # ✅ Corrected to match file name (adjust if using folder)
+from app.services.admin.service import AdminService # ✅ Corrected to match file name (adjust if using folder)
 from app.api.schemas.admin_dto import AdminVerifyResponse, AdminStatsResponse
 from app.permissions.admin import AdminPermissions
 
