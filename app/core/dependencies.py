@@ -1,4 +1,17 @@
+"""
+Dependencies — Async Hardened Production Grade (Luviio SSOT)
+============================================================
+Path: app/core/dependencies.py
+
+Architecture & Fixes:
+  ✅ 100% Backward Compatible — Preserves all existing PBAC & ABAC Guards
+  ✅ High-Traffic Optimization — Retains TTLCache for token & profile lookups
+  ✅ Fix Applied — Integrated safe Base64URL JWT Decoder to extract 'exp', 'sub', 'iat'
+  ✅ Zero Structure Breaking — Returns existing {"auth_user", "profile"} + JWT claims
+"""
 import asyncio
+import base64
+import json
 import logging
 from typing import Any, Dict
 
@@ -20,6 +33,46 @@ bearer_scheme = HTTPBearer(auto_error=False)
 _token_cache: TTLCache = TTLCache(maxsize=512, ttl=60)
 _profile_cache: TTLCache = TTLCache(maxsize=512, ttl=60)
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  JWT PAYLOAD DECODER (Extracts claims post-verification)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _decode_jwt(token: str) -> dict[str, Any]:
+    """
+    Decodes the JWT payload (base64url -> JSON) to extract claims like 'exp' and 'sub'.
+    Safe to call because cryptographic verification is already handled by _validate_token().
+    """
+    try:
+        parts = token.split('.')
+        if len(parts) != 3:
+            return {}
+        payload_b64 = parts[1]
+        # Handle unpadded base64url standard in JWTs
+        payload_b64 += '=' * (-len(payload_b64) % 4)
+        payload_bytes = base64.urlsafe_b64decode(payload_b64)
+        return json.loads(payload_bytes)
+    except Exception as e:
+        logger.debug("JWT payload extraction failed (non-critical): %s", e)
+        return {}
+
+
+def _build_context(auth_user: Any, profile: dict[str, Any], claims: dict[str, Any]) -> dict[str, Any]:
+    """Enriches the standard dependency output with JWT claims for session tracking."""
+    return {
+        "auth_user": auth_user,
+        "profile": profile,
+        # 🔥 FIX: Injected claims required for /auth/session endpoint
+        "exp": claims.get("exp"),
+        "sub": claims.get("sub"),
+        "iat": claims.get("iat"),
+        "jwt_role": claims.get("role"),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  CORE VALIDATION & PROFILE LOOKUPS
+# ══════════════════════════════════════════════════════════════════════════════
 
 async def _validate_token(token: str) -> Any:
     if not token:
@@ -76,11 +129,15 @@ async def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
     return result
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  FASTAPI DEPENDENCIES
+# ══════════════════════════════════════════════════════════════════════════════
+
 async def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict[str, Any]:
-    
+    token = None
     if not credentials:
         refresh_token = request.cookies.get("refresh_token")
         if refresh_token:
@@ -94,12 +151,15 @@ async def get_current_user(
                     if profile and profile.get("is_active", True):
                         request.state.user_name = profile.get("full_name") or profile.get("email") or "Unknown"
                         request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
-                        return {"auth_user": auth_user, "profile": profile}
+                        claims = _decode_jwt(token)
+                        return _build_context(auth_user, profile, claims)
             except Exception:
                 pass
         raise UnauthenticatedUser()
+    else:
+        token = credentials.credentials
 
-    auth_user = await _validate_token(credentials.credentials)
+    auth_user = await _validate_token(token)
     profile = await _get_or_create_profile(auth_user)
 
     if not profile.get("is_active", True):
@@ -108,7 +168,8 @@ async def get_current_user(
     request.state.user_name = profile.get("full_name") or profile.get("email") or "Unknown"
     request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
 
-    return {"auth_user": auth_user, "profile": profile}
+    claims = _decode_jwt(token)
+    return _build_context(auth_user, profile, claims)
 
 
 async def get_optional_user(
@@ -118,12 +179,14 @@ async def get_optional_user(
     if not credentials:
         return None
     try:
-        auth_user = await _validate_token(credentials.credentials)
+        token = credentials.credentials
+        auth_user = await _validate_token(token)
         profile = await _get_or_create_profile(auth_user)
         if profile and profile.get("is_active", True):
             request.state.user_name = profile.get("full_name") or profile.get("email") or "Unknown"
             request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
-            return {"auth_user": auth_user, "profile": profile}
+            claims = _decode_jwt(token)
+            return _build_context(auth_user, profile, claims)
     except Exception:
         pass
     return None
@@ -132,13 +195,17 @@ async def get_optional_user(
 async def get_user_id_strict(current_user: dict[str, Any] = Depends(get_current_user)) -> str:
     """
     ABAC (Attribute-Based Access Control) guard.
-    Extracts the securely verified `user_id` from the JWT token.
+    Extracts the securely verified `user_id` from the JWT token or profile.
     """
-    user_id = current_user.get("profile", {}).get("id") or getattr(current_user.get("auth_user"), "id", "")
+    user_id = current_user.get("profile", {}).get("id") or current_user.get("sub") or getattr(current_user.get("auth_user"), "id", "")
     if not user_id:
         raise UnauthenticatedUser("User identity missing for scope resolution.")
     return str(user_id)
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ENTERPRISE PBAC & ADMIN GUARDS
+# ══════════════════════════════════════════════════════════════════════════════
 
 def require_permission(required_perm: str):
     """
@@ -151,10 +218,10 @@ def require_permission(required_perm: str):
         user_perms = ROLE_PERMISSIONS.get(role, [])
         
         if "*" in user_perms:
-            return current_user # Super Admin God Mode
+            return current_user  # Super Admin God Mode
             
         if required_perm not in user_perms:
-            logger.warning("PBAC Denied | User: %.8s | Role: %s | Missing Perm: %s", current_user.get("profile", {}).get("id"), role, required_perm)
+            logger.warning("PBAC Denied | User: %.8s | Role: %s | Missing Perm: %s", current_user.get("profile", {}).get("id", "?"), role, required_perm)
             raise UnauthorizedAction(f"Missing required permission: {required_perm}")
             
         return current_user
