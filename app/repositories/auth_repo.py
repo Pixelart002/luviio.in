@@ -1,7 +1,11 @@
 """
-Auth Repository — Async Enterprise Grade
-========================================
+Auth Repository — Async Hardened Production Grade
+=================================================
 Path: app/repositories/auth_repo.py
+
+Architecture & Fixes:
+  ✅ Stateless Execution — Fetches Supabase client on-demand inside async methods.
+  ✅ Resolves Coroutine Crash — Awaits async client factories to prevent AttributeError.
 """
 import logging
 from typing import Any, Dict, Optional
@@ -11,13 +15,15 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class AsyncAuthRepository:
     def __init__(self):
-        self.sb = get_async_supabase()
-        self.admin_sb = get_async_admin_supabase()
+        # Client initialization is deferred to async methods to prevent coroutine AttributeError
+        pass
 
     async def sign_up(self, email: str, password: str, full_name: str) -> Optional[str]:
-        res = await self.sb.auth.sign_up({
+        sb = await get_async_supabase()
+        res = await sb.auth.sign_up({
             "email": email, 
             "password": password,
             "options": {"data": {"full_name": full_name}}
@@ -27,7 +33,8 @@ class AsyncAuthRepository:
         return None
 
     async def sign_in(self, email: str, password: str) -> Optional[Dict[str, Any]]:
-        res = await self.sb.auth.sign_in_with_password({"email": email, "password": password})
+        sb = await get_async_supabase()
+        res = await sb.auth.sign_in_with_password({"email": email, "password": password})
         if res and getattr(res, "user", None) and getattr(res, "session", None):
             return {
                 "user_id": res.user.id,
@@ -39,8 +46,7 @@ class AsyncAuthRepository:
         return None
 
     async def refresh_session(self, refresh_token: str) -> Optional[Dict[str, Any]]:
-        # Call Supabase token endpoint directly to avoid the shared singleton
-        # AsyncClient's in-memory session overwriting the provided refresh token.
+        # Call Supabase token endpoint directly to avoid shared singleton session state
         url = f"{settings.SB_URL}/auth/v1/token?grant_type=refresh_token"
         headers = {
             "apikey": settings.SB_KEY,
@@ -63,8 +69,7 @@ class AsyncAuthRepository:
         }
 
     async def sign_out_with_token(self, refresh_token: str) -> None:
-        """Sign out by calling Supabase /auth/v1/logout directly via httpx,
-        avoiding the shared singleton client and its in-memory session state."""
+        """Sign out by calling Supabase /auth/v1/logout directly via httpx."""
         url = f"{settings.SB_URL}/auth/v1/logout"
         headers = {
             "apikey": settings.SB_KEY,
@@ -74,7 +79,9 @@ class AsyncAuthRepository:
             await client.post(url, headers=headers, json={"refresh_token": refresh_token})
 
     async def reset_password_email(self, email: str) -> None:
-        await self.sb.auth.reset_password_email(email)
+        sb = await get_async_supabase()
+        await sb.auth.reset_password_email(email)
 
     async def admin_update_password(self, user_id: str, new_password: str) -> None:
-        await self.admin_sb.auth.admin.update_user_by_id(user_id, {"password": new_password})
+        admin_sb = await get_async_admin_supabase()
+        await admin_sb.auth.admin.update_user_by_id(user_id, {"password": new_password})
