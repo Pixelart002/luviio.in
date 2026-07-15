@@ -15,7 +15,6 @@ from fastapi import FastAPI
 from app.core.config import settings
 from app.core.logger import setup_logging
 from app.core.monitoring import init_sentry
-from app.core.supabase import init_clients
 from app.core.setup_middlewares import apply_middlewares
 from app.core.exceptions import register_exception_handlers
 
@@ -37,8 +36,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("🚀 Starting %s [%s]", settings.APP_NAME, settings.APP_ENV)
     
-    # Initialize DB Connections asynchronously
-    await init_clients()
+    # 🔥 REMOVED: await init_clients()
+    # Supabase clients are now lazily initialized on-demand per request 
+    # to prevent memory session pollution and ensure stateless architecture.
     
     # Register Event Bus Handlers
     register_all_event_handlers()
