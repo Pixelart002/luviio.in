@@ -1,14 +1,21 @@
+"""
+Cart Service — Enterprise Business Logic & Pricing SSOT
+=======================================================
+Path: app/services/cart_service.py
+"""
 import asyncio
 import logging
 import datetime
 from decimal import Decimal
 from typing import Any, Dict
+from fastapi import HTTPException, status
 
 from app.repositories.cart_repo import AsyncCartRepository
+from app.permissions.policies.cart_policies import CartPolicy
 from app.services.pricing import get_pricing_from_config
 from app.integrations.push.webpush_impl import send_push_to_user
 from app.integrations.email.registry import get_email_provider
-from app.core.exceptions import ProductNotFound, OutOfStockException, LuviioException
+from app.constants.cart_messages import CartSecurityMessages
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +24,7 @@ class CartService:
         self.repo = AsyncCartRepository()
 
     async def _calculate_cart_pricing(self, cart_id: str) -> Dict[str, Any]:
-        """Calculates cart totals using the PricingEngine SSOT."""
+        """Calculates cart totals using the PricingEngine SSOT concurrently."""
         config, raw_items = await asyncio.gather(
             self.repo.get_pricing_config(),
             self.repo.get_cart_items_with_products(cart_id),
@@ -34,7 +41,6 @@ class CartService:
             snapshot = Decimal(str(row["price_snapshot"]))
             current_price = Decimal(str(prod.get("price", snapshot)))
             
-            # 🔥 FIX: Safely retrieve compare_price from the product
             comp_p = prod.get("compare_price")
             compare_price = float(comp_p) if comp_p is not None else 0.0
             
@@ -44,7 +50,8 @@ class CartService:
             in_stock = prod.get("is_active", True) and prod.get("stock", 0) >= qty
             price_changed = abs(float(current_price) - float(snapshot)) > 0.001
 
-            if not in_stock: has_unavailable = True
+            if not in_stock: 
+                has_unavailable = True
 
             enriched.append({
                 "id": row["id"],
@@ -54,7 +61,7 @@ class CartService:
                 "image_url": prod.get("image_url"),
                 "quantity": qty,
                 "unit_price": float(current_price),
-                "compare_price": compare_price, # 🎯 Now correctly passed to the frontend & payment service
+                "compare_price": compare_price,
                 "price_snapshot": float(snapshot),
                 "line_total": float(line_total),
                 "stock": prod.get("stock", 0),
@@ -80,6 +87,7 @@ class CartService:
             "free_shipping_threshold": float(pricing_engine.shipping_threshold),
             "tax_rate_pct": float(pricing_engine.tax_rate * 100),
             "has_unavailable_items": has_unavailable,
+            "currency": getattr(pricing_engine, "currency", "INR")
         }
 
     async def get_cart(self, user_id: str) -> Dict[str, Any]:
@@ -87,39 +95,40 @@ class CartService:
         return await self._calculate_cart_pricing(cart["id"])
 
     async def add_item(self, user_id: str, product_id: str, quantity: int) -> Dict[str, Any]:
-        prod = await self.repo.get_product_stock_status(product_id)
-        if not prod or not prod.get("is_active"):
-            raise ProductNotFound(product_id)
-        if prod["stock"] < quantity:
-            raise OutOfStockException(f"Only {prod['stock']} units available")
-
+        raw_prod = await self.repo.get_product_stock_status(product_id)
+        
+        # Enforce ABAC Policies
+        prod = CartPolicy.assert_product_available(raw_prod)
+        
         cart = await self.repo.get_or_create_cart(user_id)
         existing = await self.repo.get_cart_item(cart["id"], product_id)
+        existing_qty = existing["quantity"] if existing else 0
+
+        # Enforce Inventory & Boundary ABAC Policies
+        CartPolicy.assert_stock_sufficient(prod, quantity, existing_qty)
 
         if existing:
-            new_qty = existing["quantity"] + quantity
-            if new_qty > 100:
-                raise LuviioException("Maximum 100 units per item", "LIMIT_EXCEEDED", 400)
-            if prod["stock"] < new_qty:
-                raise OutOfStockException(f"Only {prod['stock']} units available")
-            await self.repo.update_item_quantity(existing["id"], new_qty)
+            await self.repo.update_item_quantity(existing["id"], existing_qty + quantity)
         else:
             await self.repo.add_item_to_cart(cart["id"], product_id, quantity, float(prod["price"]))
 
         return await self._calculate_cart_pricing(cart["id"])
 
     async def update_item(self, user_id: str, product_id: str, quantity: int) -> Dict[str, Any]:
+        raw_prod = await self.repo.get_product_stock_status(product_id)
+        
+        # Enforce ABAC Policies
+        prod = CartPolicy.assert_product_available(raw_prod)
+        CartPolicy.assert_stock_sufficient(prod, quantity, existing_qty=0)
+
         cart = await self.repo.get_or_create_cart(user_id)
-        prod = await self.repo.get_product_stock_status(product_id)
-
-        if not prod or not prod.get("is_active"):
-            raise ProductNotFound(product_id)
-        if prod["stock"] < quantity:
-            raise OutOfStockException(f"Only {prod['stock']} units available")
-
         success = await self.repo.update_item_quantity_by_product(cart["id"], product_id, quantity)
+        
         if not success:
-            raise LuviioException("Item not in cart", "NOT_FOUND", 404)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=CartSecurityMessages.ITEM_NOT_IN_CART
+            )
 
         return await self._calculate_cart_pricing(cart["id"])
 
@@ -143,16 +152,22 @@ class CartService:
             row["estimated_value"] = float(sum(Decimal(str(i["price_snapshot"])) * i["quantity"] for i in items))
 
         return {
-            "items": rows, "total": total, "page": page, "page_size": page_size,
-            "pages": -(-total // page_size) if page_size > 0 else 0, "hours_threshold": hours
+            "items": rows, 
+            "total": total, 
+            "page": page, 
+            "page_size": page_size,
+            "pages": -(-total // page_size) if page_size > 0 else 0, 
+            "hours_threshold": hours
         }
 
     async def send_cart_reminder(self, cart_id: str) -> Dict[str, str]:
         cart = await self.repo.get_cart_for_reminder(cart_id)
-        if not cart: raise LuviioException("Cart not found", "NOT_FOUND", 404)
+        if not cart: 
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=CartSecurityMessages.CART_NOT_FOUND)
         
         items = cart.get("cart_items") or []
-        if not items: raise LuviioException("Cart is empty — no reminder needed", "EMPTY_CART", 400)
+        if not items: 
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=CartSecurityMessages.EMPTY_CART_REMINDER)
 
         user_info = cart.get("users") or {}
         user_id = cart["user_id"]
@@ -162,12 +177,14 @@ class CartService:
         try:
             from app.core.supabase import get_admin_supabase
             push_sent = send_push_to_user(get_admin_supabase(), user_id, title="🛒 Left something behind?", body=f"Your cart has {len(items)} item(s) waiting.", icon="/icons/cart.png", url="/cart.html")
-        except Exception: pass
+        except Exception as e:
+            logger.debug("Push dispatch failed: %s", e)
 
         if email:
             try:
                 get_email_provider("resend").send_cart_reminder_email(email, name, items)
                 email_sent = True
-            except Exception: pass
+            except Exception as e:
+                logger.debug("Email dispatch failed: %s", e)
 
-        return {"message": "Reminder sent", "push_sent": str(push_sent > 0), "email_sent": str(email_sent)}
+        return {"message": CartMessages.REMINDER_SENT, "push_sent": str(push_sent > 0), "email_sent": str(email_sent)}

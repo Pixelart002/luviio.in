@@ -1,35 +1,37 @@
 """
-User Schemas (DTOs)
-===================
+User Schemas — Strict Pydantic DTOs
+===================================
 Path: app/api/schemas/user_dto.py
 """
-from pydantic import BaseModel, Field, field_validator
-from typing import Any, List
-from datetime import datetime
-
-# ── Requests ──────────────────────────────────────────────────────────────────
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Any, List, Optional
+from app.constants.user_messages import UserSecurityMessages
 
 class ProfileUpdate(BaseModel):
-    full_name: str | None = Field(default=None, max_length=255)
-    phone: str | None = Field(default=None, max_length=20)
+    model_config = ConfigDict(str_strip_whitespace=True)
+    
+    full_name: Optional[str] = Field(default=None, max_length=255)
+    phone: Optional[str] = Field(default=None, max_length=20)
 
     @field_validator("phone")
     @classmethod
-    def validate_phone(cls, v: str | None) -> str | None:
+    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
         if v is not None:
             cleaned = ''.join(c for c in v if c.isdigit() or c == '+')
             if len(cleaned.replace('+', '')) < 10:
-                raise ValueError("Phone number must be at least 10 digits")
+                raise ValueError(UserSecurityMessages.INVALID_PHONE)
             return cleaned
         return v
 
 class AddressCreate(BaseModel):
-    line1: str = Field(max_length=255)
-    line2: str | None = Field(default=None, max_length=255)
-    city: str = Field(max_length=100)
-    state: str | None = Field(default=None, max_length=100)
-    postal_code: str = Field(max_length=20)
-    country: str = Field(min_length=2, max_length=2)
+    model_config = ConfigDict(str_strip_whitespace=True)
+    
+    line1: str = Field(..., max_length=255)
+    line2: Optional[str] = Field(default=None, max_length=255)
+    city: str = Field(..., max_length=100)
+    state: Optional[str] = Field(default=None, max_length=100)
+    postal_code: str = Field(..., max_length=20)
+    country: str = Field(..., min_length=2, max_length=2)
     is_default: bool = False
 
     @field_validator("country")
@@ -41,20 +43,20 @@ class AddressCreate(BaseModel):
     @classmethod
     def validate_postal(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError("Postal code is required")
+            raise ValueError(UserSecurityMessages.INVALID_POSTAL)
         return v.strip()
 
 class AdminUserUpdate(BaseModel):
-    is_active: bool | None = None
-    role: str | None = Field(default=None, pattern="^(customer|admin)$")
-
-# ── Responses ─────────────────────────────────────────────────────────────────
+    model_config = ConfigDict(str_strip_whitespace=True)
+    
+    is_active: Optional[bool] = None
+    role: Optional[str] = Field(default=None, pattern="^(customer|admin|manager|support)$")
 
 class MessageResponse(BaseModel):
     message: str
 
 class UserListResponse(BaseModel):
-    items: List[dict]
+    items: List[Dict[str, Any]]
     total: int
     page: int
     page_size: int

@@ -1,29 +1,32 @@
 """
-Push Notification Schemas (DTOs)
-================================
+Push Notification Schemas — Strict Pydantic DTOs
+================================================
 Path: app/api/schemas/push_dto.py
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 from typing import List, Dict, Any
 
-# ── Requests ──────────────────────────────────────────────────────────────────
+# ── Requests ──
 
 class SubscriptionKeys(BaseModel):
-    p256dh: str
-    auth: str
+    model_config = ConfigDict(str_strip_whitespace=True)
+    p256dh: str = Field(..., description="Elliptic curve Diffie-Hellman public key")
+    auth: str = Field(..., description="Authentication secret")
 
 class PushSubscription(BaseModel):
-    endpoint: str
+    model_config = ConfigDict(str_strip_whitespace=True)
+    endpoint: HttpUrl = Field(..., description="Secure HTTPS WebPush endpoint URL")
     keys: SubscriptionKeys
 
 class BatchNotificationRequest(BaseModel):
-    user_ids: List[str]
-    title: str = "Luviio"
-    body: str
-    icon: str = "/icons/ri-notification-3-line.png"
-    url: str = "/"
+    model_config = ConfigDict(str_strip_whitespace=True)
+    user_ids: List[str] = Field(..., description="List of target user UUIDs")
+    title: str = Field(default="Luviio", max_length=100)
+    body: str = Field(..., max_length=500)
+    icon: str = Field(default="/icons/ri-notification-3-line.png")
+    url: str = Field(default="/")
 
-# ── Responses ─────────────────────────────────────────────────────────────────
+# ── Responses ──
 
 class MessageResponse(BaseModel):
     message: str
