@@ -12,7 +12,7 @@ from slowapi.util import get_remote_address
 
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
 from app.permissions.users import UserPermissions
-from app.services.user.service import UserService
+from app.services.users.service import UserService
 from app.api.schemas.user_dto import ProfileUpdate, AddressCreate, AdminUserUpdate, MessageResponse
 from app.constants.user_messages import UserMessages
 from app.utils.response import success_response
