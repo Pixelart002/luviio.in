@@ -4,7 +4,7 @@ User Schemas — Strict Pydantic DTOs
 Path: app/api/schemas/user_dto.py
 """
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 from app.constants.user_messages import UserSecurityMessages
 
 class ProfileUpdate(BaseModel):
