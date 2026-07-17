@@ -5,7 +5,7 @@ Path: app/api/v1/routers/auth.py
 """
 import logging
 from typing import Any, Dict
-from fastapi import APIRouter, Cookie, Depends, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, Request, Response, status,HTTPException,Query,
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
