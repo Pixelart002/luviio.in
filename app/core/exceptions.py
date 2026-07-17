@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from postgrest.exceptions import APIError as PostgrestError
 from app.utils.response import error_response
-from app.constants.messages import ErrorMessages
+from app.constants.errors import ErrorMessages
 
 logger = logging.getLogger(__name__)
 
