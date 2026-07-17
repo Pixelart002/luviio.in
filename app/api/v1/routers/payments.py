@@ -8,7 +8,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.core.dependencies import get_current_user, get_user_id_strict
-from app.services.payment.service import PaymentService
+from app.services.payments.service import PaymentService
 from app.api.schemas.payment_dto import PaymentIntentRequest, ConfirmPaymentRequest, NotifyFailedRequest, PaymentIntentResponse
 from app.constants.payment_messages import PaymentMessages
 from app.utils.response import success_response

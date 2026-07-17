@@ -12,7 +12,7 @@ from app.core.dependencies import get_current_user, get_user_id_strict, require_
 from app.permissions.orders import OrderPermissions
 from app.enums.roles import UserRole
 from app.api.schemas.order_dto import OrderAdminUpdate, OrderCancelResponse
-from app.services.order.service import OrderService
+from app.services.orders.service import OrderService
 from app.utils.response import success_response
 from app.utils.pagination import paginate
 

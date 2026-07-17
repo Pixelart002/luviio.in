@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 
 from app.core.dependencies import require_permission
 from app.permissions.products import ProductPermissions
-from app.services.product.service import ProductService
+from app.services.products.service import ProductService
 from app.api.schemas.product_dto import CategoryCreate, ProductCreate, ProductUpdate
 from app.constants.product_messages import ProductMessages
 from app.utils.response import success_response

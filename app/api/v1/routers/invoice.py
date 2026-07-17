@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.core.dependencies import get_current_user, get_user_id_strict
-from app.services.order.service import OrderService
+from app.services.orders.service import OrderService
 from app.enums.roles import UserRole
 
 router = APIRouter(prefix="/orders", tags=["Invoice"])
