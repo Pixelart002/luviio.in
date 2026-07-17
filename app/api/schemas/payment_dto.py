@@ -1,33 +1,25 @@
 """
-Payment Schemas — Strict Pydantic DTOs
-======================================
+Payment Schemas (DTOs)
+======================
 Path: app/api/schemas/payment_dto.py
 """
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 from uuid import UUID
 
 class PaymentIntentRequest(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-    
-    # 🔥 Client cannot spoof order_id anymore. Generated securely via idempotency.
-    idempotency_key: str = Field(..., description="Unique UUID v4 key to prevent duplicate charging")
-    shipping_address_id: UUID = Field(..., description="Selected shipping address ID for this checkout")
+    # 🔥 order_id: UUID  <-- YE LINE HATA DENI HAI
+    idempotency_key: str = Field(..., description="Unique key to prevent duplicate orders")
+    shipping_address_id: UUID = Field(..., description="Selected shipping address ID")
 
 class PaymentIntentResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    
     client_secret: str
     payment_intent_id: str
-    order_id: str
 
 class ConfirmPaymentRequest(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-    
-    # 🔥 Client submits ONLY the Stripe Intent ID. Backend resolves the actual Order ID.
-    payment_intent_id: str = Field(..., description="Stripe Payment Intent ID to verify")
+    # 🔥 order_id: UUID  <-- YE LINE BHI HATA DENI HAI
+    payment_intent_id: str = Field(..., description="Stripe Payment Intent ID")
 
 class NotifyFailedRequest(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-    
-    payment_intent_id: str = Field(..., description="Stripe Payment Intent ID that failed")
-    error_message: str = Field(default="", description="Reason for gateway failure")
+    # 🔥 order_id: UUID  <-- YE LINE BHI HATA DENI HAI
+    payment_intent_id: str = Field(..., description="Stripe Payment Intent ID")
+    error_message: str = Field(default="", description="Reason for failure")

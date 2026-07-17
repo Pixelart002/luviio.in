@@ -2,23 +2,29 @@
 Product Repository — Async Enterprise Grade
 ===========================================
 Path: app/repositories/product_repo.py
+
+Architecture & Fixes:
+  ✅ Stateless Execution — Fetches Supabase Admin client on-demand inside async methods.
+  ✅ Resolves Coroutine Crash — Awaits async client factory to prevent AttributeError.
 """
 import logging
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 
 class AsyncProductRepository:
-    """Stateless execution preventing coroutine state crashes and thread locks."""
+    def __init__(self):
+        # Deferred client initialization to prevent coroutine AttributeError in sync constructor
+        pass
     
-    # ── Categories ──
-    async def get_active_categories(self) -> List[Dict[str, Any]]:
+    # ── Categories ───────────────────────────────────────────────────────────
+    async def get_active_categories(self) -> list[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("categories").select("*").eq("is_active", True).execute()
         return getattr(res, "data", None) or []
 
-    async def create_category(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def create_category(self, data: dict) -> dict[str, Any] | None:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("categories").insert(data).execute()
         return res.data[0] if getattr(res, "data", None) else None
@@ -33,8 +39,8 @@ class AsyncProductRepository:
         res = await admin_sb.table("categories").update({"is_active": False}).eq("id", category_id).execute()
         return bool(getattr(res, "data", None))
 
-    # ── Products ──
-    async def get_products(self, page: int, page_size: int, category_slug: Optional[str], search: Optional[str], min_price: Optional[float], max_price: Optional[float], in_stock: Optional[bool]) -> Tuple[List[Dict[str, Any]], int]:
+    # ── Products ─────────────────────────────────────────────────────────────
+    async def get_products(self, page: int, page_size: int, category_slug: str | None, search: str | None, min_price: float | None, max_price: float | None, in_stock: bool | None) -> tuple[list, int]:
         admin_sb = await get_async_admin_supabase()
         q = admin_sb.table("products").select(
             "id, name, slug, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, images, is_active, created_at, categories(name, slug)",
@@ -57,12 +63,12 @@ class AsyncProductRepository:
         res = await q.range(offset, offset + page_size - 1).execute()
         return getattr(res, "data", None) or [], res.count or 0
 
-    async def get_product_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
+    async def get_product_by_slug(self, slug: str) -> dict[str, Any] | None:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("products").select("*, categories(name, slug)").eq("slug", slug).eq("is_active", True).limit(1).execute()
         return res.data[0] if getattr(res, "data", None) else None
         
-    async def get_product_by_id(self, product_id: str) -> Optional[Dict[str, Any]]:
+    async def get_product_by_id(self, product_id: str) -> dict[str, Any] | None:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("products").select("id, images, is_active").eq("id", product_id).limit(1).execute()
         return res.data[0] if getattr(res, "data", None) else None
@@ -81,12 +87,12 @@ class AsyncProductRepository:
             slug = f"{base_slug}-{counter}"
             counter += 1
 
-    async def create_product(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def create_product(self, data: dict) -> dict[str, Any] | None:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("products").insert(data).execute()
         return res.data[0] if getattr(res, "data", None) else None
 
-    async def update_product(self, product_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def update_product(self, product_id: str, data: dict) -> dict[str, Any] | None:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("products").update(data).eq("id", product_id).execute()
         return res.data[0] if getattr(res, "data", None) else None

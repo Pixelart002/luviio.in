@@ -1,20 +1,19 @@
-"""
-Global Exceptions & Domain Errors (SSOT)
-========================================
-Path: app/core/exceptions.py
-"""
 import logging
 from typing import Any, Dict, Optional
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
 from postgrest.exceptions import APIError as PostgrestError
 from app.utils.response import error_response
-from app.constants.errors import ErrorMessages
+from app.constants.messages import ErrorMessages
 
 logger = logging.getLogger(__name__)
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  DOMAIN EXCEPTIONS (Business Logic Errors)
+# ══════════════════════════════════════════════════════════════════════════════
+
 class LuviioException(Exception):
+    """Base exception for all domain-specific errors."""
     def __init__(
         self, 
         message: str = ErrorMessages.INTERNAL_ERROR, 
@@ -36,21 +35,33 @@ class UnauthenticatedUser(LuviioException):
     def __init__(self, message: str = ErrorMessages.INVALID_TOKEN):
         super().__init__(message, "UNAUTHENTICATED", status.HTTP_401_UNAUTHORIZED)
 
+class ProductNotFound(LuviioException):
+    def __init__(self, item_id: str):
+        super().__init__(f"Product '{item_id}' not found.", "PRODUCT_NOT_FOUND", status.HTTP_404_NOT_FOUND)
+
+class OutOfStockException(LuviioException):
+    def __init__(self, item_name: str):
+        super().__init__(f"Item '{item_name}' is currently out of stock.", "OUT_OF_STOCK", status.HTTP_409_CONFLICT)
+
+class PaymentFailedException(LuviioException):
+    def __init__(self, reason: str):
+        super().__init__(f"Payment processing failed: {reason}", "PAYMENT_FAILED", status.HTTP_402_PAYMENT_REQUIRED)
+
+class InvalidCouponException(LuviioException):
+    def __init__(self, code: str):
+        super().__init__(f"Coupon code '{code}' is invalid or expired.", "INVALID_COUPON", status.HTTP_400_BAD_REQUEST)
+
 class ResourceNotFound(LuviioException):
     def __init__(self, resource_name: str):
         super().__init__(f"{resource_name} not found.", "RESOURCE_NOT_FOUND", status.HTTP_404_NOT_FOUND)
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  GLOBAL EXCEPTION HANDLERS (Mounted in main.py)
+# ══════════════════════════════════════════════════════════════════════════════
+
 def register_exception_handlers(app):
     
-    @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        errors = [{"field": ".".join(map(str, e["loc"])), "error": e["msg"]} for e in exc.errors()]
-        logger.warning("Payload validation failed | path=%s", request.url.path)
-        return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=error_response(code="VALIDATION_ERROR", message="Invalid request payload", details=errors)
-        )
-
     @app.exception_handler(LuviioException)
     async def luviio_exception_handler(request: Request, exc: LuviioException):
         logger.warning("Domain Error | code=%s | path=%s | msg=%s", exc.code, request.url.path, exc.message)
@@ -63,7 +74,7 @@ def register_exception_handlers(app):
     async def postgrest_error_handler(request: Request, exc: PostgrestError):
         logger.error("Database Error | code=%s | path=%s | msg=%s", exc.code, request.url.path, exc.message)
         return JSONResponse(
-            status_code=status.HTTP_502_BAD_GATEWAY,
+            status_code=status.HTTP_400_BAD_REQUEST,
             content=error_response(code="DB_ERROR", message="Database operation failed", details={"pg_code": exc.code}),
         )
 

@@ -1,23 +1,24 @@
 """
-Cart Schemas — Strict Pydantic DTOs
-===================================
+Cart Schemas (DTOs)
+===================
 Path: app/api/schemas/cart_dto.py
 """
-from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
+from typing import List, Any, Optional # 🔥 FIX: Imported Optional here
 from uuid import UUID
 
+# ── Requests ──────────────────────────────────────────────────────────────────
+
 class AddItemRequest(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
     product_id: UUID
-    quantity: int = Field(default=1, ge=1, le=100)
+    quantity: int = Field(ge=1, le=100)
 
 class UpdateItemRequest(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-    quantity: int = Field(..., ge=1, le=100)
+    quantity: int = Field(ge=1, le=100)
+
+# ── Responses ─────────────────────────────────────────────────────────────────
 
 class CartItemDTO(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     id: str
     product_id: str
     name: str
@@ -25,7 +26,7 @@ class CartItemDTO(BaseModel):
     image_url: Optional[str] = None
     quantity: int
     unit_price: float
-    compare_price: float = 0.0
+    compare_price: Optional[float] = 0.0 # 🔥 Ab Optional yahan perfectly kaam karega
     price_snapshot: float
     line_total: float
     stock: int
@@ -35,7 +36,6 @@ class CartItemDTO(BaseModel):
     added_at: str
 
 class CartResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     items: List[CartItemDTO]
     item_count: int
     subtotal: float
@@ -47,14 +47,13 @@ class CartResponse(BaseModel):
     free_shipping_threshold: float
     tax_rate_pct: float
     has_unavailable_items: bool
-    currency: str = "INR"
+    currency: str
 
 class MessageResponse(BaseModel):
     message: str
 
 class AbandonedCartResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    items: List[Dict[str, Any]]
+    items: List[dict]
     total: int
     page: int
     page_size: int
