@@ -11,3 +11,4 @@ class SuccessMessages:
     UPDATED = "Resource updated successfully."
     DELETED = "Resource deleted successfully."
     PAYMENT_SUCCESS = "Payment processed successfully."
+    
