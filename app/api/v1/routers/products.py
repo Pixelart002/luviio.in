@@ -1,68 +1,75 @@
 import uuid
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from app.core.dependencies import require_permission
 from app.permissions.products import ProductPermissions
 from app.services.products.service import ProductService
 from app.api.schemas.product_dto import CategoryCreate, ProductCreate, ProductUpdate
+from app.constants.product_messages import ProductMessages
 from app.utils.response import success_response
 from app.utils.pagination import paginate
 
 router = APIRouter(tags=["Products"])
 
-@router.get("/categories")
+@router.get("/categories", status_code=status.HTTP_200_OK)
 async def list_categories(request: Request):
     if hasattr(request.state, "actions"): request.state.actions.append("Fetching active product categories from Global Catalog")
     return success_response(await ProductService().get_categories())
 
-@router.post("/categories", status_code=201, dependencies=[Depends(require_permission(ProductPermissions.CREATE))])
+@router.post("/categories", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(ProductPermissions.CREATE))])
 async def create_category(request: Request, payload: CategoryCreate):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Admin creating new category -> '{payload.name}'")
-    return success_response(await ProductService().create_category(payload.model_dump()))
+    result = await ProductService().create_category(payload.model_dump())
+    return success_response(data=result, message=ProductMessages.CATEGORY_CREATED)
 
-@router.delete("/categories/{category_id}", dependencies=[Depends(require_permission(ProductPermissions.DELETE))])
+@router.delete("/categories/{category_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.DELETE))])
 async def delete_category(request: Request, category_id: uuid.UUID):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Admin initiating deletion for Category: {str(category_id)[:8]}...")
     await ProductService().delete_category(str(category_id))
-    return success_response(message="Category deleted")
+    return success_response(message=ProductMessages.CATEGORY_DELETED)
 
-@router.get("/products")
+@router.get("/products", status_code=status.HTTP_200_OK)
 async def list_products(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), category: str = None, search: str = None, min_price: float = None, max_price: float = None, in_stock: bool = None):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Querying Paginated Catalog (Page: {page})")
     items, total = await ProductService().get_products(page, page_size, category, search, min_price, max_price, in_stock)
     return paginate(items, total, page, page_size)
 
-@router.get("/products/{slug}")
+@router.get("/products/{slug}", status_code=status.HTTP_200_OK)
 async def get_product(request: Request, slug: str):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Targeting Product fetch for slug -> '{slug}'")
     return success_response(await ProductService().get_product(slug))
 
-@router.post("/products", status_code=201, dependencies=[Depends(require_permission(ProductPermissions.CREATE))])
+@router.post("/products", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(ProductPermissions.CREATE))])
 async def create_product(request: Request, payload: ProductCreate):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Admin inserting new product -> SKU: {payload.sku or 'Auto'}")
-    return success_response(await ProductService().create_product(payload.model_dump()))
+    result = await ProductService().create_product(payload.model_dump())
+    return success_response(data=result, message=ProductMessages.PRODUCT_CREATED)
 
-@router.patch("/products/{product_id}", dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
+@router.patch("/products/{product_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
 async def update_product(request: Request, product_id: uuid.UUID, payload: ProductUpdate):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Admin overriding Product metadata -> ID: {str(product_id)[:8]}...")
-    return success_response(await ProductService().update_product(str(product_id), payload.model_dump(exclude_unset=True)))
+    result = await ProductService().update_product(str(product_id), payload.model_dump(exclude_unset=True))
+    return success_response(data=result, message=ProductMessages.PRODUCT_UPDATED)
 
-@router.delete("/products/{product_id}", dependencies=[Depends(require_permission(ProductPermissions.DELETE))])
+@router.delete("/products/{product_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.DELETE))])
 async def delete_product(request: Request, product_id: uuid.UUID):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Admin isolating Product -> ID: {str(product_id)[:8]}...")
     await ProductService().delete_product(str(product_id))
-    return success_response(message="Product deleted")
+    return success_response(message=ProductMessages.PRODUCT_DELETED)
 
-@router.post("/products/{product_id}/images", dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
+@router.post("/products/{product_id}/images", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
 async def upload_image_endpoint(request: Request, product_id: uuid.UUID, file: UploadFile = File(...)):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Receiving asset upload for Product: {str(product_id)[:8]}...")
-    return success_response(await ProductService().upload_image(str(product_id), await file.read(), file.filename or "unknown"))
+    result = await ProductService().upload_image(str(product_id), await file.read(), file.filename or "unknown")
+    return success_response(data=result, message=ProductMessages.IMAGE_UPLOADED)
 
-@router.delete("/products/{product_id}/images/{index}", dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
+@router.delete("/products/{product_id}/images/{index}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
 async def delete_image_endpoint(request: Request, product_id: uuid.UUID, index: int):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Admin deleting Image Index [{index}] for Product: {str(product_id)[:8]}...")
-    return success_response(await ProductService().delete_image(str(product_id), index))
+    result = await ProductService().delete_image(str(product_id), index)
+    return success_response(data=result, message=ProductMessages.IMAGE_DELETED)
 
-@router.put("/products/{product_id}/images/reorder", dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
+@router.put("/products/{product_id}/images/reorder", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
 async def reorder_images(request: Request, product_id: uuid.UUID, ordered_urls: list[str]):
     if hasattr(request.state, "actions"): request.state.actions.append(f"Restructuring image carousel for Product: {str(product_id)[:8]}...")
-    return success_response(await ProductService().reorder_images(str(product_id), ordered_urls))
+    result = await ProductService().reorder_images(str(product_id), ordered_urls)
+    return success_response(data=result, message=ProductMessages.IMAGES_REORDERED)
