@@ -2,23 +2,18 @@
 Auth Repository — Async Hardened Production Grade
 =================================================
 Path: app/repositories/auth_repo.py
-
-Architecture & Fixes:
-  ✅ Stateless Execution — Fetches Supabase client on-demand inside async methods.
-  ✅ Resolves Coroutine Crash — Awaits async client factories to prevent AttributeError.
 """
 import logging
 from typing import Any, Dict, Optional
 import httpx
-from app.core.supabase import get_async_supabase, get_async_admin_supabase
+from app.core.supabase import get_async_supabase
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-
 class AsyncAuthRepository:
     def __init__(self):
-        # Client initialization is deferred to async methods to prevent coroutine AttributeError
+        # Client initialization is deferred to async methods
         pass
 
     async def sign_up(self, email: str, password: str, full_name: str) -> Optional[str]:
@@ -46,7 +41,6 @@ class AsyncAuthRepository:
         return None
 
     async def refresh_session(self, refresh_token: str) -> Optional[Dict[str, Any]]:
-        # Call Supabase token endpoint directly to avoid shared singleton session state
         url = f"{settings.SB_URL}/auth/v1/token?grant_type=refresh_token"
         headers = {
             "apikey": settings.SB_KEY,
@@ -54,10 +48,12 @@ class AsyncAuthRepository:
         }
         async with httpx.AsyncClient() as client:
             response = await client.post(url, headers=headers, json={"refresh_token": refresh_token})
+            
         if response.status_code != 200:
             data = response.json()
             msg = data.get("error_description") or data.get("msg") or response.text
             raise Exception(f"Invalid Refresh Token: {msg}")
+            
         data = response.json()
         user = data.get("user") or {}
         return {
@@ -69,7 +65,6 @@ class AsyncAuthRepository:
         }
 
     async def sign_out_with_token(self, refresh_token: str) -> None:
-        """Sign out by calling Supabase /auth/v1/logout directly via httpx."""
         url = f"{settings.SB_URL}/auth/v1/logout"
         headers = {
             "apikey": settings.SB_KEY,
@@ -82,6 +77,18 @@ class AsyncAuthRepository:
         sb = await get_async_supabase()
         await sb.auth.reset_password_email(email)
 
-    async def admin_update_password(self, user_id: str, new_password: str) -> None:
-        admin_sb = await get_async_admin_supabase()
-        await admin_sb.auth.admin.update_user_by_id(user_id, {"password": new_password})
+    # ✅ ZERO-TRUST FIX: No Admin API used. Replaced with Token-based update.
+    async def update_password_with_token(self, access_token: str, new_password: str) -> None:
+        url = f"{settings.SB_URL}/auth/v1/user"
+        headers = {
+            "apikey": settings.SB_KEY,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient() as client:
+            response = await client.put(url, headers=headers, json={"password": new_password})
+            
+            if response.status_code != 200:
+                data = response.json()
+                msg = data.get("error_description") or data.get("msg") or "Token is invalid or expired."
+                raise Exception(msg)

@@ -3,9 +3,11 @@ Auth Schemas (DTOs)
 ===================
 Path: app/api/schemas/auth_dto.py
 """
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from app.constants.auth_messages import AuthSecurityMessages, AuthRules
 
 class RegisterRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     full_name: str | None = Field(default=None, max_length=255)
@@ -13,46 +15,32 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one digit")
-        if not any(c.islower() for c in v):
-            raise ValueError("Password must contain at least one lowercase letter")
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
+        if not any(c.isupper() for c in v): raise ValueError(AuthSecurityMessages.PWD_UPPERCASE)
+        if not any(c.isdigit() for c in v): raise ValueError(AuthSecurityMessages.PWD_DIGIT)
+        if not any(c.islower() for c in v): raise ValueError(AuthSecurityMessages.PWD_LOWERCASE)
+        if len(v) < 8: raise ValueError(AuthSecurityMessages.PWD_LENGTH)
             
-        common_passwords = {"password", "password123", "12345678", "qwerty123", "admin123", "letmein123"}
-        if v.lower() in common_passwords:
-            raise ValueError("This password is too common — please choose a stronger one")
+        if v.lower() in AuthRules.COMMON_PASSWORDS:
+            raise ValueError(AuthSecurityMessages.PWD_COMMON)
         return v
 
 class LoginRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
     email: EmailStr
     password: str
 
 class ForgotPasswordRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
     email: EmailStr
 
 class ResetPasswordRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
     new_password: str = Field(min_length=8, max_length=128)
 
     @field_validator("new_password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one digit")
+        if not any(c.isupper() for c in v): raise ValueError(AuthSecurityMessages.PWD_UPPERCASE)
+        if not any(c.isdigit() for c in v): raise ValueError(AuthSecurityMessages.PWD_DIGIT)
+        if not any(c.islower() for c in v): raise ValueError(AuthSecurityMessages.PWD_LOWERCASE)
         return v
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
-    expires_in: int | None = None
-
-class LoginResponse(TokenResponse):
-    user: dict[str, str]
-
-class MessageResponse(BaseModel):
-    message: str
