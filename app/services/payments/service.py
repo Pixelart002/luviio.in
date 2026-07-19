@@ -1,34 +1,40 @@
+"""
+Payment Service — Enterprise Orchestration
+==========================================
+Path: app/services/payments/service.py
+"""
 import time
 import logging
 from uuid import UUID
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict
 from collections import defaultdict
+from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 
 from app.repositories.payment_repo import AsyncPaymentRepository
 from app.services.pricing import get_pricing_from_config
-from app.services.events import get_event_bus, OrderPaidEvent, OrderFailedEvent
+from app.events.registry import get_event_bus, OrderPaidEvent
 from app.integrations.payments.registry import get_payment_provider
-from app.core.exceptions import LuviioException, OutOfStockException, PaymentFailedException
+from app.permissions.policies.payment_policies import PaymentPolicy
+from app.constants.payment_messages import PaymentMessages, PaymentSecurityMessages, PaymentRules
+from app.enums.order_status import OrderStatus
 
 logger = logging.getLogger(__name__)
 
 class BruteForceGuard:
-    def __init__(self, max_attempts: int = 5, window_seconds: int = 60):
+    """Internal memory guard to prevent gateway spamming."""
+    def __init__(self):
         self.attempts = defaultdict(list)
-        self.max_attempts, self.window_seconds = max_attempts, window_seconds
 
-    def is_blocked(self, ip: str) -> bool:
+    def assert_safe(self, ip: str) -> None:
         now = time.time()
-        self.attempts[ip] = [t for t in self.attempts[ip] if t > now - self.window_seconds]
-        return len(self.attempts[ip]) >= self.max_attempts
+        self.attempts[ip] = [t for t in self.attempts[ip] if t > now - PaymentRules.BRUTE_FORCE_WINDOW_SEC]
+        if len(self.attempts[ip]) >= PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=PaymentSecurityMessages.RATE_LIMIT)
 
-    def record(self, ip: str):
-        self.attempts[ip].append(time.time())
-
-    def reset(self, ip: str):
-        self.attempts.pop(ip, None)
+    def record(self, ip: str): self.attempts[ip].append(time.time())
+    def reset(self, ip: str): self.attempts.pop(ip, None)
 
 brute_guard = BruteForceGuard()
 
@@ -41,51 +47,46 @@ class PaymentService:
         return int((Decimal(str(amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
     async def create_intent(self, user_id: str, client_ip: str, idempotency_key: str, address_id: str) -> Dict[str, Any]:
-        if brute_guard.is_blocked(client_ip): 
-            raise LuviioException("Too many attempts", "RATE_LIMIT", 429)
+        # 🛡️ 1. Security Check
+        brute_guard.assert_safe(client_ip)
 
+        # 🛡️ 2. Idempotency & State Machine Check
         existing = await self.repo.get_order_by_idempotency_key(user_id, idempotency_key)
         if existing:
-            if existing["status"] == "pending":
+            if existing["status"] == OrderStatus.PENDING.value:
                 try:
                     intent = await run_in_threadpool(self.provider.retrieve_intent, existing["stripe_payment_intent"])
                     if intent["status"] in ["requires_payment_method", "requires_confirmation", "requires_action"]:
                         return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": existing["id"]}
-                    else:
-                        # Stripe intent is in a terminal or unexpected state (e.g. succeeded, canceled, processing).
-                        # Do not fall through to create a duplicate order.
-                        raise LuviioException(
-                            f"Payment intent is in an unrecoverable state: {intent['status']}",
-                            "PAYMENT_INTENT_STATE_ERROR",
-                            409,
-                        )
-                except LuviioException:
-                    raise
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT, 
+                        detail=PaymentSecurityMessages.INTENT_STATE_ERROR.format(status=intent['status'])
+                    )
+                except HTTPException: raise
                 except Exception as exc:
-                    logger.error(f"[PAYMENT ERROR] Failed to retrieve Stripe intent for order {existing['id']}: {exc}")
-                    raise LuviioException("Could not retrieve payment intent status. Please try again.", "PAYMENT_ERROR", 502)
-            elif existing["status"] == "paid":
-                raise LuviioException("This order is already paid.", "ALREADY_PAID", 400)
+                    logger.error(f"[PAYMENT ERROR] Stripe retrieval failed: {exc}")
+                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED)
+            elif existing["status"] == OrderStatus.PAID.value:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ALREADY_PAID)
             else:
-                # Order exists in an unrecognised status — never proceed to create a duplicate.
-                raise LuviioException("An order with this idempotency key already exists.", "DUPLICATE_ORDER", 409)
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.DUPLICATE_ORDER)
 
+        # 🛡️ 3. Cart & Stock Policies
         cart_items = await self.repo.get_cart_items_for_checkout(user_id)
-        if not cart_items: 
-            raise LuviioException("Your cart is empty", "EMPTY_CART", 400)
+        PaymentPolicy.assert_valid_cart(cart_items)
 
         subtotal = Decimal("0")
         items_to_deduct = []
+        
         for item in cart_items:
             prod = item.get("products") or {}
-            if not prod.get("is_active") or prod.get("stock", 0) < item["quantity"]:
-                raise OutOfStockException(prod.get("name", "Item"))
+            # 🛡️ Stock Guard
+            PaymentPolicy.assert_stock_availability(item["quantity"], prod)
             
             locked_price = Decimal(str(item.get("price_snapshot") or prod.get("price", 0)))
             lt = locked_price * item["quantity"]
             subtotal += lt
             
-            # 🔥 FIXED: Corrected parenthesis and added default for compare_price
             items_to_deduct.append({
                 "product_id": item["product_id"], 
                 "product_name": prod.get("name", "Item"),
@@ -95,90 +96,94 @@ class PaymentService:
                 "subtotal": float(lt)
             })
 
+        # 🛡️ 4. Pricing & Limits Policy
         config = await self.repo.get_pricing_config()
         breakdown = get_pricing_from_config(config).calculate(subtotal)
         amount_paise = self._paise(breakdown.total)
-
-        if amount_paise < 5000: 
-            raise LuviioException("Order amount out of bounds", "INVALID_AMOUNT", 400)
+        
+        PaymentPolicy.assert_minimum_amount(amount_paise)
 
         addr = await self.repo.get_shipping_address(address_id, user_id)
         if not addr: 
-            raise LuviioException("Shipping address not found", "NOT_FOUND", 404)
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
 
+        # 5. Execute Provider
         try:
             intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_PENDING", user_id, f"aot_pi_{idempotency_key}")
         except Exception as exc:
             brute_guard.record(client_ip)
-            raise PaymentFailedException(str(exc))
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED)
 
         order_data = {
-            "customer_id": user_id, "shipping_address_id": address_id, "status": "pending",
+            "customer_id": user_id, "shipping_address_id": address_id, "status": OrderStatus.PENDING.value,
             **breakdown.as_dict(),
             "shipping_line1": addr.get("line1"), "shipping_city": addr.get("city"),
             "shipping_postal_code": addr.get("postal_code"), "shipping_country": addr.get("country"),
             "idempotency_key": str(UUID(idempotency_key)), "stripe_payment_intent": intent["id"]
         }
         
+        # 6. Atomic RPC Execution
         try:
             pending_order = await self.repo.create_pending_order_with_reservation(order_data, items_to_deduct)
             await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
         except Exception as e:
             logger.error(f"[CRITICAL DB ERROR] Atomic Reservation Failed: {e}")
-            raise LuviioException("Inventory depleted or Database error during checkout", "RACE_CONDITION", 409)
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION)
 
         return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": pending_order["id"]}
 
     async def confirm_payment(self, user_id: str, client_ip: str, pi_id: str, email: str) -> Dict[str, Any]:
-        if brute_guard.is_blocked(client_ip): raise LuviioException("Too many attempts", "RATE_LIMIT", 429)
+        brute_guard.assert_safe(client_ip)
 
         try:
             intent = await run_in_threadpool(self.provider.retrieve_intent, pi_id)
             if intent["status"] != "succeeded":
-                raise PaymentFailedException(intent["status"])
-        except Exception as e:
+                raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=PaymentSecurityMessages.PAYMENT_FAILED)
+        except HTTPException: raise
+        except Exception:
             brute_guard.record(client_ip)
-            raise PaymentFailedException("Verification failed")
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED)
 
+        # 🛡️ Security Check: Prevent Tampering
         order_id = intent.get("metadata", {}).get("order_id")
         existing_order = await self.repo.get_order_by_id(order_id)
-        if not existing_order: raise LuviioException("Order not found", "NOT_FOUND", 404)
+        
+        PaymentPolicy.assert_can_confirm(existing_order, user_id)
 
+        # 🚀 Execute Atomic RPC
         try:
             result = await self.repo.settle_order_transaction(order_id, intent["id"], intent["amount"] / 100, user_id)
-        except Exception as e:
-            raise LuviioException("Database Settlement Failed", "DB_ERROR", 500)
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=PaymentSecurityMessages.RACE_CONDITION)
 
         if result == "ALREADY_PAID":
-            return {"status": "paid", "order_id": order_id, "message": "Already processed"}
+            return {"status": OrderStatus.PAID.value, "order_id": order_id, "message": PaymentMessages.ALREADY_SETTLED}
 
         brute_guard.reset(client_ip)
+        existing_order["status"] = OrderStatus.PAID.value
         
-        existing_order["status"] = "paid"
-        
-        try: 
-            get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
-        except Exception as e: 
-            logger.error(f"Event bus failed during publish: {e}")
+        # Fire Event
+        try: get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
+        except Exception as e: logger.error(f"Event bus failed: {e}")
 
-        return {"status": "paid", "order_id": order_id, "message": "Payment confirmed"}
+        return {"status": OrderStatus.PAID.value, "order_id": order_id, "message": PaymentMessages.CONFIRMED}
 
     async def retry_payment(self, user_id: str, order_id: str) -> Dict[str, Any]:
         existing_order = await self.repo.get_order_by_id(order_id)
-        if not existing_order or existing_order.get("customer_id") != user_id:
-            raise LuviioException("Order not found", "NOT_FOUND", 404)
+        
+        # 🛡️ Policy Check
+        PaymentPolicy.assert_can_retry(existing_order, user_id)
             
-        if existing_order.get("status") == "paid":
-            return {"status": "paid", "message": "This order is already paid"}
+        if existing_order.get("status") == OrderStatus.PAID.value:
+            return {"status": OrderStatus.PAID.value, "message": PaymentMessages.RETRY_SUCCESSFUL}
             
         pi_id = existing_order.get("stripe_payment_intent")
-        if not pi_id: raise LuviioException("No payment intent linked", "INVALID_STATE", 400)
             
         try:
             intent = await run_in_threadpool(self.provider.retrieve_intent, pi_id)
             if intent["status"] == "succeeded":
                 await self.repo.settle_order_transaction(order_id, pi_id, intent["amount"] / 100, user_id)
-                return {"status": "paid", "message": "Payment was already successful!"}
+                return {"status": OrderStatus.PAID.value, "message": PaymentMessages.RETRY_SUCCESSFUL}
                 
             client_secret = intent.get("client_secret")
             if intent["status"] == "canceled" or not client_secret:
@@ -189,5 +194,5 @@ class PaymentService:
                 return {"client_secret": new_intent["client_secret"], "payment_intent_id": new_intent["id"], "order_id": order_id}
 
             return {"client_secret": client_secret, "payment_intent_id": intent["id"], "order_id": order_id}
-        except Exception as e:
-            raise PaymentFailedException(str(e))
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED)
