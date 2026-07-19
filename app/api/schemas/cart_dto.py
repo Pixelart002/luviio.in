@@ -3,20 +3,19 @@ Cart Schemas (DTOs)
 ===================
 Path: app/api/schemas/cart_dto.py
 """
-from pydantic import BaseModel, Field
-from typing import List, Any, Optional # 🔥 FIX: Imported Optional here
+from pydantic import BaseModel, ConfigDict, Field
+from typing import List, Optional
 from uuid import UUID
-
-# ── Requests ──────────────────────────────────────────────────────────────────
+from app.constants.cart_messages import CartRules
 
 class AddItemRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
     product_id: UUID
-    quantity: int = Field(ge=1, le=100)
+    quantity: int = Field(ge=1, le=CartRules.MAX_QTY_PER_ITEM)
 
 class UpdateItemRequest(BaseModel):
-    quantity: int = Field(ge=1, le=100)
-
-# ── Responses ─────────────────────────────────────────────────────────────────
+    model_config = ConfigDict(str_strip_whitespace=True)
+    quantity: int = Field(ge=1, le=CartRules.MAX_QTY_PER_ITEM)
 
 class CartItemDTO(BaseModel):
     id: str
@@ -26,7 +25,7 @@ class CartItemDTO(BaseModel):
     image_url: Optional[str] = None
     quantity: int
     unit_price: float
-    compare_price: Optional[float] = 0.0 # 🔥 Ab Optional yahan perfectly kaam karega
+    compare_price: Optional[float] = 0.0
     price_snapshot: float
     line_total: float
     stock: int
