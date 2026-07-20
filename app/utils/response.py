@@ -1,7 +1,10 @@
-from typing import Any, Generic, TypeVar, Optional
+"""
+API Standard Response Wrapper
+=============================
+Path: app/utils/response.py
+"""
+from typing import Any, Optional
 from pydantic import BaseModel
-
-T = TypeVar('T')
 
 class PaginationMeta(BaseModel):
     page: int
@@ -11,27 +14,30 @@ class PaginationMeta(BaseModel):
     has_next: bool
     has_previous: bool
 
-class APIResponse(BaseModel, Generic[T]):
-    success: bool
-    data: Optional[T] = None
-    error_code: Optional[str] = None
-    message: Optional[str] = None
-    meta: Optional[PaginationMeta] = None
-
 def success_response(data: Any = None, message: str = "Success", meta: Optional[PaginationMeta] = None) -> dict:
     """
     Standard wrapper for all successful API responses.
+    This dict structure completely avoids Pydantic Generic[T] OpenAPI crash issues.
     """
-    response = APIResponse(success=True, data=data, message=message, meta=meta)
-    return response.model_dump(exclude_none=True)
+    response = {
+        "success": True,
+        "message": message
+    }
+    if data is not None:
+        response["data"] = data
+    if meta is not None:
+        response["meta"] = meta.model_dump()
+        
+    return response
 
 def error_response(code: str, message: str, details: Any = None) -> dict:
-    """
-    Standard wrapper for all failed API responses.
-    """
-    return {
+    """Standard wrapper for all failed API responses."""
+    response = {
         "success": False,
         "error_code": code,
-        "message": message,
-        "details": details
+        "message": message
     }
+    if details is not None:
+        response["details"] = details
+        
+    return response

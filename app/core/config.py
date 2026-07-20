@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     SB_URL: str = ""
     SB_KEY: str = ""
     SB_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_JWT_SECRET: str = "" 
+    # 🔥 NAYA: Offline Token Validation ke liye
 
     # ── STRIPE ─────────────────────────────────────────────────────
     STRIPE_SECRET_KEY: str = ""

@@ -1,193 +1,149 @@
 """
-Dependencies — Async Hardened Production Grade (Luviio SSOT)
-============================================================
+Dependencies — Offline JWT Cryptographic Validation (Amazon-Grade SSOT)
+=======================================================================
 Path: app/core/dependencies.py
 """
-import base64
-import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Callable
 
 from cachetools import TTLCache
-from fastapi import Depends, Request
+from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from gotrue.errors import AuthApiError
+from jose import jwt, JWTError  # 🔥 pip install python-jose
 
 # Utility imports
-from app.utils.timestamp import ts_to_iso
+from app.core.config import settings
 from app.repositories.user_repo import AsyncUserRepository
-from app.core.supabase import get_async_admin_supabase, get_async_supabase
 from app.core.exceptions import UnauthorizedAction, UnauthenticatedUser
 from app.permissions.base import ROLE_PERMISSIONS
 from app.enums.roles import UserRole
 
 logger = logging.getLogger(__name__)
+
+# Security scheme enables the 🔒 Lock icon in Swagger UI
 bearer_scheme = HTTPBearer(auto_error=False)
 
-_token_cache: TTLCache = TTLCache(maxsize=512, ttl=60)
-_profile_cache: TTLCache = TTLCache(maxsize=512, ttl=60)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  JWT PAYLOAD DECODER
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _decode_jwt(token: str) -> dict[str, Any]:
-    try:
-        parts = token.split('.')
-        if len(parts) != 3:
-            return {}
-        payload_b64 = parts[1]
-        payload_b64 += '=' * (-len(payload_b64) % 4)
-        payload_bytes = base64.urlsafe_b64decode(payload_b64)
-        return json.loads(payload_bytes)
-    except Exception as e:
-        logger.debug("JWT payload extraction failed: %s", e)
-        return {}
-
-
-def _build_context(auth_user: Any, profile: dict[str, Any], claims: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "auth_user": auth_user,
-        "profile": profile,
-        "exp": ts_to_iso(claims.get("exp")),
-        "sub": claims.get("sub"),
-        "iat": ts_to_iso(claims.get("iat")),
-        "jwt_role": claims.get("role"),
-    }
-
+# Profile caching saves DB hits for RBAC checks
+_profile_cache: TTLCache = TTLCache(maxsize=1024, ttl=300)
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  CORE VALIDATION
+#  OFFLINE JWT VALIDATION (ZERO NETWORK HOP)
 # ══════════════════════════════════════════════════════════════════════════════
 
-async def _validate_token(token: str) -> Any:
-    if not token:
-        raise UnauthenticatedUser()
-    if token in _token_cache:
-        return _token_cache[token]
-
-    sb = await get_async_admin_supabase()
-    try:
-        result = await sb.auth.get_user(token)
-        user = getattr(result, "user", result)
-        if not user or not hasattr(user, "id"):
-            raise UnauthenticatedUser("Invalid token structure")
-
-        _token_cache[token] = user
-        return user
-    except AuthApiError:
-        raise UnauthenticatedUser("Invalid or expired token")
-    except Exception as e:
-        logger.error("Token validation error: %s", e)
-        raise UnauthenticatedUser("Authentication failed")
-
-
-async def _get_or_create_profile(auth_user: Any) -> dict[str, Any]:
-    repo = AsyncUserRepository()
-    auth_user_id = str(getattr(auth_user, "id", ""))
+def _extract_token(request: Request, credentials: Optional[HTTPAuthorizationCredentials]) -> str:
+    """Extracts JWT from Authorization Header OR Secure HttpOnly Cookie."""
+    if credentials and credentials.credentials:
+        return credentials.credentials
     
-    if not auth_user_id:
-        return {}
-    if auth_user_id in _profile_cache:
-        return _profile_cache[auth_user_id]
+    token = request.cookies.get("access_token")
+    if token:
+        return token
+        
+    raise UnauthenticatedUser("Authentication credentials missing.")
+
+def _verify_and_decode_jwt(token: str) -> Dict[str, Any]:
+    """
+    Cryptographically verifies the Supabase JWT offline.
+    0 Latency. 0 Network Requests. 100% Secure.
+    """
+    if not settings.SUPABASE_JWT_SECRET:
+        logger.error("CRITICAL: SUPABASE_JWT_SECRET is missing from environment variables.")
+        raise UnauthenticatedUser("Server misconfiguration.")
 
     try:
-        profile = await repo.get_profile(auth_user_id)
-    except Exception:
-        profile = None
+        payload = jwt.decode(
+            token, 
+            settings.SUPABASE_JWT_SECRET, 
+            algorithms=["HS256"],
+            audience="authenticated"
+        )
+        return payload
+    except JWTError as e:
+        logger.warning(f"Auth Block | Invalid/Expired JWT: {e}")
+        raise UnauthenticatedUser("Token is invalid or expired.")
+
+async def _get_or_create_profile(user_id: str, email: str, user_metadata: dict) -> Dict[str, Any]:
+    """Fetches user profile from Cache or DB."""
+    if user_id in _profile_cache:
+        return _profile_cache[user_id]
+
+    repo = AsyncUserRepository()
+    profile = await repo.get_profile(user_id)
 
     if not profile:
-        user_meta = getattr(auth_user, "user_metadata", None) or {}
         try:
             profile = await repo.upsert_profile(
-                user_id=auth_user_id,
-                email=getattr(auth_user, "email", "") or "",
-                full_name=user_meta.get("full_name", "") or "",
-                phone=getattr(auth_user, "phone", "") or "",
+                user_id=user_id,
+                email=email,
+                full_name=user_metadata.get("full_name", ""),
+                phone=""
             )
         except Exception as e:
-            logger.error("Profile auto-create failed for %.8s: %s", auth_user_id, e)
+            logger.error(f"Profile auto-create failed for {user_id}: {e}")
             return {}
 
-    result = profile or {}
-    if result:
-        _profile_cache[auth_user_id] = result
-    return result
+    if profile:
+        _profile_cache[user_id] = profile
+    return profile or {}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  FASTAPI DEPENDENCIES
+#  FASTAPI DEPENDENCY INJECTIONS
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def get_current_user(
     request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-) -> dict[str, Any]:
-    token = None
-    if not credentials:
-        refresh_token = request.cookies.get("refresh_token")
-        if refresh_token:
-            try:
-                sb = await get_async_supabase()
-                result = await sb.auth.refresh_session(refresh_token)
-                if result and hasattr(result, "session") and result.session:
-                    token = result.session.access_token
-                    auth_user = await _validate_token(token)
-                    profile = await _get_or_create_profile(auth_user)
-                    if profile and profile.get("is_active", True):
-                        request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
-                        claims = _decode_jwt(token)
-                        return _build_context(auth_user, profile, claims)
-            except Exception:
-                pass
-        raise UnauthenticatedUser()
-    else:
-        token = credentials.credentials
-
-    auth_user = await _validate_token(token)
-    profile = await _get_or_create_profile(auth_user)
-
-    if not profile.get("is_active", True):
-        raise UnauthorizedAction("Account deactivated")
-
-    request.state.user_id = profile.get("id") or getattr(auth_user, "id", "N/A")
-    claims = _decode_jwt(token)
-    return _build_context(auth_user, profile, claims)
-
-
-async def get_user_id_strict(current_user: dict[str, Any] = Depends(get_current_user)) -> str:
-    user_id = current_user.get("profile", {}).get("id") or current_user.get("sub") or getattr(current_user.get("auth_user"), "id", "")
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+) -> Dict[str, Any]:
+    """Main Auth Dependency for Private Routes."""
+    token = _extract_token(request, credentials)
+    
+    # 1. Cryptographic Offline Validation
+    claims = _verify_and_decode_jwt(token)
+    user_id = claims.get("sub")
+    email = claims.get("email", "")
+    
     if not user_id:
-        raise UnauthenticatedUser("User identity missing for scope resolution.")
-    return str(user_id)
+        raise UnauthenticatedUser("Invalid token structure: Missing Subject (sub)")
+
+    # 2. Bind Profile & State
+    profile = await _get_or_create_profile(user_id, email, claims.get("user_metadata", {}))
+    
+    if profile and not profile.get("is_active", True):
+        raise UnauthorizedAction("Account has been deactivated.")
+
+    # Attach to request state for the Logger Middleware
+    request.state.user_id = user_id
+    request.state.user_name = profile.get("full_name") or email.split('@')[0] if email else "User"
+
+    return {
+        "sub": user_id,
+        "email": email,
+        "profile": profile,
+        "jwt_role": claims.get("role"),
+        "exp": claims.get("exp")
+    }
+
+async def get_user_id_strict(current_user: Dict[str, Any] = Depends(get_current_user)) -> str:
+    """Convenience dependency when only the User ID is needed."""
+    return str(current_user["sub"])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ENTERPRISE PBAC GUARDS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def require_permission(required_perm: str):
+def require_permission(required_perm: str) -> Callable:
     async def permission_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
-        role = current_user.get("profile", {}).get("role", UserRole.CUSTOMER)
+        role = current_user.get("profile", {}).get("role", UserRole.CUSTOMER.value if hasattr(UserRole.CUSTOMER, "value") else "customer")
+        
         user_perms = ROLE_PERMISSIONS.get(role, [])
-        if "*" in user_perms:
+        if "*" in user_perms:  # God mode (Admin)
             return current_user
+            
         if required_perm not in user_perms:
-            raise UnauthorizedAction(f"Missing permission: {required_perm}")
+            logger.warning(f"PBAC Block | User {current_user['sub']} missing perm: {required_perm}")
+            raise UnauthorizedAction(f"Missing required permission: {required_perm}")
+            
         return current_user
     return permission_checker
-
-
-async def require_admin(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    sb = await get_async_admin_supabase()
-    user_id = current.get("profile", {}).get("id", "")
-    if not user_id:
-        raise UnauthorizedAction("Access denied")
-    
-    result = await sb.table("users").select("role, is_active").eq("id", user_id).limit(1).maybe_single().execute()
-    if not result or not result.data or result.data.get("role") != "admin" or not result.data.get("is_active"):
-        raise UnauthorizedAction("Admin access required")
-    
-    current["profile"].update({"role": result.data["role"], "is_active": result.data["is_active"]})
-    return current

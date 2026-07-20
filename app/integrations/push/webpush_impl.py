@@ -9,10 +9,13 @@ import json
 import logging
 import time
 import threading
+import asyncio
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 import requests
+from starlette.concurrency import run_in_threadpool
+
+from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +27,6 @@ VAPID_CLAIM_EMAIL = os.environ.get("VAPID_CLAIM_EMAIL", "mailto:admin@luviio.in"
 _PUSH_TIMEOUT_SEC = 10         
 _MAX_RETRIES = 2               
 _RETRY_DELAY_SEC = 1.5         
-_MAX_WORKERS = 10               
 _CIRCUIT_BREAKER_THRESHOLD = 5  
 _CIRCUIT_BREAKER_RESET_SEC = 60 
 _RATE_LIMIT_PER_ENDPOINT = 3    
@@ -77,21 +79,26 @@ def _make_session() -> requests.Session:
     return session
 
 def send_push(subscription: dict[str, Any], title: str, body: str, icon: str = "/icon-192.png", url: str = "/") -> bool:
+    """Synchronous push sender (now strictly runs via Starlette's run_in_threadpool)."""
     if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY: return False
-    try: from pywebpush import webpush, WebPushException
-    except ImportError: return False
+    try: 
+        from pywebpush import webpush, WebPushException
+    except ImportError: 
+        return False
     
     endpoint = subscription.get("endpoint", "")
     endpoint_key = endpoint.split("/")[-1][:20] if endpoint else "unknown"
+    
     if _push_circuit_breaker.is_open(endpoint_key): return False
     if not _check_rate_limit(endpoint_key): return False
     
     payload = json.dumps({"title": title, "body": body, "icon": icon, "url": url, "timestamp": int(time.time())})
-    last_error = None
+    
+    # Pre-allocate session outside loop to reuse connection pool
+    session = _make_session() 
     
     for attempt in range(1, _MAX_RETRIES + 2):
         try:
-            session = _make_session()
             webpush(
                 subscription_info=subscription, data=payload, vapid_private_key=VAPID_PRIVATE_KEY,
                 vapid_claims={"sub": VAPID_CLAIM_EMAIL}, requests_session=session, timeout=_PUSH_TIMEOUT_SEC,
@@ -99,7 +106,6 @@ def send_push(subscription: dict[str, Any], title: str, body: str, icon: str = "
             _push_circuit_breaker.record_success(endpoint_key)
             return True
         except Exception as exc:
-            last_error = exc
             exc_name = exc.__class__.__name__
             if exc_name == "WebPushException":
                 try:
@@ -108,7 +114,8 @@ def send_push(subscription: dict[str, Any], title: str, body: str, icon: str = "
                         import re as _re
                         _m = _re.search(r"\b(4\d{2}|5\d{2})\b", str(exc))
                         if _m: status_code = int(_m.group(1))
-                    if status_code in (404, 410): return False
+                    
+                    if status_code in (404, 410): return False # Endpoint is dead
                     if status_code == 429:
                         time.sleep(5) 
                         continue
@@ -118,12 +125,16 @@ def send_push(subscription: dict[str, Any], title: str, body: str, icon: str = "
                 time.sleep(_RETRY_DELAY_SEC * (2 ** (attempt - 1)))
             else:
                 _push_circuit_breaker.record_failure(endpoint_key)
+                
     return False
 
-def send_push_to_user(sb_admin: Any, user_id: str, *, title: str, body: str, icon: str = "/icon-192.png", url: str = "/") -> int:
+# 🔥 FIX: Fully Async Orchestrator without manual thread explosion risk
+async def send_push_to_user(user_id: str, *, title: str, body: str, icon: str = "/icon-192.png", url: str = "/") -> int:
     if not user_id: return 0
     try:
-        result = sb_admin.table("push_subscriptions").select("subscription_json").eq("user_id", user_id).execute()
+        # DB Call (Async)
+        sb_admin = await get_async_admin_supabase()
+        result = await sb_admin.table("push_subscriptions").select("subscription_json").eq("user_id", user_id).execute()
         rows = getattr(result, "data", None)
         if not rows: return 0
         
@@ -135,42 +146,46 @@ def send_push_to_user(sb_admin: Any, user_id: str, *, title: str, body: str, ico
             except (json.JSONDecodeError, TypeError): pass
         
         if not subs: return 0
+        
+        # Dispatch blocking I/O to Starlette's native threadpool safely
+        tasks = [run_in_threadpool(send_push, sub, title, body, icon, url) for sub in subs]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
         sent = 0
         dead_endpoints: list[str] = []
         
-        with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, len(subs))) as pool:
-            future_to_sub = {pool.submit(send_push, sub, title, body, icon, url): sub for sub in subs}
-            for future in as_completed(future_to_sub):
-                sub = future_to_sub[future]
-                try:
-                    if future.result(timeout=_PUSH_TIMEOUT_SEC + 5): sent += 1
-                    else:
-                        ep = sub.get("endpoint")
-                        if ep: dead_endpoints.append(ep)
-                except Exception: pass
-        
+        for sub, res in zip(subs, results):
+            if isinstance(res, bool) and res is True:
+                sent += 1
+            elif isinstance(res, bool) and res is False:
+                ep = sub.get("endpoint")
+                if ep: dead_endpoints.append(ep)
+                
+        # Clean up dead endpoints asynchronously
         if dead_endpoints:
-            def _delete_dead(ep: str) -> None:
-                try: sb_admin.table("push_subscriptions").delete().eq("endpoint", ep).execute()
-                except Exception: pass
-            with ThreadPoolExecutor(max_workers=min(5, len(dead_endpoints))) as pool:
-                list(pool.map(_delete_dead, dead_endpoints))
-        
+            delete_tasks = [sb_admin.table("push_subscriptions").delete().eq("endpoint", ep).execute() for ep in dead_endpoints]
+            await asyncio.gather(*delete_tasks, return_exceptions=True)
+            
         return sent
-    except Exception as exc: return 0
+    except Exception as exc: 
+        logger.error(f"Push processing failed: {exc}")
+        return 0
 
-def broadcast_push_to_admins(sb_admin: Any, *, title: str, body: str, icon: str = "/icon-192.png", url: str = "/admin.html") -> int:
+async def broadcast_push_to_admins(*, title: str, body: str, icon: str = "/icon-192.png", url: str = "/admin.html") -> int:
     try:
-        admins = sb_admin.table("users").select("id, email").eq("role", "admin").eq("is_active", True).execute()
+        sb_admin = await get_async_admin_supabase()
+        admins = await sb_admin.table("users").select("id").eq("role", "admin").eq("is_active", True).execute()
         admin_rows = getattr(admins, "data", None)
         if not admin_rows: return 0
         
-        admin_ids = [a["id"] for a in admin_rows]
-        total = 0
-        for admin_id in admin_ids:
-            total += send_push_to_user(sb_admin, admin_id, title=title, body=body, icon=icon, url=url)
-        return total
-    except Exception as exc: return 0
+        # Leverage the updated async send_push_to_user func
+        tasks = [send_push_to_user(a["id"], title=title, body=body, icon=icon, url=url) for a in admin_rows]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        return sum(res for res in results if isinstance(res, int))
+    except Exception as exc: 
+        logger.error(f"Admin broadcast failed: {exc}")
+        return 0
 
 def is_push_configured() -> bool:
     return bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and VAPID_CLAIM_EMAIL)

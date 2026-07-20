@@ -3,26 +3,32 @@ Email Registry (Factory Pattern)
 Path: app/integrations/email/registry.py
 """
 import logging
-from .resend_impl import send_welcome_email, send_order_confirmation, send_order_shipped, send_cart_reminder_email, send_payment_success
+from .resend_impl import (
+    send_welcome_email, 
+    send_order_confirmation, 
+    send_order_shipped, 
+    send_cart_reminder_email, 
+    send_payment_success
+)
 
 logger = logging.getLogger(__name__)
 
 class ResendAdapter:
-    """Adapts the functional Resend implementation to our Interface"""
-    def send_welcome_email(self, to: str, name: str):
-        return send_welcome_email(to, name)
+    """Adapts the functional Resend implementation to our Async Interface"""
+    async def send_welcome_email(self, to: str, name: str) -> None:
+        await send_welcome_email(to, name)
         
-    def send_order_confirmation(self, to: str, order: dict):
-        return send_order_confirmation(to, order)
+    async def send_order_confirmation(self, to: str, order: dict) -> None:
+        await send_order_confirmation(to, order)
         
-    def send_order_shipped(self, to: str, order: dict, tracking_number: str):
-        return send_order_shipped(to, order, tracking_number)
+    async def send_order_shipped(self, to: str, order: dict, tracking_number: str) -> None:
+        await send_order_shipped(to, order, tracking_number)
         
-    def send_cart_reminder_email(self, to: str, name: str, items: list):
-        return send_cart_reminder_email(to, name, items)
+    async def send_cart_reminder_email(self, to: str, name: str, items: list) -> None:
+        await send_cart_reminder_email(to, name, items)
 
-    def send_payment_success(self, to: str, order: dict):
-        return send_payment_success(to, order)
+    async def send_payment_success(self, to: str, order: dict) -> None:
+        await send_payment_success(to, order)
 
 # The Registry Dictionary
 EMAIL_REGISTRY = {

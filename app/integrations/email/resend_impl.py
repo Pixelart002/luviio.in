@@ -1,6 +1,6 @@
 """
-Email Service — Resend Integration
-===================================
+Email Service — Resend Integration (Async Threadpool Fixed)
+===========================================================
 Architecture Layer: External Integrations
 Path: app/integrations/email/resend_impl.py
 """
@@ -9,6 +9,7 @@ import logging
 import base64
 from typing import Any
 import resend
+from starlette.concurrency import run_in_threadpool
 
 # 🔥 IMPORT ADDED FOR INVOICE PDF ATTACHMENT
 from app.utils.documents.pdf_invoice import build_invoice_pdf
@@ -102,14 +103,21 @@ def _email_template(title: str, content: str, preheader: str = "", hero_image: s
 </body>
 </html>"""
 
-def _safe_send(params: dict, log_context: str) -> bool:
-    if not resend.api_key: return False
+# 🔥 FIX: Threadpool dispatcher to stop blocking the main Async Loop
+async def _async_safe_send(params: dict, log_context: str) -> bool:
+    if not resend.api_key:
+        logger.warning(f"[EMAIL SKIPPED] Missing RESEND_API_KEY. Context: {log_context}")
+        return False
     try:
-        email = resend.Emails.send(params)
+        # Pushing sync I/O into a threadpool so it doesn't block the ASGI loop
+        await run_in_threadpool(resend.Emails.send, params)
+        logger.info(f"[EMAIL SENT] {log_context}")
         return True
-    except Exception as e: return False
+    except Exception as e:
+        logger.error(f"[EMAIL FAILED] {log_context} : {e}")
+        return False
 
-def send_welcome_email(to: str, name: str) -> None:
+async def send_welcome_email(to: str, name: str) -> None:
     name = (name or "there").strip()
     content = f"""
       <p style="color:{TEXT_MUTED};line-height:1.8;font-size:14px;margin:0 0 20px;">Hi <strong style="color:{TEXT};">{name}</strong>, welcome to Luviio! 👋</p>
@@ -130,10 +138,15 @@ def send_welcome_email(to: str, name: str) -> None:
       </div>
       <p style="color:{TEXT_MUTED};font-size:11px;margin:24px 0 0;line-height:1.6;">If you didn't create this account, you can safely ignore this email.</p>
     """
-    params: resend.Emails.SendParams = {"from": FROM, "to": [to], "subject": f"Welcome to {APP}, {name}! 🎉", "html": _email_template(title=f"Welcome, {name}!", content=content, preheader=f"Your {APP} account is ready — start shopping premium bath products", hero_image=DEFAULT_HERO_GIF)}
-    _safe_send(params, f"welcome to={to}")
+    params: resend.Emails.SendParams = {
+        "from": FROM, 
+        "to": [to], 
+        "subject": f"Welcome to {APP}, {name}! 🎉", 
+        "html": _email_template(title=f"Welcome, {name}!", content=content, preheader=f"Your {APP} account is ready — start shopping premium bath products", hero_image=DEFAULT_HERO_GIF)
+    }
+    await _async_safe_send(params, f"welcome to={to}")
 
-def send_order_confirmation(to: str, order: dict[str, Any] | None) -> None:
+async def send_order_confirmation(to: str, order: dict | None) -> None:
     order = order or {}
     oid = str(order.get("id", ""))[:8].upper()
     total = order.get("total_amount", 0)
@@ -158,10 +171,15 @@ def send_order_confirmation(to: str, order: dict[str, Any] | None) -> None:
       <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding: 28px 0 0;"><a href="{BASE_URL}/orders.html" style="display:inline-block;padding:12px 28px;border:1px solid {GOLD};color:{GOLD};border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">Track Your Order →</a></td></tr></table>
       <p style="color:{TEXT_MUTED};font-size:11px;margin:24px 0 0;line-height:1.6;">You'll receive another email when your order ships. For any queries, reply to <a href="mailto:support@luviio.in" style="color:{GOLD};text-decoration:none;">support@luviio.in</a></p>
     """
-    params: resend.Emails.SendParams = {"from": FROM, "to": [to], "subject": f"Order #{oid} Confirmed — {APP} ✓", "html": _email_template(title="Order Confirmed ✓", content=content, preheader=f"Order #{oid} — ₹{float(total):,.2f} — Status: {status}")}
-    _safe_send(params, f"order_confirmation to={to} order={oid}")
+    params: resend.Emails.SendParams = {
+        "from": FROM, 
+        "to": [to], 
+        "subject": f"Order #{oid} Confirmed — {APP} ✓", 
+        "html": _email_template(title="Order Confirmed ✓", content=content, preheader=f"Order #{oid} — ₹{float(total):,.2f} — Status: {status}")
+    }
+    await _async_safe_send(params, f"order_confirmation to={to} order={oid}")
 
-def send_order_shipped(to: str, order: dict[str, Any] | None, tracking_number: str | None) -> None:
+async def send_order_shipped(to: str, order: dict | None, tracking_number: str | None) -> None:
     order = order or {}
     oid = str(order.get("id", ""))[:8].upper()
     tracking = tracking_number or "Will be updated soon"
@@ -172,10 +190,15 @@ def send_order_shipped(to: str, order: dict[str, Any] | None, tracking_number: s
       <div style="background-color:{BG_DARK};border-radius:10px;padding:16px 20px;margin:20px 0;"><p style="color:{TEXT_MUTED};font-size:12px;margin:0;line-height:1.8;"><strong style="color:{GOLD};">📦 Estimated Delivery:</strong> 3-5 business days<br><strong style="color:{GOLD};">📍 Shipping to:</strong> {order.get('shipping_city', '—')}, {order.get('shipping_country', 'IN')}</p></div>
       <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding: 28px 0 0;"><a href="{BASE_URL}/orders.html" style="display:inline-block;padding:12px 28px;background-color:{GOLD};color:{BG_DARK};border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">View Order Status →</a></td></tr></table>
     """
-    params: resend.Emails.SendParams = {"from": FROM, "to": [to], "subject": f"Order #{oid} Shipped! 🚚 — {APP}", "html": _email_template(title="Your Order is on the Way! 🚚", content=content, preheader=f"Order #{oid} shipped — tracking: {tracking}")}
-    _safe_send(params, f"shipped to={to} order={oid}")
+    params: resend.Emails.SendParams = {
+        "from": FROM, 
+        "to": [to], 
+        "subject": f"Order #{oid} Shipped! 🚚 — {APP}", 
+        "html": _email_template(title="Your Order is on the Way! 🚚", content=content, preheader=f"Order #{oid} shipped — tracking: {tracking}")
+    }
+    await _async_safe_send(params, f"shipped to={to} order={oid}")
 
-def send_payment_success(to: str, order: dict[str, Any] | None) -> None:
+async def send_payment_success(to: str, order: dict | None) -> None:
     order = order or {}
     oid = str(order.get("id", ""))[:8].upper()
     total = order.get("total_amount", 0)
@@ -191,11 +214,12 @@ def send_payment_success(to: str, order: dict[str, Any] | None) -> None:
       <p style="color:{TEXT_MUTED};font-size:11px;margin:24px 0 0;line-height:1.6;">You'll receive another email once your order ships. For any queries, contact <a href="mailto:support@luviio.in" style="color:{GOLD};text-decoration:none;">support@luviio.in</a></p>
     """
     
-    # ── 📄 Generate PDF and Attach it ───────────────────────────────────────────
+    # ── 📄 Generate PDF and Attach it via Threadpool ───────────────────────────
     attachments = []
     try:
         dummy_customer = {"full_name": "Customer", "email": to}
-        pdf_bytes = build_invoice_pdf(order, dummy_customer)
+        # 🔥 FIX: Threadpool for heavy CPU-bound PDF Generation
+        pdf_bytes = await run_in_threadpool(build_invoice_pdf, order, dummy_customer)
         pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
         
         attachments.append({
@@ -211,11 +235,11 @@ def send_payment_success(to: str, order: dict[str, Any] | None) -> None:
         "to": [to], 
         "subject": f"Payment Confirmed — {APP} Order #{oid} ✓", 
         "html": _email_template(title="Payment Successful ✓", content=content, preheader=f"Payment of ₹{float(total):,.2f} received for order #{oid}"),
-        "attachments": attachments  # 🔥 Attachment added here!
+        "attachments": attachments  # 🔥 Attachment added safely here!
     }
-    _safe_send(params, f"payment_success to={to} order={oid}")
+    await _async_safe_send(params, f"payment_success to={to} order={oid}")
 
-def send_cart_reminder_email(to: str, name: str, items: list) -> None:
+async def send_cart_reminder_email(to: str, name: str, items: list) -> None:
     name = (name or "there").strip()
     item_rows = ""
     total_value = 0.0
@@ -238,5 +262,10 @@ def send_cart_reminder_email(to: str, name: str, items: list) -> None:
       <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding: 28px 0 0;"><a href="{BASE_URL}/cart" style="display:inline-block;padding:14px 36px;background-color:{GOLD};color:{BG_DARK};border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;">Complete Your Order →</a></td></tr></table>
       <p style="color:{TEXT_MUTED};font-size:11px;margin:20px 0 0;line-height:1.6;text-align:center;">Items in your cart are not reserved and may sell out.</p>
     """
-    params: resend.Emails.SendParams = {"from": FROM, "to": [to], "subject": f"You left something behind, {name}! 🛒 — {APP}", "html": _email_template(title="Your Cart is Waiting 🛒", content=content, preheader=f"Hi {name}, you have {len(items)} item(s) in your cart — complete your order")}
-    _safe_send(params, f"cart_reminder to={to} items={len(items)}")
+    params: resend.Emails.SendParams = {
+        "from": FROM, 
+        "to": [to], 
+        "subject": f"You left something behind, {name}! 🛒 — {APP}", 
+        "html": _email_template(title="Your Cart is Waiting 🛒", content=content, preheader=f"Hi {name}, you have {len(items)} item(s) in your cart — complete your order")
+    }
+    await _async_safe_send(params, f"cart_reminder to={to} items={len(items)}")

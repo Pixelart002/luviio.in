@@ -4,6 +4,7 @@ Path: app/integrations/payments/stripe_impl.py
 """
 import logging
 import stripe
+from typing import Any, Dict
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ class StripeProvider:
         order_id: str,
         user_id: str,
         idem_key: str,
-    ) -> dict:
+    ) -> Dict[str, Any]:
         try:
             intent = stripe.PaymentIntent.create(
                 amount=amount_paise,
@@ -55,8 +56,7 @@ class StripeProvider:
             logger.error("Stripe Intent creation failed: %s", e)
             raise
 
-    # 🔥 FIX: Added update_intent_metadata just in case the router is still trying to call it.
-    def update_intent_metadata(self, intent_id: str, metadata: dict) -> dict:
+    def update_intent_metadata(self, intent_id: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
         try:
             intent = stripe.PaymentIntent.modify(
                 intent_id,
@@ -72,11 +72,10 @@ class StripeProvider:
             logger.error("Stripe Intent modify failed: %s", e)
             raise
 
-    def retrieve_intent(self, payment_intent_id: str) -> dict:
+    def retrieve_intent(self, payment_intent_id: str) -> Dict[str, Any]:
         try:
             intent = stripe.PaymentIntent.retrieve(payment_intent_id)
 
-            # Return full metadata in the retrieve response
             return {
                 "id": intent.id,
                 "status": intent.status,
@@ -90,7 +89,7 @@ class StripeProvider:
             logger.error("Stripe Intent retrieval failed: %s", e)
             raise
 
-    def verify_webhook(self, payload: bytes, sig_header: str) -> dict:
+    def verify_webhook(self, payload: bytes, sig_header: str) -> Dict[str, Any]:
         """Verifies signature and returns the event dictionary"""
         try:
             event = stripe.Webhook.construct_event(
@@ -106,3 +105,12 @@ class StripeProvider:
 
         except (ValueError, stripe.error.SignatureVerificationError):
             raise ValueError("Invalid Stripe Signature")
+
+    def process_refund(self, payment_intent_id: str) -> bool:
+        """Processes a full refund for a specific payment intent."""
+        try:
+            refund = stripe.Refund.create(payment_intent=payment_intent_id)
+            return refund.status == "succeeded" or refund.status == "pending"
+        except stripe.error.StripeError as e:
+            logger.error("Stripe Refund failed: %s", e)
+            return False

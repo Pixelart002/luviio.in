@@ -3,31 +3,21 @@ Admin Verification Schemas (DTOs)
 =================================
 Path: app/api/schemas/admin_dto.py
 """
-from pydantic import BaseModel
-from typing import Dict, Any
-from datetime import datetime
+from pydantic import BaseModel, ConfigDict
+from typing import Optional
 
 class AdminProfile(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: str
     email: str
-    full_name: str | None = None
+    full_name: Optional[str] = None
     role: str
     is_active: bool
-    created_at: datetime | str | None = None
-
-class AdminVerifyResponse(BaseModel):
-    verified: bool
-    profile: AdminProfile
-    timestamp: int
+    created_at: Optional[str] = None
 
 class AdminDashboardStats(BaseModel):
-    products: int | float
-    orders: int | float
-    pending_orders: int | float
-    users: int | float
+    products: int
+    orders: int
+    pending_orders: int
+    users: int
     revenue: float
-
-class AdminStatsResponse(BaseModel):
-    verified: bool
-    stats: AdminDashboardStats
-    timestamp: int

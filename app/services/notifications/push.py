@@ -1,32 +1,35 @@
+"""
+Push Service — Enterprise Orchestration
+=======================================
+Path: app/services/notifications/push.py
+"""
 import json
 import logging
-import os
 from typing import Any, Dict, List
+from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 
 from app.core.supabase import get_admin_supabase
 from app.repositories.push_repo import AsyncPushRepository
 from app.integrations.push.webpush_impl import send_push_to_user
-from app.core.exceptions import LuviioException
+from app.permissions.policies.push_policies import PushPolicy, VAPID_PUBLIC_KEY
+from app.constants.push_messages import PushMessages, PushSecurityMessages, PushRules
 
 logger = logging.getLogger(__name__)
-
-VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
-MAX_SUBSCRIPTIONS_PER_USER = 5
 
 class PushService:
     def __init__(self):
         self.repo = AsyncPushRepository()
 
     def get_vapid_key(self) -> Dict[str, str]:
-        if not VAPID_PUBLIC_KEY:
-            raise LuviioException("Push notifications not configured", "NOT_CONFIGURED", 503)
-        return {"public_key": VAPID_PUBLIC_KEY}
+        # 🛡️ Policy Call
+        pub_key = PushPolicy.assert_vapid_configured()
+        return {"public_key": pub_key}
 
     async def _cleanup_stale_subscriptions(self, user_id: str) -> int:
         count = await self.repo.count_user_subscriptions(user_id)
-        if count >= MAX_SUBSCRIPTIONS_PER_USER:
-            to_remove = count - MAX_SUBSCRIPTIONS_PER_USER + 1
+        if count >= PushRules.MAX_SUBSCRIPTIONS_PER_USER:
+            to_remove = count - PushRules.MAX_SUBSCRIPTIONS_PER_USER + 1
             stale_ids = await self.repo.get_stale_subscriptions(user_id, to_remove)
             if stale_ids:
                 await self.repo.delete_subscriptions(stale_ids)
@@ -34,37 +37,36 @@ class PushService:
         return 0
 
     async def subscribe(self, user_id: str, endpoint: str, p256dh: str, auth: str) -> Dict[str, Any]:
+        # 🛡️ Policy Call
+        PushPolicy.assert_valid_endpoint(endpoint)
+        
         if await self.repo.is_duplicate_subscription(user_id, endpoint):
             return {"message": "Already subscribed", "cleaned": 0}
 
         cleaned = await self._cleanup_stale_subscriptions(user_id)
-
-        if not endpoint.startswith("https://"):
-            raise LuviioException("Invalid push endpoint — must be HTTPS", "INVALID_ENDPOINT", 400)
-
         sub_json = json.dumps({"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth}})
 
         try:
             await self.repo.upsert_subscription(user_id, endpoint, sub_json)
         except Exception as e:
             logger.error(f"Push subscription save failed: {e}")
-            raise LuviioException("Failed to subscribe to push notifications", "DB_ERROR", 500)
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=PushSecurityMessages.DB_ERROR)
 
-        return {"message": "Subscribed successfully", "cleaned": cleaned}
+        return {"message": PushMessages.SUBSCRIBED, "cleaned": cleaned}
 
     async def unsubscribe(self, endpoint: str) -> None:
         try:
             await self.repo.delete_subscription_by_endpoint(endpoint)
         except Exception as e:
             logger.error(f"Unsubscribe failed: {e}")
-            raise LuviioException("Failed to unsubscribe", "DB_ERROR", 500)
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=PushSecurityMessages.DB_ERROR)
 
     async def get_status(self, user_id: str) -> Dict[str, Any]:
         count = await self.repo.count_user_subscriptions(user_id)
         return {
             "subscribed": count > 0, 
             "subscription_count": count, 
-            "max_allowed": MAX_SUBSCRIPTIONS_PER_USER, 
+            "max_allowed": PushRules.MAX_SUBSCRIPTIONS_PER_USER, 
             "vapid_configured": bool(VAPID_PUBLIC_KEY)
         }
 
@@ -98,4 +100,4 @@ class PushService:
                 "vapid_configured": bool(VAPID_PUBLIC_KEY),
             }
         except Exception:
-            raise LuviioException("Failed to fetch push notification statistics", "DB_ERROR", 500)
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=PushSecurityMessages.STATS_ERROR)
