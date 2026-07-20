@@ -47,7 +47,7 @@ class PaymentService:
         return int((Decimal(str(amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
     async def create_intent(self, user_id: str, client_ip: str, idempotency_key: str, address_id: str) -> Dict[str, Any]:
-        # 🛡️ 1. Security Check
+        # 🛡️ 1. Security Check (Gateway Spamming)
         brute_guard.assert_safe(client_ip)
 
         # 🛡️ 2. Idempotency & State Machine Check
@@ -71,7 +71,13 @@ class PaymentService:
             else:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.DUPLICATE_ORDER)
 
-        # 🛡️ 3. Cart & Stock Policies
+        # 🚀 🚀 🚀 INVENTORY EXHAUSTION GUARD (ADDED) 🚀 🚀 🚀
+        # 🛡️ 3. Ensure user does not already have an active pending checkout session
+        has_pending = await self.repo.has_active_pending_order(user_id)
+        PaymentPolicy.assert_no_active_pending_order(has_pending)
+        # ---------------------------------------------------------
+
+        # 🛡️ 4. Cart & Stock Policies
         cart_items = await self.repo.get_cart_items_for_checkout(user_id)
         PaymentPolicy.assert_valid_cart(cart_items)
 
@@ -96,7 +102,7 @@ class PaymentService:
                 "subtotal": float(lt)
             })
 
-        # 🛡️ 4. Pricing & Limits Policy
+        # 🛡️ 5. Pricing & Limits Policy
         config = await self.repo.get_pricing_config()
         breakdown = get_pricing_from_config(config).calculate(subtotal)
         amount_paise = self._paise(breakdown.total)
@@ -107,7 +113,7 @@ class PaymentService:
         if not addr: 
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
 
-        # 5. Execute Provider
+        # 6. Execute Provider (Stripe)
         try:
             intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_PENDING", user_id, f"aot_pi_{idempotency_key}")
         except Exception as exc:
@@ -122,7 +128,7 @@ class PaymentService:
             "idempotency_key": str(UUID(idempotency_key)), "stripe_payment_intent": intent["id"]
         }
         
-        # 6. Atomic RPC Execution
+        # 7. Atomic RPC Execution (DATABASE HOLD HAPPENS HERE)
         try:
             pending_order = await self.repo.create_pending_order_with_reservation(order_data, items_to_deduct)
             await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
@@ -150,7 +156,7 @@ class PaymentService:
         
         PaymentPolicy.assert_can_confirm(existing_order, user_id)
 
-        # 🚀 Execute Atomic RPC
+        # 🚀 Execute Atomic RPC Settlement
         try:
             result = await self.repo.settle_order_transaction(order_id, intent["id"], intent["amount"] / 100, user_id)
         except Exception:

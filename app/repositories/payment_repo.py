@@ -17,6 +17,17 @@ class AsyncPaymentRepository:
     def __init__(self):
         # Deferred client initialization to prevent coroutine AttributeError in sync constructor
         pass
+    
+    
+    
+    # AsyncPaymentRepository class ke andar ye function add karo:
+    
+    async def has_active_pending_order(self, user_id: str) -> bool:
+        """Checks if the user already has a pending order holding inventory."""
+        admin_sb = await get_async_admin_supabase()
+        res = await admin_sb.table("orders").select("id").eq("customer_id", user_id).eq("status", "pending").limit(1).execute()
+        return bool(getattr(res, "data", None))
+        
 
     async def get_cart_items_for_checkout(self, user_id: str) -> List[Dict]:
         admin_sb = await get_async_admin_supabase()

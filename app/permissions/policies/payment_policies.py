@@ -49,6 +49,19 @@ class PaymentPolicy:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=PaymentSecurityMessages.UNAUTHORIZED_ACCESS)
 
         return order
+        
+        
+    # PaymentPolicy class ke andar ye naya method add karo:
+
+    @staticmethod
+    def assert_no_active_pending_order(has_pending: bool) -> None:
+        """ABAC Guard: Enforces single active checkout session per user to prevent inventory exhaustion attacks."""
+        if has_pending:
+            logger.warning("ABAC Block | Blocked attempt to create multiple pending orders (Inventory Hold Attack).")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=PaymentSecurityMessages.ACTIVE_PENDING_EXISTS
+            )
 
     @staticmethod
     def assert_can_retry(order: Optional[Dict[str, Any]], user_id: str) -> None:
