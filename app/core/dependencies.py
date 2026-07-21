@@ -18,6 +18,7 @@ from app.repositories.user_repo import AsyncUserRepository
 from app.core.exceptions import UnauthorizedAction, UnauthenticatedUser
 from app.permissions.base import ROLE_PERMISSIONS
 from app.enums.roles import UserRole
+from app.utils.timestamp import ts_to_iso  # 🔥 FIX: Imported your Timestamp Utility
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +39,7 @@ def _extract_token(request: Request, credentials: Optional[HTTPAuthorizationCred
     raise UnauthenticatedUser("Authentication credentials missing.")
 
 def _extract_jwt_payload(token: str) -> dict:
-    """🔥 FIX: Safely extracts JWT payload (like 'exp') without verifying signature. 
-    (Signature is already verified securely by the Native Client below)"""
+    """Safely extracts JWT payload (like 'exp') without verifying signature."""
     try:
         parts = token.split('.')
         if len(parts) != 3: return {}
@@ -107,7 +107,7 @@ async def get_current_user(
     email = getattr(auth_user, "email", "")
     user_metadata = getattr(auth_user, "user_metadata", {}) or {}
 
-    # 🔥 FIX: Fast extraction for expiry time
+    # Fast extraction for expiry time
     payload = _extract_jwt_payload(token)
 
     # 2. Bind Profile & State
@@ -124,7 +124,7 @@ async def get_current_user(
         "email": email,
         "profile": profile,
         "jwt_role": profile.get("role", "customer"),
-        "exp": payload.get("exp"),  # 🔥 FIX: Re-added the expiration timestamp
+        "exp": ts_to_iso(payload.get("exp")),  # 🔥 FIX: Formatted to readable ISO-8601 string
         "auth_user": auth_user
     }
 
