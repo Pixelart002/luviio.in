@@ -3,6 +3,8 @@ Dependencies — Async Hardened Production Grade (Luviio SSOT)
 ============================================================
 Path: app/core/dependencies.py
 """
+import json
+import base64
 import logging
 from typing import Any, Dict, Optional, Callable
 
@@ -19,10 +21,8 @@ from app.enums.roles import UserRole
 
 logger = logging.getLogger(__name__)
 
-# Security scheme enables the 🔒 Lock icon in Swagger UI
 bearer_scheme = HTTPBearer(auto_error=False)
 
-# 1-Minute Cache: Prevents Supabase Rate-Limits but keeps Revocation checks fast
 _token_cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
 _profile_cache: TTLCache = TTLCache(maxsize=1024, ttl=300)
 
@@ -37,6 +37,17 @@ def _extract_token(request: Request, credentials: Optional[HTTPAuthorizationCred
         
     raise UnauthenticatedUser("Authentication credentials missing.")
 
+def _extract_jwt_payload(token: str) -> dict:
+    """🔥 FIX: Safely extracts JWT payload (like 'exp') without verifying signature. 
+    (Signature is already verified securely by the Native Client below)"""
+    try:
+        parts = token.split('.')
+        if len(parts) != 3: return {}
+        payload_b64 = parts[1] + '=' * (-len(parts[1]) % 4)
+        return json.loads(base64.urlsafe_b64decode(payload_b64))
+    except Exception:
+        return {}
+
 async def _validate_token_natively(token: str) -> Any:
     """Uses Supabase Native Client to automatically handle RS256/HS256 algorithms securely."""
     if token in _token_cache:
@@ -44,7 +55,6 @@ async def _validate_token_natively(token: str) -> Any:
 
     sb = await get_async_admin_supabase()
     try:
-        # Native verification securely checks signature and expiry via GoTrue
         result = await sb.auth.get_user(token)
         user = getattr(result, "user", result)
         
@@ -61,7 +71,6 @@ async def _validate_token_natively(token: str) -> Any:
         raise UnauthenticatedUser("Authentication failed.")
 
 async def _get_or_create_profile(user_id: str, email: str, user_metadata: dict) -> Dict[str, Any]:
-    """Fetches user profile from Cache or Database."""
     if user_id in _profile_cache:
         return _profile_cache[user_id]
 
@@ -71,10 +80,8 @@ async def _get_or_create_profile(user_id: str, email: str, user_metadata: dict) 
     if not profile:
         try:
             profile = await repo.upsert_profile(
-                user_id=user_id,
-                email=email,
-                full_name=user_metadata.get("full_name", ""),
-                phone=""
+                user_id=user_id, email=email,
+                full_name=user_metadata.get("full_name", ""), phone=""
             )
         except Exception as e:
             logger.error(f"Profile auto-create failed for {user_id}: {e}")
@@ -84,7 +91,6 @@ async def _get_or_create_profile(user_id: str, email: str, user_metadata: dict) 
         _profile_cache[user_id] = profile
     return profile or {}
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  FASTAPI DEPENDENCY INJECTIONS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -93,7 +99,6 @@ async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
 ) -> Dict[str, Any]:
-    """Main Auth Dependency for Private Routes."""
     token = _extract_token(request, credentials)
     
     # 1. Native Supabase Validation (Handles RS256 safely)
@@ -102,13 +107,15 @@ async def get_current_user(
     email = getattr(auth_user, "email", "")
     user_metadata = getattr(auth_user, "user_metadata", {}) or {}
 
+    # 🔥 FIX: Fast extraction for expiry time
+    payload = _extract_jwt_payload(token)
+
     # 2. Bind Profile & State
     profile = await _get_or_create_profile(user_id, email, user_metadata)
     
     if profile and not profile.get("is_active", True):
         raise UnauthorizedAction("Account has been deactivated.")
 
-    # 3. Attach to request state for the Logger Middleware
     request.state.user_id = user_id
     request.state.user_name = profile.get("full_name") or email.split('@')[0] if email else "User"
 
@@ -117,27 +124,22 @@ async def get_current_user(
         "email": email,
         "profile": profile,
         "jwt_role": profile.get("role", "customer"),
+        "exp": payload.get("exp"),  # 🔥 FIX: Re-added the expiration timestamp
         "auth_user": auth_user
     }
 
 async def get_user_id_strict(current_user: Dict[str, Any] = Depends(get_current_user)) -> str:
-    """Convenience dependency when only the User ID is needed."""
     user_id = current_user.get("sub")
     if not user_id:
         raise UnauthenticatedUser("User identity missing for scope resolution.")
     return str(user_id)
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  ENTERPRISE PBAC GUARDS
-# ══════════════════════════════════════════════════════════════════════════════
-
 def require_permission(required_perm: str) -> Callable:
     async def permission_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
         role = current_user.get("profile", {}).get("role", UserRole.CUSTOMER.value if hasattr(UserRole.CUSTOMER, "value") else "customer")
-        
         user_perms = ROLE_PERMISSIONS.get(role, [])
-        if "*" in user_perms:  # God mode (Admin)
+        
+        if "*" in user_perms: 
             return current_user
             
         if required_perm not in user_perms:
