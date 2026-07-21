@@ -6,7 +6,7 @@ Path: app/services/events.py
 Architecture Upgrades:
   1. Handlers completely removed from this file.
   2. This file ONLY contains the Event Bus Engine, Dead Letter Queue, and Event Definitions.
-  3. 🔥 FIX: Added Native Async/Sync Bridge — Safely executes both normal and async handlers in background threads.
+  3. 🔥 FIX: Native Async Support: Automatically detects `async` handlers and schedules them natively on FastAPI's main event loop (Prevents "different event loop" lock crashes).
 """
 from __future__ import annotations
 
@@ -170,8 +170,20 @@ class EventBus:
         event_metrics.record_publish(event_type.__name__)
         logger.info("Event published | id=%s type=%s handlers=%d", event_id, event_type.__name__, len(handlers))
         
+        # Determine if we are inside an active event loop
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
         for handler in handlers:
-            _handler_pool.submit(_run_handler_with_retry, handler, event, event_id, event_type.__name__)
+            # 🔥 FIX: Native FastAPI Async Routing
+            if asyncio.iscoroutinefunction(handler) and loop and loop.is_running():
+                # Runs safely in background without blocking the main API thread
+                loop.create_task(_async_run_handler_with_retry(handler, event, event_id, event_type.__name__))
+            else:
+                # Fallback for Sync handlers
+                _handler_pool.submit(_run_handler_with_retry, handler, event, event_id, event_type.__name__)
 
     def get_stats(self) -> dict[str, Any]: return event_metrics.get_stats()
     def get_dead_letters(self) -> list[DeadLetter]: return dead_letter_queue.get_all()
@@ -184,7 +196,7 @@ class EventBus:
             for event_type, handlers in self._handlers.items():
                 if event_type.__name__ == letter.event_type:
                     for handler in handlers:
-                        _handler_pool.submit(_run_handler_with_retry, handler, letter.event_data, letter.event_id, letter.event_type)
+                        self.publish(letter.event_data) # Safely republish
                     count += 1
                     break
         logger.info("Dead letters replayed | count=%d", count)
@@ -193,6 +205,35 @@ class EventBus:
     def shutdown(self, wait: bool = True) -> None:
         logger.info("Shutting down event handler thread pool...")
         _handler_pool.shutdown(wait=wait, cancel_futures=False)
+
+# 🔥 FIX: Dedicated async retry wrapper for Native FastAPI execution
+async def _async_run_handler_with_retry(handler: Handler, event: Any, event_id: str, event_type_name: str) -> None:
+    last_error = None
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            await asyncio.wait_for(handler(event), timeout=_HANDLER_TIMEOUT_SECONDS)
+            event_metrics.record_success(event_type_name)
+            if attempt > 1: event_metrics.record_retry(event_type_name)
+            return
+        except asyncio.TimeoutError:
+            last_error = f"Timeout after {_HANDLER_TIMEOUT_SECONDS}s"
+            logger.warning("Handler timeout | id=%s handler=%s attempt=%d/%d", event_id, handler.__name__, attempt, _MAX_RETRIES)
+        except Exception as exc:
+            last_error = str(exc)[:500]
+            logger.warning("Handler failed | id=%s handler=%s attempt=%d/%d error=%s", event_id, handler.__name__, attempt, _MAX_RETRIES, last_error)
+        
+        if attempt < _MAX_RETRIES:
+            await asyncio.sleep(_RETRY_BACKOFF_BASE ** attempt)
+    
+    event_metrics.record_failure(event_type_name)
+    event_metrics.record_dead_letter(event_type_name)
+    
+    try: event_dict = dataclasses.asdict(event) if dataclasses.is_dataclass(event) else {"event": str(event)}
+    except Exception: event_dict = {"event": str(event)}
+        
+    dead_letter_queue.push(DeadLetter(event_id=event_id, event_type=event_type_name, event_data=event_dict, error=last_error or "Unknown error", retry_count=_MAX_RETRIES))
+    logger.error("Handler permanently failed — moved to dead letter queue | id=%s handler=%s", event_id, handler.__name__)
+
 
 def _run_handler_with_retry(handler: Handler, event: Any, event_id: str, event_type_name: str) -> None:
     last_error = None
@@ -221,12 +262,9 @@ def _run_handler_with_retry(handler: Handler, event: Any, event_id: str, event_t
     logger.error("Handler permanently failed — moved to dead letter queue | id=%s handler=%s", event_id, handler.__name__)
 
 def _run_handler(handler: Handler, event: Any) -> None:
-    """
-    🔥 THE BRIDGE: Safely executes the handler regardless of whether it's sync or async.
-    Because this runs inside a ThreadPool thread, asyncio.run() creates a temporary isolated event loop.
-    """
     try:
         if asyncio.iscoroutinefunction(handler):
+            # Backup safety block
             asyncio.run(handler(event))
         else:
             handler(event)
