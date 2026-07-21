@@ -15,7 +15,6 @@ from app.services.events import (
 )
 from app.integrations.email.registry import get_email_provider
 from app.integrations.push.webpush_impl import send_push_to_user, broadcast_push_to_admins
-from app.core.supabase import get_admin_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -58,37 +57,38 @@ def _safe_oid(order: dict[str, Any]) -> str:
 
 # ── Handlers ──────────────────────────────────────────────────────────────────
 
-def handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
+async def handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
     oid = _safe_oid(event.order or {})
     amt = (event.order or {}).get("total_amount", 0)
-    broadcast_push_to_admins(
-        get_admin_supabase(),
+    await broadcast_push_to_admins(
         title=_Copy.ADMIN_ORDER_TITLE.format(oid=oid),
         body=_Copy.ADMIN_ORDER_BODY.format(amt=amt),
         icon=_Icon.NEW_ORDER,
         url=_Copy.URL_ADMIN
     )
 
-def handle_paid_email(event: OrderPaidEvent) -> None:
+async def handle_paid_email(event: OrderPaidEvent) -> None:
     if not event.customer_email or not event.order: return
     try:
         logger.info(f"[HOOK:EMAIL] Triggering Payment Success Email for {event.customer_email}")
         email_provider = get_email_provider("resend")
-        email_provider.send_payment_success(event.customer_email, event.order)
+        await email_provider.send_payment_success(event.customer_email, event.order)
     except Exception as e:
         logger.error(f"[HOOK:EMAIL] Failed to send payment email: {e}", exc_info=True)
 
-def handle_paid_push(event: OrderPaidEvent) -> None:
+async def handle_paid_push(event: OrderPaidEvent) -> None:
     order = event.order or {}
     uid = event.customer_id or order.get("customer_id", "")
     if uid:
-        send_push_to_user(
-            get_admin_supabase(), uid,
-            title=_Copy.PAID_PUSH_TITLE, body=_Copy.PAID_PUSH_BODY.format(oid=_safe_oid(order)),
-            icon=_Icon.PAID, url=_Copy.URL_ORDERS
+        await send_push_to_user(
+            uid,
+            title=_Copy.PAID_PUSH_TITLE, 
+            body=_Copy.PAID_PUSH_BODY.format(oid=_safe_oid(order)),
+            icon=_Icon.PAID, 
+            url=_Copy.URL_ORDERS
         )
 
-def handle_failed_push(event: OrderFailedEvent) -> None:
+async def handle_failed_push(event: OrderFailedEvent) -> None:
     order = event.order or {}
     uid = event.customer_id or order.get("customer_id", "")
     if not uid: return
@@ -118,22 +118,22 @@ def handle_failed_push(event: OrderFailedEvent) -> None:
     
     logger.info(f"[HOOK:PUSH] Sending Failed Push to {uid}: {title}")
     # 🔥 Changed URL to CART instead of ORDERS so user can retry
-    send_push_to_user(get_admin_supabase(), uid, title=title, body=body, icon=icon, url=_Copy.URL_CART)
+    await send_push_to_user(uid, title=title, body=body, icon=icon, url=_Copy.URL_CART)
 
-def handle_shipped_push(event: OrderShippedEvent) -> None:
+async def handle_shipped_push(event: OrderShippedEvent) -> None:
     order = event.order or {}
     uid = event.customer_id or order.get("customer_id", "")
     if not uid: return
     body = _Copy.SHIPPED_PUSH_BODY
     if event.tracking_number: body += _Copy.SHIPPED_TRACKING.format(tracking=event.tracking_number)
     
-    send_push_to_user(
-        get_admin_supabase(), uid,
+    await send_push_to_user(
+        uid,
         title=_Copy.SHIPPED_PUSH_TITLE.format(oid=_safe_oid(order)), body=body,
         icon=_Icon.SHIPPED, url=_Copy.URL_ORDERS
     )
 
-def handle_status_push(event: OrderStatusChangedEvent) -> None:
+async def handle_status_push(event: OrderStatusChangedEvent) -> None:
     _CONFIG = {
         "delivered": (_Copy.DELIVERED_TITLE, _Copy.DELIVERED_BODY, _Icon.DELIVERED),
         "refunded":  (_Copy.REFUNDED_TITLE,  _Copy.REFUNDED_BODY,  _Icon.REFUNDED),
@@ -143,15 +143,14 @@ def handle_status_push(event: OrderStatusChangedEvent) -> None:
     if not cfg: return
     
     title_tpl, body, icon = cfg
-    send_push_to_user(
-        get_admin_supabase(), event.customer_id,
+    await send_push_to_user(
+        event.customer_id,
         title=title_tpl.format(oid=_safe_oid(event.order or {})), body=body,
         icon=icon, url=_Copy.URL_ORDERS
     )
 
-def handle_low_stock_push(event: LowStockEvent) -> None:
-    broadcast_push_to_admins(
-        get_admin_supabase(),
+async def handle_low_stock_push(event: LowStockEvent) -> None:
+    await broadcast_push_to_admins(
         title=_Copy.LOW_STOCK_TITLE.format(name=event.product_name),
         body=_Copy.LOW_STOCK_BODY.format(stock=event.stock, threshold=event.threshold),
         icon=_Icon.LOW_STOCK, url=_Copy.URL_ADMIN
