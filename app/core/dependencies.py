@@ -1,18 +1,17 @@
 """
-Dependencies — Offline JWT Cryptographic Validation (Amazon-Grade SSOT)
-=======================================================================
+Dependencies — Async Hardened Production Grade (Luviio SSOT)
+============================================================
 Path: app/core/dependencies.py
 """
 import logging
 from typing import Any, Dict, Optional, Callable
 
 from cachetools import TTLCache
-from fastapi import Depends, Request, status
+from fastapi import Depends, Request, status, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import jwt, JWTError  # 🔥 pip install python-jose
+from gotrue.errors import AuthApiError
 
-# Utility imports
-from app.core.config import settings
+from app.core.supabase import get_async_admin_supabase
 from app.repositories.user_repo import AsyncUserRepository
 from app.core.exceptions import UnauthorizedAction, UnauthenticatedUser
 from app.permissions.base import ROLE_PERMISSIONS
@@ -23,15 +22,12 @@ logger = logging.getLogger(__name__)
 # Security scheme enables the 🔒 Lock icon in Swagger UI
 bearer_scheme = HTTPBearer(auto_error=False)
 
-# Profile caching saves DB hits for RBAC checks
+# 1-Minute Cache: Prevents Supabase Rate-Limits but keeps Revocation checks fast
+_token_cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
 _profile_cache: TTLCache = TTLCache(maxsize=1024, ttl=300)
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  OFFLINE JWT VALIDATION (ZERO NETWORK HOP)
-# ══════════════════════════════════════════════════════════════════════════════
-
 def _extract_token(request: Request, credentials: Optional[HTTPAuthorizationCredentials]) -> str:
-    """Extracts JWT from Authorization Header OR Secure HttpOnly Cookie."""
+    """Strictly extracts JWT from Authorization Header OR Secure HttpOnly Cookie."""
     if credentials and credentials.credentials:
         return credentials.credentials
     
@@ -41,29 +37,31 @@ def _extract_token(request: Request, credentials: Optional[HTTPAuthorizationCred
         
     raise UnauthenticatedUser("Authentication credentials missing.")
 
-def _verify_and_decode_jwt(token: str) -> Dict[str, Any]:
-    """
-    Cryptographically verifies the Supabase JWT offline.
-    0 Latency. 0 Network Requests. 100% Secure.
-    """
-    if not settings.SUPABASE_JWT_SECRET:
-        logger.error("CRITICAL: SUPABASE_JWT_SECRET is missing from environment variables.")
-        raise UnauthenticatedUser("Server misconfiguration.")
+async def _validate_token_natively(token: str) -> Any:
+    """Uses Supabase Native Client to automatically handle RS256/HS256 algorithms securely."""
+    if token in _token_cache:
+        return _token_cache[token]
 
+    sb = await get_async_admin_supabase()
     try:
-        payload = jwt.decode(
-            token, 
-            settings.SUPABASE_JWT_SECRET, 
-            algorithms=["HS256"],
-            audience="authenticated"
-        )
-        return payload
-    except JWTError as e:
-        logger.warning(f"Auth Block | Invalid/Expired JWT: {e}")
+        # Native verification securely checks signature and expiry via GoTrue
+        result = await sb.auth.get_user(token)
+        user = getattr(result, "user", result)
+        
+        if not user or not hasattr(user, "id"):
+            raise UnauthenticatedUser("Invalid token structure")
+        
+        _token_cache[token] = user
+        return user
+    except AuthApiError as e:
+        logger.warning(f"Native Auth Block: {e}")
         raise UnauthenticatedUser("Token is invalid or expired.")
+    except Exception as e:
+        logger.error(f"Token validation error: {e}")
+        raise UnauthenticatedUser("Authentication failed.")
 
 async def _get_or_create_profile(user_id: str, email: str, user_metadata: dict) -> Dict[str, Any]:
-    """Fetches user profile from Cache or DB."""
+    """Fetches user profile from Cache or Database."""
     if user_id in _profile_cache:
         return _profile_cache[user_id]
 
@@ -98,21 +96,19 @@ async def get_current_user(
     """Main Auth Dependency for Private Routes."""
     token = _extract_token(request, credentials)
     
-    # 1. Cryptographic Offline Validation
-    claims = _verify_and_decode_jwt(token)
-    user_id = claims.get("sub")
-    email = claims.get("email", "")
-    
-    if not user_id:
-        raise UnauthenticatedUser("Invalid token structure: Missing Subject (sub)")
+    # 1. Native Supabase Validation (Handles RS256 safely)
+    auth_user = await _validate_token_natively(token)
+    user_id = str(getattr(auth_user, "id", ""))
+    email = getattr(auth_user, "email", "")
+    user_metadata = getattr(auth_user, "user_metadata", {}) or {}
 
     # 2. Bind Profile & State
-    profile = await _get_or_create_profile(user_id, email, claims.get("user_metadata", {}))
+    profile = await _get_or_create_profile(user_id, email, user_metadata)
     
     if profile and not profile.get("is_active", True):
         raise UnauthorizedAction("Account has been deactivated.")
 
-    # Attach to request state for the Logger Middleware
+    # 3. Attach to request state for the Logger Middleware
     request.state.user_id = user_id
     request.state.user_name = profile.get("full_name") or email.split('@')[0] if email else "User"
 
@@ -120,13 +116,16 @@ async def get_current_user(
         "sub": user_id,
         "email": email,
         "profile": profile,
-        "jwt_role": claims.get("role"),
-        "exp": claims.get("exp")
+        "jwt_role": profile.get("role", "customer"),
+        "auth_user": auth_user
     }
 
 async def get_user_id_strict(current_user: Dict[str, Any] = Depends(get_current_user)) -> str:
     """Convenience dependency when only the User ID is needed."""
-    return str(current_user["sub"])
+    user_id = current_user.get("sub")
+    if not user_id:
+        raise UnauthenticatedUser("User identity missing for scope resolution.")
+    return str(user_id)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -142,7 +141,7 @@ def require_permission(required_perm: str) -> Callable:
             return current_user
             
         if required_perm not in user_perms:
-            logger.warning(f"PBAC Block | User {current_user['sub']} missing perm: {required_perm}")
+            logger.warning(f"PBAC Block | User {current_user.get('sub')} missing perm: {required_perm}")
             raise UnauthorizedAction(f"Missing required permission: {required_perm}")
             
         return current_user
