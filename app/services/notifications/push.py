@@ -7,9 +7,7 @@ import json
 import logging
 from typing import Any, Dict, List
 from fastapi import HTTPException, status
-from starlette.concurrency import run_in_threadpool
 
-from app.core.supabase import get_admin_supabase
 from app.repositories.push_repo import AsyncPushRepository
 from app.integrations.push.webpush_impl import send_push_to_user
 from app.permissions.policies.push_policies import PushPolicy, VAPID_PUBLIC_KEY
@@ -71,12 +69,13 @@ class PushService:
         }
 
     async def send_batch_notification(self, user_ids: List[str], title: str, body: str, icon: str, url: str) -> Dict[str, Any]:
-        sb = get_admin_supabase()
         results = {"success": 0, "failed": 0, "details": []}
         
         for user_id in user_ids:
             try:
-                sent = await run_in_threadpool(send_push_to_user, sb_admin=sb, user_id=user_id, title=title, body=body, icon=icon, url=url)
+                # 🔥 FIX: Awaiting directly because send_push_to_user is now natively async and handles its own DB connection
+                sent = await send_push_to_user(user_id=user_id, title=title, body=body, icon=icon, url=url)
+                
                 if sent > 0:
                     results["success"] += 1
                     results["details"].append({"user_id": user_id, "status": "sent"})
