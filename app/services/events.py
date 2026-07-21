@@ -6,7 +6,7 @@ Path: app/services/events.py
 Architecture Upgrades:
   1. Handlers completely removed from this file.
   2. This file ONLY contains the Event Bus Engine, Dead Letter Queue, and Event Definitions.
-  3. Safe Dataclass serialization and Graceful shutdown maintained.
+  3. 🔥 FIX: Added Native Async/Sync Bridge — Safely executes both normal and async handlers in background threads.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ import logging
 import threading
 import time
 import uuid
+import asyncio
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field
@@ -151,7 +152,7 @@ event_metrics = EventMetrics()
 # ══════════════════════════════════════════════════════════════════════════════
 
 EventType = type
-Handler   = Callable[[Any], None]
+Handler   = Callable[[Any], Any]
 
 class EventBus:
     def __init__(self) -> None:
@@ -220,7 +221,15 @@ def _run_handler_with_retry(handler: Handler, event: Any, event_id: str, event_t
     logger.error("Handler permanently failed — moved to dead letter queue | id=%s handler=%s", event_id, handler.__name__)
 
 def _run_handler(handler: Handler, event: Any) -> None:
-    try: handler(event)
+    """
+    🔥 THE BRIDGE: Safely executes the handler regardless of whether it's sync or async.
+    Because this runs inside a ThreadPool thread, asyncio.run() creates a temporary isolated event loop.
+    """
+    try:
+        if asyncio.iscoroutinefunction(handler):
+            asyncio.run(handler(event))
+        else:
+            handler(event)
     except Exception as exc:
         logger.error("Handler %s raised for %s: %s", handler.__name__, type(event).__name__, exc)
         raise
