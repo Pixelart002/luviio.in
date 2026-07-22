@@ -1,6 +1,6 @@
 """
-Cart Schemas (DTOs)
-===================
+Cart Schemas (DTOs) — Enterprise Grade & GST Ready
+====================================================
 Path: app/api/schemas/cart_dto.py
 """
 from pydantic import BaseModel, ConfigDict, Field
@@ -23,6 +23,8 @@ class CartItemDTO(BaseModel):
     name: str
     slug: str
     image_url: Optional[str] = None
+    hsn_code: str             # 🔥 Added: Item-level HSN code for legal invoice compliance
+    gst_percentage: int       # 🔥 Added: Item-level GST percentage slab (e.g., 5, 12, 18, 28)
     quantity: int
     unit_price: float
     compare_price: Optional[float] = 0.0
@@ -44,7 +46,7 @@ class CartResponse(BaseModel):
     free_shipping_eligible: bool
     amount_to_free_shipping: float
     free_shipping_threshold: float
-    tax_rate_pct: float
+    # ❌ Removed obsolete global tax_rate_pct field
     has_unavailable_items: bool
     currency: str
 

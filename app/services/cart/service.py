@@ -91,8 +91,7 @@ class CartService:
             "free_shipping_eligible": breakdown.shipping == Decimal("0") and subtotal > Decimal("0"),
             "amount_to_free_shipping": amount_to_free,
             "free_shipping_threshold": float(pricing_engine.shipping_threshold),
-            "tax_rate_pct": float(pricing_engine.tax_rate * 100),
-            "has_unavailable_items": has_unavailable,
+             "has_unavailable_items": has_unavailable,
         }
 
     async def get_cart(self, user_id: str) -> Dict[str, Any]:
