@@ -8,8 +8,8 @@ Amazon.in / Meesho-style 10-column GST-compliant Tax Invoice with Top-Right QR C
 Architecture & Upgrades:
   ✅ 100% Stateless & Dynamic — Zero synchronous DB fallbacks (No lag/freeze)
   ✅ Added HSN Code column — Dynamically fetched from product join payload
-  ✅ Native Vector QR Code — Aligned perfectly with Quiet Zone margin (100% Scannable!)
-  ✅ Exact 554pt Width Math — Zero Overflow Guarantee on A4 pages
+  ✅ Super-Sized QR Code (78pt) — Instantly scannable by any mobile camera!
+  ✅ Exact 554pt Width Math — Re-balanced columns [170, 170, 214] for zero overflow
   ✅ Smart GST Split — CGST + SGST vs IGST clearly separated in summary
   ✅ Smart GST Invoice Formatting — Transforms integer sequences into legal INV/26-27/00001 format
 """
@@ -131,9 +131,11 @@ def _product_hsn(item: dict) -> str:
     return "9988"  # E-commerce generic fallback HSN if missing from payload
 
 
-def _create_qr(data: str, size: float = 54.0) -> Drawing:
-    """Generates an ultra-sharp, instantly scannable vector QR Code."""
-    # 🔥 FIX: barLevel='L' creates cleaner, lower-density modules that mobile phone cameras scan instantly
+def _create_qr(data: str, size: float = 78.0) -> Drawing:
+    """
+    🔥 UPGRADE: Increased size to 78.0 pt (~2.75 cm) for instant mobile camera recognition.
+    barLevel='L' creates cleaner, lower-density modules that scan effortlessly even in low light.
+    """
     qr_widget = QrCodeWidget(data, barLevel='L')
     bounds = qr_widget.getBounds()
     w, h = bounds[2] - bounds[0], bounds[3] - bounds[1]
@@ -375,7 +377,8 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     #  BLOCK 2 ── SELLER | BUYER | TOP-RIGHT QR & META  (Sum = 554 pt)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    col_w_block2 = [184.0, 185.0, 185.0]
+    # 🔥 UPGRADE: Re-allocated width to [170, 170, 214] to give 3rd panel 214pt for a large scannable QR!
+    col_w_block2 = [170.0, 170.0, 214.0]
 
     seller_rows = [
         [Paragraph("<b>Sold By:</b>", S["lbl"])],
@@ -409,11 +412,10 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     tracking = _safe(order.get("tracking_number"))
     grand_for_qr = total_amt if total_amt > 0 else (subtotal + ship_cost + tax_amt)
 
-    # 🔥 TOP-RIGHT QR CODE PAYLOAD
+    # 🔥 SUPER-SIZED TOP-RIGHT QR CODE PAYLOAD (78.0 pt)
     qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|TOTAL:{grand_for_qr:.2f}|ORD:{display_ord}"
-    qr_drawing = _create_qr(qr_payload, size=54.0)
+    qr_drawing = _create_qr(qr_payload, size=78.0)
 
-    # Split order meta and QR Code side-by-side inside the 3rd panel
     meta_text_rows = [
         [Paragraph("<b>Order Details:</b>", S["lbl"])],
         [Paragraph(f"<b>Order No:</b> {display_ord}", S["b"])],
@@ -428,7 +430,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         meta_text_rows.append([Spacer(1, 2)])
         meta_text_rows.append([Paragraph(f"<b>Tracking:</b> {tracking}", S["b"])])
 
-    meta_text_tbl = Table(meta_text_rows, colWidths=[110.0])
+    meta_text_tbl = Table(meta_text_rows, colWidths=[116.0])
     meta_text_tbl.setStyle(TableStyle([
         ("TOPPADDING",    (0, 0), (-1, -1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
@@ -436,13 +438,13 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
     ]))
 
-    # 🔥 FIX: Adjusted column widths and added explicit Quiet Zone padding around QR Code cell (1, 0)
-    meta_combined_tbl = Table([[meta_text_tbl, qr_drawing]], colWidths=[110.0, 62.0])
+    # 🔥 UPGRADE: 116pt text + 84pt QR container = 200pt (Fits perfectly in 202pt usable panel width)
+    meta_combined_tbl = Table([[meta_text_tbl, qr_drawing]], colWidths=[116.0, 84.0])
     meta_combined_tbl.setStyle(TableStyle([
         ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN",         (1, 0), (1, 0),   "CENTER"),
-        ("TOPPADDING",    (1, 0), (1, 0),   3),
-        ("BOTTOMPADDING", (1, 0), (1, 0),   3),
+        ("TOPPADDING",    (1, 0), (1, 0),   2),
+        ("BOTTOMPADDING", (1, 0), (1, 0),   2),
         ("LEFTPADDING",   (1, 0), (1, 0),   4),
         ("RIGHTPADDING",  (1, 0), (1, 0),   2),
         ("TOPPADDING",    (0, 0), (0, 0),   0),
@@ -693,7 +695,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         f"For queries, contact {_S['email']} | {_S['website']}"
     )
     if _S["gstin"]:
-        footer_note += f"   GSTIN: {_S['gstin']}"
+        footer_note += f"    GSTIN: {_S['gstin']}"
     story.append(Paragraph(footer_note, S["foot"]))
 
     # ── Build ─────────────────────────────────────────────────────────────
