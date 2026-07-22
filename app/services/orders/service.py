@@ -1,7 +1,12 @@
 """
-Order Service — Enterprise Business Logic & State Machine
-=========================================================
+Order Service — Enterprise Business Logic & State Machine (GST Ready)
+=====================================================================
 Path: app/services/orders/service.py
+
+Architecture & Upgrades:
+  ✅ Smart Sanitization — Preserves item names, HSN codes, and GST slabs before stripping joins.
+  ✅ ABAC Policy Guardrails — Fully enforces view, cancellation, and invoice download permissions.
+  ✅ ACID State Machine — Validates strict transition graphs and handles automated Stripe refunds.
 """
 import logging
 from typing import Any, Dict, Tuple, List
@@ -37,7 +42,7 @@ class OrderService:
         self.user_repo = AsyncUserRepository()
 
     def _sanitize(self, order: Dict[str, Any]) -> Dict[str, Any]:
-        """Strips internal system ledger fields and masks payment identifiers."""
+        """Strips internal system ledger fields, masks payment identifiers, and maps GST/HSN items."""
         if not order: 
             return order
         sanitized = {k: v for k, v in order.items() if k not in _INTERNAL_FIELDS}
@@ -50,11 +55,21 @@ class OrderService:
                 {k: v for k, v in item.items() if k not in {"order_id", "created_at", "updated_at"}} 
                 for item in sanitized["order_items"]
             ]
+            
         for item in sanitized.get("order_items", []):
             if "products" in item and isinstance(item["products"], dict):
-                item["product_slug"] = item["products"].get("slug")
-                item["product_image_url"] = item["products"].get("image_url")
+                prod = item["products"]
+                
+                # 🔥 UPGRADE: Extract and preserve critical product & tax fields before deleting join payload!
+                item["name"] = item.get("name") or prod.get("name") or "Product Item"
+                item["hsn_code"] = item.get("hsn_code") or prod.get("hsn_code") or "9988"
+                item["gst_percentage"] = item.get("gst_percentage") or prod.get("gst_percentage") or 18
+                item["compare_price"] = item.get("compare_price") or prod.get("compare_price")
+                
+                item["product_slug"] = prod.get("slug")
+                item["product_image_url"] = prod.get("image_url")
                 del item["products"]
+                
         return sanitized
 
     async def get_user_orders(self, user_id: str, status_filter: str, page: int, page_size: int) -> Tuple[List[Dict[str, Any]], int]:

@@ -1,3 +1,13 @@
+"""
+Product Service — Async Enterprise Grade (With GST & HSN Sanitization)
+======================================================================
+Path: app/services/product_service.py
+
+Architecture & Upgrades:
+  ✅ ABAC Policy Guardrails — Maintains full security checks for images and categories.
+  ✅ GST & HSN Ready — Safely sanitizes and type-casts hsn_code and gst_percentage.
+  ✅ Zero Crash Fallbacks — Auto-defaults to HSN '9988' and 18% GST during creation if omitted.
+"""
 import logging
 from typing import Any, Dict, Tuple, List
 from fastapi import HTTPException, status
@@ -52,6 +62,10 @@ class ProductService:
             data["compare_price"] = float(data["compare_price"])
         data["images"] = data.get("images") or []
 
+        # 🔥 UPGRADE: Sanitize and default HSN Code & GST Percentage for invoice compliance
+        data["hsn_code"] = str(data.get("hsn_code") or "9988").strip()
+        data["gst_percentage"] = int(data.get("gst_percentage") if data.get("gst_percentage") is not None else 18)
+
         res = await self.repo.create_product(data)
         if not res: 
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
@@ -62,6 +76,12 @@ class ProductService:
             data["price"] = float(data["price"])
         if "compare_price" in data and data["compare_price"]: 
             data["compare_price"] = float(data["compare_price"])
+            
+        # 🔥 UPGRADE: Safely cast GST percentage and clean HSN code if updated
+        if "gst_percentage" in data and data["gst_percentage"] is not None:
+            data["gst_percentage"] = int(data["gst_percentage"])
+        if "hsn_code" in data and data["hsn_code"]:
+            data["hsn_code"] = str(data["hsn_code"]).strip()
             
         if "images" in data:
             imgs = data["images"] or []

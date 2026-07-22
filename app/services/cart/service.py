@@ -1,3 +1,8 @@
+"""
+Cart Service — Enterprise Business Logic (With Item-Level GST & HSN Support)
+============================================================================
+Path: /app/services/cart/service.py
+"""
 import asyncio
 import logging
 import datetime
@@ -19,7 +24,7 @@ class CartService:
         self.repo = AsyncCartRepository()
 
     async def _calculate_cart_pricing(self, cart_id: str) -> Dict[str, Any]:
-        """Calculates cart totals using the PricingEngine SSOT."""
+        """Calculates cart totals using the PricingEngine SSOT with item-level GST."""
         config, raw_items = await asyncio.gather(
             self.repo.get_pricing_config(),
             self.repo.get_cart_items_with_products(cart_id),
@@ -47,12 +52,18 @@ class CartService:
 
             if not in_stock: has_unavailable = True
 
+            # 🔥 UPGRADE: Extract HSN Code and GST Percentage safely from product join
+            hsn_code = str(prod.get("hsn_code") or row.get("hsn_code") or "9988").strip()
+            gst_percentage = int(prod.get("gst_percentage") if prod.get("gst_percentage") is not None else (row.get("gst_percentage") if row.get("gst_percentage") is not None else 18))
+
             enriched.append({
                 "id": row["id"],
                 "product_id": row["product_id"],
                 "name": prod.get("name", ""),
                 "slug": prod.get("slug", ""),
                 "image_url": prod.get("image_url"),
+                "hsn_code": hsn_code,              # <-- Added for frontend & pricing
+                "gst_percentage": gst_percentage,  # <-- Added for frontend & pricing
                 "quantity": qty,
                 "unit_price": float(current_price),
                 "compare_price": compare_price, 
@@ -65,7 +76,8 @@ class CartService:
                 "added_at": row["added_at"],
             })
 
-        breakdown = pricing_engine.calculate(subtotal)
+        # 🔥 UPGRADE: Pass items=enriched so PricingEngine computes exact item-by-item GST!
+        breakdown = pricing_engine.calculate(items=enriched)
         pricing_dict = breakdown.as_dict()
 
         amount_to_free = 0.0

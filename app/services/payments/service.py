@@ -1,7 +1,7 @@
 """
-Payment Service — Enterprise Orchestration
-==========================================
-Path: app/services/payments/service.py
+Payment Service — Enterprise Orchestration (With Atomic GST & HSN Snapshots)
+============================================================================
+Path: /app/services/payments/service.py
 """
 import time
 import logging
@@ -96,9 +96,15 @@ class PaymentService:
             lt = locked_price * item["quantity"]
             subtotal += lt
             
+            # 🔥 UPGRADE: Include HSN Code & GST Percentage for atomic database snapshot!
+            hsn_code = str(prod.get("hsn_code") or item.get("hsn_code") or "9988").strip()
+            gst_percentage = int(prod.get("gst_percentage") if prod.get("gst_percentage") is not None else (item.get("gst_percentage") if item.get("gst_percentage") is not None else 18))
+
             items_to_deduct.append({
                 "product_id": item["product_id"], 
                 "product_name": prod.get("name", "Item"),
+                "hsn_code": hsn_code,              # <-- Added for RPC snapshot
+                "gst_percentage": gst_percentage,  # <-- Added for RPC snapshot
                 "unit_price": float(locked_price),
                 "compare_price": float(prod.get("compare_price") or 0.0),
                 "quantity": item["quantity"], 
@@ -107,7 +113,8 @@ class PaymentService:
 
         # 🛡️ 5. Pricing & Limits Policy
         config = await self.repo.get_pricing_config()
-        breakdown = get_pricing_from_config(config).calculate(subtotal)
+        # 🔥 UPGRADE: Pass items=items_to_deduct so PricingEngine calculates exact item-by-item tax!
+        breakdown = get_pricing_from_config(config).calculate(items=items_to_deduct)
         amount_paise = self._paise(breakdown.total)
         
         PaymentPolicy.assert_minimum_amount(amount_paise)
