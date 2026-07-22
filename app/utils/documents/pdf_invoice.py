@@ -3,20 +3,15 @@ PDF Invoice — Production Grade (Luviio SSOT)
 ============================================
 Path: app/utils/documents/pdf_invoice.py
 
-Amazon.in / Meesho-style 10-column GST-compliant Tax Invoice.
+Amazon.in / Meesho-style 10-column GST-compliant Tax Invoice with Top-Right QR Code.
 
-Architecture & Fixes:
-  ✅ 100% dynamic — all data from DB (order + customer objects)
-  ✅ Synchronous DB Fallback — queries products table if product_name is missing
-  ✅ Seller info from environment variables — ZERO hardcoding
-  ✅ IGST vs CGST+SGST auto-resolved by shipping state vs seller state
-  ✅ Smart Auto-Detect Tax Engine to prevent historical order percentage glitches
-  ✅ Amount in words (Indian English — Crore/Lakh/Thousand)
-  ✅ Mathematical precision: exact 554pt nested grid widths (Zero Overflow Guarantee)
-  ✅ Automatic Discount Computation via Compare Price vs Unit Price
-  ✅ Displays MRP in "Unit Price" column if discount is applied for clear UX math
-  ✅ Column reordered: Unit Price -> Qty -> Discount -> Net Amount for customer clarity
-  ✅ Sequential Invoice Number support from Database
+Architecture & Upgrades:
+  ✅ 100% Stateless & Dynamic — Zero synchronous DB fallbacks (No lag/freeze)
+  ✅ Added HSN Code column — Dynamically fetched from product join payload
+  ✅ Top-Right Vector QR Code — Aligned perfectly in Order Meta box (Zero overflow)
+  ✅ Exact 554pt Width Math — Zero Overflow Guarantee on A4 pages
+  ✅ Smart GST Split — CGST + SGST vs IGST clearly separated in summary
+  ✅ Smart GST Invoice Formatting — Transforms integer sequences into legal INV/26-27/00001 format
 """
 from __future__ import annotations
 
@@ -34,6 +29,9 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
     HRFlowable, KeepTogether,
 )
+# 🔥 NATIVE REPORTLAB QR CODE (Zero external API or image files needed)
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.barcode.qr import QrCodeWidget
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +78,8 @@ def _fmt(amount: Any) -> str:
 
 def _short_id(uuid_str: str) -> str:
     s = _safe(uuid_str)
+    if s.startswith("ORD-"):
+        return s
     return s[:12].upper() if len(s) >= 8 else (s.upper() or "—")
 
 
@@ -98,13 +98,8 @@ def _parse_date(dt_str: str) -> str:
     return dt_str[:10]
 
 
-# ── Product name: Multi-layer extractor with Synchronous DB Fallback ────────
-
+# 🔥 PURE MEMORY EXTRACTORS (Zero DB Fallback — Eliminates API freeze/lag)
 def _product_name(item: dict) -> str:
-    """
-    Extract product name from order_item dict.
-    If missing, queries the Supabase DB directly using sync client.
-    """
     for key in ("product_name", "name", "title"):
         val = _safe(item.get(key))
         if val:
@@ -117,55 +112,53 @@ def _product_name(item: dict) -> str:
             if val:
                 return val
 
-    # Sync DB Fallback if only product_id exists
-    pid = _safe(item.get("product_id"))
-    if pid:
-        try:
-            from app.core.supabase import get_admin_supabase
-            sb = get_admin_supabase()
-            res = sb.table("products").select("name").eq("id", pid).limit(1).execute()
-            if res.data and len(res.data) > 0 and res.data[0].get("name"):
-                return str(res.data[0]["name"]).strip()
-        except Exception as exc:
-            logger.warning("Failed sync lookup for product %s: %s", pid, exc)
-
     return "Product Item"
 
 
+def _product_hsn(item: dict) -> str:
+    for key in ("hsn_code", "hsn", "hsn_sac"):
+        val = _safe(item.get(key))
+        if val:
+            return val
+
+    for rel in ("products", "product", "item"):
+        obj = item.get(rel)
+        if isinstance(obj, dict):
+            val = _safe(obj.get("hsn_code") or obj.get("hsn"))
+            if val:
+                return val
+
+    return "9988"  # E-commerce generic fallback HSN if missing from payload
+
+
+def _create_qr(data: str, size: float = 54.0) -> Drawing:
+    """Generates an ultra-sharp vector QR Code directly inside ReportLab."""
+    qr_widget = QrCodeWidget(data)
+    bounds = qr_widget.getBounds()
+    w, h = bounds[2] - bounds[0], bounds[3] - bounds[1]
+    drawing = Drawing(size, size, transform=[size / w, 0, 0, size / h, 0, 0])
+    drawing.add(qr_widget)
+    return drawing
+
+
 # ══════════════════════════════════════════════════════════════════════════════
-#  INDIAN STATE → CODE MAP
+#  INDIAN STATE → CODE MAP & TAX RESOLVER
 # ══════════════════════════════════════════════════════════════════════════════
 
 _STATE_MAP: dict[str, str] = {
-    "andhra pradesh": "AP", "ap": "AP",
-    "assam": "AS", "as": "AS",
-    "bihar": "BR", "br": "BR",
-    "chandigarh": "CH",
-    "delhi": "DL", "new delhi": "DL", "nct of delhi": "DL", "dl": "DL",
-    "goa": "GA", "ga": "GA",
-    "gujarat": "GJ", "gj": "GJ",
-    "haryana": "HR", "hr": "HR",
-    "himachal pradesh": "HP", "hp": "HP",
-    "jharkhand": "JH", "jh": "JH",
+    "andhra pradesh": "AP", "ap": "AP", "assam": "AS", "as": "AS", "bihar": "BR", "br": "BR",
+    "chandigarh": "CH", "delhi": "DL", "new delhi": "DL", "nct of delhi": "DL", "dl": "DL",
+    "goa": "GA", "ga": "GA", "gujarat": "GJ", "gj": "GJ", "haryana": "HR", "hr": "HR",
+    "himachal pradesh": "HP", "hp": "HP", "jharkhand": "JH", "jh": "JH",
     "karnataka": "KA", "ka": "KA", "bengaluru": "KA", "bangalore": "KA",
-    "kerala": "KL", "kl": "KL",
-    "madhya pradesh": "MP", "mp": "MP",
-    "maharashtra": "MH", "mh": "MH", "mumbai": "MH",
-    "manipur": "MN", "mn": "MN",
-    "meghalaya": "ML", "ml": "ML",
-    "mizoram": "MZ", "mz": "MZ",
-    "nagaland": "NL", "nl": "NL",
-    "odisha": "OD", "od": "OD",
-    "puducherry": "PY", "py": "PY",
-    "punjab": "PB", "pb": "PB",
-    "rajasthan": "RJ", "rj": "RJ",
-    "sikkim": "SK", "sk": "SK",
-    "tamil nadu": "TN", "tn": "TN", "chennai": "TN",
-    "telangana": "TS", "ts": "TS", "hyderabad": "TS",
-    "tripura": "TR", "tr": "TR",
-    "uttar pradesh": "UP", "up": "UP",
-    "uttarakhand": "UK", "uk": "UK",
-    "west bengal": "WB", "wb": "WB", "kolkata": "WB",
+    "kerala": "KL", "kl": "KL", "madhya pradesh": "MP", "mp": "MP",
+    "maharashtra": "MH", "mh": "MH", "mumbai": "MH", "manipur": "MN", "mn": "MN",
+    "meghalaya": "ML", "ml": "ML", "mizoram": "MZ", "mz": "MZ", "nagaland": "NL", "nl": "NL",
+    "odisha": "OD", "od": "OD", "puducherry": "PY", "py": "PY", "punjab": "PB", "pb": "PB",
+    "rajasthan": "RJ", "rj": "RJ", "sikkim": "SK", "sk": "SK",
+    "tamil nadu": "TN", "tn": "TN", "chennai": "TN", "telangana": "TS", "ts": "TS", "hyderabad": "TS",
+    "tripura": "TR", "tr": "TR", "uttar pradesh": "UP", "up": "UP",
+    "uttarakhand": "UK", "uk": "UK", "west bengal": "WB", "wb": "WB", "kolkata": "WB",
 }
 
 
@@ -236,33 +229,33 @@ def _styles() -> dict[str, ParagraphStyle]:
         return ParagraphStyle(name, parent=base, **kw)
 
     return {
-        "logo":     _s("logo",    fontName="Helvetica-Bold", fontSize=20, leading=24),
-        "doc_h":    _s("doc_h",   fontName="Helvetica-Bold", fontSize=11, leading=14, alignment=TA_RIGHT),
+        "logo":     _s("logo",     fontName="Helvetica-Bold", fontSize=20, leading=24),
+        "doc_h":    _s("doc_h",    fontName="Helvetica-Bold", fontSize=11, leading=14, alignment=TA_RIGHT),
         "doc_sub":  _s("doc_sub", fontSize=7,  alignment=TA_RIGHT, textColor=_TEXT_DIM, leading=10),
-        "site":     _s("site",    fontSize=7,  textColor=_TEXT_DIM, leading=10),
+        "site":     _s("site",     fontSize=7,  textColor=_TEXT_DIM, leading=10),
 
-        "lbl":      _s("lbl",     fontName="Helvetica-Bold", fontSize=8, leading=11),
+        "lbl":      _s("lbl",      fontName="Helvetica-Bold", fontSize=8, leading=11),
 
-        "b":        _s("b",       fontSize=7.5, leading=10),
-        "bb":       _s("bb",      fontName="Helvetica-Bold", fontSize=7.5, leading=10),
-        "br":       _s("br",      fontSize=7.5, leading=10, alignment=TA_RIGHT),
-        "bbr":      _s("bbr",     fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
-        "sm":       _s("sm",      fontSize=6.5, leading=9,  textColor=_TEXT_DIM),
+        "b":        _s("b",        fontSize=7.5, leading=10),
+        "bb":       _s("bb",       fontName="Helvetica-Bold", fontSize=7.5, leading=10),
+        "br":       _s("br",       fontSize=7.5, leading=10, alignment=TA_RIGHT),
+        "bbr":      _s("bbr",      fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
+        "sm":       _s("sm",       fontSize=6.5, leading=9,  textColor=_TEXT_DIM),
 
-        "th":       _s("th",      fontName="Helvetica-Bold", fontSize=7.5, leading=9),
-        "thc":      _s("thc",     fontName="Helvetica-Bold", fontSize=7.5, leading=9, alignment=TA_CENTER),
-        "thr":      _s("thr",     fontName="Helvetica-Bold", fontSize=7.5, leading=9, alignment=TA_RIGHT),
-        "td":       _s("td",      fontSize=7.5, leading=10),
-        "tdc":      _s("tdc",     fontSize=7.5, leading=10, alignment=TA_CENTER),
-        "tdr":      _s("tdr",     fontSize=7.5, leading=10, alignment=TA_RIGHT),
+        "th":       _s("th",       fontName="Helvetica-Bold", fontSize=7.0, leading=9),
+        "thc":      _s("thc",      fontName="Helvetica-Bold", fontSize=7.0, leading=9, alignment=TA_CENTER),
+        "thr":      _s("thr",      fontName="Helvetica-Bold", fontSize=7.0, leading=9, alignment=TA_RIGHT),
+        "td":       _s("td",       fontSize=7.0, leading=9),
+        "tdc":      _s("tdc",      fontSize=7.0, leading=9, alignment=TA_CENTER),
+        "tdr":      _s("tdr",      fontSize=7.0, leading=9, alignment=TA_RIGHT),
 
         "sum_lbl":  _s("sum_lbl", fontName="Helvetica-Bold", fontSize=8, leading=11, alignment=TA_RIGHT),
         "sum_val":  _s("sum_val", fontName="Helvetica-Bold", fontSize=8, leading=11, alignment=TA_RIGHT),
 
-        "foot":     _s("foot",    fontSize=6.5, leading=9, textColor=_TEXT_LIGHT, alignment=TA_CENTER),
-        "words":    _s("words",   fontName="Helvetica-Bold", fontSize=7.5, leading=10),
+        "foot":     _s("foot",     fontSize=6.5, leading=9, textColor=_TEXT_LIGHT, alignment=TA_CENTER),
+        "words":    _s("words",    fontName="Helvetica-Bold", fontSize=7.5, leading=10),
         "words_v":  _s("words_v", fontSize=7.5, leading=10),
-        "sign":     _s("sign",    fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
+        "sign":     _s("sign",     fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
     }
 
 
@@ -276,20 +269,23 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
     # ── Extract values ────────────────────────────────────────────────────────
     order_id     = _safe(order.get("id"))
+    display_ord  = _safe(order.get("order_number")) or _short_id(order_id)
     order_date   = _parse_date(_safe(order.get("created_at")))
     invoice_date = datetime.datetime.now().strftime("%d-%m-%Y")
     status_raw   = _safe(order.get("status"), "paid").upper()
     is_refund    = status_raw in ("REFUNDED", "CANCELLED")
 
-    # 🔥 FIX: Sequential Invoice Number support from DB
+    # 🔥 Smart GST Invoice Formatting (Transforms integer "1" -> "INV/26-27/00001")
     db_invoice_no = _safe(order.get("invoice_number"))
-    if db_invoice_no:
-        invoice_no = f"{db_invoice_no}"
+    if db_invoice_no and db_invoice_no.isdigit():
+        now = datetime.datetime.now()
+        fy_start = now.year if now.month >= 4 else now.year - 1
+        fy_str = f"{str(fy_start)[2:]}-{str(fy_start+1)[2:]}"
+        invoice_no = f"INV/{fy_str}/{int(db_invoice_no):05d}"
     else:
-        # Fallback Amazon/Flipkart format if DB number isn't present
         seller_state_prefix = _S["state"][:2].upper() or "DL"
         fy_year = datetime.datetime.now().strftime("%y")
-        invoice_no = f"LV{seller_state_prefix}{fy_year}{_short_id(order_id)[:6]}"
+        invoice_no = db_invoice_no or f"LV{seller_state_prefix}{fy_year}{_short_id(order_id)[:6]}"
 
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -321,18 +317,15 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     c_email = _safe(customer.get("email"))
     c_phone = _safe(customer.get("phone"))
 
-    tax_type      = _resolve_tax_type(state or city)
+    tax_type = _resolve_tax_type(state or city)
     
-    # 🔥 SMART TAX AUTO-DETECT LOGIC (Prevents 28% math glitch on old orders)
     shipping_is_taxed = False
     eff_rate_pct = 18
 
     if tax_amt > 0:
-        # Scenario 1: Only products were taxed (New system rule)
         rate_on_sub = (tax_amt / subtotal) * 100 if subtotal > 0 else 0
         diff_sub = abs(rate_on_sub - round(rate_on_sub))
         
-        # Scenario 2: Both products and shipping were taxed (Old historical orders)
         rate_on_both = (tax_amt / (subtotal + ship_cost)) * 100 if (subtotal + ship_cost) > 0 else 0
         diff_both = abs(rate_on_both - round(rate_on_both))
 
@@ -378,7 +371,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     story.append(HRFlowable(width="100%", thickness=2.5, color=_GOLD, spaceAfter=8))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 2 ── SELLER | BUYER | ORDER META  (Sum = 554 pt)
+    #  BLOCK 2 ── SELLER | BUYER | TOP-RIGHT QR & META  (Sum = 554 pt)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     col_w_block2 = [184.0, 185.0, 185.0]
@@ -413,22 +406,47 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         buyer_rows.append([Paragraph(c_email, S["sm"])])
 
     tracking = _safe(order.get("tracking_number"))
-    meta_rows = [
+    grand_for_qr = total_amt if total_amt > 0 else (subtotal + ship_cost + tax_amt)
+
+    # 🔥 TOP-RIGHT QR CODE PAYLOAD
+    qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|TOTAL:{grand_for_qr:.2f}|ORD:{display_ord}"
+    qr_drawing = _create_qr(qr_payload, size=54.0)
+
+    # Split order meta and QR Code side-by-side inside the 3rd panel
+    meta_text_rows = [
         [Paragraph("<b>Order Details:</b>", S["lbl"])],
-        [Paragraph(f"<b>Order No:</b> {_short_id(order_id)}", S["b"])],
+        [Paragraph(f"<b>Order No:</b> {display_ord}", S["b"])],
         [Paragraph(f"<b>Order Date:</b> {order_date}", S["b"])],
-        [Spacer(1, 4)],
+        [Spacer(1, 2)],
         [Paragraph(f"<b>Invoice No:</b> {invoice_no}", S["b"])],
         [Paragraph(f"<b>Invoice Date:</b> {invoice_date}", S["b"])],
-        [Spacer(1, 4)],
+        [Spacer(1, 2)],
         [Paragraph(f"<b>Status:</b> {status_raw}", S["b"])],
     ]
     if tracking:
-        meta_rows.append([Spacer(1, 4)])
-        meta_rows.append([Paragraph(f"<b>Tracking:</b> {tracking}", S["b"])])
+        meta_text_rows.append([Spacer(1, 2)])
+        meta_text_rows.append([Paragraph(f"<b>Tracking:</b> {tracking}", S["b"])])
 
-    def _panel(rows, cw: float) -> Table:
-        t = Table(rows, colWidths=[cw - 12.0])
+    meta_text_tbl = Table(meta_text_rows, colWidths=[114.0])
+    meta_text_tbl.setStyle(TableStyle([
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+    ]))
+
+    meta_combined_tbl = Table([[meta_text_tbl, qr_drawing]], colWidths=[114.0, 58.0])
+    meta_combined_tbl.setStyle(TableStyle([
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+        ("ALIGN",         (1, 0), (1, 0),   "RIGHT"),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+    ]))
+
+    def _panel(content_table, cw: float) -> Table:
+        t = Table([[content_table]], colWidths=[cw - 12.0])
         t.setStyle(TableStyle([
             ("TOPPADDING",    (0, 0), (-1, -1), 1),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
@@ -437,16 +455,22 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         ]))
         return t
 
+    seller_tbl = Table(seller_rows, colWidths=[col_w_block2[0] - 12.0])
+    seller_tbl.setStyle(TableStyle([("PADDING", (0, 0), (-1, -1), 0)]))
+
+    buyer_tbl = Table(buyer_rows, colWidths=[col_w_block2[1] - 12.0])
+    buyer_tbl.setStyle(TableStyle([("PADDING", (0, 0), (-1, -1), 0)]))
+
     info = Table(
         [[
-            _panel(seller_rows, col_w_block2[0]),
-            _panel(buyer_rows,  col_w_block2[1]),
-            _panel(meta_rows,   col_w_block2[2]),
+            _panel(seller_tbl,        col_w_block2[0]),
+            _panel(buyer_tbl,         col_w_block2[1]),
+            _panel(meta_combined_tbl, col_w_block2[2]),
         ]],
         colWidths=col_w_block2,
     )
     info.setStyle(TableStyle([
-        ("BOX",           (0, 0), (-1, -1), 0.5, _BORDER_C),
+        ("BOX",            (0, 0), (-1, -1), 0.5, _BORDER_C),
         ("LINEBEFORE",    (1, 0), (1, 0),   0.5, _BORDER_C),
         ("LINEBEFORE",    (2, 0), (2, 0),   0.5, _BORDER_C),
         ("TOPPADDING",    (0, 0), (-1, -1), 6),
@@ -459,11 +483,10 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     story.append(Spacer(1, 10))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 3 ── 10-COLUMN ITEMS TABLE (Exact Sum = 554 pt)
-    #  🔥 REORDERED: Unit Price -> Qty -> Discount -> Net Amount
+    #  BLOCK 3 ── 10-COLUMN ITEMS TABLE WITH HSN (Exact Sum = 554 pt)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    CW = [18.0, 164.0, 54.0, 22.0, 44.0, 54.0, 26.0, 44.0, 56.0, 72.0]
+    CW = [18.0, 136.0, 38.0, 52.0, 22.0, 44.0, 54.0, 56.0, 54.0, 80.0]
 
     def _h(txt):  return Paragraph(txt, S["th"])
     def _hc(txt): return Paragraph(txt, S["thc"])
@@ -475,11 +498,11 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     rows = [[
         _hc("Sl."),
         _h("Description"),
-        _hr("Unit Price"),
+        _hc("HSN"),
+        _hr("Price"),
         _hc("Qty"),
-        _hr("Discount"),    # 🔥 MOVED AHEAD OF NET AMOUNT
-        _hr("Net Amount"),  # 🔥 MOVED AFTER DISCOUNT
-        _hc("GST %"),
+        _hr("Discount"),
+        _hr("Net Amt"),
         _hc("Tax Type"),
         _hr("Tax Amt"),
         _hr("Total"),
@@ -491,14 +514,10 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
     for idx, item in enumerate(items, 1):
         name      = _product_name(item)
+        hsn       = _product_hsn(item)
         qty       = int(_safe_f(item.get("quantity"), 1))
-        unit_p    = _safe_f(
-            item.get("unit_price") or item.get("price_snapshot") or item.get("price")
-        )
-        # Check flat compare_price, or check nested inside products dict
-        compare_p = _safe_f(
-            item.get("compare_price") or (item.get("products") or {}).get("compare_price")
-        )
+        unit_p    = _safe_f(item.get("unit_price") or item.get("price_snapshot") or item.get("price"))
+        compare_p = _safe_f(item.get("compare_price") or (item.get("products") or {}).get("compare_price"))
         disc      = _safe_f(item.get("discount_amount") or item.get("discount"))
 
         if disc == 0.0 and compare_p > unit_p > 0:
@@ -511,18 +530,18 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         run_net  += net
         run_tax  += i_tax
 
-        # 🔥 FIX: Display MRP (compare_price) as the Unit Price in the PDF if a discount exists
         display_unit_p = compare_p if (compare_p > unit_p) else unit_p
+        display_tax_type = "CGST+SGST" if tax_type == "CGST+SGST" else f"IGST ({eff_rate_pct}%)"
 
         rows.append([
             _dc(str(idx)),
             _d(name),
+            _dc(hsn),
             _dr(_fmt(display_unit_p)),
             _dc(str(qty)),
-            _dr(_fmt(disc) if disc > 0 else "—"), # Discount Column
-            _dr(_fmt(net)),                       # Net Amount Column
-            _dc(f"{int(eff_rate_pct)}%"),
-            _dc(tax_type),
+            _dr(_fmt(disc) if disc > 0 else "—"),
+            _dr(_fmt(net)),
+            _dc(display_tax_type),
             _dr(_fmt(i_tax)),
             _dr(_fmt(total)),
         ])
@@ -530,10 +549,10 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     if ship_cost > 0:
         if shipping_is_taxed:
             s_tax = round(ship_cost * eff_rate_pct / 100, 2)
-            gst_pct_str, tax_type_str = f"{int(eff_rate_pct)}%", tax_type
+            tax_type_str = "CGST+SGST" if tax_type == "CGST+SGST" else f"IGST ({eff_rate_pct}%)"
         else:
             s_tax = 0.0
-            gst_pct_str, tax_type_str = "0%", "-"
+            tax_type_str = "-"
             
         s_tot = ship_cost + s_tax
         run_net += ship_cost
@@ -541,11 +560,11 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         rows.append([
             _dc(""),
             Paragraph("<b>Shipping Charges</b>", S["td"]),
+            _dc("9965"),
             _dr(_fmt(ship_cost)),
             _dc("1"),
             _dr("—"),
             _dr(_fmt(ship_cost)),
-            _dc(gst_pct_str),
             _dc(tax_type_str),
             _dr(_fmt(s_tax)),
             _dr(_fmt(s_tot)),
@@ -593,7 +612,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     else:
         gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph("FREE", S["bbr"])])
 
-    # GST Summary reflects actual breakdown based on what was taxed
     product_tax_only = round(subtotal * eff_rate_pct / 100, 2)
     display_tax = tax_amt if tax_amt > 0 else product_tax_only
 
@@ -652,7 +670,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         colWidths=[304.0, 250.0],
     )
     bottom.setStyle(TableStyle([
-        ("BOX",           (0, 0), (-1, -1), 0.5, _BORDER_C),
+        ("BOX",            (0, 0), (-1, -1), 0.5, _BORDER_C),
         ("LINEBEFORE",    (1, 0), (1, 0),   0.5, _BORDER_C),
         ("TOPPADDING",    (0, 0), (-1, -1), 8),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),

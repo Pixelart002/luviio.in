@@ -17,3 +17,4 @@ sentry-sdk==2.5.1
 cachetools==5.5.0
 apscheduler
 python-jose[cryptography]
+nanoid

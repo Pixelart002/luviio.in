@@ -6,6 +6,7 @@ Path: app/repositories/order_repo.py
 Architecture & Fixes:
   ✅ Stateless Execution — Fetches Supabase Admin client on-demand inside async methods.
   ✅ Resolves Coroutine Crash — Awaits async client factory to prevent AttributeError.
+  ✅ Dual-ID Resolution — Fetches cleanly by UUID or human-readable NanoID (order_number).
 """
 import logging
 from typing import Any, Optional, Tuple, List
@@ -23,7 +24,13 @@ class AsyncOrderRepository:
         admin_sb = await get_async_admin_supabase()
         logger.debug(f"[REPO:ORDERS] Fetching order {order_id} | User filter: {user_id}")
         try:
-            q = admin_sb.table("orders").select(ORDER_ITEMS_SELECT).eq("id", order_id)
+            # 🔥 FIX: Supports fetching by standard UUID or readable NanoID (e.g. ORD-4A8B-9C2D)
+            q = admin_sb.table("orders").select(ORDER_ITEMS_SELECT)
+            if len(order_id) == 36 and "-" in order_id:
+                q = q.eq("id", order_id)
+            else:
+                q = q.eq("order_number", order_id)
+
             if user_id: q = q.eq("customer_id", user_id)
             res = await q.maybe_single().execute()
             

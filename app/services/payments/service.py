@@ -11,6 +11,7 @@ from typing import Any, Dict
 from collections import defaultdict
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
+from nanoid import generate  # 🔥 FIX: Added NanoID for clean Order Numbers
 
 from app.repositories.payment_repo import AsyncPaymentRepository
 from app.services.pricing import get_pricing_from_config
@@ -46,6 +47,11 @@ class PaymentService:
     def _paise(self, amount: Any) -> int:
         return int((Decimal(str(amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
+    def _generate_clean_order_number(self) -> str:
+        """Generates Amazon-style readable ID excluding ambiguous letters (0, O, 1, I)."""
+        short_id = generate('23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 8)
+        return f"ORD-{short_id[:4]}-{short_id[4:]}"
+
     async def create_intent(self, user_id: str, client_ip: str, idempotency_key: str, address_id: str) -> Dict[str, Any]:
         # 🛡️ 1. Security Check (Gateway Spamming)
         brute_guard.assert_safe(client_ip)
@@ -71,11 +77,9 @@ class PaymentService:
             else:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.DUPLICATE_ORDER)
 
-        # 🚀 🚀 🚀 INVENTORY EXHAUSTION GUARD (ADDED) 🚀 🚀 🚀
-        # 🛡️ 3. Ensure user does not already have an active pending checkout session
+        # 🚀 INVENTORY EXHAUSTION GUARD
         has_pending = await self.repo.has_active_pending_order(user_id)
         PaymentPolicy.assert_no_active_pending_order(has_pending)
-        # ---------------------------------------------------------
 
         # 🛡️ 4. Cart & Stock Policies
         cart_items = await self.repo.get_cart_items_for_checkout(user_id)
@@ -86,7 +90,6 @@ class PaymentService:
         
         for item in cart_items:
             prod = item.get("products") or {}
-            # 🛡️ Stock Guard
             PaymentPolicy.assert_stock_availability(item["quantity"], prod)
             
             locked_price = Decimal(str(item.get("price_snapshot") or prod.get("price", 0)))
@@ -120,15 +123,19 @@ class PaymentService:
             brute_guard.record(client_ip)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED)
 
+        # 🔥 FIX: Attached clean human-readable order_number
+        order_number = self._generate_clean_order_number()
+
         order_data = {
             "customer_id": user_id, "shipping_address_id": address_id, "status": OrderStatus.PENDING.value,
+            "order_number": order_number,
             **breakdown.as_dict(),
             "shipping_line1": addr.get("line1"), "shipping_city": addr.get("city"),
             "shipping_postal_code": addr.get("postal_code"), "shipping_country": addr.get("country"),
             "idempotency_key": str(UUID(idempotency_key)), "stripe_payment_intent": intent["id"]
         }
         
-        # 7. Atomic RPC Execution (DATABASE HOLD HAPPENS HERE)
+        # 7. Atomic RPC Execution
         try:
             pending_order = await self.repo.create_pending_order_with_reservation(order_data, items_to_deduct)
             await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
@@ -136,7 +143,7 @@ class PaymentService:
             logger.error(f"[CRITICAL DB ERROR] Atomic Reservation Failed: {e}")
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION)
 
-        return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": pending_order["id"]}
+        return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": pending_order["id"], "order_number": order_number}
 
     async def confirm_payment(self, user_id: str, client_ip: str, pi_id: str, email: str) -> Dict[str, Any]:
         brute_guard.assert_safe(client_ip)
@@ -150,13 +157,11 @@ class PaymentService:
             brute_guard.record(client_ip)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED)
 
-        # 🛡️ Security Check: Prevent Tampering
         order_id = intent.get("metadata", {}).get("order_id")
         existing_order = await self.repo.get_order_by_id(order_id)
         
         PaymentPolicy.assert_can_confirm(existing_order, user_id)
 
-        # 🚀 Execute Atomic RPC Settlement
         try:
             result = await self.repo.settle_order_transaction(order_id, intent["id"], intent["amount"] / 100, user_id)
         except Exception:
@@ -168,7 +173,6 @@ class PaymentService:
         brute_guard.reset(client_ip)
         existing_order["status"] = OrderStatus.PAID.value
         
-        # Fire Event
         try: get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
         except Exception as e: logger.error(f"Event bus failed: {e}")
 
@@ -176,8 +180,6 @@ class PaymentService:
 
     async def retry_payment(self, user_id: str, order_id: str) -> Dict[str, Any]:
         existing_order = await self.repo.get_order_by_id(order_id)
-        
-        # 🛡️ Policy Check
         PaymentPolicy.assert_can_retry(existing_order, user_id)
             
         if existing_order.get("status") == OrderStatus.PAID.value:
