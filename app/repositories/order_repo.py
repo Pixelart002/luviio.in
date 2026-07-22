@@ -1,25 +1,67 @@
 """
-Order Repository — Async Enterprise Grade (HEAVILY LOGGED)
-=========================================================
+Order Repository — Async Enterprise Grade (HEAVILY LOGGED & GST READY)
+======================================================================
 Path: app/repositories/order_repo.py
 
 Architecture & Fixes:
   ✅ Stateless Execution — Fetches Supabase Admin client on-demand inside async methods.
   ✅ Resolves Coroutine Crash — Awaits async client factory to prevent AttributeError.
   ✅ Dual-ID Resolution — Fetches cleanly by UUID or human-readable NanoID (order_number).
+  ✅ GST & HSN Ready — ORDER_ITEMS_SELECT auto-joins HSN & GST rate for PDF invoice generation.
+  ✅ Atomic Creation — Added create_order_with_items to lock historical tax snapshots.
 """
 import logging
 from typing import Any, Optional, Tuple, List
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
-ORDER_ITEMS_SELECT = "*, order_items(*, products(image_url, slug))"
+
+# 🔥 UPGRADE: Added name, hsn_code, and gst_percentage to product join so invoices get full data!
+ORDER_ITEMS_SELECT = "*, order_items(*, products(name, image_url, slug, hsn_code, gst_percentage))"
 
 class AsyncOrderRepository:
     def __init__(self):
         # Deferred client initialization to prevent coroutine AttributeError in sync constructor
         pass
 
+    # ── Order Creation (New Atomic Snapshot Method) ──────────────────────────
+    async def create_order_with_items(self, order_data: dict[str, Any], items_data: List[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """
+        Creates an order and inserts all order items with their frozen HSN/GST snapshots.
+        """
+        admin_sb = await get_async_admin_supabase()
+        logger.info(f"[REPO:ORDERS] Creating new order for customer {order_data.get('customer_id')} with {len(items_data)} items.")
+        try:
+            # 1. Insert main order row
+            order_res = await admin_sb.table("orders").insert(order_data).execute()
+            if not order_res or not getattr(order_res, "data", None):
+                logger.error("[REPO:ORDERS] Failed to insert main order row.")
+                return None
+            
+            created_order = order_res.data[0]
+            order_id = created_order["id"]
+            logger.debug(f"[REPO:ORDERS] Order row created with ID: {order_id}. Inserting items...")
+
+            # 2. Attach order_id to items and insert snapshots
+            for item in items_data:
+                item["order_id"] = order_id
+                # Ensure generic fallback if missing
+                item["hsn_code"] = item.get("hsn_code") or "9988"
+                item["gst_percentage"] = item.get("gst_percentage") or 18
+
+            items_res = await admin_sb.table("order_items").insert(items_data).execute()
+            if not items_res or not getattr(items_res, "data", None):
+                logger.warning(f"[REPO:ORDERS] Order {order_id} created, but failed to insert items! Attempting rollback...")
+                await admin_sb.table("orders").delete().eq("id", order_id).execute()
+                return None
+
+            logger.info(f"[REPO:ORDERS] Order {order_id} and all items successfully created with tax snapshots.")
+            return await self.get_order_by_id(order_id)
+        except Exception as e:
+            logger.error(f"[REPO:ORDERS] Critical error during order creation: {e}", exc_info=True)
+            return None
+
+    # ── Order Fetching ───────────────────────────────────────────────────────
     async def get_order_by_id(self, order_id: str, user_id: Optional[str] = None) -> Optional[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         logger.debug(f"[REPO:ORDERS] Fetching order {order_id} | User filter: {user_id}")

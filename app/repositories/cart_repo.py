@@ -1,11 +1,13 @@
 """
-Cart Repository — Async Enterprise Grade
-========================================
+Cart Repository — Async Enterprise Grade (GST & HSN Ready)
+==========================================================
 Path: app/repositories/cart_repo.py
 
 Architecture & Fixes:
   ✅ Stateless Execution — Fetches Supabase Admin client on-demand inside async methods.
   ✅ Resolves Coroutine Crash — Awaits async client factory to prevent AttributeError.
+  ✅ GST & HSN Ready — Added hsn_code and gst_percentage to product joins for checkout snapshots.
+  ✅ SSOT Pricing Verification — get_product_stock_status upgraded to fetch full tax & compare_price.
 """
 import logging
 from typing import Any, Tuple, List
@@ -34,17 +36,25 @@ class AsyncCartRepository:
         return res.data[0]
 
     async def get_cart_items_with_products(self, cart_id: str) -> list[dict[str, Any]]:
+        """
+        🔥 UPGRADE: Added hsn_code and gst_percentage to the joined products payload.
+        When checkout initiates, the order service will directly use these values to create immutable tax snapshots!
+        """
         admin_sb = await get_async_admin_supabase()
-        # 🔥 FIX: Added 'compare_price' to the product selection query
         res = await admin_sb.table("cart_items").select(
             "id, product_id, quantity, price_snapshot, added_at, "
-            "products(id, name, slug, price, compare_price, stock, image_url, is_active)"
+            "products(id, name, slug, price, compare_price, stock, hsn_code, gst_percentage, image_url, is_active)"
         ).eq("cart_id", cart_id).order("added_at", desc=False).execute()
         return getattr(res, "data", None) or []
 
     async def get_product_stock_status(self, product_id: str) -> dict[str, Any] | None:
+        """
+        🔥 UPGRADE: Fetches full tax and pricing info to prevent price manipulation during cart operations.
+        """
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.table("products").select("id, name, price, stock, is_active").eq("id", product_id).limit(1).execute()
+        res = await admin_sb.table("products").select(
+            "id, name, price, compare_price, stock, hsn_code, gst_percentage, is_active"
+        ).eq("id", product_id).limit(1).execute()
         return res.data[0] if getattr(res, "data", None) else None
 
     async def get_cart_item(self, cart_id: str, product_id: str) -> dict[str, Any] | None:

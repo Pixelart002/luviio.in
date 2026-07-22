@@ -1,11 +1,11 @@
 """
-Payments Repository — ACID & JIT Hybrid Flow (Enterprise Grade)
-===============================================================
+Payments Repository — ACID & JIT Hybrid Flow (Enterprise Grade & GST Ready)
+===========================================================================
 Path:  app/repositories/payment_repo.py
 
 🔥 ARCHITECTURE UPGRADE: 
    Integrated Supabase PL/pgSQL RPCs for Atomic Row-Level Locking.
-🔥 DISCOUNT SANITIZE FIX: Enriched all queries to include 'compare_price'.
+🔥 DISCOUNT & GST SANITIZE FIX: Enriched queries to include 'compare_price', 'hsn_code', and 'gst_percentage'.
 """
 import logging
 from typing import Any, Dict, List, Optional
@@ -18,23 +18,18 @@ class AsyncPaymentRepository:
         # Deferred client initialization to prevent coroutine AttributeError in sync constructor
         pass
     
-    
-    
-    # AsyncPaymentRepository class ke andar ye function add karo:
-    
     async def has_active_pending_order(self, user_id: str) -> bool:
         """Checks if the user already has a pending order holding inventory."""
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("orders").select("id").eq("customer_id", user_id).eq("status", "pending").limit(1).execute()
         return bool(getattr(res, "data", None))
         
-
     async def get_cart_items_for_checkout(self, user_id: str) -> List[Dict]:
         admin_sb = await get_async_admin_supabase()
         logger.info(f"[REPO:CART] Fetching cart for user: {user_id}")
-        # 🔥 FIX: Added 'compare_price' to the product selection query
+        # 🔥 UPGRADE: Added 'hsn_code' and 'gst_percentage' to product selection query for atomic checkout snapshots!
         res = await admin_sb.table("carts").select(
-            "id, cart_items(id, product_id, quantity, price_snapshot, products(name, price, compare_price, stock, is_active))"
+            "id, cart_items(id, product_id, quantity, price_snapshot, products(name, price, compare_price, stock, hsn_code, gst_percentage, is_active))"
         ).eq("user_id", user_id).maybe_single().execute()
         
         data = getattr(res, "data", None)
@@ -66,8 +61,8 @@ class AsyncPaymentRepository:
 
     async def get_order_by_id(self, order_id: str) -> dict | None:
         admin_sb = await get_async_admin_supabase()
-        # 🔥 FIX: Join with products(name, compare_price) to ensure invoice/pdf gets the data
-        res = await admin_sb.table("orders").select("*, order_items(*, products(name, compare_price))").eq("id", order_id).maybe_single().execute()
+        # 🔥 UPGRADE: Enriched join with compare_price, hsn_code, and gst_percentage for invoice generation!
+        res = await admin_sb.table("orders").select("*, order_items(*, products(name, compare_price, hsn_code, gst_percentage))").eq("id", order_id).maybe_single().execute()
         return getattr(res, "data", None)
 
     # ══════════════════════════════════════════════════════════════════════════════
