@@ -6,11 +6,10 @@ Path: app/utils/documents/pdf_invoice.py
 Clean, User-Friendly GST-compliant Tax Invoice with Giant Scannable QR Code.
 
 Architecture Upgrades:
-  ✅ Strict Decimal Math — Uses Decimal('0.01') quantization for zero floating-point discrepancies.
-  ✅ Single-Pass Discount Math — Calculates live item discount from price snapshots without double calculation.
-  ✅ Strict Table Footer — Sums ONLY cart items (Net Amt + Tax Amt). Zero shipping contamination.
-  ✅ Pure Shipping Fee — Appears ONLY in Price Summary as simple logistics cost without tax/exempt tags.
-  ✅ Human-Readable Summary — Displays Total MRP, Deducted Discount, Net Subtotal, Shipping, GST, and Grand Total.
+  ✅ Gross Amount Column — Replaced MRP column with 'Gross Amt' (Compare Price snapshot).
+  ✅ Strict Discount Math — Derived cleanly as (Gross Amt - Net Amt) without double calculation.
+  ✅ Transparent Summary — Price Summary explicitly shows Subtotal + Shipping + Tax = Grand Total.
+  ✅ Pure Decimal Precision — Zero floating-point discrepancies across item totals and ledger summaries.
 """
 from __future__ import annotations
 
@@ -345,7 +344,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     left_panel_tbl.setStyle(TableStyle([("PADDING", (0, 0), (-1, -1), 0), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 3 ── 10-COLUMN ITEMS TABLE (Live Snapshot Discount Math)
+    #  BLOCK 3 ── 10-COLUMN ITEMS TABLE (Gross Amt -> Net Amt -> Tax)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     CW = [18.0, 134.0, 38.0, 52.0, 22.0, 48.0, 54.0, 56.0, 52.0, 80.0]  # Exact Sum = 554.0 pt
     
@@ -356,14 +355,14 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     def _dc(txt): return Paragraph(str(txt), S["tdc"])
     def _dr(txt): return Paragraph(str(txt), S["tdr"])
 
-    rows = [[_hc("Sl."), _h("Description"), _hc("HSN"), _hr("MRP"), _hc("Qty"), _hr("Discount"), _hr("Net Amt"), _hc("Tax Type"), _hr("Tax Amt"), _hr("Total")]]
+    # 🔥 CHANGED COLUMN HEADER: 'MRP' -> 'Gross Amt'
+    rows = [[_hc("Sl."), _h("Description"), _hc("HSN"), _hr("Gross Amt"), _hc("Qty"), _hr("Discount"), _hr("Net Amt"), _hc("Tax Type"), _hr("Tax Amt"), _hr("Total")]]
 
     items = order.get("order_items") or order.get("items") or []
     
     run_net        = _ZERO
     run_tax        = _ZERO
     run_disc_total = _ZERO
-    run_mrp_total  = _ZERO
 
     for idx, item in enumerate(items, 1):
         name = _product_name(item)
@@ -382,39 +381,31 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         except Exception:
             qty = Decimal("1")
 
-        # PRIORITY: Live pricing snapshot -> single-pass discount evaluation
-        selling_p_snapshot = item.get("price_snapshot")
-        compare_p_snapshot = item.get("compare_price_snapshot")
-        discount_snapshot  = item.get("discount_amount")
+        # PRIORITY: Live snapshots -> selling price and compare price
+        selling_p = _dec(item.get("price_snapshot") or item.get("unit_price") or item.get("price"))
+        compare_p = _dec(item.get("compare_price_snapshot") or item.get("compare_price") or item.get("mrp") or item.get("original_price"))
+        snapshot_disc = _dec(item.get("discount_amount") or item.get("discount") or item.get("discount_value"))
 
-        if selling_p_snapshot is not None and compare_p_snapshot is not None:
-            selling_p = _dec(selling_p_snapshot)
-            compare_p = _dec(compare_p_snapshot)
-            if discount_snapshot is not None:
-                row_disc = _dec(discount_snapshot)
-            else:
-                row_disc = max(_ZERO, (compare_p - selling_p) * qty).quantize(_TWO_DEC)
+        # Net taxable amount for this line item
+        row_net = (selling_p * qty).quantize(_TWO_DEC)
+
+        # 🔥 ZERO DOUBLE CALCULATION: Strictly derive Gross Amt & Discount
+        if compare_p > selling_p:
+            row_gross = (compare_p * qty).quantize(_TWO_DEC)
+            row_disc  = (row_gross - row_net).quantize(_TWO_DEC)
+        elif snapshot_disc > _ZERO:
+            row_disc  = snapshot_disc.quantize(_TWO_DEC)
+            row_gross = (row_net + row_disc).quantize(_TWO_DEC)
         else:
-            selling_p = _dec(item.get("price_snapshot") or item.get("unit_price") or item.get("price"))
-            compare_p = _dec(item.get("compare_price_snapshot") or item.get("compare_price") or item.get("mrp") or item.get("original_price"))
-            row_disc  = _dec(item.get("discount_amount") or item.get("discount") or item.get("discount_value"))
-            
-            if row_disc == _ZERO and compare_p > selling_p > _ZERO:
-                row_disc = ((compare_p - selling_p) * qty).quantize(_TWO_DEC)
+            row_gross = row_net
+            row_disc  = _ZERO
 
-        if compare_p > _ZERO:
-            unit_mrp = compare_p
-        else:
-            unit_mrp = selling_p + (row_disc / qty) if row_disc > _ZERO else selling_p
-
-        row_net   = (selling_p * qty).quantize(_TWO_DEC)
         row_tax   = (row_net * (gst_pct / Decimal("100"))).quantize(_TWO_DEC)
         row_total = (row_net + row_tax).quantize(_TWO_DEC)
 
         run_net        += row_net
         run_tax        += row_tax
         run_disc_total += row_disc
-        run_mrp_total  += (unit_mrp * qty).quantize(_TWO_DEC)
 
         display_tax_type = f"CGST+SGST ({int(gst_pct)}%)" if tax_type == "CGST+SGST" else f"IGST ({int(gst_pct)}%)"
 
@@ -422,7 +413,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
             _dc(str(idx)),
             _d(name),
             _dc(hsn),
-            _dr(_fmt(unit_mrp)),
+            _dr(_fmt(row_gross)),
             _dc(str(int(qty))),
             _dr(_fmt(row_disc) if row_disc > _ZERO else "—"),
             _dr(_fmt(row_net)),
@@ -440,7 +431,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         Paragraph(f"<b>{_fmt(run_items_total)}</b>", S["thr"]),
     ])
 
-    grand = (run_net + run_tax + ship_cost).quantize(_TWO_DEC)
+    grand = (run_net + ship_cost + run_tax).quantize(_TWO_DEC)
 
     qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|DISC:{run_disc_total:.2f}|TOTAL:{grand:.2f}|ORD:{display_ord}"
     qr_drawing = _create_qr(qr_payload, size=148.0)
@@ -465,20 +456,15 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     story.append(Spacer(1, 10))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 4 ── AMOUNT IN WORDS & HUMAN-READABLE PRICE SUMMARY
+    #  BLOCK 4 ── AMOUNT IN WORDS & TRANSPARENT PRICE SUMMARY
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     words_str = _amount_in_words(grand)
 
-    mrp_display = run_mrp_total if run_mrp_total > _ZERO else (run_net + run_disc_total)
+    # 🔥 STRICT SUMMARY: Subtotal + Shipping + Tax = Grand Total (No Total MRP!)
     gst_rows = [
         [Paragraph("<b>Price Summary:</b>", S["lbl"]), Paragraph("", S["b"])],
-        [Paragraph("Total MRP", S["br"]), Paragraph(_fmt(mrp_display), S["bbr"])],
+        [Paragraph("Subtotal", S["br"]), Paragraph(_fmt(run_net), S["bbr"])],
     ]
-    
-    if run_disc_total > _ZERO:
-        gst_rows.append([Paragraph("Discount", S["br"]), Paragraph(f"- {_fmt(run_disc_total)}", S["bbr"])])
-        
-    gst_rows.append([Paragraph("Subtotal", S["br"]), Paragraph(_fmt(run_net), S["bbr"])])
 
     if ship_cost > _ZERO:
         gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph(_fmt(ship_cost), S["bbr"])])
@@ -494,9 +480,13 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
     gst_rows.append([Paragraph("", S["b"]), Paragraph("", S["b"])])
     gst_rows.append([Paragraph("<b>Grand Total</b>", S["sum_lbl"]), Paragraph(f"<b>{_fmt(grand)}</b>", S["sum_val"])])
+    
+    # Delightful footnote showing total discount saved (Does not interfere with addition!)
+    if run_disc_total > _ZERO:
+        gst_rows.append([Paragraph("<i>Total Discount Saved</i>", S["sm"]), Paragraph(f"<i>{_fmt(run_disc_total)}</i>", S["sm"])])
 
     gst_tbl = Table(gst_rows, colWidths=[150.0, 84.0])
-    gst_tbl.setStyle(TableStyle([("LINEABOVE", (0, -1), (-1, -1), 0.8, _BORDER_C), ("PADDING", (0, 0), (-1, -1), 2), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    gst_tbl.setStyle(TableStyle([("LINEABOVE", (0, -2), (-1, -2), 0.8, _BORDER_C), ("PADDING", (0, 0), (-1, -1), 2), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
 
     right_col_rows = [[gst_tbl], [Spacer(1, 14)], [Paragraph(f"<b>For {_S['name']}:</b>", S["sign"])], [Spacer(1, 28)], [Paragraph("<b>Authorised Signatory</b>", S["sign"])]]
     left_col_rows = [[Paragraph("<b>Amount in Words:</b>", S["words"])], [Spacer(1, 3)], [Paragraph(words_str, S["words_v"])]]
