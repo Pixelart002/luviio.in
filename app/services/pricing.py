@@ -8,6 +8,7 @@ Architecture Upgrades:
   ✅ Strict Item-Level Math — Tax is calculated strictly on items only.
   ✅ Exact Discount Math — Computes (compare_price - price) * qty dynamically.
   ✅ Pure Shipping Fee — Flat shipping fee added directly to total without tax logic.
+  ✅ Live Discount Snapshot — Injects discount_amount into each item for PDF/API.
 """
 from __future__ import annotations
 
@@ -93,17 +94,27 @@ class StandardPricing(PricingStrategy):
         self._currency  = currency
 
     @property
-    def shipping_enabled(self) -> bool: return self._flat > Decimal("0") or self._threshold > Decimal("0")
+    def shipping_enabled(self) -> bool:
+        return self._flat > Decimal("0") or self._threshold > Decimal("0")
+
     @property
-    def shipping_threshold(self) -> Decimal: return self._threshold
+    def shipping_threshold(self) -> Decimal:
+        return self._threshold
+
     @property
-    def tax_rate(self) -> Decimal: return self._tax_rate
+    def tax_rate(self) -> Decimal:
+        return self._tax_rate
+
     @property
-    def currency(self) -> str: return self._currency
+    def currency(self) -> str:
+        return self._currency
 
     def calculate(self, items: List[dict[str, Any]]) -> PriceBreakdown:
         if not items:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CRITICAL: Empty payload.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="CRITICAL: Empty payload.",
+            )
 
         calc_subtotal = Decimal("0")
         calc_tax      = Decimal("0")
@@ -114,43 +125,75 @@ class StandardPricing(PricingStrategy):
 
             # 1. Strict Qty Check
             if "quantity" not in item or item["quantity"] is None:
-                raise HTTPException(status_code=500, detail="CRITICAL: Item quantity missing.")
+                raise HTTPException(
+                    status_code=500,
+                    detail="CRITICAL: Item quantity missing.",
+                )
             item_qty = Decimal(str(item["quantity"]))
 
             # 2. Strict Price Check
-            price_val = item.get("price_snapshot") or item.get("unit_price") or prod_data.get("price")
+            price_val = (
+                item.get("price_snapshot")
+                or item.get("unit_price")
+                or prod_data.get("price")
+            )
             if price_val is None:
-                raise HTTPException(status_code=500, detail="CRITICAL: Product price missing.")
+                raise HTTPException(
+                    status_code=500,
+                    detail="CRITICAL: Product price missing.",
+                )
             item_price = Decimal(str(price_val))
 
             # 3. Strict GST Percentage Check
-            item_gst_pct = prod_data.get("gst_percentage") if prod_data.get("gst_percentage") is not None else item.get("gst_percentage")
+            item_gst_pct = (
+                prod_data.get("gst_percentage")
+                if prod_data.get("gst_percentage") is not None
+                else item.get("gst_percentage")
+            )
             if item_gst_pct is None:
-                raise HTTPException(status_code=500, detail="CRITICAL: GST percentage missing.")
+                raise HTTPException(
+                    status_code=500,
+                    detail="CRITICAL: GST percentage missing.",
+                )
             item_tax_rate = Decimal(str(item_gst_pct)) / Decimal("100")
 
             # 🔥 EXACT DISCOUNT MATH: (Compare Price - Selling Price) * Qty
             comp_p = prod_data.get("compare_price") or item.get("compare_price")
-            item_compare = Decimal(str(comp_p)) if comp_p is not None else item_price
-            
+            item_compare = (
+                Decimal(str(comp_p)) if comp_p is not None else item_price
+            )
+
             item_disc = Decimal("0")
             if item_compare > item_price:
                 item_disc = (item_compare - item_price) * item_qty
+
+            # ✅ LIVE SNAPSHOT: Inject calculated fields into item dict
+            item["discount_amount"]        = float(round(item_disc, 2))
+            item["compare_price_snapshot"] = float(round(item_compare, 2))
+            item["price_snapshot"]         = float(round(item_price, 2))
+            item["gst_percentage_snapshot"] = float(item_gst_pct)
 
             # Item Level Totals
             item_sub = item_price * item_qty
             item_tax = item_sub * item_tax_rate
 
             calc_subtotal += item_sub
-            calc_tax += item_tax
+            calc_tax      += item_tax
             calc_discount += item_disc
 
         if calc_subtotal <= Decimal("0"):
-            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
+            return PriceBreakdown(
+                Decimal("0"), Decimal("0"), Decimal("0"),
+                Decimal("0"), Decimal("0"), self._currency,
+            )
 
         # 🔥 SIMPLE SHIPPING LOGIC: Flat charge added directly. NO TAX ON SHIPPING.
-        shipping = Decimal("0") if calc_subtotal >= self._threshold else self._flat
-        total    = calc_subtotal + shipping + calc_tax
+        shipping = (
+            Decimal("0")
+            if calc_subtotal >= self._threshold
+            else self._flat
+        )
+        total = calc_subtotal + shipping + calc_tax
 
         return PriceBreakdown(
             subtotal=calc_subtotal,
@@ -163,54 +206,94 @@ class StandardPricing(PricingStrategy):
 
 
 class ZeroTaxPricing(PricingStrategy):
-    def __init__(self, shipping_threshold: Decimal, shipping_flat: Decimal, currency: str) -> None:
+    def __init__(
+        self,
+        shipping_threshold: Decimal,
+        shipping_flat: Decimal,
+        currency: str,
+    ) -> None:
         self._threshold = shipping_threshold
         self._flat      = shipping_flat
         self._currency  = currency
 
     @property
-    def shipping_enabled(self) -> bool: return self._flat > Decimal("0") or self._threshold > Decimal("0")
+    def shipping_enabled(self) -> bool:
+        return self._flat > Decimal("0") or self._threshold > Decimal("0")
+
     @property
-    def shipping_threshold(self) -> Decimal: return self._threshold
+    def shipping_threshold(self) -> Decimal:
+        return self._threshold
+
     @property
-    def tax_rate(self) -> Decimal: return Decimal("0")
+    def tax_rate(self) -> Decimal:
+        return Decimal("0")
+
     @property
-    def currency(self) -> str: return self._currency
+    def currency(self) -> str:
+        return self._currency
 
     def calculate(self, items: List[dict[str, Any]]) -> PriceBreakdown:
         if not items:
-            raise HTTPException(status_code=400, detail="CRITICAL: Empty payload.")
+            raise HTTPException(
+                status_code=400,
+                detail="CRITICAL: Empty payload.",
+            )
 
         calc_subtotal = Decimal("0")
         calc_discount = Decimal("0")
 
         for item in items:
             prod_data = item.get("products") or item
-            
+
             if "quantity" not in item or item["quantity"] is None:
-                raise HTTPException(status_code=500, detail="CRITICAL: Item quantity missing.")
+                raise HTTPException(
+                    status_code=500,
+                    detail="CRITICAL: Item quantity missing.",
+                )
             item_qty = Decimal(str(item["quantity"]))
 
-            price_val = item.get("price_snapshot") or item.get("unit_price") or prod_data.get("price")
+            price_val = (
+                item.get("price_snapshot")
+                or item.get("unit_price")
+                or prod_data.get("price")
+            )
             if price_val is None:
-                raise HTTPException(status_code=500, detail="CRITICAL: Product price missing.")
+                raise HTTPException(
+                    status_code=500,
+                    detail="CRITICAL: Product price missing.",
+                )
             item_price = Decimal(str(price_val))
 
             comp_p = prod_data.get("compare_price") or item.get("compare_price")
-            item_compare = Decimal(str(comp_p)) if comp_p is not None else item_price
-            
+            item_compare = (
+                Decimal(str(comp_p)) if comp_p is not None else item_price
+            )
+
             item_disc = Decimal("0")
             if item_compare > item_price:
                 item_disc = (item_compare - item_price) * item_qty
 
-            calc_subtotal += (item_price * item_qty)
+            # ✅ LIVE SNAPSHOT: Inject calculated fields into item dict
+            item["discount_amount"]         = float(round(item_disc, 2))
+            item["compare_price_snapshot"]  = float(round(item_compare, 2))
+            item["price_snapshot"]          = float(round(item_price, 2))
+            item["gst_percentage_snapshot"] = float(0)
+
+            calc_subtotal += item_price * item_qty
             calc_discount += item_disc
 
         if calc_subtotal <= Decimal("0"):
-            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
+            return PriceBreakdown(
+                Decimal("0"), Decimal("0"), Decimal("0"),
+                Decimal("0"), Decimal("0"), self._currency,
+            )
 
-        shipping = Decimal("0") if calc_subtotal >= self._threshold else self._flat
-        total    = calc_subtotal + shipping
+        shipping = (
+            Decimal("0")
+            if calc_subtotal >= self._threshold
+            else self._flat
+        )
+        total = calc_subtotal + shipping
 
         return PriceBreakdown(
             subtotal=calc_subtotal,
@@ -223,31 +306,54 @@ class ZeroTaxPricing(PricingStrategy):
 
 
 class DiscountPricing(PricingStrategy):
-    def __init__(self, base_strategy: PricingStrategy, discount_pct: Decimal) -> None:
+    def __init__(
+        self, base_strategy: PricingStrategy, discount_pct: Decimal
+    ) -> None:
         self._base     = base_strategy
         self._discount = discount_pct / Decimal("100")
 
     @property
-    def shipping_enabled(self) -> bool: return self._base.shipping_enabled
+    def shipping_enabled(self) -> bool:
+        return self._base.shipping_enabled
+
     @property
-    def shipping_threshold(self) -> Decimal: return self._base.shipping_threshold
+    def shipping_threshold(self) -> Decimal:
+        return self._base.shipping_threshold
+
     @property
-    def tax_rate(self) -> Decimal: return self._base.tax_rate
+    def tax_rate(self) -> Decimal:
+        return self._base.tax_rate
+
     @property
-    def currency(self) -> str: return self._base.currency
+    def currency(self) -> str:
+        return self._base.currency
 
     def calculate(self, items: List[dict[str, Any]]) -> PriceBreakdown:
         discounted_items = []
         for item in items:
             if "quantity" not in item:
-                raise HTTPException(status_code=500, detail="CRITICAL: Quantity missing.")
-                
+                raise HTTPException(
+                    status_code=500,
+                    detail="CRITICAL: Quantity missing.",
+                )
+
             new_item = dict(item)
-            original_price = Decimal(str(item.get("price_snapshot") or item.get("unit_price") or item.get("price", 0)))
-            new_item["price"] = original_price * (Decimal("1") - self._discount)
-            new_item["price_snapshot"] = new_item["price"]
+            original_price = Decimal(
+                str(
+                    item.get("price_snapshot")
+                    or item.get("unit_price")
+                    or item.get("price", 0)
+                )
+            )
+            discounted_price = original_price * (
+                Decimal("1") - self._discount
+            )
+
+            # ✅ SNAPSHOT for downstream (delegates actual discount calc to base)
+            new_item["price_snapshot"]          = float(round(discounted_price, 2))
+            new_item["original_price_snapshot"] = float(round(original_price, 2))
             discounted_items.append(new_item)
-            
+
         return self._base.calculate(items=discounted_items)
 
 
@@ -256,18 +362,28 @@ class FreeShippingPricing(PricingStrategy):
         self._base = base_strategy
 
     @property
-    def shipping_enabled(self) -> bool: return False
+    def shipping_enabled(self) -> bool:
+        return False
+
     @property
-    def shipping_threshold(self) -> Decimal: return self._base.shipping_threshold
+    def shipping_threshold(self) -> Decimal:
+        return self._base.shipping_threshold
+
     @property
-    def tax_rate(self) -> Decimal: return self._base.tax_rate
+    def tax_rate(self) -> Decimal:
+        return self._base.tax_rate
+
     @property
-    def currency(self) -> str: return self._base.currency
+    def currency(self) -> str:
+        return self._base.currency
 
     def calculate(self, items: List[dict[str, Any]]) -> PriceBreakdown:
         original = self._base.calculate(items=items)
         if original.subtotal <= Decimal("0"):
-            return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), original.currency)
+            return PriceBreakdown(
+                Decimal("0"), Decimal("0"), Decimal("0"),
+                Decimal("0"), Decimal("0"), original.currency,
+            )
 
         return PriceBreakdown(
             subtotal=original.subtotal,
@@ -279,23 +395,37 @@ class FreeShippingPricing(PricingStrategy):
         )
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  FACTORY FUNCTIONS
+# ══════════════════════════════════════════════════════════════════════════════
+
 def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
     if not config:
-        logger.error("CRITICAL: Pricing config missing. Rejecting request to prevent financial loss.")
-        raise HTTPException(status_code=503, detail="Pricing service temporarily unavailable. Please try again.")
+        logger.error(
+            "CRITICAL: Pricing config missing. "
+            "Rejecting request to prevent financial loss."
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Pricing service temporarily unavailable. Please try again.",
+        )
 
     tax_enabled      = config.get("tax_enabled", True)
     shipping_enabled = config.get("shipping_enabled", True)
     currency         = config.get("currency", "INR")
 
-    tax_rate           = Decimal(str(config.get("tax_rate",           18.0))) / Decimal("100")
-    shipping_flat      = Decimal(str(config.get("shipping_flat",      99.0)))
+    tax_rate           = Decimal(str(config.get("tax_rate", 18.0))) / Decimal("100")
+    shipping_flat      = Decimal(str(config.get("shipping_flat", 99.0)))
     shipping_threshold = Decimal(str(config.get("shipping_threshold", 999.0)))
 
     if not tax_enabled:
         return ZeroTaxPricing(
-            shipping_threshold=shipping_threshold if shipping_enabled else Decimal("0"),
-            shipping_flat=shipping_flat           if shipping_enabled else Decimal("0"),
+            shipping_threshold=(
+                shipping_threshold if shipping_enabled else Decimal("0")
+            ),
+            shipping_flat=(
+                shipping_flat if shipping_enabled else Decimal("0")
+            ),
             currency=currency,
         )
 
@@ -315,5 +445,7 @@ def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
     )
 
 
-def get_pricing_for_user(user: dict[str, Any], config: dict[str, Any] | None) -> PricingStrategy:
+def get_pricing_for_user(
+    user: dict[str, Any], config: dict[str, Any] | None
+) -> PricingStrategy:
     return get_pricing_from_config(config)
