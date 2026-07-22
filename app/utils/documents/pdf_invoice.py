@@ -6,10 +6,11 @@ Path: app/utils/documents/pdf_invoice.py
 Clean, User-Friendly GST-compliant Tax Invoice with Giant Scannable QR Code.
 
 Architecture Upgrades:
-  ✅ Strict Table Footer — Sums ONLY the items in the cart (Net Amt + Tax Amt). Zero shipping contamination.
-  ✅ Strict Discount Math — Reads LIVE snapshot from pricing service (discount_amount, price_snapshot, compare_price_snapshot).
-  ✅ Pure Shipping Fee — Appears ONLY in the Price Summary as simple logistics cost ("Shipping") without tax/exempt tags.
-  ✅ Human-Readable Summary — Clearly displays Total MRP, Total Deducted Discount, Net Subtotal, Shipping, GST, and Grand Total.
+  ✅ Strict Decimal Math — Uses Decimal('0.01') quantization for zero floating-point discrepancies.
+  ✅ Single-Pass Discount Math — Calculates live item discount from price snapshots without double calculation.
+  ✅ Strict Table Footer — Sums ONLY cart items (Net Amt + Tax Amt). Zero shipping contamination.
+  ✅ Pure Shipping Fee — Appears ONLY in Price Summary as simple logistics cost without tax/exempt tags.
+  ✅ Human-Readable Summary — Displays Total MRP, Deducted Discount, Net Subtotal, Shipping, GST, and Grand Total.
 """
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ import io
 import os
 import logging
 import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import Any
 
 from reportlab.lib.pagesizes import A4
@@ -48,85 +49,108 @@ _S = {
     "website": os.environ.get("SELLER_WEBSITE",     "luviio.in"),
 }
 
+_TWO_DEC = Decimal("0.01")
+_ZERO = Decimal("0.00")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  UTILITY FUNCTIONS
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _safe(val: Any, default: str = "") -> str:
-    if val is None: return default
+    if val is None:
+        return default
     s = str(val).strip()
     return s if s and s.lower() not in ("none", "null") else default
 
 
-def _safe_f(val: Any, default: float = 0.0) -> float:
-    try: return float(val) if val is not None else default
-    except (ValueError, TypeError): return default
+def _dec(val: Any, default: str = "0.00") -> Decimal:
+    if val is None:
+        return Decimal(default)
+    try:
+        return Decimal(str(val)).quantize(_TWO_DEC, rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal(default)
 
 
 def _fmt(amount: Any) -> str:
-    try: return f"Rs. {float(amount):,.2f}"
-    except (TypeError, ValueError): return "Rs. 0.00"
+    try:
+        val = _dec(amount)
+        return f"Rs. {val:,.2f}"
+    except Exception:
+        return "Rs. 0.00"
 
 
 def _short_id(uuid_str: str) -> str:
     s = _safe(uuid_str)
-    if s.startswith("ORD-"): return s
+    if s.startswith("ORD-"):
+        return s
     return s[:12].upper() if len(s) >= 8 else (s.upper() or "—")
 
 
 def _parse_date(dt_str: str) -> str:
-    if not dt_str: return datetime.datetime.now().strftime("%d-%m-%Y")
+    if not dt_str:
+        return datetime.datetime.now().strftime("%d-%m-%Y")
     for fmt in ("%Y-%m-%dT%H:%M:%S.%f+00:00", "%Y-%m-%dT%H:%M:%S+00:00", "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
-        try: return datetime.datetime.strptime(dt_str[:26], fmt).strftime("%d-%m-%Y")
-        except ValueError: continue
+        try:
+            return datetime.datetime.strptime(dt_str[:26], fmt).strftime("%d-%m-%Y")
+        except ValueError:
+            continue
     return dt_str[:10]
 
 
 def _product_name(item: dict) -> str:
     for key in ("product_name", "name", "title"):
         val = _safe(item.get(key))
-        if val: return val
+        if val:
+            return val
     for rel in ("products", "product", "item"):
         obj = item.get(rel)
         if isinstance(obj, dict):
             val = _safe(obj.get("name") or obj.get("product_name"))
-            if val: return val
+            if val:
+                return val
     return "Product Item"
 
 
 def _product_hsn(item: dict) -> str:
     for key in ("hsn_code", "hsn", "hsn_sac"):
         val = _safe(item.get(key))
-        if val: return val
+        if val:
+            return val
     for rel in ("products", "product", "item"):
         obj = item.get(rel)
         if isinstance(obj, dict):
             val = _safe(obj.get("hsn_code") or obj.get("hsn"))
-            if val: return val
+            if val:
+                return val
     return "9988"
 
 
-def _product_gst(item: dict) -> int:
-    # 🔥 PRIORITY: pricing service snapshot first
+def _product_gst(item: dict) -> Decimal:
     snapshot = item.get("gst_percentage_snapshot")
     if snapshot is not None:
-        try: return int(float(snapshot))
-        except (ValueError, TypeError): pass
-    
+        try:
+            return Decimal(str(snapshot)).quantize(_TWO_DEC)
+        except (InvalidOperation, ValueError, TypeError):
+            pass
     for key in ("gst_percentage", "gst_pct", "tax_rate"):
         val = item.get(key)
         if val is not None:
-            try: return int(float(val))
-            except (ValueError, TypeError): pass
+            try:
+                return Decimal(str(val)).quantize(_TWO_DEC)
+            except (InvalidOperation, ValueError, TypeError):
+                pass
     for rel in ("products", "product", "item"):
         obj = item.get(rel)
         if isinstance(obj, dict):
             val = obj.get("gst_percentage") or obj.get("gst_pct")
             if val is not None:
-                try: return int(float(val))
-                except (ValueError, TypeError): pass
-    return 18
+                try:
+                    return Decimal(str(val)).quantize(_TWO_DEC)
+                except (InvalidOperation, ValueError, TypeError):
+                    pass
+    return Decimal("18.00")
 
 
 def _create_qr(data: str, size: float = 148.0) -> Drawing:
@@ -146,7 +170,8 @@ def _state_code(raw: str) -> str:
     return _STATE_MAP.get(raw.strip().lower(), raw.strip().upper()[:2])
 
 def _resolve_tax_type(shipping_state: str) -> str:
-    if not shipping_state: return "IGST"
+    if not shipping_state:
+        return "IGST"
     return "CGST+SGST" if _state_code(shipping_state) == _state_code(_S["state"]) else "IGST"
 
 
@@ -165,13 +190,16 @@ def _n2w(n: int) -> str:
     if n < 10_000_000: return _n2w(n // 100_000) + "Lakh " + _n2w(n % 100_000)
     return _n2w(n // 10_000_000) + "Crore " + _n2w(n % 10_000_000)
 
-def _amount_in_words(amount: float) -> str:
+def _amount_in_words(amount: Decimal) -> str:
     try:
-        rupees = int(amount)
-        paise = int(round((amount - rupees) * 100))
+        val = amount.quantize(_TWO_DEC)
+        rupees = int(val)
+        paise = int(round((val - Decimal(rupees)) * 100))
         parts = []
-        if rupees: parts.append(_n2w(rupees).strip() + " Rupees")
-        if paise: parts.append(_n2w(paise).strip() + " Paise")
+        if rupees:
+            parts.append(_n2w(rupees).strip() + " Rupees")
+        if paise:
+            parts.append(_n2w(paise).strip() + " Paise")
         return (" and ".join(parts) + " Only") if parts else "Zero Rupees Only"
     except Exception:
         return "Amount as per invoice"
@@ -249,9 +277,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     S = _styles()
     story: list = []
 
-    subtotal  = _safe_f(order.get("subtotal"))
-    ship_cost = _safe_f(order.get("shipping_cost"))
-    total_amt = _safe_f(order.get("total_amount"))
+    ship_cost = _dec(order.get("shipping_cost"))
 
     sh1 = _safe(order.get("shipping_line1"))
     sh2 = _safe(order.get("shipping_line2"))
@@ -279,7 +305,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     story.append(HRFlowable(width="100%", thickness=2.5, color=_GOLD, spaceAfter=8))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 2 ── HORIZONTAL GRID: [SELLER | BUYER] & [ORDER DETAILS] + [150pt QR]
+    #  BLOCK 2 ── HORIZONTAL GRID: [SELLER | BUYER] & [ORDER DETAILS]
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     LEFT_W = 394.0
     RIGHT_W = 160.0
@@ -334,10 +360,10 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
     items = order.get("order_items") or order.get("items") or []
     
-    run_net        = 0.0
-    run_tax        = 0.0
-    run_disc_total = 0.0
-    run_mrp_total  = 0.0
+    run_net        = _ZERO
+    run_tax        = _ZERO
+    run_disc_total = _ZERO
+    run_mrp_total  = _ZERO
 
     for idx, item in enumerate(items, 1):
         name = _product_name(item)
@@ -345,65 +371,68 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         
         # Guard: Ensure shipping charges never leak into the items table
         if "shipping" in name.lower() or hsn == "9965":
-            if ship_cost == 0.0:
-                ship_cost = _safe_f(item.get("price") or item.get("unit_price") or item.get("subtotal"))
+            if ship_cost == _ZERO:
+                ship_cost = _dec(item.get("price") or item.get("unit_price") or item.get("subtotal"))
             continue
 
         gst_pct = _product_gst(item)
-        qty     = int(_safe_f(item.get("quantity"), 1))
-        if qty < 1: qty = 1
+        try:
+            qty_int = int(_dec(item.get("quantity"), "1"))
+            qty = Decimal(max(1, qty_int))
+        except Exception:
+            qty = Decimal("1")
 
-        # 🔥 PRIORITY 1: LIVE SNAPSHOT from pricing service
+        # PRIORITY: Live pricing snapshot -> single-pass discount evaluation
         selling_p_snapshot = item.get("price_snapshot")
         compare_p_snapshot = item.get("compare_price_snapshot")
         discount_snapshot  = item.get("discount_amount")
 
         if selling_p_snapshot is not None and compare_p_snapshot is not None:
-            # ✅ Use pricing service snapshot directly
-            selling_p = _safe_f(selling_p_snapshot)
-            compare_p = _safe_f(compare_p_snapshot)
-            row_disc  = _safe_f(discount_snapshot) if discount_snapshot is not None else round((compare_p - selling_p) * qty, 2)
+            selling_p = _dec(selling_p_snapshot)
+            compare_p = _dec(compare_p_snapshot)
+            if discount_snapshot is not None:
+                row_disc = _dec(discount_snapshot)
+            else:
+                row_disc = max(_ZERO, (compare_p - selling_p) * qty).quantize(_TWO_DEC)
         else:
-            # Fallback: DB values (legacy support)
-            selling_p = _safe_f(item.get("price_snapshot") or item.get("unit_price") or item.get("price"))
-            compare_p = _safe_f(item.get("compare_price_snapshot") or item.get("compare_price") or item.get("mrp") or item.get("original_price"))
-            row_disc   = _safe_f(item.get("discount_amount") or item.get("discount") or item.get("discount_value"))
+            selling_p = _dec(item.get("price_snapshot") or item.get("unit_price") or item.get("price"))
+            compare_p = _dec(item.get("compare_price_snapshot") or item.get("compare_price") or item.get("mrp") or item.get("original_price"))
+            row_disc  = _dec(item.get("discount_amount") or item.get("discount") or item.get("discount_value"))
             
-            if row_disc == 0.0 and compare_p > selling_p > 0:
-                row_disc = round((compare_p - selling_p) * qty, 2)
+            if row_disc == _ZERO and compare_p > selling_p > _ZERO:
+                row_disc = ((compare_p - selling_p) * qty).quantize(_TWO_DEC)
 
-        # Final unit display price = MRP (for table display)
-        if compare_p > 0:
+        if compare_p > _ZERO:
             unit_mrp = compare_p
         else:
-            unit_mrp = selling_p + (row_disc / qty) if row_disc > 0 else selling_p
+            unit_mrp = selling_p + (row_disc / qty) if row_disc > _ZERO else selling_p
 
-        row_net   = round(selling_p * qty, 2)
-        row_tax   = round(row_net * (gst_pct / 100.0), 2)
-        row_total = round(row_net + row_tax, 2)
+        row_net   = (selling_p * qty).quantize(_TWO_DEC)
+        row_tax   = (row_net * (gst_pct / Decimal("100"))).quantize(_TWO_DEC)
+        row_total = (row_net + row_tax).quantize(_TWO_DEC)
 
         run_net        += row_net
         run_tax        += row_tax
         run_disc_total += row_disc
-        run_mrp_total  += (unit_mrp * qty)
+        run_mrp_total  += (unit_mrp * qty).quantize(_TWO_DEC)
 
-        display_tax_type = f"CGST+SGST ({gst_pct}%)" if tax_type == "CGST+SGST" else f"IGST ({gst_pct}%)"
+        display_tax_type = f"CGST+SGST ({int(gst_pct)}%)" if tax_type == "CGST+SGST" else f"IGST ({int(gst_pct)}%)"
 
         rows.append([
             _dc(str(idx)),
             _d(name),
             _dc(hsn),
             _dr(_fmt(unit_mrp)),
-            _dc(str(qty)),
-            _dr(_fmt(row_disc) if row_disc > 0 else "—"),
+            _dc(str(int(qty))),
+            _dr(_fmt(row_disc) if row_disc > _ZERO else "—"),
             _dr(_fmt(row_net)),
             _dc(display_tax_type),
             _dr(_fmt(row_tax)),
             _dr(_fmt(row_total)),
         ])
 
-    # 🔥 STRICT TABLE FOOTER
-    run_items_total = round(run_net + run_tax, 2)
+    # STRICT TABLE FOOTER — sums cart items only
+    run_items_total = (run_net + run_tax).quantize(_TWO_DEC)
     rows.append([
         Paragraph("<b>Total</b>", S["th"]), "", "", "", "", "",
         Paragraph(f"<b>{_fmt(run_net)}</b>", S["thr"]), "",
@@ -411,7 +440,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         Paragraph(f"<b>{_fmt(run_items_total)}</b>", S["thr"]),
     ])
 
-    grand = total_amt if total_amt > 0 else round(run_net + run_tax + ship_cost, 2)
+    grand = (run_net + run_tax + ship_cost).quantize(_TWO_DEC)
 
     qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|DISC:{run_disc_total:.2f}|TOTAL:{grand:.2f}|ORD:{display_ord}"
     qr_drawing = _create_qr(qr_payload, size=148.0)
@@ -440,24 +469,24 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     words_str = _amount_in_words(grand)
 
+    mrp_display = run_mrp_total if run_mrp_total > _ZERO else (run_net + run_disc_total)
     gst_rows = [
         [Paragraph("<b>Price Summary:</b>", S["lbl"]), Paragraph("", S["b"])],
-        [Paragraph("Total MRP", S["br"]), Paragraph(_fmt(run_mrp_total if run_mrp_total > 0 else run_net + run_disc_total), S["bbr"])],
+        [Paragraph("Total MRP", S["br"]), Paragraph(_fmt(mrp_display), S["bbr"])],
     ]
     
-    if run_disc_total > 0:
+    if run_disc_total > _ZERO:
         gst_rows.append([Paragraph("Discount", S["br"]), Paragraph(f"- {_fmt(run_disc_total)}", S["bbr"])])
         
     gst_rows.append([Paragraph("Subtotal", S["br"]), Paragraph(_fmt(run_net), S["bbr"])])
 
-    # 🔥 PURE SHIPPING (No tax, no exempt tag)
-    if ship_cost > 0:
+    if ship_cost > _ZERO:
         gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph(_fmt(ship_cost), S["bbr"])])
     else:
         gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph("FREE", S["bbr"])])
 
     if tax_type == "CGST+SGST":
-        half_tax = round(run_tax / 2.0, 2)
+        half_tax = (run_tax / Decimal("2")).quantize(_TWO_DEC)
         gst_rows.append([Paragraph("CGST", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
         gst_rows.append([Paragraph("SGST", S["br"]), Paragraph(_fmt(run_tax - half_tax), S["bbr"])])
     else:
@@ -482,7 +511,8 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     if _S["gstin"]: footer_note += f"    GSTIN: {_S['gstin']}"
     story.append(Paragraph(footer_note, S["foot"]))
 
-    try: doc.build(story)
+    try:
+        doc.build(story)
     except Exception as exc:
         logger.error("PDF invoice build failed: %s", exc, exc_info=True)
         raise RuntimeError(f"Invoice generation failed: {exc}") from exc

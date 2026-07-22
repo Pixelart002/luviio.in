@@ -6,9 +6,8 @@ Path: app/services/pricing.py
 Architecture Upgrades:
   ✅ ZERO FALLBACKS — If GST%, Price, or Qty is missing, it crashes (Halt Order).
   ✅ Strict Item-Level Math — Tax is calculated strictly on items only.
-  ✅ Exact Discount Math — Computes (compare_price - price) * qty dynamically.
   ✅ Pure Shipping Fee — Flat shipping fee added directly to total without tax logic.
-  ✅ Live Discount Snapshot — Injects discount_amount into each item for PDF/API.
+  ✅ Zero Discount Bloat — Stripped all discount calculation & snapshots (handled at PDF/Order level).
 """
 from __future__ import annotations
 
@@ -24,13 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  VALUE OBJECT
+#  VALUE OBJECT (Cleaned — No Discount Field)
 # ══════════════════════════════════════════════════════════════════════════════
 
 @dataclass(frozen=True)
 class PriceBreakdown:
     subtotal: Decimal
-    discount: Decimal      # 🔥 Stores exact (Compare Price - Price) * Qty
     shipping: Decimal      # 🔥 Flat shipping charge (No tax involved)
     tax:      Decimal      # 🔥 Tax strictly on products only
     total:    Decimal
@@ -38,12 +36,11 @@ class PriceBreakdown:
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "subtotal":        float(round(self.subtotal, 2)),
-            "discount_amount": float(round(self.discount, 2)),
-            "shipping_cost":   float(round(self.shipping, 2)),
-            "tax_amount":      float(round(self.tax,      2)),
-            "total_amount":    float(round(self.total,    2)),
-            "currency":        self.currency,
+            "subtotal":      float(round(self.subtotal, 2)),
+            "shipping_cost": float(round(self.shipping, 2)),
+            "tax_amount":    float(round(self.tax,      2)),
+            "total_amount":  float(round(self.total,    2)),
+            "currency":      self.currency,
         }
 
     @property
@@ -118,7 +115,6 @@ class StandardPricing(PricingStrategy):
 
         calc_subtotal = Decimal("0")
         calc_tax      = Decimal("0")
-        calc_discount = Decimal("0")
 
         for item in items:
             prod_data = item.get("products") or item
@@ -157,20 +153,8 @@ class StandardPricing(PricingStrategy):
                 )
             item_tax_rate = Decimal(str(item_gst_pct)) / Decimal("100")
 
-            # 🔥 EXACT DISCOUNT MATH: (Compare Price - Selling Price) * Qty
-            comp_p = prod_data.get("compare_price") or item.get("compare_price")
-            item_compare = (
-                Decimal(str(comp_p)) if comp_p is not None else item_price
-            )
-
-            item_disc = Decimal("0")
-            if item_compare > item_price:
-                item_disc = (item_compare - item_price) * item_qty
-
-            # ✅ LIVE SNAPSHOT: Inject calculated fields into item dict
-            item["discount_amount"]        = float(round(item_disc, 2))
-            item["compare_price_snapshot"] = float(round(item_compare, 2))
-            item["price_snapshot"]         = float(round(item_price, 2))
+            # ✅ Essential Live Snapshots Only (No Discount Snapshots)
+            item["price_snapshot"]          = float(round(item_price, 2))
             item["gst_percentage_snapshot"] = float(item_gst_pct)
 
             # Item Level Totals
@@ -179,11 +163,10 @@ class StandardPricing(PricingStrategy):
 
             calc_subtotal += item_sub
             calc_tax      += item_tax
-            calc_discount += item_disc
 
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(
-                Decimal("0"), Decimal("0"), Decimal("0"),
+                Decimal("0"), Decimal("0"),
                 Decimal("0"), Decimal("0"), self._currency,
             )
 
@@ -197,7 +180,6 @@ class StandardPricing(PricingStrategy):
 
         return PriceBreakdown(
             subtotal=calc_subtotal,
-            discount=calc_discount,
             shipping=shipping,
             tax=calc_tax,
             total=total,
@@ -240,7 +222,6 @@ class ZeroTaxPricing(PricingStrategy):
             )
 
         calc_subtotal = Decimal("0")
-        calc_discount = Decimal("0")
 
         for item in items:
             prod_data = item.get("products") or item
@@ -264,27 +245,14 @@ class ZeroTaxPricing(PricingStrategy):
                 )
             item_price = Decimal(str(price_val))
 
-            comp_p = prod_data.get("compare_price") or item.get("compare_price")
-            item_compare = (
-                Decimal(str(comp_p)) if comp_p is not None else item_price
-            )
-
-            item_disc = Decimal("0")
-            if item_compare > item_price:
-                item_disc = (item_compare - item_price) * item_qty
-
-            # ✅ LIVE SNAPSHOT: Inject calculated fields into item dict
-            item["discount_amount"]         = float(round(item_disc, 2))
-            item["compare_price_snapshot"]  = float(round(item_compare, 2))
             item["price_snapshot"]          = float(round(item_price, 2))
             item["gst_percentage_snapshot"] = float(0)
 
             calc_subtotal += item_price * item_qty
-            calc_discount += item_disc
 
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(
-                Decimal("0"), Decimal("0"), Decimal("0"),
+                Decimal("0"), Decimal("0"),
                 Decimal("0"), Decimal("0"), self._currency,
             )
 
@@ -297,64 +265,11 @@ class ZeroTaxPricing(PricingStrategy):
 
         return PriceBreakdown(
             subtotal=calc_subtotal,
-            discount=calc_discount,
             shipping=shipping,
             tax=Decimal("0"),
             total=total,
             currency=self._currency,
         )
-
-
-class DiscountPricing(PricingStrategy):
-    def __init__(
-        self, base_strategy: PricingStrategy, discount_pct: Decimal
-    ) -> None:
-        self._base     = base_strategy
-        self._discount = discount_pct / Decimal("100")
-
-    @property
-    def shipping_enabled(self) -> bool:
-        return self._base.shipping_enabled
-
-    @property
-    def shipping_threshold(self) -> Decimal:
-        return self._base.shipping_threshold
-
-    @property
-    def tax_rate(self) -> Decimal:
-        return self._base.tax_rate
-
-    @property
-    def currency(self) -> str:
-        return self._base.currency
-
-    def calculate(self, items: List[dict[str, Any]]) -> PriceBreakdown:
-        discounted_items = []
-        for item in items:
-            if "quantity" not in item:
-                raise HTTPException(
-                    status_code=500,
-                    detail="CRITICAL: Quantity missing.",
-                )
-
-            new_item = dict(item)
-            original_price = Decimal(
-                str(
-                    item.get("price_snapshot")
-                    or item.get("unit_price")
-                    or item.get("price", 0)
-                )
-            )
-            discounted_price = original_price * (
-                Decimal("1") - self._discount
-            )
-
-            # ✅ SNAPSHOT for downstream (delegates actual discount calc to base)
-            new_item["price_snapshot"]          = float(round(discounted_price, 2))
-            new_item["original_price_snapshot"] = float(round(original_price, 2))
-            discounted_items.append(new_item)
-
-        return self._base.calculate(items=discounted_items)
 
 
 class FreeShippingPricing(PricingStrategy):
@@ -381,13 +296,12 @@ class FreeShippingPricing(PricingStrategy):
         original = self._base.calculate(items=items)
         if original.subtotal <= Decimal("0"):
             return PriceBreakdown(
-                Decimal("0"), Decimal("0"), Decimal("0"),
+                Decimal("0"), Decimal("0"),
                 Decimal("0"), Decimal("0"), original.currency,
             )
 
         return PriceBreakdown(
             subtotal=original.subtotal,
-            discount=original.discount,
             shipping=Decimal("0"),
             tax=original.tax,
             total=original.subtotal + original.tax,
