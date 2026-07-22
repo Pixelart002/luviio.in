@@ -6,9 +6,10 @@ Path: app/utils/documents/pdf_invoice.py
 Clean, User-Friendly GST-compliant Tax Invoice with Giant Scannable QR Code.
 
 Architecture Upgrades:
-  ✅ Strict Discount Math — Computes (compare_price - price) * qty and prints in the item table.
-  ✅ Pure Shipping Fee — Shipping labeled simply as "Shipping" in summary without tax or legal BS.
-  ✅ Human-Readable Summary — Clearly shows Total MRP, Deducted Discount, and Net Subtotal.
+  ✅ Strict Item Table Footer — Sums ONLY the items in the cart (Net Amt + Tax Amt). Zero shipping contamination.
+  ✅ Strict Discount Math — Computes (compare_price - price) * qty dynamically and prints accurately in the table.
+  ✅ Pure Shipping Fee — Appears ONLY in the Price Summary as simple logistics cost ("Shipping") without tax/exempt tags.
+  ✅ Human-Readable Summary — Clearly displays Total MRP, Total Deducted Discount, Net Subtotal, Shipping, GST, and Grand Total.
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ import io
 import os
 import logging
 import datetime
+from decimal import Decimal
 from typing import Any
 
 from reportlab.lib.pagesizes import A4
@@ -31,6 +33,10 @@ from reportlab.graphics.barcode.qr import QrCodeWidget
 
 logger = logging.getLogger(__name__)
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  SELLER CONFIG — 100% from environment variables
+# ══════════════════════════════════════════════════════════════════════════════
+
 _S = {
     "name":    os.environ.get("SELLER_LEGAL_NAME",  "Luviio Commerce"),
     "addr1":   os.environ.get("SELLER_ADDRESS_1",   "India"),
@@ -42,23 +48,32 @@ _S = {
     "website": os.environ.get("SELLER_WEBSITE",     "luviio.in"),
 }
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  UTILITY FUNCTIONS
+# ══════════════════════════════════════════════════════════════════════════════
+
 def _safe(val: Any, default: str = "") -> str:
     if val is None: return default
     s = str(val).strip()
     return s if s and s.lower() not in ("none", "null") else default
 
+
 def _safe_f(val: Any, default: float = 0.0) -> float:
     try: return float(val) if val is not None else default
     except (ValueError, TypeError): return default
+
 
 def _fmt(amount: Any) -> str:
     try: return f"Rs. {float(amount):,.2f}"
     except (TypeError, ValueError): return "Rs. 0.00"
 
+
 def _short_id(uuid_str: str) -> str:
     s = _safe(uuid_str)
     if s.startswith("ORD-"): return s
     return s[:12].upper() if len(s) >= 8 else (s.upper() or "—")
+
 
 def _parse_date(dt_str: str) -> str:
     if not dt_str: return datetime.datetime.now().strftime("%d-%m-%Y")
@@ -66,6 +81,7 @@ def _parse_date(dt_str: str) -> str:
         try: return datetime.datetime.strptime(dt_str[:26], fmt).strftime("%d-%m-%Y")
         except ValueError: continue
     return dt_str[:10]
+
 
 def _product_name(item: dict) -> str:
     for key in ("product_name", "name", "title"):
@@ -78,6 +94,7 @@ def _product_name(item: dict) -> str:
             if val: return val
     return "Product Item"
 
+
 def _product_hsn(item: dict) -> str:
     for key in ("hsn_code", "hsn", "hsn_sac"):
         val = _safe(item.get(key))
@@ -88,6 +105,7 @@ def _product_hsn(item: dict) -> str:
             val = _safe(obj.get("hsn_code") or obj.get("hsn"))
             if val: return val
     return "9988"
+
 
 def _product_gst(item: dict) -> int:
     for key in ("gst_percentage", "gst_pct", "tax_rate"):
@@ -104,6 +122,7 @@ def _product_gst(item: dict) -> int:
                 except (ValueError, TypeError): pass
     return 18
 
+
 def _create_qr(data: str, size: float = 148.0) -> Drawing:
     qr_widget = QrCodeWidget(data, barLevel='L')
     bounds = qr_widget.getBounds()
@@ -111,6 +130,7 @@ def _create_qr(data: str, size: float = 148.0) -> Drawing:
     drawing = Drawing(size, size, transform=[size / w, 0, 0, size / h, 0, 0])
     drawing.add(qr_widget)
     return drawing
+
 
 _STATE_MAP: dict[str, str] = {
     "andhra pradesh": "AP", "ap": "AP", "assam": "AS", "bihar": "BR", "chandigarh": "CH", "delhi": "DL", "new delhi": "DL", "goa": "GA", "gujarat": "GJ", "haryana": "HR", "himachal pradesh": "HP", "jharkhand": "JH", "karnataka": "KA", "kerala": "KL", "madhya pradesh": "MP", "maharashtra": "MH", "odisha": "OD", "puducherry": "PY", "punjab": "PB", "rajasthan": "RJ", "sikkim": "SK", "tamil nadu": "TN", "telangana": "TS", "tripura": "TR", "uttar pradesh": "UP", "uttarakhand": "UK", "west bengal": "WB",
@@ -122,6 +142,11 @@ def _state_code(raw: str) -> str:
 def _resolve_tax_type(shipping_state: str) -> str:
     if not shipping_state: return "IGST"
     return "CGST+SGST" if _state_code(shipping_state) == _state_code(_S["state"]) else "IGST"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  AMOUNT IN WORDS (Indian English)
+# ══════════════════════════════════════════════════════════════════════════════
 
 def _n2w(n: int) -> str:
     _ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
@@ -144,6 +169,11 @@ def _amount_in_words(amount: float) -> str:
         return (" and ".join(parts) + " Only") if parts else "Zero Rupees Only"
     except Exception:
         return "Amount as per invoice"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  REPORTLAB STYLES
+# ══════════════════════════════════════════════════════════════════════════════
 
 _GRAY_BG  = colors.HexColor("#f2f2f2")
 _ROW_ALT  = colors.HexColor("#fafafa")
@@ -181,6 +211,11 @@ def _styles() -> dict[str, ParagraphStyle]:
         "sign":    _s("sign", fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
     }
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  MAIN PDF BUILDER
+# ══════════════════════════════════════════════════════════════════════════════
+
 def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     buf = io.BytesIO()
     MARGIN = 20
@@ -210,8 +245,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
     subtotal  = _safe_f(order.get("subtotal"))
     ship_cost = _safe_f(order.get("shipping_cost"))
-    total_amt = _safe_f(order.get("total_amount"))
-
+    
     sh1 = _safe(order.get("shipping_line1"))
     sh2 = _safe(order.get("shipping_line2"))
     city = _safe(order.get("shipping_city"))
@@ -226,7 +260,9 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     tax_type = _resolve_tax_type(state or city)
     doc_type = "Refund Note / Credit Note" if is_refund else "Tax Invoice / Bill of Supply / Cash Memo"
 
-    # Header
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    #  BLOCK 1 ── HEADER
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     hdr = Table([
         [Paragraph("LUVIIO", S["logo"]), Paragraph(f"<b>{doc_type}</b>", S["doc_h"])],
         [Paragraph(_S["website"], S["site"]), Paragraph("(Original for Recipient)", S["doc_sub"])],
@@ -235,7 +271,9 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     story.append(hdr)
     story.append(HRFlowable(width="100%", thickness=2.5, color=_GOLD, spaceAfter=8))
 
-    # Block 2: Info Grid with 150pt QR
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    #  BLOCK 2 ── HORIZONTAL GRID: [SELLER | BUYER] & [ORDER DETAILS] + [150pt QR]
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     LEFT_W = 394.0
     RIGHT_W = 160.0
     HALF_L = LEFT_W / 2.0
@@ -273,8 +311,11 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     left_panel_tbl = Table([[top_left_grid], [HRFlowable(width="100%", thickness=0.5, color=_BORDER_C)], [order_meta_tbl]], colWidths=[LEFT_W])
     left_panel_tbl.setStyle(TableStyle([("PADDING", (0, 0), (-1, -1), 0), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
 
-    # Items Table
-    CW = [18.0, 136.0, 38.0, 52.0, 22.0, 44.0, 54.0, 56.0, 54.0, 80.0]
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    #  BLOCK 3 ── 10-COLUMN ITEMS TABLE (Strict Discount Math & Zero Shipping)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    CW = [18.0, 134.0, 38.0, 52.0, 22.0, 48.0, 54.0, 56.0, 52.0, 80.0]  # Exact Sum = 554.0 pt
+    
     def _h(txt): return Paragraph(txt, S["th"])
     def _hc(txt): return Paragraph(txt, S["thc"])
     def _hr(txt): return Paragraph(txt, S["thr"])
@@ -285,59 +326,81 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     rows = [[_hc("Sl."), _h("Description"), _hc("HSN"), _hr("Price"), _hc("Qty"), _hr("Discount"), _hr("Net Amt"), _hc("Tax Type"), _hr("Tax Amt"), _hr("Total")]]
 
     items = order.get("order_items") or order.get("items") or []
-    run_tax = 0.0
-    run_net = 0.0
-    run_disc = 0.0
+    
+    run_net        = 0.0
+    run_tax        = 0.0
+    run_disc_total = 0.0
+    run_mrp_total  = 0.0
 
     for idx, item in enumerate(items, 1):
         name = _product_name(item)
-        hsn = _product_hsn(item)
+        hsn  = _product_hsn(item)
         
-        # Catch if shipping was accidentally passed inside items array
+        # Guard: Ensure shipping charges never leak into the items table
         if "shipping" in name.lower() or hsn == "9965":
             if ship_cost == 0.0:
                 ship_cost = _safe_f(item.get("price") or item.get("unit_price") or item.get("subtotal"))
             continue
 
-        gst_pct = _product_gst(item)
-        qty = int(_safe_f(item.get("quantity"), 1))
-        unit_p = _safe_f(item.get("unit_price") or item.get("price_snapshot") or item.get("price"))
+        gst_pct   = _product_gst(item)
+        qty       = int(_safe_f(item.get("quantity"), 1))
+        if qty < 1: qty = 1
+
+        selling_p = _safe_f(item.get("unit_price") or item.get("price_snapshot") or item.get("price") or (item.get("products") or {}).get("price"))
         compare_p = _safe_f(item.get("compare_price") or (item.get("products") or {}).get("compare_price"))
-        
-        # 🔥 EXACT DISCOUNT MATH: (Compare Price - Selling Price) * Qty
-        disc = 0.0
-        if compare_p > unit_p > 0:
-            disc = round((compare_p - unit_p) * qty, 2)
-            display_unit_p = compare_p
+        explicit_disc = _safe_f(item.get("discount_amount") or item.get("discount") or item.get("discount_value"))
+
+        # 🔥 STRICT DISCOUNT MATH: (Compare Price - Selling Price) * Qty
+        row_disc = 0.0
+        if explicit_disc > 0:
+            row_disc = explicit_disc
+        elif compare_p > selling_p > 0:
+            row_disc = round((compare_p - selling_p) * qty, 2)
+
+        # What is the actual MRP / Base Price to display?
+        if compare_p > selling_p > 0:
+            unit_mrp = compare_p
+        elif row_disc > 0:
+            unit_mrp = selling_p + (row_disc / qty)
         else:
-            disc = _safe_f(item.get("discount_amount") or item.get("discount"))
-            display_unit_p = unit_p + (disc / qty) if (disc > 0 and qty > 0) else unit_p
-            
-        run_disc += disc
+            unit_mrp = selling_p
 
-        net = _safe_f(item.get("subtotal")) or (unit_p * qty)
-        i_tax = round(net * (gst_pct / 100.0), 2)
-        total = net + i_tax
+        # Net Taxable Value for this row
+        row_net = round((unit_mrp * qty) - row_disc, 2)
+        row_tax = round(row_net * (gst_pct / 100.0), 2)
+        row_total = round(row_net + row_tax, 2)
 
-        run_net += net
-        run_tax += i_tax
+        run_net        += row_net
+        run_tax        += row_tax
+        run_disc_total += row_disc
+        run_mrp_total  += (unit_mrp * qty)
 
         display_tax_type = f"CGST+SGST ({gst_pct}%)" if tax_type == "CGST+SGST" else f"IGST ({gst_pct}%)"
 
         rows.append([
-            _dc(str(idx)), _d(name), _dc(hsn), _dr(_fmt(display_unit_p)), _dc(str(qty)),
-            _dr(_fmt(disc) if disc > 0 else "—"), _dr(_fmt(net)), _dc(display_tax_type),
-            _dr(_fmt(i_tax)), _dr(_fmt(total))
+            _dc(str(idx)), _d(name), _dc(hsn), _dr(_fmt(unit_mrp)), _dc(str(qty)),
+            _dr(_fmt(row_disc) if row_disc > 0 else "—"), _dr(_fmt(row_net)), _dc(display_tax_type),
+            _dr(_fmt(row_tax)), _dr(_fmt(row_total))
         ])
 
-    grand = total_amt if total_amt > 0 else round(run_net + run_tax + ship_cost, 2)
+    # 🔥 STRICT TABLE FOOTER: Sums strictly the items inside the table (Zero shipping contamination)
+    run_items_total = round(run_net + run_tax, 2)
     rows.append([
-        Paragraph("<b>Total</b>", S["th"]), "", "", "", "", "", "", "",
-        Paragraph(f"<b>{_fmt(run_tax)}</b>", S["thr"]), Paragraph(f"<b>{_fmt(grand)}</b>", S["thr"])
+        Paragraph("<b>Total of Items</b>", S["thr"]), "", "", "", "", "",
+        Paragraph(f"<b>{_fmt(run_net)}</b>", S["thr"]), "",
+        Paragraph(f"<b>{_fmt(run_tax)}</b>", S["thr"]), Paragraph(f"<b>{_fmt(run_items_total)}</b>", S["thr"])
     ])
-    
-    # Generate QR Code with discount payload
-    total_disc_display = _safe_f(order.get("discount_amount")) or run_disc
+
+    # Check for order-level coupon / promo discount
+    order_level_disc = _safe_f(order.get("discount_amount"))
+    if order_level_disc == run_disc_total:
+        order_level_disc = 0.0  # Prevent double counting if DB mapped item sum to order root
+
+    # Calculate exact Grand Total for invoice consistency
+    grand = round(run_items_total + ship_cost - order_level_disc, 2)
+
+    # Generate QR Code now that exact totals and discounts are locked
+    total_disc_display = round(run_disc_total + order_level_disc, 2)
     qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|DISC:{total_disc_display:.2f}|TOTAL:{grand:.2f}|ORD:{display_ord}"
     qr_drawing = _create_qr(qr_payload, size=148.0)
 
@@ -353,28 +416,31 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     items_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), _GRAY_BG), ("LINEBELOW", (0, 0), (-1, 0), 1.0, _BORDER_C),
         ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, _ROW_ALT]), ("BACKGROUND", (0, -1), (-1, -1), _TOTAL_BG),
-        ("LINEABOVE", (0, -1), (-1, -1), 0.8, _BORDER_C), ("SPAN", (0, -1), (7, -1)),
+        ("LINEABOVE", (0, -1), (-1, -1), 0.8, _BORDER_C), ("SPAN", (0, -1), (5, -1)),
         ("BOX", (0, 0), (-1, -1), 0.5, _BORDER_C), ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#dddddd")),
         ("PADDING", (0, 0), (-1, -1), 4), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     story.append(items_tbl)
     story.append(Spacer(1, 10))
 
-    # 🔥 NEW HUMAN-READABLE PRICE SUMMARY
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    #  BLOCK 4 ── AMOUNT IN WORDS & HUMAN-READABLE PRICE SUMMARY
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     words_str = _amount_in_words(grand)
-    mrp_total = (subtotal if subtotal > 0 else run_net) + total_disc_display
 
     gst_rows = [
         [Paragraph("<b>Price Summary:</b>", S["lbl"]), Paragraph("", S["b"])],
-        [Paragraph("Total MRP", S["br"]), Paragraph(_fmt(mrp_total), S["bbr"])],
+        [Paragraph("Total MRP of Items", S["br"]), Paragraph(_fmt(run_mrp_total if run_mrp_total > 0 else run_net + run_disc_total), S["bbr"])],
     ]
     
-    if total_disc_display > 0:
-        gst_rows.append([Paragraph("Total Discount", S["br"]), Paragraph(f"- {_fmt(total_disc_display)}", S["bbr"])])
+    if run_disc_total > 0:
+        gst_rows.append([Paragraph("Total Item Discount", S["br"]), Paragraph(f"- {_fmt(run_disc_total)}", S["bbr"])])
+    if order_level_disc > 0:
+        gst_rows.append([Paragraph("Order / Coupon Discount", S["br"]), Paragraph(f"- {_fmt(order_level_disc)}", S["bbr"])])
         
-    gst_rows.append([Paragraph("Subtotal (Net)", S["br"]), Paragraph(_fmt(subtotal if subtotal > 0 else run_net), S["bbr"])])
+    gst_rows.append([Paragraph("Subtotal (Net Taxable Value)", S["br"]), Paragraph(_fmt(run_net), S["bbr"])])
 
-    # 🔥 SIMPLE SHIPPING (NO TAX, NO EXEMPT BS)
+    # 🔥 PURE SHIPPING (Simple logistics wording, zero tax/exempt BS)
     if ship_cost > 0:
         gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph(_fmt(ship_cost), S["bbr"])])
     else:
