@@ -1,11 +1,13 @@
 """
-Product Repository — Async Enterprise Grade
-===========================================
+Product Repository — Async Enterprise Grade (With GST & HSN Support)
+====================================================================
 Path: app/repositories/product_repo.py
 
 Architecture & Fixes:
   ✅ Stateless Execution — Fetches Supabase Admin client on-demand inside async methods.
   ✅ Resolves Coroutine Crash — Awaits async client factory to prevent AttributeError.
+  ✅ GST & HSN Ready — Explicitly selects hsn_code and gst_percentage for invoice & checkout mapping.
+  ✅ Checkout Snapshot Safe — Upgraded get_product_by_id to fetch full pricing & tax fields.
 """
 import logging
 from typing import Any
@@ -40,10 +42,21 @@ class AsyncProductRepository:
         return bool(getattr(res, "data", None))
 
     # ── Products ─────────────────────────────────────────────────────────────
-    async def get_products(self, page: int, page_size: int, category_slug: str | None, search: str | None, min_price: float | None, max_price: float | None, in_stock: bool | None) -> tuple[list, int]:
+    async def get_products(
+        self, 
+        page: int, 
+        page_size: int, 
+        category_slug: str | None, 
+        search: str | None, 
+        min_price: float | None, 
+        max_price: float | None, 
+        in_stock: bool | None
+    ) -> tuple[list, int]:
         admin_sb = await get_async_admin_supabase()
+        
+        # 🔥 UPGRADE: Added hsn_code and gst_percentage to product listings
         q = admin_sb.table("products").select(
-            "id, name, slug, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, images, is_active, created_at, categories(name, slug)",
+            "id, name, slug, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, images, is_active, created_at, hsn_code, gst_percentage, categories(name, slug)",
             count="exact"
         ).eq("is_active", True)
 
@@ -69,8 +82,14 @@ class AsyncProductRepository:
         return res.data[0] if getattr(res, "data", None) else None
         
     async def get_product_by_id(self, product_id: str) -> dict[str, Any] | None:
+        """
+        🔥 UPGRADE: Fetches full tax & pricing snapshot data (name, price, hsn_code, gst_percentage)
+        so checkout and invoice generators can safely lock down values during order creation.
+        """
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.table("products").select("id, images, is_active").eq("id", product_id).limit(1).execute()
+        res = await admin_sb.table("products").select(
+            "id, name, slug, sku, price, compare_price, stock, hsn_code, gst_percentage, images, is_active"
+        ).eq("id", product_id).limit(1).execute()
         return res.data[0] if getattr(res, "data", None) else None
 
     async def check_sku_exists(self, sku: str) -> bool:
