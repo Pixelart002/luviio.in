@@ -6,10 +6,10 @@ Path: app/utils/documents/pdf_invoice.py
 Clean, User-Friendly GST-compliant Tax Invoice with Giant Scannable QR Code.
 
 Architecture Upgrades:
-  ✅ STRICT PRODUCT CATALOG FETCH — Extracts 'compare_price' and 'price' directly from the nested 'products' object.
-  ✅ DIRECT DISCOUNT MATH — Calculated cleanly as (Gross Amt - Net Amt) for exact pixel-perfect accuracy.
-  ✅ TRANSPARENT SUMMARY — Price Summary explicitly shows Subtotal + Shipping + Tax = Grand Total.
-  ✅ PURE DECIMAL PRECISION — Zero floating-point discrepancies across item totals and ledger summaries.
+  ✅ Gross Amt Column — Strictly pulls 'compare_price' from API payload (Zero snapshot fallbacks).
+  ✅ Direct Discount Math — Strictly calculated as (Gross Amt - Net Amt) for 100% pixel-perfect accuracy.
+  ✅ Transparent Summary — Price Summary explicitly shows Subtotal + Shipping + Tax = Grand Total.
+  ✅ Pure Decimal Precision — Zero floating-point discrepancies across item totals and ledger summaries.
 """
 from __future__ import annotations
 
@@ -98,68 +98,92 @@ def _parse_date(dt_str: str) -> str:
     return dt_str[:10]
 
 
-def _get_product_obj(item: dict) -> dict:
-    """Strictly extracts the nested product catalog dictionary."""
+def _product_name(item: dict) -> str:
+    for key in ("product_name", "name", "title"):
+        val = _safe(item.get(key))
+        if val:
+            return val
     for rel in ("products", "product", "item"):
         obj = item.get(rel)
         if isinstance(obj, dict):
-            return obj
-    return item
-
-
-def _product_name(item: dict) -> str:
-    prod = _get_product_obj(item)
-    for key in ("name", "product_name", "title"):
-        val = _safe(prod.get(key) or item.get(key))
-        if val:
-            return val
+            val = _safe(obj.get("name") or obj.get("product_name"))
+            if val:
+                return val
     return "Product Item"
 
 
 def _product_hsn(item: dict) -> str:
-    prod = _get_product_obj(item)
     for key in ("hsn_code", "hsn", "hsn_sac"):
-        val = _safe(prod.get(key) or item.get(key))
+        val = _safe(item.get(key))
         if val:
             return val
+    for rel in ("products", "product", "item"):
+        obj = item.get(rel)
+        if isinstance(obj, dict):
+            val = _safe(obj.get("hsn_code") or obj.get("hsn"))
+            if val:
+                return val
     return "9988"
 
 
 def _product_gst(item: dict) -> Decimal:
-    prod = _get_product_obj(item)
     for key in ("gst_percentage", "gst_pct", "tax_rate"):
-        val = prod.get(key) if prod.get(key) is not None else item.get(key)
+        val = item.get(key)
         if val is not None:
             try:
                 return Decimal(str(val)).quantize(_TWO_DEC)
             except (InvalidOperation, ValueError, TypeError):
                 pass
+    for rel in ("products", "product", "item"):
+        obj = item.get(rel)
+        if isinstance(obj, dict):
+            val = obj.get("gst_percentage") or obj.get("gst_pct")
+            if val is not None:
+                try:
+                    return Decimal(str(val)).quantize(_TWO_DEC)
+                except (InvalidOperation, ValueError, TypeError):
+                    pass
     return Decimal("18.00")
 
 
 def _product_compare_price(item: dict) -> Decimal:
-    """Strictly extracts compare_price from the products table (nested relation)."""
-    prod = _get_product_obj(item)
-    for key in ("compare_price", "mrp", "original_price"):
-        val = prod.get(key) if prod.get(key) is not None else item.get(key)
-        if val is not None:
-            try:
-                return Decimal(str(val)).quantize(_TWO_DEC)
-            except (InvalidOperation, ValueError, TypeError):
-                pass
+    """Strictly extracts compare_price from direct item or nested product relation."""
+    val = item.get("compare_price")
+    if val is not None:
+        try:
+            return Decimal(str(val)).quantize(_TWO_DEC)
+        except (InvalidOperation, ValueError, TypeError):
+            pass
+    for rel in ("products", "product", "item"):
+        obj = item.get(rel)
+        if isinstance(obj, dict):
+            val = obj.get("compare_price")
+            if val is not None:
+                try:
+                    return Decimal(str(val)).quantize(_TWO_DEC)
+                except (InvalidOperation, ValueError, TypeError):
+                    pass
     return _ZERO
 
 
 def _product_selling_price(item: dict) -> Decimal:
-    """Strictly extracts unit_price / price from the products table (nested relation)."""
-    prod = _get_product_obj(item)
-    for key in ("price", "unit_price", "selling_price"):
-        val = prod.get(key) if prod.get(key) is not None else item.get(key)
+    """Strictly extracts price from direct item or nested product relation."""
+    for key in ("price", "unit_price", "subtotal"):
+        val = item.get(key)
         if val is not None:
             try:
                 return Decimal(str(val)).quantize(_TWO_DEC)
             except (InvalidOperation, ValueError, TypeError):
                 pass
+    for rel in ("products", "product", "item"):
+        obj = item.get(rel)
+        if isinstance(obj, dict):
+            val = obj.get("price")
+            if val is not None:
+                try:
+                    return Decimal(str(val)).quantize(_TWO_DEC)
+                except (InvalidOperation, ValueError, TypeError):
+                    pass
     return _ZERO
 
 
@@ -391,14 +415,14 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         except Exception:
             qty = Decimal("1")
 
-        # 🔥 STRICT PRODUCT CATALOG MAPPING: Pulled from nested products table
+        # 🔥 STRICT API FIELDS ONLY: 'price' and 'compare_price'
         selling_p = _product_selling_price(item)
         compare_p = _product_compare_price(item)
         
         # Net taxable amount for this line item
         row_net = (selling_p * qty).quantize(_TWO_DEC)
 
-        # 🔥 ZERO DOUBLE CALCULATION: Exactly derived from Compare Price minus Selling Price
+        # 🔥 GROSS AMT strictly calculated from 'compare_price'
         if compare_p > selling_p:
             row_gross = (compare_p * qty).quantize(_TWO_DEC)
             row_disc  = (row_gross - row_net).quantize(_TWO_DEC)
@@ -496,7 +520,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     right_col_rows = [[gst_tbl], [Spacer(1, 14)], [Paragraph(f"<b>For {_S['name']}:</b>", S["sign"])], [Spacer(1, 28)], [Paragraph("<b>Authorised Signatory</b>", S["sign"])]]
     left_col_rows = [[Paragraph("<b>Amount in Words:</b>", S["words"])], [Spacer(1, 3)], [Paragraph(words_str, S["words_v"])]]
 
-    bottom = Table([[Table(left_col_rows, colWidths=[288.0]), Table(right_col_rows, colWidths=[304.0, 250.0])]])
+    bottom = Table([[Table(left_col_rows, colWidths=[288.0]), Table(right_col_rows, colWidths=[234.0])]], colWidths=[304.0, 250.0])
     bottom.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, _BORDER_C), ("LINEBEFORE", (1, 0), (1, 0), 0.5, _BORDER_C), ("PADDING", (0, 0), (-1, -1), 8), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
     story.append(KeepTogether(bottom))
     story.append(Spacer(1, 8))
