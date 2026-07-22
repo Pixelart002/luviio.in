@@ -18,3 +18,5 @@ cachetools==5.5.0
 apscheduler
 python-jose[cryptography]
 nanoid
+qrcode>=7.4.2
+Pillow>=10.0.0
