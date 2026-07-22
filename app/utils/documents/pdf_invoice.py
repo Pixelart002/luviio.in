@@ -6,8 +6,8 @@ Path: app/utils/documents/pdf_invoice.py
 Clean, User-Friendly GST-compliant Tax Invoice with Giant Scannable QR Code.
 
 Architecture Upgrades:
-  ✅ Gross Amount Column — Replaced MRP column with 'Gross Amt' (Compare Price snapshot).
-  ✅ Strict Discount Math — Derived cleanly as (Gross Amt - Net Amt) without double calculation.
+  ✅ Gross Amt Column — Strictly pulls 'compare_price' from API payload (Zero snapshot fallbacks).
+  ✅ Direct Discount Math — Strictly calculated as (Gross Amt - Net Amt) for 100% pixel-perfect accuracy.
   ✅ Transparent Summary — Price Summary explicitly shows Subtotal + Shipping + Tax = Grand Total.
   ✅ Pure Decimal Precision — Zero floating-point discrepancies across item totals and ledger summaries.
 """
@@ -127,12 +127,6 @@ def _product_hsn(item: dict) -> str:
 
 
 def _product_gst(item: dict) -> Decimal:
-    snapshot = item.get("gst_percentage_snapshot")
-    if snapshot is not None:
-        try:
-            return Decimal(str(snapshot)).quantize(_TWO_DEC)
-        except (InvalidOperation, ValueError, TypeError):
-            pass
     for key in ("gst_percentage", "gst_pct", "tax_rate"):
         val = item.get(key)
         if val is not None:
@@ -150,6 +144,47 @@ def _product_gst(item: dict) -> Decimal:
                 except (InvalidOperation, ValueError, TypeError):
                     pass
     return Decimal("18.00")
+
+
+def _product_compare_price(item: dict) -> Decimal:
+    """Strictly extracts compare_price from direct item or nested product relation."""
+    val = item.get("compare_price")
+    if val is not None:
+        try:
+            return Decimal(str(val)).quantize(_TWO_DEC)
+        except (InvalidOperation, ValueError, TypeError):
+            pass
+    for rel in ("products", "product", "item"):
+        obj = item.get(rel)
+        if isinstance(obj, dict):
+            val = obj.get("compare_price")
+            if val is not None:
+                try:
+                    return Decimal(str(val)).quantize(_TWO_DEC)
+                except (InvalidOperation, ValueError, TypeError):
+                    pass
+    return _ZERO
+
+
+def _product_selling_price(item: dict) -> Decimal:
+    """Strictly extracts price from direct item or nested product relation."""
+    for key in ("price", "unit_price", "subtotal"):
+        val = item.get(key)
+        if val is not None:
+            try:
+                return Decimal(str(val)).quantize(_TWO_DEC)
+            except (InvalidOperation, ValueError, TypeError):
+                pass
+    for rel in ("products", "product", "item"):
+        obj = item.get(rel)
+        if isinstance(obj, dict):
+            val = obj.get("price")
+            if val is not None:
+                try:
+                    return Decimal(str(val)).quantize(_TWO_DEC)
+                except (InvalidOperation, ValueError, TypeError):
+                    pass
+    return _ZERO
 
 
 def _create_qr(data: str, size: float = 148.0) -> Drawing:
@@ -355,7 +390,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     def _dc(txt): return Paragraph(str(txt), S["tdc"])
     def _dr(txt): return Paragraph(str(txt), S["tdr"])
 
-    # 🔥 CHANGED COLUMN HEADER: 'MRP' -> 'Gross Amt'
     rows = [[_hc("Sl."), _h("Description"), _hc("HSN"), _hr("Gross Amt"), _hc("Qty"), _hr("Discount"), _hr("Net Amt"), _hc("Tax Type"), _hr("Tax Amt"), _hr("Total")]]
 
     items = order.get("order_items") or order.get("items") or []
@@ -381,21 +415,17 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         except Exception:
             qty = Decimal("1")
 
-        # PRIORITY: Live snapshots -> selling price and compare price
-        selling_p = _dec(item.get("price_snapshot") or item.get("unit_price") or item.get("price"))
-        compare_p = _dec(item.get("compare_price_snapshot") or item.get("compare_price") or item.get("mrp") or item.get("original_price"))
-        snapshot_disc = _dec(item.get("discount_amount") or item.get("discount") or item.get("discount_value"))
-
+        # 🔥 STRICT API FIELDS ONLY: 'price' and 'compare_price'
+        selling_p = _product_selling_price(item)
+        compare_p = _product_compare_price(item)
+        
         # Net taxable amount for this line item
         row_net = (selling_p * qty).quantize(_TWO_DEC)
 
-        # 🔥 ZERO DOUBLE CALCULATION: Strictly derive Gross Amt & Discount
+        # 🔥 GROSS AMT strictly calculated from 'compare_price'
         if compare_p > selling_p:
             row_gross = (compare_p * qty).quantize(_TWO_DEC)
             row_disc  = (row_gross - row_net).quantize(_TWO_DEC)
-        elif snapshot_disc > _ZERO:
-            row_disc  = snapshot_disc.quantize(_TWO_DEC)
-            row_gross = (row_net + row_disc).quantize(_TWO_DEC)
         else:
             row_gross = row_net
             row_disc  = _ZERO
@@ -460,7 +490,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     words_str = _amount_in_words(grand)
 
-    # 🔥 STRICT SUMMARY: Subtotal + Shipping + Tax = Grand Total (No Total MRP!)
+    # STRICT SUMMARY: Subtotal + Shipping + Tax = Grand Total
     gst_rows = [
         [Paragraph("<b>Price Summary:</b>", S["lbl"]), Paragraph("", S["b"])],
         [Paragraph("Subtotal", S["br"]), Paragraph(_fmt(run_net), S["bbr"])],
@@ -481,7 +511,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     gst_rows.append([Paragraph("", S["b"]), Paragraph("", S["b"])])
     gst_rows.append([Paragraph("<b>Grand Total</b>", S["sum_lbl"]), Paragraph(f"<b>{_fmt(grand)}</b>", S["sum_val"])])
     
-    # Delightful footnote showing total discount saved (Does not interfere with addition!)
     if run_disc_total > _ZERO:
         gst_rows.append([Paragraph("<i>Total Discount Saved</i>", S["sm"]), Paragraph(f"<i>{_fmt(run_disc_total)}</i>", S["sm"])])
 
