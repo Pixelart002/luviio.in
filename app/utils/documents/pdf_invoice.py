@@ -6,9 +6,9 @@ Path: app/utils/documents/pdf_invoice.py
 Clean, User-Friendly GST-compliant Tax Invoice with Giant Scannable QR Code.
 
 Architecture Upgrades:
+  ✅ Strict Discount Math — Computes (compare_price - price) * qty and prints in the item table.
+  ✅ Pure Shipping Fee — Shipping labeled simply as "Shipping" in summary without tax or legal BS.
   ✅ Human-Readable Summary — Clearly shows Total MRP, Deducted Discount, and Net Subtotal.
-  ✅ Tax-Free Shipping — Shipping explicitly labeled as "Exempt" with 0.00 GST.
-  ✅ QR Code Tracking — Embeds total discount directly into the QR payload.
 """
 from __future__ import annotations
 
@@ -273,8 +273,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     left_panel_tbl = Table([[top_left_grid], [HRFlowable(width="100%", thickness=0.5, color=_BORDER_C)], [order_meta_tbl]], colWidths=[LEFT_W])
     left_panel_tbl.setStyle(TableStyle([("PADDING", (0, 0), (-1, -1), 0), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
 
-    # QR Code placeholder (we will generate it after loop to get the total accumulated discount)
-
     # Items Table
     CW = [18.0, 136.0, 38.0, 52.0, 22.0, 44.0, 54.0, 56.0, 54.0, 80.0]
     def _h(txt): return Paragraph(txt, S["th"])
@@ -294,14 +292,26 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     for idx, item in enumerate(items, 1):
         name = _product_name(item)
         hsn = _product_hsn(item)
+        
+        # Catch if shipping was accidentally passed inside items array
+        if "shipping" in name.lower() or hsn == "9965":
+            if ship_cost == 0.0:
+                ship_cost = _safe_f(item.get("price") or item.get("unit_price") or item.get("subtotal"))
+            continue
+
         gst_pct = _product_gst(item)
         qty = int(_safe_f(item.get("quantity"), 1))
         unit_p = _safe_f(item.get("unit_price") or item.get("price_snapshot") or item.get("price"))
         compare_p = _safe_f(item.get("compare_price") or (item.get("products") or {}).get("compare_price"))
         
-        disc = _safe_f(item.get("discount_amount") or item.get("discount"))
-        if disc == 0.0 and compare_p > unit_p > 0:
+        # 🔥 EXACT DISCOUNT MATH: (Compare Price - Selling Price) * Qty
+        disc = 0.0
+        if compare_p > unit_p > 0:
             disc = round((compare_p - unit_p) * qty, 2)
+            display_unit_p = compare_p
+        else:
+            disc = _safe_f(item.get("discount_amount") or item.get("discount"))
+            display_unit_p = unit_p + (disc / qty) if (disc > 0 and qty > 0) else unit_p
             
         run_disc += disc
 
@@ -312,7 +322,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         run_net += net
         run_tax += i_tax
 
-        display_unit_p = compare_p if (compare_p > unit_p) else unit_p
         display_tax_type = f"CGST+SGST ({gst_pct}%)" if tax_type == "CGST+SGST" else f"IGST ({gst_pct}%)"
 
         rows.append([
@@ -321,21 +330,13 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
             _dr(_fmt(i_tax)), _dr(_fmt(total))
         ])
 
-    # Shipping charges (🔥 100% Tax-Free / Exempt as requested)
-    if ship_cost > 0:
-        rows.append([
-            _dc(""), Paragraph("<b>Shipping Charges</b>", S["td"]), _dc("9965"),
-            _dr(_fmt(ship_cost)), _dc("1"), _dr("—"), _dr(_fmt(ship_cost)),
-            _dc("Exempt (0%)"), _dr(_fmt(0.0)), _dr(_fmt(ship_cost))
-        ])
-
     grand = total_amt if total_amt > 0 else round(run_net + run_tax + ship_cost, 2)
     rows.append([
         Paragraph("<b>Total</b>", S["th"]), "", "", "", "", "", "", "",
         Paragraph(f"<b>{_fmt(run_tax)}</b>", S["thr"]), Paragraph(f"<b>{_fmt(grand)}</b>", S["thr"])
     ])
     
-    # Generate QR Code now that we have exact grand and discount calculated
+    # Generate QR Code with discount payload
     total_disc_display = _safe_f(order.get("discount_amount")) or run_disc
     qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|DISC:{total_disc_display:.2f}|TOTAL:{grand:.2f}|ORD:{display_ord}"
     qr_drawing = _create_qr(qr_payload, size=148.0)
@@ -359,10 +360,8 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     story.append(items_tbl)
     story.append(Spacer(1, 10))
 
-    # 🔥 NEW PRICE SUMMARY (For Humans, Not Buffalos!)
+    # 🔥 NEW HUMAN-READABLE PRICE SUMMARY
     words_str = _amount_in_words(grand)
-    
-    # Calculate MRP Total (Net Subtotal + Discount)
     mrp_total = (subtotal if subtotal > 0 else run_net) + total_disc_display
 
     gst_rows = [
@@ -370,14 +369,14 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         [Paragraph("Total MRP", S["br"]), Paragraph(_fmt(mrp_total), S["bbr"])],
     ]
     
-    # Clearly show the explicitly subtracted discount
     if total_disc_display > 0:
         gst_rows.append([Paragraph("Total Discount", S["br"]), Paragraph(f"- {_fmt(total_disc_display)}", S["bbr"])])
         
     gst_rows.append([Paragraph("Subtotal (Net)", S["br"]), Paragraph(_fmt(subtotal if subtotal > 0 else run_net), S["bbr"])])
 
+    # 🔥 SIMPLE SHIPPING (NO TAX, NO EXEMPT BS)
     if ship_cost > 0:
-        gst_rows.append([Paragraph("Shipping (Exempt)", S["br"]), Paragraph(_fmt(ship_cost), S["bbr"])])
+        gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph(_fmt(ship_cost), S["bbr"])])
     else:
         gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph("FREE", S["bbr"])])
 

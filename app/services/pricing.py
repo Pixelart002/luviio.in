@@ -5,10 +5,9 @@ Path: app/services/pricing.py
 
 Architecture Upgrades:
   ✅ ZERO FALLBACKS — If GST%, Price, or Qty is missing, it crashes (Halt Order).
-  ✅ Strict Item-Level Math — No legacy blanket subtotal fallback logic.
-  ✅ Automatic Discount Math — Computes (compare_price - unit_price) * qty dynamically.
-  ✅ Immutable Breakdown — Adds explicit discount tracking to the cart/checkout totals.
-  ✅ Tax-Free Shipping — GST is explicitly restricted to items only.
+  ✅ Strict Item-Level Math — Tax is calculated strictly on items only.
+  ✅ Exact Discount Math — Computes (compare_price - price) * qty dynamically.
+  ✅ Pure Shipping Fee — Flat shipping fee added directly to total without tax logic.
 """
 from __future__ import annotations
 
@@ -22,6 +21,7 @@ from fastapi import HTTPException, status
 
 logger = logging.getLogger(__name__)
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  VALUE OBJECT
 # ══════════════════════════════════════════════════════════════════════════════
@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class PriceBreakdown:
     subtotal: Decimal
-    discount: Decimal      # 🔥 Explicit discount tracking for the frontend/DB
-    shipping: Decimal
-    tax:      Decimal
+    discount: Decimal      # 🔥 Stores exact (Compare Price - Price) * Qty
+    shipping: Decimal      # 🔥 Flat shipping charge (No tax involved)
+    tax:      Decimal      # 🔥 Tax strictly on products only
     total:    Decimal
     currency: str
 
@@ -112,21 +112,24 @@ class StandardPricing(PricingStrategy):
         for item in items:
             prod_data = item.get("products") or item
 
+            # 1. Strict Qty Check
             if "quantity" not in item or item["quantity"] is None:
                 raise HTTPException(status_code=500, detail="CRITICAL: Item quantity missing.")
             item_qty = Decimal(str(item["quantity"]))
 
+            # 2. Strict Price Check
             price_val = item.get("price_snapshot") or item.get("unit_price") or prod_data.get("price")
             if price_val is None:
                 raise HTTPException(status_code=500, detail="CRITICAL: Product price missing.")
             item_price = Decimal(str(price_val))
 
+            # 3. Strict GST Percentage Check
             item_gst_pct = prod_data.get("gst_percentage") if prod_data.get("gst_percentage") is not None else item.get("gst_percentage")
             if item_gst_pct is None:
                 raise HTTPException(status_code=500, detail="CRITICAL: GST percentage missing.")
             item_tax_rate = Decimal(str(item_gst_pct)) / Decimal("100")
 
-            # 🔥 EXACT DISCOUNT MATH
+            # 🔥 EXACT DISCOUNT MATH: (Compare Price - Selling Price) * Qty
             comp_p = prod_data.get("compare_price") or item.get("compare_price")
             item_compare = Decimal(str(comp_p)) if comp_p is not None else item_price
             
@@ -134,6 +137,7 @@ class StandardPricing(PricingStrategy):
             if item_compare > item_price:
                 item_disc = (item_compare - item_price) * item_qty
 
+            # Item Level Totals
             item_sub = item_price * item_qty
             item_tax = item_sub * item_tax_rate
 
@@ -144,10 +148,9 @@ class StandardPricing(PricingStrategy):
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
 
+        # 🔥 SIMPLE SHIPPING LOGIC: Flat charge added directly. NO TAX ON SHIPPING.
         shipping = Decimal("0") if calc_subtotal >= self._threshold else self._flat
-        
-        # 🔥 SHIPPING PE ZERO TAX. Tax is explicitly from `calc_tax` (items only).
-        total = calc_subtotal + shipping + calc_tax
+        total    = calc_subtotal + shipping + calc_tax
 
         return PriceBreakdown(
             subtotal=calc_subtotal,
