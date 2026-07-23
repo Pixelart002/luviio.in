@@ -13,9 +13,8 @@ Fix log (this version):
      (e.g. 0% GST) is never silently replaced by a fallback.
   ✅ Discount is now actually computed: (compare_price - price) * qty, OR an
      explicit per-line discount_amount override if one is stored on the item.
-  ✅ Price Summary shows the full, auditable chain:
-     Total Gross (MRP) → Total Discount → Subtotal (Net Taxable Value) →
-     Shipping → GST → Grand Total — every figure reconciles with the item table.
+  ✅ Simplified Price Summary: Follows strict clean addition (Subtotal + Shipping + Tax = Grand Total).
+  ✅ Total Savings shown as a clean footer note without complicating the audit addition.
   ✅ Pure Decimal arithmetic throughout (no float rounding drift).
 """
 from __future__ import annotations
@@ -122,12 +121,6 @@ def _first_present(*vals: Any) -> Any:
     return None
 
 
-# 🔥 PRIORITY ORDER (everywhere below): the order_item's OWN snapshot field wins
-# first (this is what was actually charged/labelled at the time of the order).
-# The live `products` relation is only a FALLBACK, for legacy rows that never
-# stored a snapshot. This stops a later catalog price/MRP change from silently
-# rewriting the numbers on an already-issued tax invoice.
-
 def _product_name(item: dict) -> str:
     prod = _get_product_obj(item)
     val = _first_present(item.get("product_name"), item.get("name"), item.get("title"),
@@ -171,8 +164,7 @@ def _product_compare_price(item: dict) -> Decimal:
 
 
 def _explicit_row_discount(item: dict) -> Decimal:
-    """An explicit, already-computed per-line discount override (e.g. manual/coupon
-    discount stored directly on the order_item), if the checkout flow ever sets one."""
+    """An explicit, already-computed per-line discount override."""
     val = _first_present(item.get("discount_amount"), item.get("discount"), item.get("discount_value"))
     return _dec(val)
 
@@ -412,7 +404,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
         # 🔥 DISCOUNT MATH — explicit override takes priority; else derive from MRP
         if explicit_disc > _ZERO:
-            row_disc  = explicit_disc
+            row_disc   = explicit_disc
             unit_gross = (unit_selling_p + (row_disc / qty)).quantize(_TWO_DEC)
         elif unit_compare_p > unit_selling_p > _ZERO:
             row_disc   = ((unit_compare_p - unit_selling_p) * qty).quantize(_TWO_DEC)
@@ -460,10 +452,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         Paragraph(f"<b>{_fmt(run_items_total)}</b>", S["thr"]),
     ])
 
-    # Grand Total = Net Taxable Value + Tax + Shipping. The MRP discount is
-    # already baked into run_net (it's a straight sum of the actual selling
-    # prices), so there is nothing left to subtract here — no post-tax
-    # adjustment, no double counting, everything reconciles with the table above.
+    # Grand Total = Net Taxable Value + Tax + Shipping.
     grand = (run_net + ship_cost + run_tax).quantize(_TWO_DEC)
 
     qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|DISC:{run_disc_total:.2f}|TOTAL:{grand:.2f}|ORD:{display_ord}"
@@ -489,37 +478,37 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     story.append(Spacer(1, 10))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 4 ── AMOUNT IN WORDS & FULL AUDITABLE PRICE SUMMARY
+    #  BLOCK 4 ── AMOUNT IN WORDS & SIMPLIFIED PRICE SUMMARY
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     words_str = _amount_in_words(grand)
 
+    # 🔥 SUPER SIMPLE & CLEAN MATH: Subtotal + Shipping + Tax = Grand Total
     gst_rows = [
         [Paragraph("<b>Price Summary:</b>", S["lbl"]), Paragraph("", S["b"])],
-        [Paragraph("Total MRP of Items", S["br"]), Paragraph(_fmt(run_gross_total if run_gross_total > _ZERO else run_net), S["bbr"])],
+        [Paragraph("Subtotal (Items)", S["br"]), Paragraph(_fmt(run_net), S["bbr"])],
     ]
 
-    if run_disc_total > _ZERO:
-        gst_rows.append([Paragraph("Total Discount", S["br"]), Paragraph(f"- {_fmt(run_disc_total)}", S["bbr"])])
-
-    gst_rows.append([Paragraph("Subtotal (Net Taxable Value)", S["br"]), Paragraph(_fmt(run_net), S["bbr"])])
-
     if ship_cost > _ZERO:
-        gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph(_fmt(ship_cost), S["bbr"])])
+        gst_rows.append([Paragraph("Shipping Charges", S["br"]), Paragraph(_fmt(ship_cost), S["bbr"])])
     else:
-        gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph("FREE", S["bbr"])])
+        gst_rows.append([Paragraph("Shipping Charges", S["br"]), Paragraph("FREE", S["bbr"])])
 
     if tax_type == "CGST+SGST":
         half_tax = (run_tax / Decimal("2")).quantize(_TWO_DEC)
-        gst_rows.append([Paragraph("Total CGST", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
-        gst_rows.append([Paragraph("Total SGST", S["br"]), Paragraph(_fmt(run_tax - half_tax), S["bbr"])])
+        gst_rows.append([Paragraph("CGST", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
+        gst_rows.append([Paragraph("SGST", S["br"]), Paragraph(_fmt(run_tax - half_tax), S["bbr"])])
     else:
-        gst_rows.append([Paragraph("Total IGST", S["br"]), Paragraph(_fmt(run_tax), S["bbr"])])
+        gst_rows.append([Paragraph("IGST", S["br"]), Paragraph(_fmt(run_tax), S["bbr"])])
 
     gst_rows.append([Paragraph("", S["b"]), Paragraph("", S["b"])])
     gst_rows.append([Paragraph("<b>Grand Total</b>", S["sum_lbl"]), Paragraph(f"<b>{_fmt(grand)}</b>", S["sum_val"])])
 
+    # 🎉 Delightful savings note at the bottom (Does NOT interfere with vertical addition!)
+    if run_disc_total > _ZERO:
+        gst_rows.append([Paragraph("<b>Total Savings / Discount:</b>", S["sm"]), Paragraph(f"<b>- {_fmt(run_disc_total)}</b>", S["sm"])])
+
     gst_tbl = Table(gst_rows, colWidths=[150.0, 84.0])
-    gst_tbl.setStyle(TableStyle([("LINEABOVE", (0, -1), (-1, -1), 0.8, _BORDER_C), ("PADDING", (0, 0), (-1, -1), 2), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    gst_tbl.setStyle(TableStyle([("LINEABOVE", (0, -2 if run_disc_total > _ZERO else -1), (-1, -2 if run_disc_total > _ZERO else -1), 0.8, _BORDER_C), ("PADDING", (0, 0), (-1, -1), 2), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
 
     right_col_rows = [[gst_tbl], [Spacer(1, 14)], [Paragraph(f"<b>For {_S['name']}:</b>", S["sign"])], [Spacer(1, 28)], [Paragraph("<b>Authorised Signatory</b>", S["sign"])]]
     left_col_rows = [[Paragraph("<b>Amount in Words:</b>", S["words"])], [Spacer(1, 3)], [Paragraph(words_str, S["words_v"])]]
