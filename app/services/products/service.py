@@ -1,9 +1,10 @@
 """
-Product Service — Async Enterprise Grade (With GST & HSN Sanitization)
-======================================================================
+Product Service — Async Enterprise Grade (With GST, HSN & Auto-Discount Enrichment)
+===================================================================================
 Path: app/services/product_service.py
 
 Architecture & Upgrades:
+  ✅ Auto-Discount Enrichment — Automatically computes and injects 'discount_amount' and 'discount_percentage' into all payloads.
   ✅ ABAC Policy Guardrails — Maintains full security checks for images and categories.
   ✅ GST & HSN Ready — Safely sanitizes and type-casts hsn_code and gst_percentage.
   ✅ Zero Crash Fallbacks — Auto-defaults to HSN '9988' and 18% GST during creation if omitted.
@@ -24,6 +25,32 @@ class ProductService:
     def __init__(self):
         self.repo = AsyncProductRepository()
 
+    # ── Internal Helper: Auto-Inject Discount Fields ─────────────────────────
+    def _enrich_discount(self, prod: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Dynamically computes and injects exact discount_amount and discount_percentage
+        into the product dictionary so frontend and invoice generators receive immediate,
+        ready-to-use math without DB schema modifications.
+        """
+        if not prod:
+            return prod
+        try:
+            price = float(prod.get("price") or 0.0)
+            compare = float(prod.get("compare_price") or 0.0)
+            if compare > price > 0:
+                disc_amt = round(compare - price, 2)
+                disc_pct = int(round((disc_amt / compare) * 100))
+            else:
+                disc_amt = 0.0
+                disc_pct = 0
+            prod["discount_amount"] = disc_amt
+            prod["discount_percentage"] = disc_pct
+        except (ValueError, TypeError):
+            prod["discount_amount"] = 0.0
+            prod["discount_percentage"] = 0
+        return prod
+
+    # ── Categories ───────────────────────────────────────────────────────────
     async def get_categories(self) -> List[Dict[str, Any]]:
         return await self.repo.get_active_categories()
 
@@ -42,15 +69,20 @@ class ProductService:
         if not await self.repo.soft_delete_category(category_id):
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
 
+    # ── Products ─────────────────────────────────────────────────────────────
     async def get_products(self, page: int, page_size: int, category: str, search: str, min_p: float, max_p: float, in_stock: bool) -> Tuple[List[Dict[str, Any]], int]:
-        return await self.repo.get_products(page, page_size, category, search, min_p, max_p, in_stock)
+        products, total = await self.repo.get_products(page, page_size, category, search, min_p, max_p, in_stock)
+        # 🔥 Auto-enrich discount for every product in the catalog list
+        enriched_products = [self._enrich_discount(p) for p in products]
+        return enriched_products, total
 
     async def get_product(self, slug: str) -> Dict[str, Any]:
         product = await self.repo.get_product_by_slug(slug)
         if not product: 
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
         product["images"] = product.get("images") or []
-        return product
+        # 🔥 Auto-enrich discount for single product view
+        return self._enrich_discount(product)
 
     async def create_product(self, data: Dict[str, Any]) -> Dict[str, Any]:
         if data.get("sku") and await self.repo.check_sku_exists(data["sku"]):
@@ -62,14 +94,14 @@ class ProductService:
             data["compare_price"] = float(data["compare_price"])
         data["images"] = data.get("images") or []
 
-        # 🔥 UPGRADE: Sanitize and default HSN Code & GST Percentage for invoice compliance
+        # Sanitize and default HSN Code & GST Percentage for invoice compliance
         data["hsn_code"] = str(data.get("hsn_code") or "9988").strip()
         data["gst_percentage"] = int(data.get("gst_percentage") if data.get("gst_percentage") is not None else 18)
 
         res = await self.repo.create_product(data)
         if not res: 
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
-        return res
+        return self._enrich_discount(res)
 
     async def update_product(self, product_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         if "price" in data and data["price"]: 
@@ -77,7 +109,7 @@ class ProductService:
         if "compare_price" in data and data["compare_price"]: 
             data["compare_price"] = float(data["compare_price"])
             
-        # 🔥 UPGRADE: Safely cast GST percentage and clean HSN code if updated
+        # Safely cast GST percentage and clean HSN code if updated
         if "gst_percentage" in data and data["gst_percentage"] is not None:
             data["gst_percentage"] = int(data["gst_percentage"])
         if "hsn_code" in data and data["hsn_code"]:
@@ -90,12 +122,13 @@ class ProductService:
         res = await self.repo.update_product(product_id, data)
         if not res: 
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
-        return res
+        return self._enrich_discount(res)
 
     async def delete_product(self, product_id: str) -> None:
         if not await self.repo.soft_delete_product(product_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
 
+    # ── Images ───────────────────────────────────────────────────────────────
     async def upload_image(self, product_id: str, contents: bytes, filename: str) -> Dict[str, Any]:
         prod = await self.repo.get_product_by_id(product_id)
         if not prod: 
