@@ -9,6 +9,10 @@ Architecture & Fixes:
   ✅ Dual-ID Resolution — Fetches cleanly by UUID or human-readable NanoID (order_number).
   ✅ GST & HSN Ready — ORDER_ITEMS_SELECT auto-joins HSN & GST rate for PDF invoice generation.
   ✅ Atomic Creation — Added create_order_with_items to lock historical tax snapshots.
+  ✅ FIX (July 2026): `compare_price` added to the products join — this was the actual
+     root cause of invoices always showing "—" in the Discount column. Without it,
+     pdf_invoice.py had no MRP to compare against the selling price, so it could
+     never compute (compare_price - price) and always fell back to zero discount.
 """
 import logging
 from typing import Any, Optional, Tuple, List
@@ -16,8 +20,8 @@ from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 
-# 🔥 UPGRADE: Added name, hsn_code, and gst_percentage to product join so invoices get full data!
-ORDER_ITEMS_SELECT = "*, order_items(*, products(name, image_url, slug, hsn_code, gst_percentage))"
+# 🔥 FIX: added compare_price so invoices can actually calculate the discount.
+ORDER_ITEMS_SELECT = "*, order_items(*, products(name, image_url, slug, hsn_code, gst_percentage, compare_price))"
 
 class AsyncOrderRepository:
     def __init__(self):
