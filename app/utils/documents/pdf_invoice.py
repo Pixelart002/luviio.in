@@ -1,21 +1,15 @@
 """
-PDF Invoice — Production Grade (Luviio SSOT)
-============================================
+PDF Invoice — Production Grade (Luviio Supabase SSOT)
+=====================================================
 Path: app/utils/documents/pdf_invoice.py
 
 Clean, User-Friendly GST-compliant Tax Invoice with Giant Scannable QR Code.
 
-Fix log (this version):
-  ✅ compare_price / price / hsn / gst extraction now checks the order_item's own
-     SNAPSHOT fields first, and only falls back to the live `products` relation —
-     so historical invoices stay correct even if catalog price/MRP changes later.
-  ✅ `_first_present()` uses `is not None` instead of `or`, so a genuine 0
-     (e.g. 0% GST) is never silently replaced by a fallback.
-  ✅ Discount is now actually computed: (compare_price - price) * qty, OR an
-     explicit per-line discount_amount override if one is stored on the item.
-  ✅ Simplified Price Summary: Follows strict clean addition (Subtotal + Shipping + Tax = Grand Total).
-  ✅ Total Savings shown as a clean footer note without complicating the audit addition.
-  ✅ Pure Decimal arithmetic throughout (no float rounding drift).
+Architecture & Upgrades:
+  ✅ Exact Supabase Mapping — Directly extracts 'name', 'hsn_code', 'gst_percentage', 'price', and 'compare_price' without callback chains.
+  ✅ Zero-Crash Fallbacks — Uses 'is not None' checking to preserve genuine 0% GST or 0 discount values.
+  ✅ Accurate Quantity-Scaled Discount — Computes exact line discount as (compare_price - price) * qty.
+  ✅ Pure Decimal Arithmetic — Eliminates float rounding drift across subtotal, shipping, and tax additions.
 """
 from __future__ import annotations
 
@@ -59,7 +53,7 @@ _ZERO    = Decimal("0.00")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  UTILITY FUNCTIONS
+#  UTILITY FUNCTIONS (Direct Mapping Without Callbacks)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _safe(val: Any, default: str = "") -> str:
@@ -123,7 +117,7 @@ def _first_present(*vals: Any) -> Any:
 
 def _product_name(item: dict) -> str:
     prod = _get_product_obj(item)
-    val = _first_present(item.get("product_name"), item.get("name"), item.get("title"),
+    val = _first_present(item.get("name"), item.get("product_name"), item.get("title"),
                           prod.get("name"), prod.get("product_name"))
     return _safe(val) or "Product Item"
 
@@ -150,7 +144,7 @@ def _product_gst(item: dict) -> Decimal:
 def _product_selling_price(item: dict) -> Decimal:
     """The actual per-unit price charged (net, tax-exclusive)."""
     prod = _get_product_obj(item)
-    val = _first_present(item.get("unit_price"), item.get("price_snapshot"), item.get("price"),
+    val = _first_present(item.get("price"), item.get("unit_price"), item.get("price_snapshot"),
                           prod.get("price"), prod.get("selling_price"))
     return _dec(val)
 
@@ -163,9 +157,10 @@ def _product_compare_price(item: dict) -> Decimal:
     return _dec(val)
 
 
-def _explicit_row_discount(item: dict) -> Decimal:
-    """An explicit, already-computed per-line discount override."""
-    val = _first_present(item.get("discount_amount"), item.get("discount"), item.get("discount_value"))
+def _explicit_unit_discount(item: dict) -> Decimal:
+    """An explicit per-unit discount override from Supabase schema."""
+    prod = _get_product_obj(item)
+    val = _first_present(item.get("discount_amount"), item.get("discount"), prod.get("discount_amount"))
     return _dec(val)
 
 
@@ -361,7 +356,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     left_panel_tbl.setStyle(TableStyle([("PADDING", (0, 0), (-1, -1), 0), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 3 ── 10-COLUMN ITEMS TABLE (real per-item MRP discount)
+    #  BLOCK 3 ── 10-COLUMN ITEMS TABLE (Exact Supabase SSOT Mapping)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     CW = [18.0, 134.0, 38.0, 52.0, 22.0, 48.0, 54.0, 56.0, 52.0, 80.0]  # Exact Sum = 554.0 pt
 
@@ -398,17 +393,19 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         except Exception:
             qty = Decimal("1")
 
-        unit_selling_p  = _product_selling_price(item)
-        unit_compare_p  = _product_compare_price(item)
-        explicit_disc   = _explicit_row_discount(item)  # already a row TOTAL, not per-unit
+        unit_selling_p = _product_selling_price(item)
+        unit_compare_p = _product_compare_price(item)
+        explicit_disc  = _explicit_unit_discount(item)
 
-        # 🔥 DISCOUNT MATH — explicit override takes priority; else derive from MRP
-        if explicit_disc > _ZERO:
-            row_disc   = explicit_disc
-            unit_gross = (unit_selling_p + (row_disc / qty)).quantize(_TWO_DEC)
-        elif unit_compare_p > unit_selling_p > _ZERO:
-            row_disc   = ((unit_compare_p - unit_selling_p) * qty).quantize(_TWO_DEC)
+        # 🔥 DISCOUNT MATH — Derive from MRP difference first, or scale unit discount by qty
+        if unit_compare_p > unit_selling_p > _ZERO:
+            unit_disc  = (unit_compare_p - unit_selling_p).quantize(_TWO_DEC)
             unit_gross = unit_compare_p
+            row_disc   = (unit_disc * qty).quantize(_TWO_DEC)
+        elif explicit_disc > _ZERO:
+            unit_disc  = explicit_disc
+            unit_gross = (unit_selling_p + unit_disc).quantize(_TWO_DEC)
+            row_disc   = (unit_disc * qty).quantize(_TWO_DEC)
         else:
             row_disc   = _ZERO
             unit_gross = unit_selling_p
