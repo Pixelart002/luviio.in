@@ -5,9 +5,11 @@ Path: app/utils/documents/pdf_invoice.py
 
 Clean, User-Friendly GST-compliant Tax Invoice with Giant Scannable QR Code.
 
-Architecture & Upgrades:
-  ✅ Exact Supabase Mapping — Directly extracts 'name', 'hsn_code', 'gst_percentage', 'price', and 'compare_price' without callback chains.
-  ✅ Zero-Crash Fallbacks — Uses 'is not None' checking to preserve genuine 0% GST or 0 discount values.
+Architecture & Merged Upgrades:
+  ✅ Exact Supabase Mapping — Extracts 'name', 'hsn_code', 'gst_percentage', 'price', and 'compare_price' without callback chains.
+  ✅ Synchronous DB Fallback — Queries the products table directly if product_name is missing from snapshots.
+  ✅ Smart Tax Auto-Detect — Prevents historical order percentage glitches by dynamically checking if shipping was taxed.
+  ✅ HSN & QR Code Intact — Preserves the 10-column layout including HSN and the 148pt scannable QR block.
   ✅ Accurate Quantity-Scaled Discount — Computes exact line discount as (compare_price - price) * qty.
   ✅ Pure Decimal Arithmetic — Eliminates float rounding drift across subtotal, shipping, and tax additions.
 """
@@ -53,7 +55,7 @@ _ZERO    = Decimal("0.00")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  UTILITY FUNCTIONS (Direct Mapping Without Callbacks)
+#  UTILITY FUNCTIONS (Direct Mapping & Sync Fallback)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _safe(val: Any, default: str = "") -> str:
@@ -119,7 +121,23 @@ def _product_name(item: dict) -> str:
     prod = _get_product_obj(item)
     val = _first_present(item.get("name"), item.get("product_name"), item.get("title"),
                           prod.get("name"), prod.get("product_name"))
-    return _safe(val) or "Product Item"
+    name_str = _safe(val)
+    if name_str:
+        return name_str
+
+    # 🔥 Synchronous DB Fallback if product_name is missing from snapshots
+    pid = _safe(item.get("product_id"))
+    if pid:
+        try:
+            from app.core.supabase import get_admin_supabase
+            sb = get_admin_supabase()
+            res = sb.table("products").select("name").eq("id", pid).limit(1).execute()
+            if res.data and len(res.data) > 0 and res.data[0].get("name"):
+                return str(res.data[0]["name"]).strip()
+        except Exception as exc:
+            logger.warning("Failed sync lookup for product %s: %s", pid, exc)
+
+    return "Product Item"
 
 
 def _product_hsn(item: dict) -> str:
@@ -272,6 +290,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     status_raw   = _safe(order.get("status"), "paid").upper()
     is_refund    = status_raw in ("REFUNDED", "CANCELLED")
 
+    # 🔥 MERGED UPGRADE: Sequential DB Invoice Number Support with clean FY formatting
     db_invoice_no = _safe(order.get("invoice_number"))
     if db_invoice_no and db_invoice_no.isdigit():
         now = datetime.datetime.now()
@@ -288,7 +307,10 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     S = _styles()
     story: list = []
 
+    subtotal  = _dec(order.get("subtotal"))
     ship_cost = _dec(order.get("shipping_cost"))
+    tax_amt   = _dec(order.get("tax_amount"))
+    total_amt = _dec(order.get("total_amount"))
 
     sh1 = _safe(order.get("shipping_line1"))
     sh2 = _safe(order.get("shipping_line2"))
@@ -304,6 +326,29 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     tax_type = _resolve_tax_type(state or city)
     doc_type = "Refund Note / Credit Note" if is_refund else "Tax Invoice / Bill of Supply / Cash Memo"
 
+    # 🔥 MERGED UPGRADE: Smart Tax Auto-Detect Engine (Prevents percentage glitches on historical orders)
+    shipping_is_taxed = False
+    eff_rate_pct = Decimal("18.00")
+
+    if tax_amt > _ZERO:
+        rate_on_sub = (tax_amt / subtotal) * 100 if subtotal > _ZERO else _ZERO
+        diff_sub = abs(rate_on_sub - rate_on_sub.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        
+        rate_on_both = (tax_amt / (subtotal + ship_cost)) * 100 if (subtotal + ship_cost) > _ZERO else _ZERO
+        diff_both = abs(rate_on_both - rate_on_both.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+        if diff_sub <= Decimal("0.05"):
+            eff_rate_pct = rate_on_sub.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            shipping_is_taxed = False
+        elif diff_both <= Decimal("0.05"):
+            eff_rate_pct = rate_on_both.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            shipping_is_taxed = True
+        else:
+            eff_rate_pct = rate_on_sub.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            shipping_is_taxed = False
+    else:
+        eff_rate_pct = _ZERO
+
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     #  BLOCK 1 ── HEADER
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -316,7 +361,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     story.append(HRFlowable(width="100%", thickness=2.5, color=_GOLD, spaceAfter=8))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 2 ── HORIZONTAL GRID: [SELLER | BUYER] & [ORDER DETAILS]
+    #  BLOCK 2 ── HORIZONTAL GRID: [SELLER | BUYER] & [ORDER DETAILS + QR]
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     LEFT_W = 394.0
     RIGHT_W = 160.0
@@ -356,7 +401,8 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     left_panel_tbl.setStyle(TableStyle([("PADDING", (0, 0), (-1, -1), 0), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 3 ── 10-COLUMN ITEMS TABLE (Exact Supabase SSOT Mapping)
+    #  BLOCK 3 ── 10-COLUMN ITEMS TABLE WITH HSN AND REORDERED UI
+    #  🔥 ORDER: Sl. | Description | HSN | Unit Price | Qty | Discount | Net Amt | Tax Type | Tax Amt | Total
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     CW = [18.0, 134.0, 38.0, 52.0, 22.0, 48.0, 54.0, 56.0, 52.0, 80.0]  # Exact Sum = 554.0 pt
 
@@ -367,7 +413,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     def _dc(txt): return Paragraph(str(txt), S["tdc"])
     def _dr(txt): return Paragraph(str(txt), S["tdr"])
 
-    rows = [[_hc("Sl."), _h("Description"), _hc("HSN"), _hr("Gross Amt"), _hc("Qty"), _hr("Discount"), _hr("Net Amt"), _hc("Tax Type"), _hr("Tax Amt"), _hr("Total")]]
+    rows = [[_hc("Sl."), _h("Description"), _hc("HSN"), _hr("Unit Price"), _hc("Qty"), _hr("Discount"), _hr("Net Amt"), _hc("Tax Type"), _hr("Tax Amt"), _hr("Total")]]
 
     items = order.get("order_items") or order.get("items") or []
 
@@ -380,7 +426,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         name = _product_name(item)
         hsn  = _product_hsn(item)
 
-        # Guard: Ensure shipping charges never leak into the items table
         if "shipping" in name.lower() or hsn == "9965":
             if ship_cost == _ZERO:
                 ship_cost = _dec(item.get("price") or item.get("unit_price") or item.get("subtotal"))
@@ -393,11 +438,10 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         except Exception:
             qty = Decimal("1")
 
-        unit_selling_p = _product_selling_price(item)
-        unit_compare_p = _product_compare_price(item)
-        explicit_disc  = _explicit_unit_discount(item)
+        unit_selling_p  = _product_selling_price(item)
+        unit_compare_p  = _product_compare_price(item)
+        explicit_disc   = _explicit_unit_discount(item)
 
-        # 🔥 DISCOUNT MATH — Derive from MRP difference first, or scale unit discount by qty
         if unit_compare_p > unit_selling_p > _ZERO:
             unit_disc  = (unit_compare_p - unit_selling_p).quantize(_TWO_DEC)
             unit_gross = unit_compare_p
@@ -410,7 +454,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
             row_disc   = _ZERO
             unit_gross = unit_selling_p
 
-        # 🔥 TAXABLE VALUE — always the actual selling price (already net of MRP discount)
         row_net   = (unit_selling_p * qty).quantize(_TWO_DEC)
         row_tax   = (row_net * (gst_pct / Decimal("100"))).quantize(_TWO_DEC)
         row_total = (row_net + row_tax).quantize(_TWO_DEC)
@@ -440,7 +483,26 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     run_net         = run_net.quantize(_TWO_DEC)
     run_tax         = run_tax.quantize(_TWO_DEC)
 
-    # STRICT TABLE FOOTER — sums cart items only (zero shipping contamination)
+    # 🔥 MERGED UPGRADE: Explicit shipping charge item row if shipping is taxed
+    if ship_cost > _ZERO and shipping_is_taxed:
+        s_tax = (ship_cost * (eff_rate_pct / Decimal("100"))).quantize(_TWO_DEC)
+        s_tot = (ship_cost + s_tax).quantize(_TWO_DEC)
+        run_net += ship_cost
+        run_tax += s_tax
+        gst_type_str = f"CGST+SGST ({eff_rate_pct:.0f}%)" if tax_type == "CGST+SGST" else f"IGST ({eff_rate_pct:.0f}%)"
+        rows.append([
+            _dc(""),
+            Paragraph("<b>Shipping Charges</b>", S["td"]),
+            _dc("9965"),
+            _dr(_fmt(ship_cost)),
+            _dc("1"),
+            _dr("—"),
+            _dr(_fmt(ship_cost)),
+            _dc(gst_type_str),
+            _dr(_fmt(s_tax)),
+            _dr(_fmt(s_tot)),
+        ])
+
     run_items_total = (run_net + run_tax).quantize(_TWO_DEC)
     rows.append([
         Paragraph("<b>Total of Items</b>", S["thr"]), "", "", "", "", "",
@@ -449,8 +511,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         Paragraph(f"<b>{_fmt(run_items_total)}</b>", S["thr"]),
     ])
 
-    # Grand Total = Net Taxable Value + Tax + Shipping.
-    grand = (run_net + ship_cost + run_tax).quantize(_TWO_DEC)
+    grand = total_amt if total_amt > _ZERO else (run_net + (ship_cost if not shipping_is_taxed else _ZERO) + run_tax).quantize(_TWO_DEC)
 
     qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|DISC:{run_disc_total:.2f}|TOTAL:{grand:.2f}|ORD:{display_ord}"
     qr_drawing = _create_qr(qr_payload, size=148.0)
@@ -479,15 +540,14 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     words_str = _amount_in_words(grand)
 
-    # 🔥 SUPER SIMPLE & CLEAN MATH: Subtotal + Shipping + Tax = Grand Total
     gst_rows = [
         [Paragraph("<b>Price Summary:</b>", S["lbl"]), Paragraph("", S["b"])],
-        [Paragraph("Subtotal (Items)", S["br"]), Paragraph(_fmt(run_net), S["bbr"])],
+        [Paragraph("Subtotal (Items)", S["br"]), Paragraph(_fmt(run_net if shipping_is_taxed else subtotal), S["bbr"])],
     ]
 
-    if ship_cost > _ZERO:
+    if ship_cost > _ZERO and not shipping_is_taxed:
         gst_rows.append([Paragraph("Shipping Charges", S["br"]), Paragraph(_fmt(ship_cost), S["bbr"])])
-    else:
+    elif ship_cost == _ZERO:
         gst_rows.append([Paragraph("Shipping Charges", S["br"]), Paragraph("FREE", S["bbr"])])
 
     if tax_type == "CGST+SGST":
@@ -500,7 +560,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     gst_rows.append([Paragraph("", S["b"]), Paragraph("", S["b"])])
     gst_rows.append([Paragraph("<b>Grand Total</b>", S["sum_lbl"]), Paragraph(f"<b>{_fmt(grand)}</b>", S["sum_val"])])
 
-    # 🎉 Delightful savings note at the bottom (Does NOT interfere with vertical addition!)
     if run_disc_total > _ZERO:
         gst_rows.append([Paragraph("<b>Total Savings / Discount:</b>", S["sm"]), Paragraph(f"<b>- {_fmt(run_disc_total)}</b>", S["sm"])])
 
