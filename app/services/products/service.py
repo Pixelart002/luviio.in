@@ -164,8 +164,10 @@ class ProductService:
 
         await self.repo.update_product(product_id, {"images": images, "image_url": new_primary})
         
-        try: await run_in_threadpool(delete_product_image, deleted_url)
-        except Exception as e: logger.warning(f"Storage delete warning: {e}")
+        try: 
+            await run_in_threadpool(delete_product_image, deleted_url)
+        except Exception as e: 
+            logger.warning(f"Storage delete warning: {e}")
 
         return {"images": images, "image_url": new_primary, "deleted_url": deleted_url}
 

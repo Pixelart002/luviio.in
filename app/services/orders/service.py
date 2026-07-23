@@ -1,11 +1,10 @@
 """
-Order Service — Enterprise Business Logic & State Machine (GST & Auto-Discount Ready)
-=====================================================================================
+Order Service — Enterprise Business Logic & State Machine (GST Ready)
+=====================================================================
 Path: app/services/orders/service.py
 
 Architecture & Upgrades:
-  ✅ Smart Sanitization — Preserves item names, HSN codes, GST slabs, and compare prices before stripping joins.
-  ✅ Auto-Discount Enrichment — Dynamically computes item-level and total order discounts without DB changes.
+  ✅ Smart Sanitization — Preserves item names, HSN codes, and GST slabs before stripping joins.
   ✅ ABAC Policy Guardrails — Fully enforces view, cancellation, and invoice download permissions.
   ✅ ACID State Machine — Validates strict transition graphs and handles automated Stripe refunds.
 """
@@ -42,32 +41,8 @@ class OrderService:
         self.repo = AsyncOrderRepository()
         self.user_repo = AsyncUserRepository()
 
-    # ── Internal Helper: Auto-Inject Discount Fields ─────────────────────────
-    def _enrich_item_discount(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Dynamically computes and injects exact discount_amount and discount_percentage
-        into order items for invoice generators and frontend payloads.
-        """
-        if not item:
-            return item
-        try:
-            price = float(item.get("price") or 0.0)
-            compare = float(item.get("compare_price") or 0.0)
-            if compare > price > 0:
-                disc_amt = round(compare - price, 2)
-                disc_pct = int(round((disc_amt / compare) * 100))
-            else:
-                disc_amt = 0.0
-                disc_pct = 0
-            item["discount_amount"] = disc_amt
-            item["discount_percentage"] = disc_pct
-        except (ValueError, TypeError):
-            item["discount_amount"] = 0.0
-            item["discount_percentage"] = 0
-        return item
-
     def _sanitize(self, order: Dict[str, Any]) -> Dict[str, Any]:
-        """Strips internal system ledger fields, masks payment identifiers, maps GST/HSN, and enriches discounts."""
+        """Strips internal system ledger fields, masks payment identifiers, and maps GST/HSN items."""
         if not order: 
             return order
         sanitized = {k: v for k, v in order.items() if k not in _INTERNAL_FIELDS}
@@ -81,38 +56,19 @@ class OrderService:
                 for item in sanitized["order_items"]
             ]
             
-        total_order_discount = 0.0
-
         for item in sanitized.get("order_items", []):
             if "products" in item and isinstance(item["products"], dict):
                 prod = item["products"]
                 
-                # 🔥 UPGRADE: Extract and preserve critical product & tax fields before deleting join payload!
+                # 🔥 Extract and preserve critical product & tax fields before deleting join payload!
                 item["name"] = item.get("name") or prod.get("name") or "Product Item"
                 item["hsn_code"] = item.get("hsn_code") or prod.get("hsn_code") or "9988"
                 item["gst_percentage"] = item.get("gst_percentage") or prod.get("gst_percentage") or 18
-                
-                # Ensure price and compare_price exist before computing discount
-                item["price"] = item.get("price") if item.get("price") is not None else prod.get("price")
                 item["compare_price"] = item.get("compare_price") or prod.get("compare_price")
                 
                 item["product_slug"] = prod.get("slug")
                 item["product_image_url"] = prod.get("image_url")
                 del item["products"]
-            
-            # 🔥 Auto-Enrich Discount for each item
-            self._enrich_item_discount(item)
-            
-            # Aggregate total discount for the order based on quantity
-            try:
-                qty = int(item.get("quantity") or 1)
-                total_order_discount += item.get("discount_amount", 0.0) * qty
-            except (ValueError, TypeError):
-                pass
-
-        # Inject aggregate discount at order root level
-        if "order_items" in sanitized:
-            sanitized["total_discount_amount"] = round(total_order_discount, 2)
                 
         return sanitized
 
