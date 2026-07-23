@@ -1,17 +1,22 @@
 """
-PDF Invoice — Production Grade (Luviio Supabase SSOT)
-=====================================================
+PDF Invoice — Production Grade (Luviio SSOT)
+============================================
 Path: app/utils/documents/pdf_invoice.py
 
-Clean, User-Friendly GST-compliant Tax Invoice with Giant Scannable QR Code.
+Amazon.in / Meesho-style 10-column GST-compliant Tax Invoice.
 
-Architecture & Merged Upgrades:
-  ✅ Exact Supabase Mapping — Extracts 'name', 'hsn_code', 'gst_percentage', 'price', and 'compare_price' without callback chains.
-  ✅ Synchronous DB Fallback — Queries the products table directly if product_name is missing from snapshots.
-  ✅ Smart Tax Auto-Detect — Prevents historical order percentage glitches by dynamically checking if shipping was taxed.
-  ✅ HSN & QR Code Intact — Preserves the 10-column layout including HSN and the 148pt scannable QR block.
-  ✅ Accurate Quantity-Scaled Discount — Computes exact line discount as (compare_price - price) * qty.
-  ✅ Pure Decimal Arithmetic — Eliminates float rounding drift across subtotal, shipping, and tax additions.
+Architecture & Fixes:
+  ✅ 100% dynamic — all data from DB (order + customer objects)
+  ✅ Synchronous DB Fallback — queries products table if product_name is missing
+  ✅ Seller info from environment variables — ZERO hardcoding
+  ✅ IGST vs CGST+SGST auto-resolved by shipping state vs seller state
+  ✅ Smart Auto-Detect Tax Engine to prevent historical order percentage glitches
+  ✅ Amount in words (Indian English — Crore/Lakh/Thousand)
+  ✅ Mathematical precision: exact 554pt nested grid widths (Zero Overflow Guarantee)
+  ✅ Automatic Discount Computation via Compare Price vs Unit Price
+  ✅ Displays MRP in "Unit Price" column if discount is applied for clear UX math
+  ✅ Column reordered: Unit Price -> Qty -> Discount -> Net Amount for customer clarity
+  ✅ Sequential Invoice Number support from Database
 """
 from __future__ import annotations
 
@@ -19,7 +24,6 @@ import io
 import os
 import logging
 import datetime
-from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import Any
 
 from reportlab.lib.pagesizes import A4
@@ -30,8 +34,6 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
     HRFlowable, KeepTogether,
 )
-from reportlab.graphics.shapes import Drawing
-from reportlab.graphics.barcode.qr import QrCodeWidget
 
 logger = logging.getLogger(__name__)
 
@@ -43,19 +45,16 @@ _S = {
     "name":    os.environ.get("SELLER_LEGAL_NAME",  "Luviio Commerce"),
     "addr1":   os.environ.get("SELLER_ADDRESS_1",   "India"),
     "addr2":   os.environ.get("SELLER_ADDRESS_2",   ""),
-    "state":   os.environ.get("SELLER_STATE_CODE",  "DL"),
+    "state":   os.environ.get("SELLER_STATE_CODE",  "DL"),   # 2-letter code
     "pan":     os.environ.get("SELLER_PAN",         ""),
     "gstin":   os.environ.get("SELLER_GSTIN",       ""),
     "email":   os.environ.get("SELLER_EMAIL",       "support@luviio.in"),
     "website": os.environ.get("SELLER_WEBSITE",     "luviio.in"),
 }
 
-_TWO_DEC = Decimal("0.01")
-_ZERO    = Decimal("0.00")
-
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  UTILITY FUNCTIONS (Direct Mapping & Sync Fallback)
+#  UTILITY FUNCTIONS
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _safe(val: Any, default: str = "") -> str:
@@ -65,34 +64,33 @@ def _safe(val: Any, default: str = "") -> str:
     return s if s and s.lower() not in ("none", "null") else default
 
 
-def _dec(val: Any, default: str = "0.00") -> Decimal:
-    if val is None:
-        return Decimal(default)
+def _safe_f(val: Any, default: float = 0.0) -> float:
     try:
-        return Decimal(str(val)).quantize(_TWO_DEC, rounding=ROUND_HALF_UP)
-    except (InvalidOperation, ValueError, TypeError):
-        return Decimal(default)
+        return float(val) if val is not None else default
+    except (ValueError, TypeError):
+        return default
 
 
 def _fmt(amount: Any) -> str:
     try:
-        val = amount if isinstance(amount, Decimal) else _dec(amount)
-        return f"Rs. {val:,.2f}"
-    except Exception:
+        return f"Rs. {float(amount):,.2f}"
+    except (TypeError, ValueError):
         return "Rs. 0.00"
 
 
 def _short_id(uuid_str: str) -> str:
     s = _safe(uuid_str)
-    if s.startswith("ORD-"):
-        return s
     return s[:12].upper() if len(s) >= 8 else (s.upper() or "—")
 
 
 def _parse_date(dt_str: str) -> str:
     if not dt_str:
         return datetime.datetime.now().strftime("%d-%m-%Y")
-    for fmt in ("%Y-%m-%dT%H:%M:%S.%f+00:00", "%Y-%m-%dT%H:%M:%S+00:00", "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S.%f+00:00", "%Y-%m-%dT%H:%M:%S+00:00",
+        "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d",
+    ):
         try:
             return datetime.datetime.strptime(dt_str[:26], fmt).strftime("%d-%m-%Y")
         except ValueError:
@@ -100,32 +98,26 @@ def _parse_date(dt_str: str) -> str:
     return dt_str[:10]
 
 
-def _get_product_obj(item: dict) -> dict:
-    """Nested catalog relation (Supabase join), e.g. item['products']. Empty dict if absent."""
+# ── Product name: Multi-layer extractor with Synchronous DB Fallback ────────
+
+def _product_name(item: dict) -> str:
+    """
+    Extract product name from order_item dict.
+    If missing, queries the Supabase DB directly using sync client.
+    """
+    for key in ("product_name", "name", "title"):
+        val = _safe(item.get(key))
+        if val:
+            return val
+
     for rel in ("products", "product", "item"):
         obj = item.get(rel)
         if isinstance(obj, dict):
-            return obj
-    return {}
+            val = _safe(obj.get("name") or obj.get("product_name"))
+            if val:
+                return val
 
-
-def _first_present(*vals: Any) -> Any:
-    """Returns the first value that is not None (0, 0.0, '' are all valid/kept)."""
-    for v in vals:
-        if v is not None:
-            return v
-    return None
-
-
-def _product_name(item: dict) -> str:
-    prod = _get_product_obj(item)
-    val = _first_present(item.get("name"), item.get("product_name"), item.get("title"),
-                          prod.get("name"), prod.get("product_name"))
-    name_str = _safe(val)
-    if name_str:
-        return name_str
-
-    # 🔥 Synchronous DB Fallback if product_name is missing from snapshots
+    # Sync DB Fallback if only product_id exists
     pid = _safe(item.get("product_id"))
     if pid:
         try:
@@ -140,95 +132,85 @@ def _product_name(item: dict) -> str:
     return "Product Item"
 
 
-def _product_hsn(item: dict) -> str:
-    prod = _get_product_obj(item)
-    val = _first_present(item.get("hsn_code"), item.get("hsn"), item.get("hsn_sac"),
-                          prod.get("hsn_code"), prod.get("hsn"))
-    return _safe(val) or "9988"
-
-
-def _product_gst(item: dict) -> Decimal:
-    prod = _get_product_obj(item)
-    val = _first_present(item.get("gst_percentage"), item.get("gst_pct"), item.get("tax_rate"),
-                          prod.get("gst_percentage"), prod.get("gst_pct"))
-    if val is None:
-        return Decimal("18.00")
-    try:
-        return Decimal(str(val)).quantize(_TWO_DEC)
-    except (InvalidOperation, ValueError, TypeError):
-        return Decimal("18.00")
-
-
-def _product_selling_price(item: dict) -> Decimal:
-    """The actual per-unit price charged (net, tax-exclusive)."""
-    prod = _get_product_obj(item)
-    val = _first_present(item.get("price"), item.get("unit_price"), item.get("price_snapshot"),
-                          prod.get("price"), prod.get("selling_price"))
-    return _dec(val)
-
-
-def _product_compare_price(item: dict) -> Decimal:
-    """The per-unit MRP / strike-through price used to derive the discount."""
-    prod = _get_product_obj(item)
-    val = _first_present(item.get("compare_price"), item.get("compare_price_snapshot"), item.get("mrp"),
-                          prod.get("compare_price"), prod.get("mrp"), prod.get("original_price"))
-    return _dec(val)
-
-
-def _explicit_unit_discount(item: dict) -> Decimal:
-    """An explicit per-unit discount override from Supabase schema."""
-    prod = _get_product_obj(item)
-    val = _first_present(item.get("discount_amount"), item.get("discount"), prod.get("discount_amount"))
-    return _dec(val)
-
-
-def _create_qr(data: str, size: float = 148.0) -> Drawing:
-    qr_widget = QrCodeWidget(data, barLevel='L')
-    bounds = qr_widget.getBounds()
-    w, h = bounds[2] - bounds[0], bounds[3] - bounds[1]
-    drawing = Drawing(size, size, transform=[size / w, 0, 0, size / h, 0, 0])
-    drawing.add(qr_widget)
-    return drawing
-
+# ══════════════════════════════════════════════════════════════════════════════
+#  INDIAN STATE → CODE MAP
+# ══════════════════════════════════════════════════════════════════════════════
 
 _STATE_MAP: dict[str, str] = {
-    "andhra pradesh": "AP", "ap": "AP", "assam": "AS", "bihar": "BR", "chandigarh": "CH", "delhi": "DL", "new delhi": "DL", "goa": "GA", "gujarat": "GJ", "haryana": "HR", "himachal pradesh": "HP", "jharkhand": "JH", "karnataka": "KA", "kerala": "KL", "madhya pradesh": "MP", "maharashtra": "MH", "odisha": "OD", "puducherry": "PY", "punjab": "PB", "rajasthan": "RJ", "sikkim": "SK", "tamil nadu": "TN", "telangana": "TS", "tripura": "TR", "uttar pradesh": "UP", "uttarakhand": "UK", "west bengal": "WB",
+    "andhra pradesh": "AP", "ap": "AP",
+    "assam": "AS", "as": "AS",
+    "bihar": "BR", "br": "BR",
+    "chandigarh": "CH",
+    "delhi": "DL", "new delhi": "DL", "nct of delhi": "DL", "dl": "DL",
+    "goa": "GA", "ga": "GA",
+    "gujarat": "GJ", "gj": "GJ",
+    "haryana": "HR", "hr": "HR",
+    "himachal pradesh": "HP", "hp": "HP",
+    "jharkhand": "JH", "jh": "JH",
+    "karnataka": "KA", "ka": "KA", "bengaluru": "KA", "bangalore": "KA",
+    "kerala": "KL", "kl": "KL",
+    "madhya pradesh": "MP", "mp": "MP",
+    "maharashtra": "MH", "mh": "MH", "mumbai": "MH",
+    "manipur": "MN", "mn": "MN",
+    "meghalaya": "ML", "ml": "ML",
+    "mizoram": "MZ", "mz": "MZ",
+    "nagaland": "NL", "nl": "NL",
+    "odisha": "OD", "od": "OD",
+    "puducherry": "PY", "py": "PY",
+    "punjab": "PB", "pb": "PB",
+    "rajasthan": "RJ", "rj": "RJ",
+    "sikkim": "SK", "sk": "SK",
+    "tamil nadu": "TN", "tn": "TN", "chennai": "TN",
+    "telangana": "TS", "ts": "TS", "hyderabad": "TS",
+    "tripura": "TR", "tr": "TR",
+    "uttar pradesh": "UP", "up": "UP",
+    "uttarakhand": "UK", "uk": "UK",
+    "west bengal": "WB", "wb": "WB", "kolkata": "WB",
 }
 
+
 def _state_code(raw: str) -> str:
-    return _STATE_MAP.get(raw.strip().lower(), raw.strip().upper()[:2])
+    key = raw.strip().lower()
+    return _STATE_MAP.get(key, raw.strip().upper()[:2])
+
 
 def _resolve_tax_type(shipping_state: str) -> str:
     if not shipping_state:
         return "IGST"
-    return "CGST+SGST" if _state_code(shipping_state) == _state_code(_S["state"]) else "IGST"
+    buyer_code  = _state_code(shipping_state)
+    seller_code = _state_code(_S["state"])
+    return "CGST+SGST" if buyer_code == seller_code else "IGST"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  AMOUNT IN WORDS (Indian English)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _n2w(n: int) -> str:
-    _ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
-    _TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
-    if n == 0: return ""
-    if n < 20: return _ONES[n] + " "
-    if n < 100: return _TENS[n // 10] + (" " + _ONES[n % 10] if n % 10 else "") + " "
-    if n < 1_000: return _ONES[n // 100] + " Hundred " + _n2w(n % 100)
-    if n < 100_000: return _n2w(n // 1_000) + "Thousand " + _n2w(n % 1_000)
-    if n < 10_000_000: return _n2w(n // 100_000) + "Lakh " + _n2w(n % 100_000)
-    return _n2w(n // 10_000_000) + "Crore " + _n2w(n % 10_000_000)
+_ONES = [
+    "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+    "Seventeen", "Eighteen", "Nineteen",
+]
+_TENS_W = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
 
-def _amount_in_words(amount: Decimal) -> str:
+
+def _n2w(n: int) -> str:
+    if n == 0:         return ""
+    if n < 20:         return _ONES[n] + " "
+    if n < 100:        return _TENS_W[n // 10] + (" " + _ONES[n % 10] if n % 10 else "") + " "
+    if n < 1_000:      return _ONES[n // 100] + " Hundred " + _n2w(n % 100)
+    if n < 100_000:    return _n2w(n // 1_000) + "Thousand " + _n2w(n % 1_000)
+    if n < 10_000_000: return _n2w(n // 100_000) + "Lakh " + _n2w(n % 100_000)
+    return             _n2w(n // 10_000_000) + "Crore " + _n2w(n % 10_000_000)
+
+
+def _amount_in_words(amount: float) -> str:
     try:
-        val = amount.quantize(_TWO_DEC)
-        rupees = int(val)
-        paise = int(round((val - Decimal(rupees)) * 100))
-        parts = []
-        if rupees:
-            parts.append(_n2w(rupees).strip() + " Rupees")
-        if paise:
-            parts.append(_n2w(paise).strip() + " Paise")
+        rupees = int(amount)
+        paise  = int(round((amount - rupees) * 100))
+        parts  = []
+        if rupees: parts.append(_n2w(rupees).strip() + " Rupees")
+        if paise:  parts.append(_n2w(paise).strip() + " Paise")
         return (" and ".join(parts) + " Only") if parts else "Zero Rupees Only"
     except Exception:
         return "Amount as per invoice"
@@ -238,40 +220,49 @@ def _amount_in_words(amount: Decimal) -> str:
 #  REPORTLAB STYLES
 # ══════════════════════════════════════════════════════════════════════════════
 
-_GRAY_BG  = colors.HexColor("#f2f2f2")
-_ROW_ALT  = colors.HexColor("#fafafa")
-_TOTAL_BG = colors.HexColor("#e8e8e8")
-_BORDER_C = colors.HexColor("#bbbbbb")
-_GOLD     = colors.HexColor("#c9a96e")
-_TEXT_DIM = colors.HexColor("#555555")
+_GRAY_BG   = colors.HexColor("#f2f2f2")
+_ROW_ALT   = colors.HexColor("#fafafa")
+_TOTAL_BG  = colors.HexColor("#e8e8e8")
+_BORDER_C  = colors.HexColor("#bbbbbb")
+_GOLD      = colors.HexColor("#c9a96e")
+_TEXT_DIM  = colors.HexColor("#555555")
+_TEXT_LIGHT= colors.HexColor("#888888")
+
 
 def _styles() -> dict[str, ParagraphStyle]:
     base = getSampleStyleSheet()["Normal"]
-    def _s(name: str, **kw) -> ParagraphStyle: return ParagraphStyle(name, parent=base, **kw)
+
+    def _s(name: str, **kw) -> ParagraphStyle:
+        return ParagraphStyle(name, parent=base, **kw)
+
     return {
-        "logo":    _s("logo", fontName="Helvetica-Bold", fontSize=20, leading=24),
-        "doc_h":   _s("doc_h", fontName="Helvetica-Bold", fontSize=11, leading=14, alignment=TA_RIGHT),
-        "doc_sub": _s("doc_sub", fontSize=7, alignment=TA_RIGHT, textColor=_TEXT_DIM, leading=10),
-        "site":    _s("site", fontSize=7, textColor=_TEXT_DIM, leading=10),
-        "lbl":     _s("lbl", fontName="Helvetica-Bold", fontSize=8, leading=11),
-        "lbl_c":   _s("lbl_c", fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_CENTER, textColor=_TEXT_DIM),
-        "b":       _s("b", fontSize=7.5, leading=10),
-        "bb":      _s("bb", fontName="Helvetica-Bold", fontSize=7.5, leading=10),
-        "br":      _s("br", fontSize=7.5, leading=10, alignment=TA_RIGHT),
-        "bbr":     _s("bbr", fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
-        "sm":      _s("sm", fontSize=6.5, leading=9, textColor=_TEXT_DIM),
-        "th":      _s("th", fontName="Helvetica-Bold", fontSize=7.0, leading=9),
-        "thc":     _s("thc", fontName="Helvetica-Bold", fontSize=7.0, leading=9, alignment=TA_CENTER),
-        "thr":     _s("thr", fontName="Helvetica-Bold", fontSize=7.0, leading=9, alignment=TA_RIGHT),
-        "td":      _s("td", fontSize=7.0, leading=9),
-        "tdc":     _s("tdc", fontSize=7.0, leading=9, alignment=TA_CENTER),
-        "tdr":     _s("tdr", fontSize=7.0, leading=9, alignment=TA_RIGHT),
-        "sum_lbl": _s("sum_lbl", fontName="Helvetica-Bold", fontSize=8, leading=11, alignment=TA_RIGHT),
-        "sum_val": _s("sum_val", fontName="Helvetica-Bold", fontSize=8, leading=11, alignment=TA_RIGHT),
-        "foot":    _s("foot", fontSize=6.5, leading=9, textColor=colors.HexColor("#888888"), alignment=TA_CENTER),
-        "words":   _s("words", fontName="Helvetica-Bold", fontSize=7.5, leading=10),
-        "words_v": _s("words_v", fontSize=7.5, leading=10),
-        "sign":    _s("sign", fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
+        "logo":     _s("logo",    fontName="Helvetica-Bold", fontSize=20, leading=24),
+        "doc_h":    _s("doc_h",   fontName="Helvetica-Bold", fontSize=11, leading=14, alignment=TA_RIGHT),
+        "doc_sub":  _s("doc_sub", fontSize=7,  alignment=TA_RIGHT, textColor=_TEXT_DIM, leading=10),
+        "site":     _s("site",    fontSize=7,  textColor=_TEXT_DIM, leading=10),
+
+        "lbl":      _s("lbl",     fontName="Helvetica-Bold", fontSize=8, leading=11),
+
+        "b":        _s("b",       fontSize=7.5, leading=10),
+        "bb":       _s("bb",      fontName="Helvetica-Bold", fontSize=7.5, leading=10),
+        "br":       _s("br",      fontSize=7.5, leading=10, alignment=TA_RIGHT),
+        "bbr":      _s("bbr",     fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
+        "sm":       _s("sm",      fontSize=6.5, leading=9,  textColor=_TEXT_DIM),
+
+        "th":       _s("th",      fontName="Helvetica-Bold", fontSize=7.5, leading=9),
+        "thc":      _s("thc",     fontName="Helvetica-Bold", fontSize=7.5, leading=9, alignment=TA_CENTER),
+        "thr":      _s("thr",     fontName="Helvetica-Bold", fontSize=7.5, leading=9, alignment=TA_RIGHT),
+        "td":       _s("td",      fontSize=7.5, leading=10),
+        "tdc":      _s("tdc",     fontSize=7.5, leading=10, alignment=TA_CENTER),
+        "tdr":      _s("tdr",     fontSize=7.5, leading=10, alignment=TA_RIGHT),
+
+        "sum_lbl":  _s("sum_lbl", fontName="Helvetica-Bold", fontSize=8, leading=11, alignment=TA_RIGHT),
+        "sum_val":  _s("sum_val", fontName="Helvetica-Bold", fontSize=8, leading=11, alignment=TA_RIGHT),
+
+        "foot":     _s("foot",    fontSize=6.5, leading=9, textColor=_TEXT_LIGHT, alignment=TA_CENTER),
+        "words":    _s("words",   fontName="Helvetica-Bold", fontSize=7.5, leading=10),
+        "words_v":  _s("words_v", fontSize=7.5, leading=10),
+        "sign":     _s("sign",    fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
     }
 
 
@@ -280,305 +271,409 @@ def _styles() -> dict[str, ParagraphStyle]:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
-    buf = io.BytesIO()
+    buf    = io.BytesIO()
     MARGIN = 20
 
+    # ── Extract values ────────────────────────────────────────────────────────
     order_id     = _safe(order.get("id"))
-    display_ord  = _safe(order.get("order_number")) or _short_id(order_id)
     order_date   = _parse_date(_safe(order.get("created_at")))
     invoice_date = datetime.datetime.now().strftime("%d-%m-%Y")
     status_raw   = _safe(order.get("status"), "paid").upper()
     is_refund    = status_raw in ("REFUNDED", "CANCELLED")
 
-    # 🔥 MERGED UPGRADE: Sequential DB Invoice Number Support with clean FY formatting
+    # 🔥 FIX: Sequential Invoice Number support from DB
     db_invoice_no = _safe(order.get("invoice_number"))
-    if db_invoice_no and db_invoice_no.isdigit():
-        now = datetime.datetime.now()
-        fy_start = now.year if now.month >= 4 else now.year - 1
-        fy_str = f"{str(fy_start)[2:]}-{str(fy_start+1)[2:]}"
-        invoice_no = f"INV/{fy_str}/{int(db_invoice_no):05d}"
+    if db_invoice_no:
+        invoice_no = f"{db_invoice_no}"
     else:
+        # Fallback Amazon/Flipkart format if DB number isn't present
         seller_state_prefix = _S["state"][:2].upper() or "DL"
         fy_year = datetime.datetime.now().strftime("%y")
-        invoice_no = db_invoice_no or f"LV{seller_state_prefix}{fy_year}{_short_id(order_id)[:6]}"
+        invoice_no = f"LV{seller_state_prefix}{fy_year}{_short_id(order_id)[:6]}"
 
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=MARGIN, bottomMargin=MARGIN)
-    W = 554.0
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=MARGIN, rightMargin=MARGIN,
+        topMargin=MARGIN, bottomMargin=MARGIN,
+        title=f"Luviio Invoice #{invoice_no}",
+        author="Luviio Commerce",
+        subject="Tax Invoice — GST Compliant",
+        creator="Luviio Invoice System",
+    )
+
+    W = 554.0               # Explicit safe width: 595.28 - 40 = 555.28 -> anchor at 554 pt
     S = _styles()
     story: list = []
 
-    subtotal  = _dec(order.get("subtotal"))
-    ship_cost = _dec(order.get("shipping_cost"))
-    tax_amt   = _dec(order.get("tax_amount"))
-    total_amt = _dec(order.get("total_amount"))
+    subtotal    = _safe_f(order.get("subtotal"))
+    ship_cost   = _safe_f(order.get("shipping_cost"))
+    tax_amt     = _safe_f(order.get("tax_amount"))
+    total_amt   = _safe_f(order.get("total_amount"))
 
-    sh1 = _safe(order.get("shipping_line1"))
-    sh2 = _safe(order.get("shipping_line2"))
-    city = _safe(order.get("shipping_city"))
+    sh1   = _safe(order.get("shipping_line1"))
+    sh2   = _safe(order.get("shipping_line2"))
+    city  = _safe(order.get("shipping_city"))
     state = _safe(order.get("shipping_state"))
-    pin = _safe(order.get("shipping_postal_code"))
-    ctry = _safe(order.get("shipping_country"), "IN")
+    pin   = _safe(order.get("shipping_postal_code"))
+    ctry  = _safe(order.get("shipping_country"), "IN")
 
     c_name  = _safe(customer.get("full_name"), "Valued Customer")
     c_email = _safe(customer.get("email"))
     c_phone = _safe(customer.get("phone"))
 
-    tax_type = _resolve_tax_type(state or city)
-    doc_type = "Refund Note / Credit Note" if is_refund else "Tax Invoice / Bill of Supply / Cash Memo"
-
-    # 🔥 MERGED UPGRADE: Smart Tax Auto-Detect Engine (Prevents percentage glitches on historical orders)
+    tax_type      = _resolve_tax_type(state or city)
+    
+    # 🔥 SMART TAX AUTO-DETECT LOGIC (Prevents 28% math glitch on old orders)
     shipping_is_taxed = False
-    eff_rate_pct = Decimal("18.00")
+    eff_rate_pct = 18
 
-    if tax_amt > _ZERO:
-        rate_on_sub = (tax_amt / subtotal) * 100 if subtotal > _ZERO else _ZERO
-        diff_sub = abs(rate_on_sub - rate_on_sub.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    if tax_amt > 0:
+        # Scenario 1: Only products were taxed (New system rule)
+        rate_on_sub = (tax_amt / subtotal) * 100 if subtotal > 0 else 0
+        diff_sub = abs(rate_on_sub - round(rate_on_sub))
         
-        rate_on_both = (tax_amt / (subtotal + ship_cost)) * 100 if (subtotal + ship_cost) > _ZERO else _ZERO
-        diff_both = abs(rate_on_both - rate_on_both.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        # Scenario 2: Both products and shipping were taxed (Old historical orders)
+        rate_on_both = (tax_amt / (subtotal + ship_cost)) * 100 if (subtotal + ship_cost) > 0 else 0
+        diff_both = abs(rate_on_both - round(rate_on_both))
 
-        if diff_sub <= Decimal("0.05"):
-            eff_rate_pct = rate_on_sub.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        if diff_sub <= 0.05:
+            eff_rate_pct = round(rate_on_sub)
             shipping_is_taxed = False
-        elif diff_both <= Decimal("0.05"):
-            eff_rate_pct = rate_on_both.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        elif diff_both <= 0.05:
+            eff_rate_pct = round(rate_on_both)
             shipping_is_taxed = True
         else:
-            eff_rate_pct = rate_on_sub.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            eff_rate_pct = round(rate_on_sub)
             shipping_is_taxed = False
     else:
-        eff_rate_pct = _ZERO
+        eff_rate_pct = 0
+        shipping_is_taxed = False
+
+    doc_type = (
+        "Refund Note / Credit Note"
+        if is_refund
+        else "Tax Invoice / Bill of Supply / Cash Memo"
+    )
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     #  BLOCK 1 ── HEADER
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
     hdr = Table([
-        [Paragraph("LUVIIO", S["logo"]), Paragraph(f"<b>{doc_type}</b>", S["doc_h"])],
-        [Paragraph(_S["website"], S["site"]), Paragraph("(Original for Recipient)", S["doc_sub"])],
+        [
+            Paragraph("LUVIIO", S["logo"]),
+            Paragraph(f"<b>{doc_type}</b>", S["doc_h"]),
+        ],
+        [
+            Paragraph(_S["website"], S["site"]),
+            Paragraph("(Original for Recipient)", S["doc_sub"]),
+        ],
     ], colWidths=[W * 0.55, W * 0.45])
-    hdr.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("BOTTOMPADDING", (0, 0), (-1, -1), 2), ("TOPPADDING", (0, 0), (-1, -1), 2)]))
+    hdr.setStyle(TableStyle([
+        ("VALIGN",        (0, 0), (-1, -1), "BOTTOM"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+    ]))
     story.append(hdr)
     story.append(HRFlowable(width="100%", thickness=2.5, color=_GOLD, spaceAfter=8))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 2 ── HORIZONTAL GRID: [SELLER | BUYER] & [ORDER DETAILS + QR]
+    #  BLOCK 2 ── SELLER | BUYER | ORDER META  (Sum = 554 pt)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    LEFT_W = 394.0
-    RIGHT_W = 160.0
-    HALF_L = LEFT_W / 2.0
 
-    seller_rows = [[Paragraph("<b>Sold By:</b>", S["lbl"])], [Paragraph(_S["name"], S["bb"])]]
+    col_w_block2 = [184.0, 185.0, 185.0]
+
+    seller_rows = [
+        [Paragraph("<b>Sold By:</b>", S["lbl"])],
+        [Paragraph(_S["name"], S["bb"])],
+    ]
     for part in [_S["addr1"], _S["addr2"]]:
-        if part: seller_rows.append([Paragraph(part, S["b"])])
-    if _S["email"]: seller_rows.append([Spacer(1, 2)]); seller_rows.append([Paragraph(_S["email"], S["sm"])])
-    if _S["pan"]: seller_rows.append([Spacer(1, 2)]); seller_rows.append([Paragraph(f"<b>PAN:</b> {_S['pan']}", S["b"])])
-    if _S["gstin"]: seller_rows.append([Paragraph(f"<b>GSTIN:</b> {_S['gstin']}", S["b"])])
+        if part:
+            seller_rows.append([Paragraph(part, S["b"])])
+    if _S["email"]:
+        seller_rows.append([Spacer(1, 3)])
+        seller_rows.append([Paragraph(_S["email"], S["sm"])])
+    if _S["pan"]:
+        seller_rows.append([Spacer(1, 3)])
+        seller_rows.append([Paragraph(f"<b>PAN:</b> {_S['pan']}", S["b"])])
+    if _S["gstin"]:
+        seller_rows.append([Paragraph(f"<b>GSTIN:</b> {_S['gstin']}", S["b"])])
 
     addr_parts = [p for p in [sh1, sh2, city, state, pin, ctry] if p]
-    buyer_rows = [[Paragraph("<b>Shipping / Billing Address:</b>", S["lbl"])], [Paragraph(c_name, S["bb"])]]
-    for part in addr_parts: buyer_rows.append([Paragraph(part, S["b"])])
-    if c_phone: buyer_rows.append([Spacer(1, 2)]); buyer_rows.append([Paragraph(f"Ph: {c_phone}", S["sm"])])
-    if c_email: buyer_rows.append([Paragraph(c_email, S["sm"])])
-
-    seller_tbl = Table(seller_rows, colWidths=[HALF_L - 8.0])
-    seller_tbl.setStyle(TableStyle([("PADDING", (0, 0), (-1, -1), 0)]))
-    buyer_tbl = Table(buyer_rows, colWidths=[HALF_L - 8.0])
-    buyer_tbl.setStyle(TableStyle([("PADDING", (0, 0), (-1, -1), 0)]))
-
-    top_left_grid = Table([[seller_tbl, buyer_tbl]], colWidths=[HALF_L, HALF_L])
-    top_left_grid.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEAFTER", (0, 0), (0, -1), 0.5, _BORDER_C), ("PADDING", (0, 0), (-1, -1), 4)]))
+    buyer_rows = [
+        [Paragraph("<b>Shipping / Billing Address:</b>", S["lbl"])],
+        [Paragraph(c_name, S["bb"])],
+    ]
+    for part in addr_parts:
+        buyer_rows.append([Paragraph(part, S["b"])])
+    if c_phone:
+        buyer_rows.append([Spacer(1, 3)])
+        buyer_rows.append([Paragraph(f"Ph: {c_phone}", S["sm"])])
+    if c_email:
+        buyer_rows.append([Paragraph(c_email, S["sm"])])
 
     tracking = _safe(order.get("tracking_number"))
-    order_meta_rows = [
-        [Paragraph(f"<b>Invoice No:</b> {invoice_no}", S["bb"]), Paragraph(f"<b>Invoice Date:</b> {invoice_date}", S["bb"])],
-        [Paragraph(f"<b>Order No:</b> {display_ord}", S["b"]), Paragraph(f"<b>Order Date:</b> {order_date}", S["b"])],
-        [Paragraph(f"<b>Status:</b> {status_raw}", S["b"]), Paragraph(f"<b>Tracking:</b> {tracking if tracking else '—'}", S["b"])],
+    meta_rows = [
+        [Paragraph("<b>Order Details:</b>", S["lbl"])],
+        [Paragraph(f"<b>Order No:</b> {_short_id(order_id)}", S["b"])],
+        [Paragraph(f"<b>Order Date:</b> {order_date}", S["b"])],
+        [Spacer(1, 4)],
+        [Paragraph(f"<b>Invoice No:</b> {invoice_no}", S["b"])],
+        [Paragraph(f"<b>Invoice Date:</b> {invoice_date}", S["b"])],
+        [Spacer(1, 4)],
+        [Paragraph(f"<b>Status:</b> {status_raw}", S["b"])],
     ]
-    order_meta_tbl = Table(order_meta_rows, colWidths=[HALF_L, HALF_L])
-    order_meta_tbl.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("PADDING", (0, 0), (-1, -1), 3)]))
+    if tracking:
+        meta_rows.append([Spacer(1, 4)])
+        meta_rows.append([Paragraph(f"<b>Tracking:</b> {tracking}", S["b"])])
 
-    left_panel_tbl = Table([[top_left_grid], [HRFlowable(width="100%", thickness=0.5, color=_BORDER_C)], [order_meta_tbl]], colWidths=[LEFT_W])
-    left_panel_tbl.setStyle(TableStyle([("PADDING", (0, 0), (-1, -1), 0), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    def _panel(rows, cw: float) -> Table:
+        t = Table(rows, colWidths=[cw - 12.0])
+        t.setStyle(TableStyle([
+            ("TOPPADDING",    (0, 0), (-1, -1), 1),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ]))
+        return t
+
+    info = Table(
+        [[
+            _panel(seller_rows, col_w_block2[0]),
+            _panel(buyer_rows,  col_w_block2[1]),
+            _panel(meta_rows,   col_w_block2[2]),
+        ]],
+        colWidths=col_w_block2,
+    )
+    info.setStyle(TableStyle([
+        ("BOX",           (0, 0), (-1, -1), 0.5, _BORDER_C),
+        ("LINEBEFORE",    (1, 0), (1, 0),   0.5, _BORDER_C),
+        ("LINEBEFORE",    (2, 0), (2, 0),   0.5, _BORDER_C),
+        ("TOPPADDING",    (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+    ]))
+    story.append(info)
+    story.append(Spacer(1, 10))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 3 ── 10-COLUMN ITEMS TABLE WITH HSN AND REORDERED UI
-    #  🔥 ORDER: Sl. | Description | HSN | Unit Price | Qty | Discount | Net Amt | Tax Type | Tax Amt | Total
+    #  BLOCK 3 ── 10-COLUMN ITEMS TABLE (Exact Sum = 554 pt)
+    #  🔥 REORDERED: Unit Price -> Qty -> Discount -> Net Amount
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    CW = [18.0, 134.0, 38.0, 52.0, 22.0, 48.0, 54.0, 56.0, 52.0, 80.0]  # Exact Sum = 554.0 pt
 
-    def _h(txt): return Paragraph(txt, S["th"])
+    CW = [18.0, 164.0, 54.0, 22.0, 44.0, 54.0, 26.0, 44.0, 56.0, 72.0]
+
+    def _h(txt):  return Paragraph(txt, S["th"])
     def _hc(txt): return Paragraph(txt, S["thc"])
     def _hr(txt): return Paragraph(txt, S["thr"])
-    def _d(txt): return Paragraph(str(txt), S["td"])
+    def _d(txt):  return Paragraph(str(txt), S["td"])
     def _dc(txt): return Paragraph(str(txt), S["tdc"])
     def _dr(txt): return Paragraph(str(txt), S["tdr"])
 
-    rows = [[_hc("Sl."), _h("Description"), _hc("HSN"), _hr("Unit Price"), _hc("Qty"), _hr("Discount"), _hr("Net Amt"), _hc("Tax Type"), _hr("Tax Amt"), _hr("Total")]]
+    rows = [[
+        _hc("Sl."),
+        _h("Description"),
+        _hr("Unit Price"),
+        _hc("Qty"),
+        _hr("Discount"),    # 🔥 MOVED AHEAD OF NET AMOUNT
+        _hr("Net Amount"),  # 🔥 MOVED AFTER DISCOUNT
+        _hc("GST %"),
+        _hc("Tax Type"),
+        _hr("Tax Amt"),
+        _hr("Total"),
+    ]]
 
     items = order.get("order_items") or order.get("items") or []
-
-    run_gross_total = _ZERO
-    run_disc_total  = _ZERO
-    run_net         = _ZERO
-    run_tax         = _ZERO
+    run_tax  = 0.0
+    run_net  = 0.0
 
     for idx, item in enumerate(items, 1):
-        name = _product_name(item)
-        hsn  = _product_hsn(item)
+        name      = _product_name(item)
+        qty       = int(_safe_f(item.get("quantity"), 1))
+        unit_p    = _safe_f(
+            item.get("unit_price") or item.get("price_snapshot") or item.get("price")
+        )
+        # Check flat compare_price, or check nested inside products dict
+        compare_p = _safe_f(
+            item.get("compare_price") or (item.get("products") or {}).get("compare_price")
+        )
+        disc      = _safe_f(item.get("discount_amount") or item.get("discount"))
 
-        if "shipping" in name.lower() or hsn == "9965":
-            if ship_cost == _ZERO:
-                ship_cost = _dec(item.get("price") or item.get("unit_price") or item.get("subtotal"))
-            continue
+        if disc == 0.0 and compare_p > unit_p > 0:
+            disc = round((compare_p - unit_p) * qty, 2)
 
-        gst_pct = _product_gst(item)
-        try:
-            qty_int = int(_dec(item.get("quantity"), "1"))
-            qty = Decimal(max(1, qty_int))
-        except Exception:
-            qty = Decimal("1")
+        net   = _safe_f(item.get("subtotal")) or (unit_p * qty)
+        i_tax = round(net * eff_rate_pct / 100, 2)
+        total = net + i_tax
 
-        unit_selling_p  = _product_selling_price(item)
-        unit_compare_p  = _product_compare_price(item)
-        explicit_disc   = _explicit_unit_discount(item)
+        run_net  += net
+        run_tax  += i_tax
 
-        if unit_compare_p > unit_selling_p > _ZERO:
-            unit_disc  = (unit_compare_p - unit_selling_p).quantize(_TWO_DEC)
-            unit_gross = unit_compare_p
-            row_disc   = (unit_disc * qty).quantize(_TWO_DEC)
-        elif explicit_disc > _ZERO:
-            unit_disc  = explicit_disc
-            unit_gross = (unit_selling_p + unit_disc).quantize(_TWO_DEC)
-            row_disc   = (unit_disc * qty).quantize(_TWO_DEC)
-        else:
-            row_disc   = _ZERO
-            unit_gross = unit_selling_p
-
-        row_net   = (unit_selling_p * qty).quantize(_TWO_DEC)
-        row_tax   = (row_net * (gst_pct / Decimal("100"))).quantize(_TWO_DEC)
-        row_total = (row_net + row_tax).quantize(_TWO_DEC)
-
-        run_gross_total += (unit_gross * qty).quantize(_TWO_DEC)
-        run_disc_total  += row_disc
-        run_net         += row_net
-        run_tax         += row_tax
-
-        display_tax_type = f"CGST+SGST ({gst_pct:.0f}%)" if tax_type == "CGST+SGST" else f"IGST ({gst_pct:.0f}%)"
+        # 🔥 FIX: Display MRP (compare_price) as the Unit Price in the PDF if a discount exists
+        display_unit_p = compare_p if (compare_p > unit_p) else unit_p
 
         rows.append([
             _dc(str(idx)),
             _d(name),
-            _dc(hsn),
-            _dr(_fmt(unit_gross)),
-            _dc(str(int(qty))),
-            _dr(_fmt(row_disc) if row_disc > _ZERO else "—"),
-            _dr(_fmt(row_net)),
-            _dc(display_tax_type),
-            _dr(_fmt(row_tax)),
-            _dr(_fmt(row_total)),
+            _dr(_fmt(display_unit_p)),
+            _dc(str(qty)),
+            _dr(_fmt(disc) if disc > 0 else "—"), # Discount Column
+            _dr(_fmt(net)),                       # Net Amount Column
+            _dc(f"{int(eff_rate_pct)}%"),
+            _dc(tax_type),
+            _dr(_fmt(i_tax)),
+            _dr(_fmt(total)),
         ])
 
-    run_gross_total = run_gross_total.quantize(_TWO_DEC)
-    run_disc_total  = run_disc_total.quantize(_TWO_DEC)
-    run_net         = run_net.quantize(_TWO_DEC)
-    run_tax         = run_tax.quantize(_TWO_DEC)
-
-    # 🔥 MERGED UPGRADE: Explicit shipping charge item row if shipping is taxed
-    if ship_cost > _ZERO and shipping_is_taxed:
-        s_tax = (ship_cost * (eff_rate_pct / Decimal("100"))).quantize(_TWO_DEC)
-        s_tot = (ship_cost + s_tax).quantize(_TWO_DEC)
+    if ship_cost > 0:
+        if shipping_is_taxed:
+            s_tax = round(ship_cost * eff_rate_pct / 100, 2)
+            gst_pct_str, tax_type_str = f"{int(eff_rate_pct)}%", tax_type
+        else:
+            s_tax = 0.0
+            gst_pct_str, tax_type_str = "0%", "-"
+            
+        s_tot = ship_cost + s_tax
         run_net += ship_cost
         run_tax += s_tax
-        gst_type_str = f"CGST+SGST ({eff_rate_pct:.0f}%)" if tax_type == "CGST+SGST" else f"IGST ({eff_rate_pct:.0f}%)"
         rows.append([
             _dc(""),
             Paragraph("<b>Shipping Charges</b>", S["td"]),
-            _dc("9965"),
             _dr(_fmt(ship_cost)),
             _dc("1"),
             _dr("—"),
             _dr(_fmt(ship_cost)),
-            _dc(gst_type_str),
+            _dc(gst_pct_str),
+            _dc(tax_type_str),
             _dr(_fmt(s_tax)),
             _dr(_fmt(s_tot)),
         ])
 
-    run_items_total = (run_net + run_tax).quantize(_TWO_DEC)
+    grand = total_amt if total_amt > 0 else (run_net + run_tax)
     rows.append([
-        Paragraph("<b>Total of Items</b>", S["thr"]), "", "", "", "", "",
-        Paragraph(f"<b>{_fmt(run_net)}</b>", S["thr"]), "",
+        Paragraph("<b>Total</b>", S["th"]),
+        "", "", "", "", "", "", "",
         Paragraph(f"<b>{_fmt(run_tax)}</b>", S["thr"]),
-        Paragraph(f"<b>{_fmt(run_items_total)}</b>", S["thr"]),
+        Paragraph(f"<b>{_fmt(grand)}</b>",   S["thr"]),
     ])
-
-    grand = total_amt if total_amt > _ZERO else (run_net + (ship_cost if not shipping_is_taxed else _ZERO) + run_tax).quantize(_TWO_DEC)
-
-    qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|DISC:{run_disc_total:.2f}|TOTAL:{grand:.2f}|ORD:{display_ord}"
-    qr_drawing = _create_qr(qr_payload, size=148.0)
-
-    qr_cell = Table([[Paragraph("<b>SCAN TO VERIFY</b>", S["lbl_c"])], [Spacer(1, 2)], [qr_drawing]], colWidths=[RIGHT_W - 8.0])
-    qr_cell.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("PADDING", (0, 0), (-1, -1), 4)]))
-
-    info_grid = Table([[left_panel_tbl, qr_cell]], colWidths=[LEFT_W, RIGHT_W])
-    info_grid.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, _BORDER_C), ("LINEBEFORE", (1, 0), (1, -1), 0.5, _BORDER_C), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("PADDING", (0, 0), (-1, -1), 0)]))
-    story.append(info_grid)
-    story.append(Spacer(1, 10))
 
     items_tbl = Table(rows, colWidths=CW, repeatRows=1)
     items_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), _GRAY_BG), ("LINEBELOW", (0, 0), (-1, 0), 1.0, _BORDER_C),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, _ROW_ALT]), ("BACKGROUND", (0, -1), (-1, -1), _TOTAL_BG),
-        ("LINEABOVE", (0, -1), (-1, -1), 0.8, _BORDER_C), ("SPAN", (0, -1), (5, -1)),
-        ("BOX", (0, 0), (-1, -1), 0.5, _BORDER_C), ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#dddddd")),
-        ("PADDING", (0, 0), (-1, -1), 4), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BACKGROUND",     (0, 0), (-1, 0), _GRAY_BG),
+        ("LINEBELOW",      (0, 0), (-1, 0), 1.0, _BORDER_C),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, _ROW_ALT]),
+        ("BACKGROUND",     (0, -1), (-1, -1), _TOTAL_BG),
+        ("LINEABOVE",      (0, -1), (-1, -1), 0.8, _BORDER_C),
+        ("SPAN",           (0, -1), (7, -1)),
+        ("BOX",            (0, 0), (-1, -1), 0.5, _BORDER_C),
+        ("INNERGRID",      (0, 0), (-1, -1), 0.3, colors.HexColor("#dddddd")),
+        ("TOPPADDING",     (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING",  (0, 0), (-1, -1), 4),
+        ("LEFTPADDING",    (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING",   (0, 0), (-1, -1), 2),
+        ("VALIGN",         (0, 0), (-1, -1), "MIDDLE"),
     ]))
     story.append(items_tbl)
     story.append(Spacer(1, 10))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 4 ── AMOUNT IN WORDS & SIMPLIFIED PRICE SUMMARY
+    #  BLOCK 4 ── AMOUNT IN WORDS | GST SUMMARY | SIGNATORY
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
     words_str = _amount_in_words(grand)
 
-    gst_rows = [
+    gst_rows: list[list] = [
         [Paragraph("<b>Price Summary:</b>", S["lbl"]), Paragraph("", S["b"])],
-        [Paragraph("Subtotal (Items)", S["br"]), Paragraph(_fmt(run_net if shipping_is_taxed else subtotal), S["bbr"])],
+        [Paragraph("Subtotal", S["br"]),               Paragraph(_fmt(subtotal), S["bbr"])],
     ]
+    if ship_cost > 0:
+        gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph(_fmt(ship_cost), S["bbr"])])
+    else:
+        gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph("FREE", S["bbr"])])
 
-    if ship_cost > _ZERO and not shipping_is_taxed:
-        gst_rows.append([Paragraph("Shipping Charges", S["br"]), Paragraph(_fmt(ship_cost), S["bbr"])])
-    elif ship_cost == _ZERO:
-        gst_rows.append([Paragraph("Shipping Charges", S["br"]), Paragraph("FREE", S["bbr"])])
+    # GST Summary reflects actual breakdown based on what was taxed
+    product_tax_only = round(subtotal * eff_rate_pct / 100, 2)
+    display_tax = tax_amt if tax_amt > 0 else product_tax_only
 
     if tax_type == "CGST+SGST":
-        half_tax = (run_tax / Decimal("2")).quantize(_TWO_DEC)
-        gst_rows.append([Paragraph("CGST", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
-        gst_rows.append([Paragraph("SGST", S["br"]), Paragraph(_fmt(run_tax - half_tax), S["bbr"])])
+        half_rate = eff_rate_pct / 2
+        half_tax  = round(display_tax / 2, 2)
+        gst_rows.append([
+            Paragraph(f"CGST @ {half_rate:.1f}%", S["br"]),
+            Paragraph(_fmt(half_tax), S["bbr"]),
+        ])
+        gst_rows.append([
+            Paragraph(f"SGST @ {half_rate:.1f}%", S["br"]),
+            Paragraph(_fmt(half_tax), S["bbr"]),
+        ])
     else:
-        gst_rows.append([Paragraph("IGST", S["br"]), Paragraph(_fmt(run_tax), S["bbr"])])
+        gst_rows.append([
+            Paragraph(f"IGST @ {eff_rate_pct:.0f}%", S["br"]),
+            Paragraph(_fmt(display_tax), S["bbr"]),
+        ])
 
     gst_rows.append([Paragraph("", S["b"]), Paragraph("", S["b"])])
-    gst_rows.append([Paragraph("<b>Grand Total</b>", S["sum_lbl"]), Paragraph(f"<b>{_fmt(grand)}</b>", S["sum_val"])])
-
-    if run_disc_total > _ZERO:
-        gst_rows.append([Paragraph("<b>Total Savings / Discount:</b>", S["sm"]), Paragraph(f"<b>- {_fmt(run_disc_total)}</b>", S["sm"])])
+    gst_rows.append([
+        Paragraph("<b>Grand Total</b>", S["sum_lbl"]),
+        Paragraph(f"<b>{_fmt(grand)}</b>", S["sum_val"]),
+    ])
 
     gst_tbl = Table(gst_rows, colWidths=[150.0, 84.0])
-    gst_tbl.setStyle(TableStyle([("LINEABOVE", (0, -2 if run_disc_total > _ZERO else -1), (-1, -2 if run_disc_total > _ZERO else -1), 0.8, _BORDER_C), ("PADDING", (0, 0), (-1, -1), 2), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    gst_tbl.setStyle(TableStyle([
+        ("LINEABOVE",     (0, -1), (-1, -1), 0.8, _BORDER_C),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ]))
 
-    right_col_rows = [[gst_tbl], [Spacer(1, 14)], [Paragraph(f"<b>For {_S['name']}:</b>", S["sign"])], [Spacer(1, 28)], [Paragraph("<b>Authorised Signatory</b>", S["sign"])]]
-    left_col_rows = [[Paragraph("<b>Amount in Words:</b>", S["words"])], [Spacer(1, 3)], [Paragraph(words_str, S["words_v"])]]
+    right_col_rows = [
+        [gst_tbl],
+        [Spacer(1, 14)],
+        [Paragraph(f"<b>For {_S['name']}:</b>", S["sign"])],
+        [Spacer(1, 28)],
+        [Paragraph("<b>Authorised Signatory</b>", S["sign"])],
+    ]
 
-    bottom = Table([[Table(left_col_rows, colWidths=[288.0]), Table(right_col_rows, colWidths=[234.0])]], colWidths=[304.0, 250.0])
-    bottom.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, _BORDER_C), ("LINEBEFORE", (1, 0), (1, 0), 0.5, _BORDER_C), ("PADDING", (0, 0), (-1, -1), 8), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    left_col_rows = [
+        [Paragraph("<b>Amount in Words:</b>", S["words"])],
+        [Spacer(1, 3)],
+        [Paragraph(words_str, S["words_v"])],
+    ]
+
+    bottom = Table(
+        [[
+            Table(left_col_rows,  colWidths=[288.0]),
+            Table(right_col_rows, colWidths=[234.0]),
+        ]],
+        colWidths=[304.0, 250.0],
+    )
+    bottom.setStyle(TableStyle([
+        ("BOX",           (0, 0), (-1, -1), 0.5, _BORDER_C),
+        ("LINEBEFORE",    (1, 0), (1, 0),   0.5, _BORDER_C),
+        ("TOPPADDING",    (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+    ]))
     story.append(KeepTogether(bottom))
     story.append(Spacer(1, 8))
 
+    # ── Footer ────────────────────────────────────────────────────────────
     story.append(HRFlowable(width="100%", thickness=0.4, color=_BORDER_C, spaceAfter=4))
-    footer_note = f"This is a computer-generated invoice and does not require a physical signature. For queries, contact {_S['email']} | {_S['website']}"
-    if _S["gstin"]: footer_note += f"    GSTIN: {_S['gstin']}"
+    footer_note = (
+        "This is a computer-generated invoice and does not require a physical signature. "
+        f"For queries, contact {_S['email']} | {_S['website']}"
+    )
+    if _S["gstin"]:
+        footer_note += f"   GSTIN: {_S['gstin']}"
     story.append(Paragraph(footer_note, S["foot"]))
 
+    # ── Build ─────────────────────────────────────────────────────────────
     try:
         doc.build(story)
     except Exception as exc:
