@@ -3,7 +3,7 @@ PDF Invoice — Production Grade (Luviio SSOT)
 ============================================
 Path: app/utils/documents/pdf_invoice.py
 
-Amazon.in / Meesho-style 10-column GST-compliant Tax Invoice.
+Amazon.in / Meesho-style 11-column GST-compliant Tax Invoice with QR Code.
 
 Architecture & Fixes:
   ✅ 100% dynamic — all data from DB (order + customer objects)
@@ -15,7 +15,8 @@ Architecture & Fixes:
   ✅ Mathematical precision: exact 554pt nested grid widths (Zero Overflow Guarantee)
   ✅ Automatic Discount Computation via Compare Price vs Unit Price
   ✅ Displays MRP in "Unit Price" column if discount is applied for clear UX math
-  ✅ Column reordered: Unit Price -> Qty -> Discount -> Net Amount for customer clarity
+  ✅ Reordered & Expanded Layout: Includes HSN Code column and dedicated QR Code block
+  ✅ Layout Restactured: [Sold By | Billing Address | QR Code] -> [Order & Invoice Meta Div]
   ✅ Sequential Invoice Number support from Database
 """
 from __future__ import annotations
@@ -34,6 +35,8 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
     HRFlowable, KeepTogether,
 )
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.barcode.qr import QrCodeWidget
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +101,17 @@ def _parse_date(dt_str: str) -> str:
     return dt_str[:10]
 
 
-# ── Product name: Multi-layer extractor with Synchronous DB Fallback ────────
+def _create_qr(data: str, size: float = 120.0) -> Drawing:
+    """Generates a scannable ReportLab QR code vector widget."""
+    qr_widget = QrCodeWidget(data, barLevel="L")
+    bounds = qr_widget.getBounds()
+    w, h = bounds[2] - bounds[0], bounds[3] - bounds[1]
+    drawing = Drawing(size, size, transform=[size / w, 0, 0, size / h, 0, 0])
+    drawing.add(qr_widget)
+    return drawing
+
+
+# ── Product Name & HSN Multi-layer Extractors ───────────────────────────────
 
 def _product_name(item: dict) -> str:
     """
@@ -130,6 +143,21 @@ def _product_name(item: dict) -> str:
             logger.warning("Failed sync lookup for product %s: %s", pid, exc)
 
     return "Product Item"
+
+
+def _product_hsn(item: dict) -> str:
+    """Extracts HSN Code from item or nested product relation."""
+    for key in ("hsn_code", "hsn", "hsn_sac"):
+        val = _safe(item.get(key))
+        if val:
+            return val
+    for rel in ("products", "product", "item"):
+        obj = item.get(rel)
+        if isinstance(obj, dict):
+            val = _safe(obj.get("hsn_code") or obj.get("hsn"))
+            if val:
+                return val
+    return "9988"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -242,6 +270,7 @@ def _styles() -> dict[str, ParagraphStyle]:
         "site":     _s("site",    fontSize=7,  textColor=_TEXT_DIM, leading=10),
 
         "lbl":      _s("lbl",     fontName="Helvetica-Bold", fontSize=8, leading=11),
+        "lbl_c":    _s("lbl_c",   fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_CENTER, textColor=_TEXT_DIM),
 
         "b":        _s("b",       fontSize=7.5, leading=10),
         "bb":       _s("bb",      fontName="Helvetica-Bold", fontSize=7.5, leading=10),
@@ -249,12 +278,12 @@ def _styles() -> dict[str, ParagraphStyle]:
         "bbr":      _s("bbr",     fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
         "sm":       _s("sm",      fontSize=6.5, leading=9,  textColor=_TEXT_DIM),
 
-        "th":       _s("th",      fontName="Helvetica-Bold", fontSize=7.5, leading=9),
-        "thc":      _s("thc",     fontName="Helvetica-Bold", fontSize=7.5, leading=9, alignment=TA_CENTER),
-        "thr":      _s("thr",     fontName="Helvetica-Bold", fontSize=7.5, leading=9, alignment=TA_RIGHT),
-        "td":       _s("td",      fontSize=7.5, leading=10),
-        "tdc":      _s("tdc",     fontSize=7.5, leading=10, alignment=TA_CENTER),
-        "tdr":      _s("tdr",     fontSize=7.5, leading=10, alignment=TA_RIGHT),
+        "th":       _s("th",      fontName="Helvetica-Bold", fontSize=7.0, leading=9),
+        "thc":      _s("thc",     fontName="Helvetica-Bold", fontSize=7.0, leading=9, alignment=TA_CENTER),
+        "thr":      _s("thr",     fontName="Helvetica-Bold", fontSize=7.0, leading=9, alignment=TA_RIGHT),
+        "td":       _s("td",      fontSize=7.0, leading=10),
+        "tdc":      _s("tdc",     fontSize=7.0, leading=10, alignment=TA_CENTER),
+        "tdr":      _s("tdr",     fontSize=7.0, leading=10, alignment=TA_RIGHT),
 
         "sum_lbl":  _s("sum_lbl", fontName="Helvetica-Bold", fontSize=8, leading=11, alignment=TA_RIGHT),
         "sum_val":  _s("sum_val", fontName="Helvetica-Bold", fontSize=8, leading=11, alignment=TA_RIGHT),
@@ -328,11 +357,9 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     eff_rate_pct = 18
 
     if tax_amt > 0:
-        # Scenario 1: Only products were taxed (New system rule)
         rate_on_sub = (tax_amt / subtotal) * 100 if subtotal > 0 else 0
         diff_sub = abs(rate_on_sub - round(rate_on_sub))
         
-        # Scenario 2: Both products and shipping were taxed (Old historical orders)
         rate_on_both = (tax_amt / (subtotal + ship_cost)) * 100 if (subtotal + ship_cost) > 0 else 0
         diff_both = abs(rate_on_both - round(rate_on_both))
 
@@ -378,10 +405,11 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     story.append(HRFlowable(width="100%", thickness=2.5, color=_GOLD, spaceAfter=8))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 2 ── SELLER | BUYER | ORDER META  (Sum = 554 pt)
+    #  BLOCK 2A ── SELLER | BUYER | QR CODE  (Sum = 554 pt)
+    #  🔥 RESTRUCTURED: Sold By | Billing Address | QR Code on Right
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    col_w_block2 = [184.0, 185.0, 185.0]
+    col_w_block2a = [204.0, 200.0, 150.0]
 
     seller_rows = [
         [Paragraph("<b>Sold By:</b>", S["lbl"])],
@@ -412,20 +440,21 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     if c_email:
         buyer_rows.append([Paragraph(c_email, S["sm"])])
 
-    tracking = _safe(order.get("tracking_number"))
-    meta_rows = [
-        [Paragraph("<b>Order Details:</b>", S["lbl"])],
-        [Paragraph(f"<b>Order No:</b> {_short_id(order_id)}", S["b"])],
-        [Paragraph(f"<b>Order Date:</b> {order_date}", S["b"])],
-        [Spacer(1, 4)],
-        [Paragraph(f"<b>Invoice No:</b> {invoice_no}", S["b"])],
-        [Paragraph(f"<b>Invoice Date:</b> {invoice_date}", S["b"])],
-        [Spacer(1, 4)],
-        [Paragraph(f"<b>Status:</b> {status_raw}", S["b"])],
-    ]
-    if tracking:
-        meta_rows.append([Spacer(1, 4)])
-        meta_rows.append([Paragraph(f"<b>Tracking:</b> {tracking}", S["b"])])
+    # QR Code Generation (Scannable Condition on Right Side)
+    grand_prelim = total_amt if total_amt > 0 else (subtotal + ship_cost + tax_amt)
+    qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|TOTAL:{grand_prelim:.2f}|ORD:{_short_id(order_id)}"
+    qr_drawing = _create_qr(qr_payload, size=130.0)
+
+    qr_cell = Table([
+        [Paragraph("<b>SCAN TO VERIFY</b>", S["lbl_c"])],
+        [Spacer(1, 2)],
+        [qr_drawing],
+    ], colWidths=[140.0])
+    qr_cell.setStyle(TableStyle([
+        ("ALIGN",  (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+    ]))
 
     def _panel(rows, cw: float) -> Table:
         t = Table(rows, colWidths=[cw - 12.0])
@@ -437,33 +466,70 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         ]))
         return t
 
-    info = Table(
+    info_top = Table(
         [[
-            _panel(seller_rows, col_w_block2[0]),
-            _panel(buyer_rows,  col_w_block2[1]),
-            _panel(meta_rows,   col_w_block2[2]),
+            _panel(seller_rows, col_w_block2a[0]),
+            _panel(buyer_rows,  col_w_block2a[1]),
+            qr_cell,
         ]],
-        colWidths=col_w_block2,
+        colWidths=col_w_block2a,
     )
-    info.setStyle(TableStyle([
-        ("BOX",           (0, 0), (-1, -1), 0.5, _BORDER_C),
-        ("LINEBEFORE",    (1, 0), (1, 0),   0.5, _BORDER_C),
-        ("LINEBEFORE",    (2, 0), (2, 0),   0.5, _BORDER_C),
-        ("TOPPADDING",    (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
-        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+    info_top.setStyle(TableStyle([
+        ("BOX",            (0, 0), (-1, -1), 0.5, _BORDER_C),
+        ("LINEBEFORE",     (1, 0), (1, 0),   0.5, _BORDER_C),
+        ("LINEBEFORE",     (2, 0), (2, 0),   0.5, _BORDER_C),
+        ("TOPPADDING",     (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING",  (0, 0), (-1, -1), 6),
+        ("LEFTPADDING",    (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",   (0, 0), (-1, -1), 6),
+        ("VALIGN",         (0, 0), (-1, -1), "TOP"),
     ]))
-    story.append(info)
+    story.append(info_top)
+    story.append(Spacer(1, 6))
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    #  BLOCK 2B ── NEXT DIV: ORDER DETAILS & INVOICE NUMBER (Sum = 554 pt)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    tracking = _safe(order.get("tracking_number"))
+    order_meta_left = [
+        [Paragraph("<b>Order Details:</b>", S["lbl"])],
+        [Paragraph(f"<b>Order No:</b> {_short_id(order_id)}", S["b"])],
+        [Paragraph(f"<b>Order Date:</b> {order_date}", S["b"])],
+        [Paragraph(f"<b>Status:</b> {status_raw}", S["b"])],
+    ]
+    order_meta_right = [
+        [Paragraph("<b>Invoice Details:</b>", S["lbl"])],
+        [Paragraph(f"<b>Invoice No:</b> {invoice_no}", S["b"])],
+        [Paragraph(f"<b>Invoice Date:</b> {invoice_date}", S["b"])],
+        [Paragraph(f"<b>Tracking:</b> {tracking if tracking else '—'}", S["b"])],
+    ]
+
+    info_bottom = Table(
+        [[
+            _panel(order_meta_left,  277.0),
+            _panel(order_meta_right, 277.0),
+        ]],
+        colWidths=[277.0, 277.0],
+    )
+    info_bottom.setStyle(TableStyle([
+        ("BOX",            (0, 0), (-1, -1), 0.5, _BORDER_C),
+        ("LINEBEFORE",     (1, 0), (1, 0),   0.5, _BORDER_C),
+        ("TOPPADDING",     (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING",  (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",    (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",   (0, 0), (-1, -1), 6),
+        ("VALIGN",         (0, 0), (-1, -1), "TOP"),
+    ]))
+    story.append(info_bottom)
     story.append(Spacer(1, 10))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 3 ── 10-COLUMN ITEMS TABLE (Exact Sum = 554 pt)
+    #  BLOCK 3 ── 11-COLUMN ITEMS TABLE WITH HSN (Exact Sum = 554 pt)
     #  🔥 REORDERED: Unit Price -> Qty -> Discount -> Net Amount
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    CW = [18.0, 164.0, 54.0, 22.0, 44.0, 54.0, 26.0, 44.0, 56.0, 72.0]
+    CW = [18.0, 134.0, 36.0, 50.0, 22.0, 44.0, 54.0, 26.0, 44.0, 52.0, 74.0]
 
     def _h(txt):  return Paragraph(txt, S["th"])
     def _hc(txt): return Paragraph(txt, S["thc"])
@@ -475,10 +541,11 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     rows = [[
         _hc("Sl."),
         _h("Description"),
+        _hc("HSN"),         # 🔥 ADDED HSN COLUMN
         _hr("Unit Price"),
         _hc("Qty"),
-        _hr("Discount"),    # 🔥 MOVED AHEAD OF NET AMOUNT
-        _hr("Net Amount"),  # 🔥 MOVED AFTER DISCOUNT
+        _hr("Discount"),    # MOVED AHEAD OF NET AMOUNT
+        _hr("Net Amount"),  # MOVED AFTER DISCOUNT
         _hc("GST %"),
         _hc("Tax Type"),
         _hr("Tax Amt"),
@@ -491,6 +558,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
     for idx, item in enumerate(items, 1):
         name      = _product_name(item)
+        hsn       = _product_hsn(item)
         qty       = int(_safe_f(item.get("quantity"), 1))
         unit_p    = _safe_f(
             item.get("unit_price") or item.get("price_snapshot") or item.get("price")
@@ -511,16 +579,17 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         run_net  += net
         run_tax  += i_tax
 
-        # 🔥 FIX: Display MRP (compare_price) as the Unit Price in the PDF if a discount exists
+        # Display MRP (compare_price) as the Unit Price in the PDF if a discount exists
         display_unit_p = compare_p if (compare_p > unit_p) else unit_p
 
         rows.append([
             _dc(str(idx)),
             _d(name),
+            _dc(hsn),                                # HSN Column
             _dr(_fmt(display_unit_p)),
             _dc(str(qty)),
-            _dr(_fmt(disc) if disc > 0 else "—"), # Discount Column
-            _dr(_fmt(net)),                       # Net Amount Column
+            _dr(_fmt(disc) if disc > 0 else "—"),   # Discount Column
+            _dr(_fmt(net)),                          # Net Amount Column
             _dc(f"{int(eff_rate_pct)}%"),
             _dc(tax_type),
             _dr(_fmt(i_tax)),
@@ -541,6 +610,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         rows.append([
             _dc(""),
             Paragraph("<b>Shipping Charges</b>", S["td"]),
+            _dc("9965"),                             # SAC Code for Shipping
             _dr(_fmt(ship_cost)),
             _dc("1"),
             _dr("—"),
@@ -554,7 +624,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     grand = total_amt if total_amt > 0 else (run_net + run_tax)
     rows.append([
         Paragraph("<b>Total</b>", S["th"]),
-        "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "",
         Paragraph(f"<b>{_fmt(run_tax)}</b>", S["thr"]),
         Paragraph(f"<b>{_fmt(grand)}</b>",   S["thr"]),
     ])
@@ -566,7 +636,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, _ROW_ALT]),
         ("BACKGROUND",     (0, -1), (-1, -1), _TOTAL_BG),
         ("LINEABOVE",      (0, -1), (-1, -1), 0.8, _BORDER_C),
-        ("SPAN",           (0, -1), (7, -1)),
+        ("SPAN",           (0, -1), (8, -1)),
         ("BOX",            (0, 0), (-1, -1), 0.5, _BORDER_C),
         ("INNERGRID",      (0, 0), (-1, -1), 0.3, colors.HexColor("#dddddd")),
         ("TOPPADDING",     (0, 0), (-1, -1), 4),
@@ -652,13 +722,13 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         colWidths=[304.0, 250.0],
     )
     bottom.setStyle(TableStyle([
-        ("BOX",           (0, 0), (-1, -1), 0.5, _BORDER_C),
-        ("LINEBEFORE",    (1, 0), (1, 0),   0.5, _BORDER_C),
-        ("TOPPADDING",    (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
-        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+        ("BOX",            (0, 0), (-1, -1), 0.5, _BORDER_C),
+        ("LINEBEFORE",     (1, 0), (1, 0),   0.5, _BORDER_C),
+        ("TOPPADDING",     (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING",  (0, 0), (-1, -1), 8),
+        ("LEFTPADDING",    (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING",   (0, 0), (-1, -1), 8),
+        ("VALIGN",         (0, 0), (-1, -1), "TOP"),
     ]))
     story.append(KeepTogether(bottom))
     story.append(Spacer(1, 8))
