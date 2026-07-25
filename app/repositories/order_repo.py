@@ -52,6 +52,7 @@ class AsyncOrderRepository:
                 # Ensure generic fallback if missing
                 item["hsn_code"] = item.get("hsn_code") or "9988"
                 item["gst_percentage"] = item.get("gst_percentage") or 18
+                item["compare_price"] = item.get("compare_price")
 
             items_res = await admin_sb.table("order_items").insert(items_data).execute()
             if not items_res or not getattr(items_res, "data", None):

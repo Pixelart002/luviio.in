@@ -18,6 +18,19 @@ Architecture & Fixes:
   ✅ Reordered & Expanded Layout: Includes HSN Code column and dedicated QR Code block
   ✅ Layout Restactured: [Sold By | Billing Address | QR Code] -> [Order & Invoice Meta Div]
   ✅ Sequential Invoice Number support from Database
+
+  🔧 FIX (this version) — discount column was always blank because:
+     1. `products` relation from Supabase can come back as a LIST (`[{...}]`)
+        instead of a dict depending on the FK join shape — the old code only
+        checked `isinstance(obj, dict)` and silently fell through to 0, or
+        crashed with AttributeError if it ever hit that branch.
+     2. `compare_price` was never selected in the DB query in the first place
+        (separate repo-layer fix), so it was always None even when the shape
+        was correct.
+     Both are now handled: a single `_get_relation_obj()` helper unwraps
+     dict-or-list relations everywhere, and compare_price/price/name/hsn all
+     check the order_item's OWN snapshot fields first (correct for a frozen
+     tax invoice) before falling back to the live `products` relation.
 """
 from __future__ import annotations
 
@@ -111,7 +124,23 @@ def _create_qr(data: str, size: float = 120.0) -> Drawing:
     return drawing
 
 
-# ── Product Name & HSN Multi-layer Extractors ───────────────────────────────
+# ── Product / Relation Extractors ────────────────────────────────────────────
+
+def _get_relation_obj(item: dict) -> dict:
+    """
+    Unwraps the nested Supabase relation (item['products']) regardless of
+    whether Supabase returned it as a dict (`{...}`) or a list (`[{...}]`) —
+    both shapes happen depending on how the FK join was declared. Returns
+    {} if nothing usable is found, so callers never need an isinstance check.
+    """
+    for rel in ("products", "product", "item"):
+        obj = item.get(rel)
+        if isinstance(obj, dict):
+            return obj
+        if isinstance(obj, list) and obj and isinstance(obj[0], dict):
+            return obj[0]
+    return {}
+
 
 def _product_name(item: dict) -> str:
     """
@@ -123,12 +152,10 @@ def _product_name(item: dict) -> str:
         if val:
             return val
 
-    for rel in ("products", "product", "item"):
-        obj = item.get(rel)
-        if isinstance(obj, dict):
-            val = _safe(obj.get("name") or obj.get("product_name"))
-            if val:
-                return val
+    prod = _get_relation_obj(item)
+    val = _safe(prod.get("name") or prod.get("product_name"))
+    if val:
+        return val
 
     # Sync DB Fallback if only product_id exists
     pid = _safe(item.get("product_id"))
@@ -151,13 +178,36 @@ def _product_hsn(item: dict) -> str:
         val = _safe(item.get(key))
         if val:
             return val
-    for rel in ("products", "product", "item"):
-        obj = item.get(rel)
-        if isinstance(obj, dict):
-            val = _safe(obj.get("hsn_code") or obj.get("hsn"))
-            if val:
-                return val
+    prod = _get_relation_obj(item)
+    val = _safe(prod.get("hsn_code") or prod.get("hsn"))
+    if val:
+        return val
     return "9988"
+
+
+def _product_compare_price(item: dict, unit_p: float) -> float:
+    """
+    Per-unit MRP / strike-through price used to derive the discount.
+    Priority: the order_item's OWN frozen snapshot field first (this is what
+    the customer actually saw/was charged against at order time — correct
+    for a legal invoice even if the catalog MRP changes later), then the
+    live `products` relation as a fallback for older rows that never got
+    a snapshot written.
+    """
+    for key in ("compare_price", "compare_price_snapshot", "mrp"):
+        val = item.get(key)
+        if val is not None:
+            cp = _safe_f(val)
+            if cp > 0:
+                return cp
+    prod = _get_relation_obj(item)
+    for key in ("compare_price", "mrp", "original_price"):
+        val = prod.get(key)
+        if val is not None:
+            cp = _safe_f(val)
+            if cp > 0:
+                return cp
+    return 0.0
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -406,7 +456,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     #  BLOCK 2A ── SELLER | BUYER | QR CODE  (Sum = 554 pt)
-    #  🔥 RESTRUCTURED: Sold By | Billing Address | QR Code on Right
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     col_w_block2a = [204.0, 200.0, 150.0]
@@ -526,7 +575,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     #  BLOCK 3 ── 11-COLUMN ITEMS TABLE WITH HSN (Exact Sum = 554 pt)
-    #  🔥 REORDERED: Unit Price -> Qty -> Discount -> Net Amount
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     CW = [18.0, 134.0, 36.0, 50.0, 22.0, 44.0, 54.0, 26.0, 44.0, 52.0, 74.0]
@@ -541,11 +589,11 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     rows = [[
         _hc("Sl."),
         _h("Description"),
-        _hc("HSN"),         # 🔥 ADDED HSN COLUMN
+        _hc("HSN"),
         _hr("Unit Price"),
         _hc("Qty"),
-        _hr("Discount"),    # MOVED AHEAD OF NET AMOUNT
-        _hr("Net Amount"),  # MOVED AFTER DISCOUNT
+        _hr("Discount"),
+        _hr("Net Amount"),
         _hc("GST %"),
         _hc("Tax Type"),
         _hr("Tax Amt"),
@@ -560,13 +608,16 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         name      = _product_name(item)
         hsn       = _product_hsn(item)
         qty       = int(_safe_f(item.get("quantity"), 1))
+        if qty < 1:
+            qty = 1
+
         unit_p    = _safe_f(
             item.get("unit_price") or item.get("price_snapshot") or item.get("price")
         )
-        # Check flat compare_price, or check nested inside products dict
-        compare_p = _safe_f(
-            item.get("compare_price") or (item.get("products") or {}).get("compare_price")
-        )
+
+        # 🔥 FIXED: robust to dict-or-list relation shape, item-snapshot-first priority
+        compare_p = _product_compare_price(item, unit_p)
+
         disc      = _safe_f(item.get("discount_amount") or item.get("discount"))
 
         if disc == 0.0 and compare_p > unit_p > 0:
@@ -585,11 +636,11 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         rows.append([
             _dc(str(idx)),
             _d(name),
-            _dc(hsn),                                # HSN Column
+            _dc(hsn),
             _dr(_fmt(display_unit_p)),
             _dc(str(qty)),
-            _dr(_fmt(disc) if disc > 0 else "—"),   # Discount Column
-            _dr(_fmt(net)),                          # Net Amount Column
+            _dr(_fmt(disc) if disc > 0 else "—"),
+            _dr(_fmt(net)),
             _dc(f"{int(eff_rate_pct)}%"),
             _dc(tax_type),
             _dr(_fmt(i_tax)),
@@ -610,7 +661,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         rows.append([
             _dc(""),
             Paragraph("<b>Shipping Charges</b>", S["td"]),
-            _dc("9965"),                             # SAC Code for Shipping
+            _dc("9965"),
             _dr(_fmt(ship_cost)),
             _dc("1"),
             _dr("—"),
