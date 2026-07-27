@@ -12,6 +12,11 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     full_name: str | None = Field(default=None, max_length=255)
 
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.lower().strip()
+
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
@@ -29,9 +34,19 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.lower().strip()
+
 class ForgotPasswordRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.lower().strip()
 
 class ResetPasswordRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -43,4 +58,6 @@ class ResetPasswordRequest(BaseModel):
         if not any(c.isupper() for c in v): raise ValueError(AuthSecurityMessages.PWD_UPPERCASE)
         if not any(c.isdigit() for c in v): raise ValueError(AuthSecurityMessages.PWD_DIGIT)
         if not any(c.islower() for c in v): raise ValueError(AuthSecurityMessages.PWD_LOWERCASE)
+        if len(v) < 8: raise ValueError(AuthSecurityMessages.PWD_LENGTH)
+        if v.lower() in AuthRules.COMMON_PASSWORDS: raise ValueError(AuthSecurityMessages.PWD_COMMON)
         return v

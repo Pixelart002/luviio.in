@@ -15,18 +15,22 @@ class AuthSecurityMessages:
     TOO_MANY_REQUESTS = "Too many attempts. Please try again later."
     INVALID_CREDENTIALS = "Invalid email or password."
     INVALID_REFRESH_TOKEN = "Invalid or expired refresh token."
-    REGISTRATION_FAILED = "Registration failed: Email may already be in use."
+    REGISTRATION_FAILED = "Registration failed: Email may already be in use or invalid."
     RESET_FAILED = "Password reset failed: {reason}"
+    MISSING_AUTH_HEADER = "Missing or invalid Authorization Bearer token."
     
-    # Password Validation Rules
+    # Password Complexity Rules
     PWD_UPPERCASE = "Password must contain at least one uppercase letter."
     PWD_DIGIT = "Password must contain at least one digit."
     PWD_LOWERCASE = "Password must contain at least one lowercase letter."
-    PWD_LENGTH = "Password must be at least 8 characters."
+    PWD_LENGTH = "Password must be at least 8 characters long."
     PWD_COMMON = "This password is too common — please choose a stronger one."
 
 class AuthRules:
     MAX_LOGIN_ATTEMPTS = 5
     LOGIN_WINDOW_SECONDS = 300
     LOGIN_COOLDOWN_SECONDS = 900
-    COMMON_PASSWORDS = {"password", "password123", "12345678", "qwerty123", "admin123", "letmein123"}
+    COMMON_PASSWORDS = {
+        "password", "password123", "12345678", "qwerty123", 
+        "admin123", "letmein123", "luviio123", "welcome123"
+    }

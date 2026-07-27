@@ -1,5 +1,6 @@
 """
 Payment Gateway Base Interface
+==============================
 Path: app/integrations/payments/base.py
 """
 from abc import ABC, abstractmethod

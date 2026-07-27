@@ -19,4 +19,7 @@ class UserSecurityMessages:
     NO_FIELDS_TO_UPDATE = "No valid fields were provided for the update operation."
     INVALID_PHONE = "Phone number must contain at least 10 valid digits."
     INVALID_POSTAL = "Postal code is required and cannot be empty."
-    DB_OPERATION_FAILED = "An internal database error occurred. Please try again."
+    DB_OPERATION_FAILED = "An internal database error occurred while processing your request."
+
+class UserRules:
+    MAX_ADDRESSES_PER_USER = 10

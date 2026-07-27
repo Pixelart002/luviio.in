@@ -1,3 +1,8 @@
+"""
+Admin Permissions Registry
+==========================
+Path: app/permissions/admin.py
+"""
 class AdminPermissions:
     MANAGE_SETTINGS = "admin.manage_settings"
     VIEW_ANALYTICS = "admin.view_analytics"

@@ -4,6 +4,7 @@ Push Router — Async Standardized Endpoints
 Path: app/api/v1/routers/push.py
 """
 import logging
+from typing import Any, Dict
 from fastapi import APIRouter, Depends, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -20,16 +21,15 @@ router = APIRouter(prefix="/push", tags=["Push Notifications"])
 limiter = Limiter(key_func=get_remote_address)
 
 @router.get("/vapid-key", status_code=status.HTTP_200_OK)
-async def get_vapid_key(request: Request):
+async def get_vapid_key(request: Request) -> Dict[str, Any]:
     if hasattr(request.state, "actions"): 
         request.state.actions.append("Client requested VAPID Public Key for WebPush handshake")
-        
     data = PushService().get_vapid_key()
     return success_response(data=data)
 
 @router.post("/subscribe", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
-async def subscribe(request: Request, payload: PushSubscription, user_id: str = Depends(get_user_id_strict)):
+async def subscribe(request: Request, payload: PushSubscription, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"): 
         request.state.actions.append(f"Validating new WebPush subscription payload for UID: {user_id[:8]}...")
     
@@ -40,10 +40,10 @@ async def subscribe(request: Request, payload: PushSubscription, user_id: str = 
             request.state.actions.append(f"Purged {result['cleaned']} stale device subscriptions")
         request.state.actions.append("Device subscription securely registered to DB ledger")
         
-    return success_response(data=result, message=result["message"])
+    return success_response(data=result, message=result["message"], status_code=status.HTTP_201_CREATED)
 
 @router.delete("/unsubscribe", status_code=status.HTTP_200_OK)
-async def unsubscribe(request: Request, payload: PushSubscription, current: dict = Depends(get_current_user)):
+async def unsubscribe(request: Request, payload: PushSubscription, current: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"): 
         request.state.actions.append("Targeting active device endpoint for Push unsubscription")
     
@@ -55,7 +55,7 @@ async def unsubscribe(request: Request, payload: PushSubscription, current: dict
     return success_response(message=PushMessages.UNSUBSCRIBED)
 
 @router.get("/status", status_code=status.HTTP_200_OK)
-async def subscription_status(request: Request, user_id: str = Depends(get_user_id_strict)):
+async def subscription_status(request: Request, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"): 
         request.state.actions.append(f"Evaluating active push subscriptions for UID: {user_id[:8]}...")
     
@@ -67,7 +67,7 @@ async def subscription_status(request: Request, user_id: str = Depends(get_user_
     return success_response(data=result)
 
 @router.post("/admin/send", dependencies=[Depends(require_permission(AdminPermissions.MANAGE_SETTINGS))], status_code=status.HTTP_200_OK)
-async def send_batch_notification(request: Request, payload: BatchNotificationRequest):
+async def send_batch_notification(request: Request, payload: BatchNotificationRequest) -> Dict[str, Any]:
     if hasattr(request.state, "actions"): 
         request.state.actions.append(f"God-Mode: Admin initiating Batch Push Dispatch to {len(payload.user_ids)} target user(s)...")
     
@@ -79,7 +79,7 @@ async def send_batch_notification(request: Request, payload: BatchNotificationRe
     return success_response(data=results, message=PushMessages.BATCH_SENT)
 
 @router.get("/admin/stats", dependencies=[Depends(require_permission(AdminPermissions.VIEW_ANALYTICS))], status_code=status.HTTP_200_OK)
-async def push_stats(request: Request):
+async def push_stats(request: Request) -> Dict[str, Any]:
     if hasattr(request.state, "actions"): 
         request.state.actions.append("God-Mode: Admin fetching global Push telemetry")
     

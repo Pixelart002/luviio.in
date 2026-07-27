@@ -1,7 +1,7 @@
 """
 Cart Service — Enterprise Business Logic (With Item-Level GST & HSN Support)
 ============================================================================
-Path: /app/services/cart/service.py
+Path: app/services/cart/service.py
 """
 import asyncio
 import logging
@@ -50,33 +50,32 @@ class CartService:
             in_stock = prod.get("is_active", True) and prod.get("stock", 0) >= qty
             price_changed = abs(float(current_price) - float(snapshot)) > 0.001
 
-            if not in_stock: has_unavailable = True
+            if not in_stock: 
+                has_unavailable = True
 
-            # 🔥 UPGRADE: Extract HSN Code and GST Percentage safely from product join
             hsn_code = str(prod.get("hsn_code") or row.get("hsn_code") or "9988").strip()
             gst_percentage = int(prod.get("gst_percentage") if prod.get("gst_percentage") is not None else (row.get("gst_percentage") if row.get("gst_percentage") is not None else 18))
 
             enriched.append({
-                "id": row["id"],
-                "product_id": row["product_id"],
-                "name": prod.get("name", ""),
-                "slug": prod.get("slug", ""),
+                "id": str(row["id"]),
+                "product_id": str(row["product_id"]),
+                "name": str(prod.get("name", "")),
+                "slug": str(prod.get("slug", "")),
                 "image_url": prod.get("image_url"),
-                "hsn_code": hsn_code,              # <-- Added for frontend & pricing
-                "gst_percentage": gst_percentage,  # <-- Added for frontend & pricing
+                "hsn_code": hsn_code,
+                "gst_percentage": gst_percentage,
                 "quantity": qty,
                 "unit_price": float(current_price),
                 "compare_price": compare_price, 
                 "price_snapshot": float(snapshot),
                 "line_total": float(line_total),
-                "stock": prod.get("stock", 0),
+                "stock": int(prod.get("stock", 0)),
                 "in_stock": in_stock,
                 "is_active": prod.get("is_active", True),
                 "price_changed": price_changed,
-                "added_at": row["added_at"],
+                "added_at": str(row["added_at"]),
             })
 
-        # 🔥 UPGRADE: Pass items=enriched so PricingEngine computes exact item-by-item GST!
         breakdown = pricing_engine.calculate(items=enriched)
         pricing_dict = breakdown.as_dict()
 
@@ -91,7 +90,8 @@ class CartService:
             "free_shipping_eligible": breakdown.shipping == Decimal("0") and subtotal > Decimal("0"),
             "amount_to_free_shipping": amount_to_free,
             "free_shipping_threshold": float(pricing_engine.shipping_threshold),
-             "has_unavailable_items": has_unavailable,
+            "has_unavailable_items": has_unavailable,
+            "currency": "INR"
         }
 
     async def get_cart(self, user_id: str) -> Dict[str, Any]:
@@ -100,8 +100,6 @@ class CartService:
 
     async def add_item(self, user_id: str, product_id: str, quantity: int) -> Dict[str, Any]:
         prod = await self.repo.get_product_stock_status(product_id)
-        
-        # 🛡️ Policy Call: Stock & Availability Check
         CartPolicy.assert_product_available(prod, quantity)
 
         cart = await self.repo.get_or_create_cart(user_id)
@@ -109,21 +107,19 @@ class CartService:
 
         if existing:
             new_qty = existing["quantity"] + quantity
-            # 🛡️ Policy Call: Max Limit & Combined Stock Check
             CartPolicy.assert_item_limit(new_qty)
             CartPolicy.assert_product_available(prod, new_qty)
-            
             await self.repo.update_item_quantity(existing["id"], new_qty)
         else:
+            CartPolicy.assert_item_limit(quantity)
             await self.repo.add_item_to_cart(cart["id"], product_id, quantity, float(prod["price"]))
 
         return await self._calculate_cart_pricing(cart["id"])
 
     async def update_item(self, user_id: str, product_id: str, quantity: int) -> Dict[str, Any]:
+        CartPolicy.assert_item_limit(quantity)
         cart = await self.repo.get_or_create_cart(user_id)
         prod = await self.repo.get_product_stock_status(product_id)
-
-        # 🛡️ Policy Call: Stock & Availability Check
         CartPolicy.assert_product_available(prod, quantity)
 
         success = await self.repo.update_item_quantity_by_product(cart["id"], product_id, quantity)
@@ -158,8 +154,6 @@ class CartService:
 
     async def send_cart_reminder(self, cart_id: str) -> Dict[str, str]:
         cart = await self.repo.get_cart_for_reminder(cart_id)
-        
-        # 🛡️ Policy Call: Verifies cart exists and has items
         CartPolicy.assert_can_remind(cart)
         
         items = cart.get("cart_items") or []
@@ -176,12 +170,14 @@ class CartService:
                 body=f"Your cart has {len(items)} item(s) waiting.", 
                 icon="/icons/cart.png", url="/cart.html"
             )
-        except Exception: pass
+        except Exception as exc: 
+            logger.warning("WebPush failed for cart %s: %s", cart_id, exc)
 
         if email:
             try:
                 get_email_provider("resend").send_cart_reminder_email(email, name, items)
                 email_sent = True
-            except Exception: pass
+            except Exception as exc: 
+                logger.warning("Email reminder failed for cart %s: %s", cart_id, exc)
 
         return {"message": CartMessages.REMINDER_SENT, "push_sent": str(push_sent > 0), "email_sent": str(email_sent)}

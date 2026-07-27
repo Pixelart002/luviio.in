@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
 from app.permissions.orders import OrderPermissions
 from app.enums.roles import UserRole
-from app.api.schemas.order_dto import OrderAdminUpdate, OrderCancelResponse
+from app.api.schemas.order_dto import OrderAdminUpdate, OrderCancelResponse, OrderCreateFromCartRequest
 from app.services.orders.service import OrderService
 from app.constants.order_messages import OrderMessages
 from app.utils.response import success_response
@@ -19,6 +19,24 @@ from app.utils.pagination import paginate
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/orders", tags=["Orders"])
+
+@router.post("/checkout", status_code=status.HTTP_201_CREATED)
+async def create_order_from_cart(
+    request: Request,
+    payload: OrderCreateFromCartRequest,
+    user_id: str = Depends(get_user_id_strict)
+):
+    """Initiates checkout: Calculates GST, deductions, locks snapshots, creates order & clears cart."""
+    if hasattr(request.state, "actions"): 
+        request.state.actions.append(f"Checkout initiated by UID: {user_id[:8]}...")
+        
+    order = await OrderService().create_order_from_cart(
+        user_id=user_id,
+        address_id=str(payload.shipping_address_id),
+        notes=payload.notes,
+        idempotency_key=payload.idempotency_key
+    )
+    return success_response(data=order, message="Order placed successfully.", status_code=201)
 
 @router.get("/my", status_code=status.HTTP_200_OK)
 async def my_orders(
@@ -37,7 +55,7 @@ async def my_orders(
 @router.get("/my/{order_id}", status_code=status.HTTP_200_OK)
 async def get_my_order(
     request: Request, 
-    order_id: UUID, 
+    order_id: str, 
     user_id: str = Depends(get_user_id_strict),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):

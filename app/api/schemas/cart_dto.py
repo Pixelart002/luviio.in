@@ -4,14 +4,14 @@ Cart Schemas (DTOs) — Enterprise Grade & GST Ready
 Path: app/api/schemas/cart_dto.py
 """
 from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from app.constants.cart_messages import CartRules
 
 class AddItemRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     product_id: UUID
-    quantity: int = Field(ge=1, le=CartRules.MAX_QTY_PER_ITEM)
+    quantity: int = Field(default=1, ge=1, le=CartRules.MAX_QTY_PER_ITEM)
 
 class UpdateItemRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -23,11 +23,11 @@ class CartItemDTO(BaseModel):
     name: str
     slug: str
     image_url: Optional[str] = None
-    hsn_code: str             # 🔥 Added: Item-level HSN code for legal invoice compliance
-    gst_percentage: int       # 🔥 Added: Item-level GST percentage slab (e.g., 5, 12, 18, 28)
+    hsn_code: str
+    gst_percentage: int
     quantity: int
     unit_price: float
-    compare_price: Optional[float] = 0.0
+    compare_price: float
     price_snapshot: float
     line_total: float
     stock: int
@@ -46,15 +46,11 @@ class CartResponse(BaseModel):
     free_shipping_eligible: bool
     amount_to_free_shipping: float
     free_shipping_threshold: float
-    # ❌ Removed obsolete global tax_rate_pct field
     has_unavailable_items: bool
-    currency: str
-
-class MessageResponse(BaseModel):
-    message: str
+    currency: str = "INR"
 
 class AbandonedCartResponse(BaseModel):
-    items: List[dict]
+    items: List[Dict[str, Any]]
     total: int
     page: int
     page_size: int

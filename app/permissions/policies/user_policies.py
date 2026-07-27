@@ -6,7 +6,7 @@ Path: app/permissions/policies/user_policies.py
 import logging
 from typing import Dict, Any
 from fastapi import HTTPException, status
-from app.constants.user_messages import UserSecurityMessages
+from app.constants.user_messages import UserSecurityMessages, UserRules
 from app.enums.roles import UserRole
 
 logger = logging.getLogger(__name__)
@@ -15,13 +15,13 @@ class UserPolicy:
     """Enforces boundaries on addresses, account states, and admin self-modification."""
 
     @staticmethod
-    def assert_address_limit(current_count: int, max_allowed: int = 10) -> None:
+    def assert_address_limit(current_count: int) -> None:
         """ABAC Guard: Prevents database bloat by limiting total user addresses."""
-        if current_count >= max_allowed:
-            logger.warning(f"ABAC Block | User reached address limit ({max_allowed}).")
+        if current_count >= UserRules.MAX_ADDRESSES_PER_USER:
+            logger.warning("ABAC Block | User reached address limit (%d).", UserRules.MAX_ADDRESSES_PER_USER)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, 
-                detail=UserSecurityMessages.ADDRESS_LIMIT_EXCEEDED.format(limit=max_allowed)
+                detail=UserSecurityMessages.ADDRESS_LIMIT_EXCEEDED.format(limit=UserRules.MAX_ADDRESSES_PER_USER)
             )
 
     @staticmethod
@@ -41,8 +41,8 @@ class UserPolicy:
             target_role = payload.get("role")
             is_active = payload.get("is_active")
 
-            if (target_role and target_role != UserRole.ADMIN.value) or is_active is False:
-                logger.warning(f"ABAC Block | Admin {admin_id[:8]} attempted to demote or deactivate themselves.")
+            if (target_role and target_role != UserRole.ADMIN) or is_active is False:
+                logger.warning("ABAC Block | Admin %s attempted to demote or deactivate themselves.", admin_id[:8])
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN, 
                     detail=UserSecurityMessages.SELF_DEMOTION_PREVENTED

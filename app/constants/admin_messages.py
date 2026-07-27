@@ -7,6 +7,7 @@ Path: app/constants/admin_messages.py
 class AdminSecurityMessages:
     PROFILE_NOT_FOUND = "No active database profile mapped to this UID."
     UNAUTHORIZED_ROLE = "Security Violation: Non-admin or inactive access attempt blocked."
+    TELEMETRY_FAILED = "Failed to aggregate global system telemetry."
 
 class AdminMessages:
     VERIFIED = "Administrator access verified successfully."

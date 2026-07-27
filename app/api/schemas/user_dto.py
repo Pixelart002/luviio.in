@@ -5,12 +5,12 @@ Path: app/api/schemas/user_dto.py
 """
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Any, List, Optional
-from datetime import datetime
 from app.constants.user_messages import UserSecurityMessages
+from app.enums.roles import UserRole
 
 class ProfileUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
-    full_name: Optional[str] = Field(default=None, max_length=255)
+    full_name: Optional[str] = Field(default=None, min_length=2, max_length=255)
     phone: Optional[str] = Field(default=None, max_length=20)
 
     @field_validator("phone")
@@ -25,12 +25,12 @@ class ProfileUpdate(BaseModel):
 
 class AddressCreate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
-    line1: str = Field(max_length=255)
+    line1: str = Field(..., min_length=3, max_length=255)
     line2: Optional[str] = Field(default=None, max_length=255)
-    city: str = Field(max_length=100)
+    city: str = Field(..., min_length=2, max_length=100)
     state: Optional[str] = Field(default=None, max_length=100)
-    postal_code: str = Field(max_length=20)
-    country: str = Field(min_length=2, max_length=2)
+    postal_code: str = Field(..., min_length=3, max_length=20)
+    country: str = Field(..., min_length=2, max_length=2)
     is_default: bool = False
 
     @field_validator("country")
@@ -48,13 +48,13 @@ class AddressCreate(BaseModel):
 class AdminUserUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     is_active: Optional[bool] = None
-    role: Optional[str] = Field(default=None, pattern="^(customer|admin|manager|support)$")
+    role: Optional[UserRole] = None
 
 class MessageResponse(BaseModel):
     message: str
 
 class UserListResponse(BaseModel):
-    items: List[dict]
+    items: List[dict[str, Any]]
     total: int
     page: int
     page_size: int

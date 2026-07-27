@@ -23,7 +23,6 @@ class PaymentSecurityMessages:
     ORDER_NOT_FOUND = "The referenced order could not be found."
     RACE_CONDITION = "Inventory depleted or Database error during checkout. Please try again."
     NO_INTENT_LINKED = "No payment intent is linked to this order."
-    # PaymentSecurityMessages class ke andar ye line add karo:
     ACTIVE_PENDING_EXISTS = "You already have an active checkout session. Please complete your payment or cancel the pending order before starting a new one."
 
 class PaymentRules:

@@ -2,16 +2,12 @@
 Order Service — Enterprise Business Logic & State Machine (GST Ready)
 =====================================================================
 Path: app/services/orders/service.py
-
-Architecture & Upgrades:
-  ✅ Smart Sanitization — Preserves item names, HSN codes, and GST slabs before stripping joins.
-  ✅ ABAC Policy Guardrails — Fully enforces view, cancellation, and invoice download permissions.
-  ✅ ACID State Machine — Validates strict transition graphs and handles automated Stripe refunds.
 """
 import logging
 from typing import Any, Dict, Tuple, List
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
+from decimal import Decimal, ROUND_HALF_UP
 
 from app.repositories.order_repo import AsyncOrderRepository
 from app.repositories.user_repo import AsyncUserRepository
@@ -42,7 +38,6 @@ class OrderService:
         self.user_repo = AsyncUserRepository()
 
     def _sanitize(self, order: Dict[str, Any]) -> Dict[str, Any]:
-        """Strips internal system ledger fields, masks payment identifiers, and maps GST/HSN items."""
         if not order: 
             return order
         sanitized = {k: v for k, v in order.items() if k not in _INTERNAL_FIELDS}
@@ -59,18 +54,87 @@ class OrderService:
         for item in sanitized.get("order_items", []):
             if "products" in item and isinstance(item["products"], dict):
                 prod = item["products"]
-                
-                # 🔥 Extract and preserve critical product & tax fields before deleting join payload!
-                item["name"] = item.get("name") or prod.get("name") or "Product Item"
+                item["name"] = item.get("product_name") or prod.get("name") or "Product Item"
                 item["hsn_code"] = item.get("hsn_code") or prod.get("hsn_code") or "9988"
                 item["gst_percentage"] = item.get("gst_percentage") or prod.get("gst_percentage") or 18
                 item["compare_price"] = item.get("compare_price") or prod.get("compare_price")
-                
                 item["product_slug"] = prod.get("slug")
                 item["product_image_url"] = prod.get("image_url")
                 del item["products"]
                 
         return sanitized
+
+    async def create_order_from_cart(self, user_id: str, address_id: str, notes: Optional[str] = None, idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+        """Reads user cart, calculates GST/Discounts, locks snapshots, and creates order."""
+        cart_data = await self.repo.get_cart_for_checkout(user_id)
+        if not cart_data or not cart_data.get("cart_items"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Your cart is empty. Cannot initiate checkout.")
+
+        total_subtotal = Decimal("0.00")
+        total_tax = Decimal("0.00")
+        total_discount = Decimal("0.00")
+        items_payload = []
+
+        for item in cart_data["cart_items"]:
+            prod = item.get("products")
+            if not prod:
+                continue
+
+            qty = item["quantity"]
+            if prod["stock"] < qty:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for item: {prod['name']}")
+
+            unit_price = Decimal(str(prod["price"]))
+            compare_price = Decimal(str(prod["compare_price"] or unit_price))
+            subtotal = unit_price * qty
+
+            # Discount Math
+            discount_per_item = max(Decimal("0.00"), compare_price - unit_price)
+            discount_amount = discount_per_item * qty
+
+            # GST Math
+            gst_pct = Decimal(str(prod.get("gst_percentage") or 18))
+            tax_amount = (subtotal * (gst_pct / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+            total_subtotal += subtotal
+            total_tax += tax_amount
+            total_discount += discount_amount
+
+            items_payload.append({
+                "product_id": prod["id"],
+                "product_name": prod["name"],
+                "unit_price": float(unit_price),
+                "quantity": qty,
+                "subtotal": float(subtotal),
+                "compare_price": float(compare_price),
+                "hsn_code": prod.get("hsn_code") or "9988",
+                "gst_percentage": int(gst_pct),
+                "tax_amount": float(tax_amount),
+                "discount_amount": float(discount_amount)
+            })
+
+        shipping_cost = Decimal("0.00") if total_subtotal >= Decimal("999.00") else Decimal("99.00")
+        total_amount = total_subtotal + total_tax + shipping_cost
+
+        order_data = {
+            "customer_id": user_id,
+            "status": OrderStatus.PENDING.value,
+            "subtotal": float(total_subtotal),
+            "shipping_cost": float(shipping_cost),
+            "tax_amount": float(total_tax),
+            "total_amount": float(total_amount),
+            "shipping_address_id": str(address_id),
+            "notes": notes,
+            "idempotency_key": idempotency_key,
+            "currency": "INR",
+            "tax_type": "IGST"
+        }
+
+        created_order = await self.repo.create_order_with_items(order_data, items_payload, user_id)
+        if not created_order:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create order due to database conflict.")
+
+        return self._sanitize(created_order)
 
     async def get_user_orders(self, user_id: str, status_filter: str, page: int, page_size: int) -> Tuple[List[Dict[str, Any]], int]:
         items, total = await self.repo.get_user_orders(user_id, status_filter, page, page_size)
@@ -78,8 +142,6 @@ class OrderService:
 
     async def get_order(self, order_id: str, user_id: str, is_admin: bool = False) -> Dict[str, Any]:
         raw_order = await self.repo.get_order_by_id(order_id)
-        
-        # 🛡️ Enforce ABAC View Policy
         order = OrderPolicy.assert_can_view(raw_order, user_id, is_admin=is_admin)
         return self._sanitize(order)
 
@@ -88,7 +150,6 @@ class OrderService:
         if not raw_order:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=OrderSecurityMessages.ORDER_NOT_FOUND)
 
-        # 🛡️ Enforce ABAC Cancellation Policy
         OrderPolicy.assert_can_cancel(raw_order, user_id, is_admin=is_admin)
 
         actual_old_status = raw_order.get("status", OrderStatus.PENDING.value)
@@ -154,7 +215,6 @@ class OrderService:
             if not result:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.CONCURRENCY_CONFLICT)
 
-        # Trigger Event Bus Dispatchers
         if target_status_str == OrderStatus.SHIPPED.value:
             email = await self.repo.get_user_email(current_res["customer_id"])
             if email: 
@@ -175,9 +235,7 @@ class OrderService:
         if not raw_order: 
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=OrderSecurityMessages.ORDER_NOT_FOUND)
 
-        # 🛡️ Enforce ABAC Invoice Download Rules
         OrderPolicy.assert_can_download_invoice(raw_order, user_id, is_admin=is_admin)
-
         customer = await self.user_repo.get_user_by_id(raw_order.get("customer_id", "")) or {}
         try:
             return await run_in_threadpool(build_invoice_pdf, raw_order, customer)
