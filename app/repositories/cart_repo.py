@@ -8,6 +8,7 @@ Architecture & Fixes:
   ✅ Proper DB Error Handling — Logs exceptions cleanly without leaking internal traces or silent crashes.
   ✅ GST & HSN Ready — Explicitly fetches hsn_code and gst_percentage for downstream SSOT checkout.
   ✅ Automatic Cart Touching — Bumps carts.updated_at timestamp on line item mutations.
+  ✅ Async ORM Compatible — Splitting upsert and read operations prevents query builder chaining errors.
 """
 import logging
 from datetime import datetime, timezone
@@ -41,20 +42,25 @@ class AsyncCartRepository:
             return {}
 
     async def get_or_create_cart(self, user_id: str) -> dict[str, Any]:
+        """
+        Safely fetches or creates a user cart. Splitting upsert and select prevents 
+        async query builder chaining exceptions.
+        """
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.table("carts").upsert(
+            # Step 1: Perform the atomic upsert without chaining .select()
+            await admin_sb.table("carts").upsert(
                 {"user_id": user_id}, on_conflict="user_id"
-            ).select("*").limit(1).execute()
+            ).execute()
+            
+            # Step 2: Explicitly query for the record to ensure clean retrieval
+            res = await admin_sb.table("carts").select("*").eq("user_id", user_id).limit(1).execute()
             
             data = getattr(res, "data", None)
             if data and len(data) > 0:
                 return data[0]
                 
-            fallback = await admin_sb.table("carts").select("*").eq("user_id", user_id).limit(1).execute()
-            if fallback.data and len(fallback.data) > 0:
-                return fallback.data[0]
-            raise RuntimeError("Upsert returned empty data.")
+            raise RuntimeError("Upsert succeeded but cart retrieval returned empty data.")
         except Exception as exc:
             logger.error("Critical DB failure in get_or_create_cart for UID %s: %s", user_id, exc, exc_info=True)
             raise HTTPException(
