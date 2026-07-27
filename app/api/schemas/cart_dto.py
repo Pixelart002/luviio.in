@@ -61,3 +61,6 @@ class ReminderResponse(BaseModel):
     message: str
     push_sent: str
     email_sent: str
+    
+class MessageResponse(BaseModel):
+    message: str
