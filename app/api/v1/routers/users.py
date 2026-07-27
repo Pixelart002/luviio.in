@@ -5,7 +5,7 @@ Path: app/api/v1/routers/users.py
 """
 import logging
 from uuid import UUID
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Query, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
