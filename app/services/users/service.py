@@ -4,7 +4,7 @@ User Service — Enterprise Orchestration & Policy Enforcement
 Path: app/services/users/service.py
 """
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 from app.repositories.user_repo import AsyncUserRepository
 from app.permissions.policies.user_policies import UserPolicy
