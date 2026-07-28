@@ -24,8 +24,11 @@ class PaymentSecurityMessages:
     RACE_CONDITION = "Inventory depleted or Database error during checkout. Please try again."
     NO_INTENT_LINKED = "No payment intent is linked to this order."
     ACTIVE_PENDING_EXISTS = "You already have an active checkout session. Please complete your payment or cancel the pending order before starting a new one."
+    INVALID_IDEMPOTENCY_KEY = "The provided idempotency key is not a valid UUID format."
+    INVALID_METADATA = "Stripe webhook payload is missing required order binding metadata."
+    ZERO_AMOUNT_RETRY = "This order has a zero or invalid balance and cannot be retried."
 
 class PaymentRules:
     MIN_ORDER_AMOUNT_PAISE = 5000  # ₹50 minimum order
-    BRUTE_FORCE_MAX_ATTEMPTS = 5
+     BRUTE_FORCE_MAX_ATTEMPTS = 5
     BRUTE_FORCE_WINDOW_SEC = 60

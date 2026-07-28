@@ -3,7 +3,7 @@ Payment Schemas (DTOs)
 ======================
 Path: app/api/schemas/payment_dto.py
 """
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, UUID4
 from uuid import UUID
 from typing import Optional
 

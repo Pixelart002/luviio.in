@@ -6,15 +6,15 @@ Path: app/services/payments/service.py
 Architecture & Fixes:
   * Self-Healing Retry Logic: Auto-generates fresh Stripe intents for unlinked/canceled orders.
   * Atomic GST & HSN Snapshots: Locks exact legal inventory prices & tax rates at checkout.
-  * Brute Force Mitigation: In-memory IP tracking to prevent gateway spamming & DDoS.
+  * Router-Level Limiting: Removed unsafe in-memory limiters; delegates rate mitigation to slowapi.
   * Idempotent Checkout: Prevents double-charging via UUID-based idempotency keys.
+  * Null Intent Guard: Prevents 502 Bad Gateway crashes when Stripe ID is None or Empty in DB.
 """
 import time
 import logging
 from uuid import UUID
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List
-from collections import defaultdict
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 from nanoid import generate
@@ -28,33 +28,6 @@ from app.constants.payment_messages import PaymentMessages, PaymentSecurityMessa
 from app.enums.order_status import OrderStatus
 
 logger = logging.getLogger(__name__)
-
-
-# ==============================================================================
-# BRUTE FORCE GUARD (In-Memory IP Rate Limiter)
-# ==============================================================================
-
-class BruteForceGuard:
-    """Internal memory guard to prevent gateway spamming and DDoS attacks."""
-    def __init__(self) -> None:
-        self.attempts: Dict[str, List[float]] = defaultdict(list)
-
-    def assert_safe(self, ip: str) -> None:
-        now = time.time()
-        self.attempts[ip] = [t for t in self.attempts[ip] if t > now - PaymentRules.BRUTE_FORCE_WINDOW_SEC]
-        if len(self.attempts[ip]) >= PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS, 
-                detail=PaymentSecurityMessages.RATE_LIMIT
-            )
-
-    def record(self, ip: str) -> None: 
-        self.attempts[ip].append(time.time())
-        
-    def reset(self, ip: str) -> None: 
-        self.attempts.pop(ip, None)
-
-brute_guard = BruteForceGuard()
 
 
 # ==============================================================================
@@ -80,34 +53,66 @@ class PaymentService:
     # --------------------------------------------------------------------------
 
     async def create_intent(self, user_id: str, client_ip: str, idempotency_key: str, address_id: str) -> Dict[str, Any]:
-        brute_guard.assert_safe(client_ip)
+        # 🛡️ Step 1: Safe UUID Casting Guard (Prevent 500 Crash on malformed input)
+        try:
+            clean_idem_key = str(UUID(idempotency_key))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=PaymentSecurityMessages.INVALID_IDEMPOTENCY_KEY
+            )
 
-        existing = await self.repo.get_order_by_idempotency_key(user_id, idempotency_key)
+        # 🛡️ Step 2: Idempotency & State Machine Check
+        existing = await self.repo.get_order_by_idempotency_key(user_id, clean_idem_key)
         if existing:
-            if existing["status"] == OrderStatus.PENDING.value:
+            if existing.get("status") == OrderStatus.PENDING.value:
+                existing_pi = existing.get("stripe_payment_intent")
+                
+                # 🔥 Null Intent Guard: Only retrieve if valid non-empty string exists in DB
+                if existing_pi and isinstance(existing_pi, str) and len(existing_pi.strip()) > 0:
+                    try:
+                        intent = await run_in_threadpool(self.provider.retrieve_intent, existing_pi)
+                        if intent.get("status") in {"requires_payment_method", "requires_confirmation", "requires_action"}:
+                            return {
+                                "client_secret": intent.get("client_secret"), 
+                                "payment_intent_id": intent.get("id"), 
+                                "order_id": existing["id"],
+                                "order_number": existing.get("order_number", "")
+                            }
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT, 
+                            detail=PaymentSecurityMessages.INTENT_STATE_ERROR.format(status=intent.get('status'))
+                        )
+                    except HTTPException: 
+                        raise
+                    except Exception as exc:
+                        logger.error("[PAYMENT ERROR] Stripe retrieval failed for existing order: %s", exc)
+                
+                # 🔥 Self-Healing: If intent was null in DB or retrieval failed, replace and bind it
+                logger.warning("[PAYMENT RECOVERY] Existing order %s lacks valid intent. Replacing...", existing['id'])
+                amount_paise = self._paise(existing.get("total_amount", 0))
+                if amount_paise < PaymentRules.MIN_ORDER_AMOUNT_PAISE:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PaymentSecurityMessages.ZERO_AMOUNT_RETRY)
                 try:
-                    intent = await run_in_threadpool(self.provider.retrieve_intent, existing["stripe_payment_intent"])
-                    if intent["status"] in {"requires_payment_method", "requires_confirmation", "requires_action"}:
-                        return {
-                            "client_secret": intent["client_secret"], 
-                            "payment_intent_id": intent["id"], 
-                            "order_id": existing["id"],
-                            "order_number": existing.get("order_number", "")
-                        }
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT, 
-                        detail=PaymentSecurityMessages.INTENT_STATE_ERROR.format(status=intent['status'])
-                    )
-                except HTTPException: 
-                    raise
+                    new_intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_RECOVERY", user_id, f"aot_rec_{clean_idem_key}_{int(time.time())}")
+                    await self.repo.update_order_payment_intent(existing["id"], new_intent["id"])
+                    await run_in_threadpool(self.provider.update_intent_metadata, new_intent["id"], {"order_id": existing["id"], "user_id": user_id})
+                    return {
+                        "client_secret": new_intent["client_secret"], 
+                        "payment_intent_id": new_intent["id"], 
+                        "order_id": existing["id"],
+                        "order_number": existing.get("order_number", "")
+                    }
                 except Exception as exc:
-                    logger.error("[PAYMENT ERROR] Stripe retrieval failed: %s", exc)
+                    logger.error("[PAYMENT ERROR] Recovery intent creation failed: %s", exc)
                     raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
-            elif existing["status"] == OrderStatus.PAID.value:
+
+            elif existing.get("status") == OrderStatus.PAID.value:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ALREADY_PAID)
             else:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.DUPLICATE_ORDER)
 
+        # 🛡️ Step 3: Inventory Exhaustion & Cart Checks
         has_pending = await self.repo.has_active_pending_order(user_id)
         PaymentPolicy.assert_no_active_pending_order(has_pending)
 
@@ -128,6 +133,7 @@ class PaymentService:
             hsn_code = str(prod.get("hsn_code") or item.get("hsn_code") or "9988").strip()
             gst_percentage = int(prod.get("gst_percentage") if prod.get("gst_percentage") is not None else (item.get("gst_percentage") if item.get("gst_percentage") is not None else 18))
 
+            # 🔥 Float Precision Fix: Serializing monetary prices safely for DB RPC
             items_to_deduct.append({
                 "product_id": item["product_id"], 
                 "product_name": prod.get("name", "Item"),
@@ -150,9 +156,9 @@ class PaymentService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
 
         try:
-            intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_PENDING", user_id, f"aot_pi_{idempotency_key}")
+            intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_PENDING", user_id, f"aot_pi_{clean_idem_key}")
         except Exception as exc:
-            brute_guard.record(client_ip)
+            logger.error("[PAYMENT ERROR] Initial Stripe Intent creation failed: %s", exc)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
 
         order_number = self._generate_clean_order_number()
@@ -167,7 +173,7 @@ class PaymentService:
             "shipping_city": addr.get("city"),
             "shipping_postal_code": addr.get("postal_code"), 
             "shipping_country": addr.get("country"),
-            "idempotency_key": str(UUID(idempotency_key)), 
+            "idempotency_key": clean_idem_key, 
             "stripe_payment_intent": intent["id"]
         }
         
@@ -190,32 +196,35 @@ class PaymentService:
     # --------------------------------------------------------------------------
 
     async def confirm_payment(self, user_id: str, client_ip: str, pi_id: str, email: str) -> Dict[str, Any]:
-        brute_guard.assert_safe(client_ip)
+        # 🔥 Null Intent Guard
+        if not pi_id or not isinstance(pi_id, str) or len(pi_id.strip()) == 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Payment Intent ID provided.")
 
         try:
             intent = await run_in_threadpool(self.provider.retrieve_intent, pi_id)
-            if intent["status"] != "succeeded":
+            if intent.get("status") != "succeeded":
                 raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=PaymentSecurityMessages.PAYMENT_FAILED)
         except HTTPException: 
             raise
         except Exception as exc:
-            brute_guard.record(client_ip)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
 
+        # 🔥 Metadata Validation Guard (Protect against unbinded Stripe responses)
         order_id = intent.get("metadata", {}).get("order_id", "")
+        if not order_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PaymentSecurityMessages.INVALID_METADATA)
+
         existing_order = await self.repo.get_order_by_id(order_id)
-        
         PaymentPolicy.assert_can_confirm(existing_order, user_id)
 
         try:
-            result = await self.repo.settle_order_transaction(order_id, intent["id"], intent["amount"] / 100, user_id)
+            result = await self.repo.settle_order_transaction(order_id, intent["id"], intent.get("amount", 0) / 100, user_id)
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=PaymentSecurityMessages.RACE_CONDITION) from exc
 
         if result == "ALREADY_PAID":
             return {"status": OrderStatus.PAID.value, "order_id": order_id, "message": PaymentMessages.ALREADY_SETTLED}
 
-        brute_guard.reset(client_ip)
         if existing_order:
             existing_order["status"] = OrderStatus.PAID.value
         
@@ -231,40 +240,39 @@ class PaymentService:
     # --------------------------------------------------------------------------
 
     async def retry_payment(self, user_id: str, order_id: str) -> Dict[str, Any]:
-        """
-        Self-healing retry logic: If an order is pending but lacks a valid Stripe intent
-        (or the intent was canceled/expired), it auto-generates a replacement intent.
-        """
         existing_order = await self.repo.get_order_by_id(order_id)
         PaymentPolicy.assert_can_retry(existing_order, user_id)
             
         if existing_order and existing_order.get("status") == OrderStatus.PAID.value:
             return {"status": OrderStatus.PAID.value, "message": PaymentMessages.RETRY_SUCCESSFUL}
             
-        pi_id = existing_order.get("stripe_payment_intent", "") if existing_order else ""
         amount_paise = self._paise(existing_order.get("total_amount", 0) if existing_order else 0)
+        
+        # 🔥 Zero-Amount Defense: Ensure order balance is legal before calling Stripe
+        if amount_paise < PaymentRules.MIN_ORDER_AMOUNT_PAISE:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PaymentSecurityMessages.ZERO_AMOUNT_RETRY)
             
-        # SELF-HEALING: Agar intent ID missing hai, toh turant naya intent banao aur link karo
-        if not pi_id:
+        pi_id = existing_order.get("stripe_payment_intent") if existing_order else None
+            
+        # 🔥 Self-Healing: If intent ID was missing or empty in DB, bypass retrieval and generate fresh
+        if not pi_id or not isinstance(pi_id, str) or len(pi_id.strip()) == 0:
             logger.info("[PAYMENT RETRY] No intent linked to Order %s. Generating fresh intent...", order_id[:8])
             return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise)
 
         try:
             intent = await run_in_threadpool(self.provider.retrieve_intent, pi_id)
             
-            # Agar payment pehle hi succeed ho chuki hai, toh order settle kar do
-            if intent["status"] == "succeeded":
-                await self.repo.settle_order_transaction(order_id, pi_id, intent["amount"] / 100, user_id)
+            if intent.get("status") == "succeeded":
+                await self.repo.settle_order_transaction(order_id, pi_id, intent.get("amount", 0) / 100, user_id)
                 return {"status": OrderStatus.PAID.value, "message": PaymentMessages.RETRY_SUCCESSFUL}
                 
             client_secret = intent.get("client_secret")
             
-            # SELF-HEALING: Agar intent purana hoke 'canceled' ho gaya hai ya secret missing hai
-            if intent["status"] == "canceled" or not client_secret:
+            if intent.get("status") == "canceled" or not client_secret:
                 logger.warning("[PAYMENT RETRY] Intent %s is canceled/dead. Replacing...", pi_id)
                 return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise)
 
-            return {"client_secret": client_secret, "payment_intent_id": intent["id"], "order_id": order_id}
+            return {"client_secret": client_secret, "payment_intent_id": intent.get("id"), "order_id": order_id}
             
         except Exception as exc:
             logger.warning("[PAYMENT RETRY] Stripe lookup failed for %s (%s). Falling back to new intent...", pi_id, exc)
@@ -285,8 +293,8 @@ class PaymentService:
             await run_in_threadpool(self.provider.update_intent_metadata, new_intent["id"], {"order_id": order_id, "user_id": user_id})
             
             return {
-                "client_secret": new_intent["client_secret"], 
-                "payment_intent_id": new_intent["id"], 
+                "client_secret": new_intent.get("client_secret"), 
+                "payment_intent_id": new_intent.get("id"), 
                 "order_id": order_id
             }
         except Exception as exc:

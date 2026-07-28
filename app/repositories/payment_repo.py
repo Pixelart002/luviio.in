@@ -1,6 +1,6 @@
 """
-Payments Repository — ACID & JIT Hybrid Flow (Enterprise Grade & GST Ready)
-===========================================================================
+Payments Repository -- ACID & JIT Hybrid Flow (Enterprise Grade & GST Ready)
+============================================================================
 Path: app/repositories/payment_repo.py
 """
 import logging
@@ -131,7 +131,7 @@ class AsyncPaymentRepository:
         try:
             await admin_sb.table("orders").update({
                 "stripe_payment_intent": new_pi_id
-            }).eq("id", order_id).eq("status", "pending").execute()
+            ).eq("id", order_id).eq("status", "pending").execute()
         except Exception as exc:
             logger.error("DB Error updating payment intent for order %s: %s", order_id, exc, exc_info=True)
             raise

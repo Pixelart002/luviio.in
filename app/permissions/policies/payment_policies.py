@@ -63,15 +63,10 @@ class PaymentPolicy:
             )
 
     @staticmethod
-    def assert_can_retry(order: Optional[Dict[str, Any]], user_id: str) -> None:
+    def assert_can_retry(order: Optional[Dict[str, Any]], user_id: str) -> Dict[str, Any]:
         if not order or str(order.get("customer_id", "")) != str(user_id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, 
                 detail=PaymentSecurityMessages.ORDER_NOT_FOUND
             )
-        
-        if not order.get("stripe_payment_intent"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, 
-                detail=PaymentSecurityMessages.NO_INTENT_LINKED
-            )
+        return order
