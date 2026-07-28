@@ -17,7 +17,8 @@ from app.api.v1.routers import (
     push, 
     cart, 
     invoice, 
-    admin_verify
+    admin_verify,
+    settings
 )
 
 api_router = APIRouter()
