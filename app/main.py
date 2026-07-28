@@ -75,5 +75,3 @@ app.include_router(health_router)
 
 # Main Application APIs (Versioned)
 app.include_router(api_router, prefix="/api/v1")
-
-app.include_router(settings.router, prefix="/api/v1")
