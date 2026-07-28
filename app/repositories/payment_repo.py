@@ -129,9 +129,10 @@ class AsyncPaymentRepository:
     async def update_order_payment_intent(self, order_id: str, new_pi_id: str) -> None:
         admin_sb = await get_async_admin_supabase()
         try:
+            # 🔥 FIX: Added missing closing bracket '}' for the update payload dictionary
             await admin_sb.table("orders").update({
                 "stripe_payment_intent": new_pi_id
-            ).eq("id", order_id).eq("status", "pending").execute()
+            }).eq("id", order_id).eq("status", "pending").execute()
         except Exception as exc:
             logger.error("DB Error updating payment intent for order %s: %s", order_id, exc, exc_info=True)
             raise
