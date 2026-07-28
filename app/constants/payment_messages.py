@@ -30,5 +30,5 @@ class PaymentSecurityMessages:
 
 class PaymentRules:
     MIN_ORDER_AMOUNT_PAISE = 5000  # ₹50 minimum order
-     BRUTE_FORCE_MAX_ATTEMPTS = 5
+    BRUTE_FORCE_MAX_ATTEMPTS = 5
     BRUTE_FORCE_WINDOW_SEC = 60
