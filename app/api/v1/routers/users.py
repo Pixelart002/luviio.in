@@ -8,7 +8,6 @@ from uuid import UUID
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Query, Request, status
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
 from app.permissions.users import UserPermissions
@@ -21,7 +20,15 @@ from app.enums.roles import UserRole
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])
-limiter = Limiter(key_func=get_remote_address)
+
+# 🔥 FIX 1: Real IP Extractor for Load Balancers / Cloudflare
+def get_real_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "127.0.0.1"
+
+limiter = Limiter(key_func=get_real_ip)
 
 @router.get("/me", status_code=status.HTTP_200_OK)
 async def get_me(request: Request, current: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
@@ -29,7 +36,8 @@ async def get_me(request: Request, current: Dict[str, Any] = Depends(get_current
         request.state.actions.append("Extracting active profile payload from secure token session")
     profile = current.get("profile", current)
     safe_fields = {"id", "email", "full_name", "phone", "role", "is_active", "created_at"}
-    return success_response({k: v for k, v in profile.items() if k in safe_fields})
+    # 🔥 Explicitly passing 'data=' keyword
+    return success_response(data={k: v for k, v in profile.items() if k in safe_fields})
 
 @router.patch("/me", status_code=status.HTTP_200_OK)
 @limiter.limit("20/minute")
@@ -69,7 +77,8 @@ async def delete_address(request: Request, address_id: UUID, user_id: str = Depe
     await UserService().delete_address(user_id, str(address_id))
     if hasattr(request.state, "actions"): 
         request.state.actions.append(UserMessages.ADDRESS_DELETED)
-    return success_response({"message": UserMessages.ADDRESS_DELETED})
+    # 🔥 FIX 2: Fixed the response wrapper payload
+    return success_response(message=UserMessages.ADDRESS_DELETED)
 
 @router.get("/", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(UserPermissions.READ))])
 async def list_users(
@@ -109,4 +118,4 @@ async def get_user_detail(request: Request, user_id: UUID) -> Dict[str, Any]:
     result = await UserService().get_user_detail(str(user_id))
     if hasattr(request.state, "actions"): 
         request.state.actions.append(f"Aggregated user profile & historical order count ({result.get('total_orders')} orders)")
-    return success_response(result)
+    return success_response(data=result)
