@@ -1,19 +1,3 @@
--- Fix: settle_order_transaction used bare `user_id` column reference which does
--- not exist. The function now correctly uses the input parameter `p_user_id`
--- throughout, and filters orders by the `customer_id` column (the actual FK).
---
--- Apply via: Supabase Dashboard → SQL Editor, or `supabase db push`.
-
-CREATE OR REPLACE FUNCTION public.settle_order_transaction(
-    p_order_id  uuid,
-    p_pi_id     text,
-    p_amount    numeric,
-    p_user_id   uuid
-)
-RETURNS text
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
 DECLARE
     v_current_status text;
 BEGIN
@@ -43,15 +27,19 @@ BEGIN
     -- Record payment
     INSERT INTO public.payments (
         order_id,
+        user_id,
         stripe_payment_intent_id,
         amount,
+        amount_paise,
         currency,
         status,
         payment_method
     ) VALUES (
         p_order_id,
+        p_user_id,
         p_pi_id,
         p_amount,
+        ROUND(p_amount*100),
         'INR',
         'succeeded',
         'card'
@@ -60,4 +48,3 @@ BEGIN
 
     RETURN 'SETTLED';
 END;
-$$;
