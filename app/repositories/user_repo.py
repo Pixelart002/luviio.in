@@ -44,15 +44,17 @@ class AsyncUserRepository:
         data_list = getattr(res, "data", None)
         return data_list[0] if data_list else None
 
-    # ── Address Management ───────────────────────────────────────────────
+    # ── Address Management (Amazon Style Soft-Delete Ready) ──────────────
     async def get_user_addresses(self, user_id: str, limit: int = 10) -> List[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.table("addresses").select("*").eq("user_id", user_id).order("is_default", desc=True).order("created_at", desc=True).limit(limit).execute()
+        # 🔥 FIX: Only fetch addresses where deleted_at is NULL
+        res = await admin_sb.table("addresses").select("*").eq("user_id", user_id).is_("deleted_at", "null").order("is_default", desc=True).order("created_at", desc=True).limit(limit).execute()
         return getattr(res, "data", None) or []
 
     async def count_user_addresses(self, user_id: str) -> int:
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.table("addresses").select("id", count="exact").eq("user_id", user_id).limit(1).execute()
+        # 🔥 FIX: Don't count soft-deleted addresses towards the user's limit
+        res = await admin_sb.table("addresses").select("id", count="exact").eq("user_id", user_id).is_("deleted_at", "null").limit(1).execute()
         return res.count or 0
 
     async def unset_default_address(self, user_id: str) -> None:
@@ -67,7 +69,8 @@ class AsyncUserRepository:
 
     async def get_address(self, address_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.table("addresses").select("id, is_default").eq("id", address_id).eq("user_id", user_id).limit(1).execute()
+        # 🔥 FIX: Only return if it is not deleted
+        res = await admin_sb.table("addresses").select("id, is_default").eq("id", address_id).eq("user_id", user_id).is_("deleted_at", "null").limit(1).execute()
         data_list = getattr(res, "data", None)
         return data_list[0] if data_list else None
 
@@ -76,13 +79,20 @@ class AsyncUserRepository:
         res = await admin_sb.table("orders").select("id").eq("shipping_address_id", address_id).in_("status", ["pending", "paid", "shipped"]).limit(1).execute()
         return bool(getattr(res, "data", None))
 
-    async def delete_address(self, address_id: str) -> None:
+    # 🔥 FIX: Split Delete into Hard and Soft Delete
+    async def hard_delete_address(self, address_id: str) -> None:
         admin_sb = await get_async_admin_supabase()
         await admin_sb.table("addresses").delete().eq("id", address_id).execute()
 
+    async def soft_delete_address(self, address_id: str) -> None:
+        admin_sb = await get_async_admin_supabase()
+        # Archives the address and removes its default status
+        await admin_sb.table("addresses").update({"deleted_at": "now()", "is_default": False}).eq("id", address_id).execute()
+
     async def set_new_default_address(self, user_id: str) -> None:
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.table("addresses").select("id").eq("user_id", user_id).limit(1).execute()
+        # Find the most recent non-deleted address
+        res = await admin_sb.table("addresses").select("id").eq("user_id", user_id).is_("deleted_at", "null").order("created_at", desc=True).limit(1).execute()
         data_list = getattr(res, "data", None)
         if data_list:
             await admin_sb.table("addresses").update({"is_default": True}).eq("id", data_list[0]["id"]).execute()

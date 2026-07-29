@@ -67,6 +67,7 @@ class UserService:
             logger.error("Error adding address for %s: %s", user_id[:8], exc, exc_info=True)
             raise LuviioException(UserSecurityMessages.DB_OPERATION_FAILED, "DB_ERROR", 500) from exc
 
+    # 🔥 FIX: Amazon Style Address Deletion (Soft vs Hard Delete)
     async def delete_address(self, user_id: str, address_id: str) -> None:
         existing = await self.repo.get_address(address_id, user_id)
         if not existing:
@@ -76,18 +77,16 @@ class UserService:
 
         try:
             is_locked = await self.repo.is_address_in_active_order(address_id)
-            # 🛡️ Enforce ABAC Address Lock
-            UserPolicy.assert_address_not_locked(is_locked)
+            
+            if is_locked:
+                # Active order exists -> Hide the address from user but keep it for the system
+                await self.repo.soft_delete_address(address_id)
+            else:
+                # Free address -> Completely wipe from database
+                await self.repo.hard_delete_address(address_id)
+                
         except Exception as exc:
-            if isinstance(exc, LuviioException):
-                raise
-            logger.error("Error checking address order status for %s: %s", address_id[:8], exc, exc_info=True)
-            raise LuviioException(UserSecurityMessages.DB_OPERATION_FAILED, "DB_ERROR", 500) from exc
-
-        try: 
-            await self.repo.delete_address(address_id)
-        except Exception as exc: 
-            logger.error("Error deleting address %s: %s", address_id[:8], exc, exc_info=True)
+            logger.error("Error deleting address %s for user %s: %s", address_id[:8], user_id[:8], exc, exc_info=True)
             raise LuviioException(UserSecurityMessages.DB_OPERATION_FAILED, "DB_ERROR", 500) from exc
 
         if was_default:

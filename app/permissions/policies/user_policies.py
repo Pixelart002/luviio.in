@@ -24,15 +24,8 @@ class UserPolicy:
                 detail=UserSecurityMessages.ADDRESS_LIMIT_EXCEEDED.format(limit=UserRules.MAX_ADDRESSES_PER_USER)
             )
 
-    @staticmethod
-    def assert_address_not_locked(is_locked: bool) -> None:
-        """ABAC Guard: Prevents deleting addresses currently attached to active fulfillment cycles."""
-        if is_locked:
-            logger.warning("ABAC Block | Attempted to delete a locked address tied to an active order.")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, 
-                detail=UserSecurityMessages.ADDRESS_LOCKED
-            )
+    # 🔥 FIX: assert_address_not_locked removed! 
+    # Kyunki ab hum address delete block nahi karte, balki Amazon ki tarah soft-delete/hide kar dete hain.
 
     @staticmethod
     def assert_admin_not_downgrading_self(admin_id: str, target_user_id: str, payload: Dict[str, Any]) -> None:
