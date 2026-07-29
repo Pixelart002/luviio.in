@@ -105,12 +105,7 @@ class AsyncPaymentRepository:
         try:
             res = await admin_sb.rpc(
                 "settle_order_transaction",
-                {
-                    "p_order_id": order_id, 
-                    "p_pi_id": pi_id, 
-                    "p_amount": amount, 
-                    "p_user_id": str(user_id) if user_id and str(user_id).strip() else None
-                }
+                {"p_order_id": order_id, "p_pi_id": pi_id, "p_amount": amount, "p_user_id": user_id}
             ).execute()
             data = getattr(res, "data", None)
             return str(data) if data else "FAILED"
