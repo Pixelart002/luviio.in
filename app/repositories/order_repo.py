@@ -16,7 +16,6 @@ class AsyncOrderRepository:
         pass
 
     async def get_cart_for_checkout(self, user_id: str) -> Optional[dict[str, Any]]:
-        """Fetches active cart items along with live product pricing, stock, and GST details."""
         admin_sb = await get_async_admin_supabase()
         try:
             res = await admin_sb.table("carts").select(
@@ -28,18 +27,15 @@ class AsyncOrderRepository:
             return None
 
     async def create_order_with_items(self, order_data: dict[str, Any], items_data: List[dict[str, Any]], user_id: str) -> Optional[dict[str, Any]]:
-        """Atomically creates order, inserts GST snapshots, reduces stock, and clears cart."""
         admin_sb = await get_async_admin_supabase()
         logger.info(f"[REPO:ORDERS] Creating atomic order for customer {user_id} with {len(items_data)} items.")
         try:
-            # 1. Deduct stock first using RPC (Raises error if stock insufficient)
             for item in items_data:
                 await admin_sb.rpc("decrement_stock", {
                     "p_id": str(item["product_id"]),
                     "p_qty": item["quantity"]
                 }).execute()
 
-            # 2. Insert main order row
             order_res = await admin_sb.table("orders").insert(order_data).execute()
             if not order_res or not getattr(order_res, "data", None):
                 logger.error("[REPO:ORDERS] Main order row insertion failed.")
@@ -48,7 +44,6 @@ class AsyncOrderRepository:
             created_order = order_res.data[0]
             order_id = created_order["id"]
 
-            # 3. Attach order_id and format item snapshots matching exact DB columns
             formatted_items = []
             for item in items_data:
                 formatted_items.append({
@@ -71,7 +66,6 @@ class AsyncOrderRepository:
                 await admin_sb.table("orders").delete().eq("id", order_id).execute()
                 return None
 
-            # 4. Clear User Cart post successful checkout
             await admin_sb.rpc("clear_user_cart", {"p_user_id": user_id}).execute()
 
             logger.info(f"[REPO:ORDERS] Order {order_id} created successfully with tax snapshots.")
@@ -101,16 +95,28 @@ class AsyncOrderRepository:
         admin_sb = await get_async_admin_supabase()
         logger.info(f"[REPO:ORDERS] Cancelling order {order_id} and restoring stock.")
         try:
-            q = admin_sb.table("orders").update({"status": "cancelled"}).eq("id", order_id).in_("status", ["pending", "paid"])
+            # 1. Permission and State check first
+            q = admin_sb.table("orders").select("id").eq("id", order_id).in_("status", ["pending", "paid", "processing"])
             if user_id: 
                 q = q.eq("customer_id", user_id)
             
-            res = await q.execute()
-            if not res or not res.data:
+            check = await q.execute()
+            if not check or not check.data:
                 logger.warning(f"[REPO:ORDERS] Cancel failed. Order {order_id} invalid state or access denied.")
                 return None
             
-            updated_order = res.data[0]
+            # 2. 🔥 EXECUTING THE NEW CASCADE RPC FOR CANCELLATION
+            res = await admin_sb.rpc("rpc_admin_update_order_status", {
+                "p_order_id": order_id,
+                "p_new_status": "cancelled"
+            }).execute()
+            
+            if not res or not res.data:
+                return None
+                
+            updated_order = res.data
+            
+            # 3. Restore stock
             items_res = await admin_sb.table("order_items").select("product_id, quantity").eq("order_id", order_id).execute()
             
             for item in (items_res.data or []):
@@ -131,8 +137,20 @@ class AsyncOrderRepository:
     async def update_order_status_safe(self, order_id: str, updates: dict, expected_status: str) -> Optional[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.table("orders").update(updates).eq("id", order_id).eq("status", expected_status).execute()
-            return res.data[0] if res and res.data else None
+            # 1. Strict concurrency check
+            check = await admin_sb.table("orders").select("id").eq("id", order_id).eq("status", expected_status).execute()
+            if not check or not check.data:
+                return None
+                
+            # 2. 🔥 EXECUTING THE NEW CASCADE RPC FOR STATE TRANSITIONS
+            res = await admin_sb.rpc("rpc_admin_update_order_status", {
+                "p_order_id": order_id,
+                "p_new_status": updates.get("status"),
+                "p_tracking_number": updates.get("tracking_number"),
+                "p_notes": updates.get("notes")
+            }).execute()
+            
+            return res.data if res and res.data else None
         except Exception as e:
             logger.error(f"[REPO:ORDERS] Error updating order {order_id}: {e}", exc_info=True)
             return None
