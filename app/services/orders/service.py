@@ -11,7 +11,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from app.repositories.order_repo import AsyncOrderRepository
 from app.repositories.user_repo import AsyncUserRepository
-from app.permissions.policies.order_policy import OrderPolicy
+from app.permissions.policies.order_policies import OrderPolicy
 from app.events.registry import get_event_bus, OrderShippedEvent, OrderStatusChangedEvent
 from app.integrations.payments.registry import get_payment_provider
 from app.utils.documents.pdf_invoice import build_invoice_pdf
@@ -20,9 +20,13 @@ from app.constants.order_messages import OrderMessages, OrderSecurityMessages
 
 logger = logging.getLogger(__name__)
 
+# 🔥 UPDATED: Finite State Machine (FSM) Matrix for Order Lifecycles
 STATUS_TRANSITIONS = {
     OrderStatus.PENDING: {OrderStatus.PAID, OrderStatus.CANCELLED},
-    OrderStatus.PAID: {OrderStatus.SHIPPED, OrderStatus.CANCELLED, OrderStatus.REFUNDED},
+    # Paid order can move to Processing, Shipped, Cancelled, or be Refunded directly.
+    OrderStatus.PAID: {OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.CANCELLED, OrderStatus.REFUNDED},
+    # Processing means warehouse is packing it. From here, it ships or gets cancelled/refunded.
+    OrderStatus.PROCESSING: {OrderStatus.SHIPPED, OrderStatus.CANCELLED, OrderStatus.REFUNDED},
     OrderStatus.SHIPPED: {OrderStatus.DELIVERED},
     OrderStatus.DELIVERED: {OrderStatus.REFUNDED},
     OrderStatus.REFUNDED: set(), 

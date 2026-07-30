@@ -109,7 +109,13 @@ class OrderPolicy:
 
         # 2. Finite State Machine Check
         current_status = str(order.get("status", "")).lower()
-        cancellable_states = {OrderStatus.PENDING.value, OrderStatus.PAID.value}
+        
+        # 🔥 FIX: Added PROCESSING to cancellable states (Can cancel while packing)
+        cancellable_states = {
+            OrderStatus.PENDING.value, 
+            OrderStatus.PAID.value, 
+            OrderStatus.PROCESSING.value
+        }
         
         if current_status not in cancellable_states:
             logger.warning("ABAC State Block | Order status '%s' cannot be cancelled", current_status)
@@ -147,8 +153,11 @@ class OrderPolicy:
             )
 
         current_status = str(order.get("status", "")).lower()
+        
+        # 🔥 FIX: Added PROCESSING so users can download invoice during warehouse packing
         valid_invoice_states = {
             OrderStatus.PAID.value, 
+            OrderStatus.PROCESSING.value, 
             OrderStatus.SHIPPED.value, 
             OrderStatus.DELIVERED.value, 
             OrderStatus.REFUNDED.value
@@ -177,9 +186,11 @@ class OrderPolicy:
         Useful for non-HTTP domain services or background task workers.
         """
         # 1. State Verification
+        # 🔥 FIX: Added PROCESSING here too
         cancellable_states = {
             OrderStatus.PENDING.value if hasattr(OrderStatus.PENDING, "value") else "pending",
-            OrderStatus.PAID.value if hasattr(OrderStatus.PAID, "value") else "paid"
+            OrderStatus.PAID.value if hasattr(OrderStatus.PAID, "value") else "paid",
+            OrderStatus.PROCESSING.value if hasattr(OrderStatus.PROCESSING, "value") else "processing"
         }
         
         if str(current_status).lower() not in cancellable_states:
