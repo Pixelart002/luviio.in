@@ -10,13 +10,12 @@ Architecture & Fixes:
   ✅ Synchronous DB Fallback — queries products table if product_name is missing
   ✅ Seller info from environment variables — ZERO hardcoding
   ✅ IGST vs CGST+SGST auto-resolved by shipping state vs seller state
-  ✅ Smart Auto-Detect Tax Engine to prevent historical order percentage glitches
   ✅ Amount in words (Indian English — Crore/Lakh/Thousand)
   ✅ Mathematical precision: exact 554pt nested grid widths (Zero Overflow Guarantee)
   ✅ Automatic Discount Computation via Compare Price vs Unit Price
   ✅ Displays MRP in "Unit Price" column if discount is applied for clear UX math
   ✅ B2B / Corporate Ready: Reads Dual Billing & Shipping Snapshots natively
-  ✅ Prints Company Name & Buyer GSTIN if provided
+  ✅ Amazon Layout: Explicit 3-Column Top Grid [Sold By | Billed To | Shipped To]
 """
 from __future__ import annotations
 
@@ -65,43 +64,30 @@ def _safe(val: Any, default: str = "") -> str:
     s = str(val).strip()
     return s if s and s.lower() not in ("none", "null") else default
 
-
 def _safe_f(val: Any, default: float = 0.0) -> float:
-    try:
-        return float(val) if val is not None else default
-    except (ValueError, TypeError):
-        return default
-
+    try: return float(val) if val is not None else default
+    except (ValueError, TypeError): return default
 
 def _fmt(amount: Any) -> str:
-    try:
-        return f"Rs. {float(amount):,.2f}"
-    except (TypeError, ValueError):
-        return "Rs. 0.00"
-
+    try: return f"Rs. {float(amount):,.2f}"
+    except (TypeError, ValueError): return "Rs. 0.00"
 
 def _short_id(uuid_str: str) -> str:
     s = _safe(uuid_str)
     return s[:12].upper() if len(s) >= 8 else (s.upper() or "—")
 
-
 def _parse_date(dt_str: str) -> str:
-    if not dt_str:
-        return datetime.datetime.now().strftime("%d-%m-%Y")
+    if not dt_str: return datetime.datetime.now().strftime("%d-%m-%Y")
     for fmt in (
         "%Y-%m-%dT%H:%M:%S.%f+00:00", "%Y-%m-%dT%H:%M:%S+00:00",
         "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ",
         "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d",
     ):
-        try:
-            return datetime.datetime.strptime(dt_str[:26], fmt).strftime("%d-%m-%Y")
-        except ValueError:
-            continue
+        try: return datetime.datetime.strptime(dt_str[:26], fmt).strftime("%d-%m-%Y")
+        except ValueError: continue
     return dt_str[:10]
 
-
 def _create_qr(data: str, size: float = 120.0) -> Drawing:
-    """Generates a scannable ReportLab QR code vector widget."""
     qr_widget = QrCodeWidget(data, barLevel="L")
     bounds = qr_widget.getBounds()
     w, h = bounds[2] - bounds[0], bounds[3] - bounds[1]
@@ -109,134 +95,69 @@ def _create_qr(data: str, size: float = 120.0) -> Drawing:
     drawing.add(qr_widget)
     return drawing
 
-
-# ── Product / Relation Extractors ────────────────────────────────────────────
-
 def _get_relation_obj(item: dict) -> dict:
     for rel in ("products", "product", "item"):
         obj = item.get(rel)
-        if isinstance(obj, dict):
-            return obj
-        if isinstance(obj, list) and obj and isinstance(obj[0], dict):
-            return obj[0]
+        if isinstance(obj, dict): return obj
+        if isinstance(obj, list) and obj and isinstance(obj[0], dict): return obj[0]
     return {}
-
 
 def _product_name(item: dict) -> str:
     for key in ("product_name", "name", "title"):
         val = _safe(item.get(key))
-        if val:
-            return val
-
+        if val: return val
     prod = _get_relation_obj(item)
     val = _safe(prod.get("name") or prod.get("product_name"))
-    if val:
-        return val
-
-    pid = _safe(item.get("product_id"))
-    if pid:
-        try:
-            from app.core.supabase import get_admin_supabase
-            sb = get_admin_supabase()
-            res = sb.table("products").select("name").eq("id", pid).limit(1).execute()
-            if res.data and len(res.data) > 0 and res.data[0].get("name"):
-                return str(res.data[0]["name"]).strip()
-        except Exception as exc:
-            logger.warning("Failed sync lookup for product %s: %s", pid, exc)
-
+    if val: return val
     return "Product Item"
-
 
 def _product_hsn(item: dict) -> str:
     for key in ("hsn_code", "hsn", "hsn_sac"):
         val = _safe(item.get(key))
-        if val:
-            return val
+        if val: return val
     prod = _get_relation_obj(item)
     val = _safe(prod.get("hsn_code") or prod.get("hsn"))
-    if val:
-        return val
+    if val: return val
     return "9988"
-
 
 def _product_compare_price(item: dict, unit_p: float) -> float:
     for key in ("compare_price", "compare_price_snapshot", "mrp"):
         val = item.get(key)
         if val is not None:
             cp = _safe_f(val)
-            if cp > 0:
-                return cp
+            if cp > 0: return cp
     prod = _get_relation_obj(item)
     for key in ("compare_price", "mrp", "original_price"):
         val = prod.get(key)
         if val is not None:
             cp = _safe_f(val)
-            if cp > 0:
-                return cp
+            if cp > 0: return cp
     return 0.0
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  INDIAN STATE → CODE MAP
-# ══════════════════════════════════════════════════════════════════════════════
-
 _STATE_MAP: dict[str, str] = {
-    "andhra pradesh": "AP", "ap": "AP",
-    "assam": "AS", "as": "AS",
-    "bihar": "BR", "br": "BR",
-    "chandigarh": "CH",
-    "delhi": "DL", "new delhi": "DL", "nct of delhi": "DL", "dl": "DL",
-    "goa": "GA", "ga": "GA",
-    "gujarat": "GJ", "gj": "GJ",
-    "haryana": "HR", "hr": "HR",
-    "himachal pradesh": "HP", "hp": "HP",
-    "jharkhand": "JH", "jh": "JH",
-    "karnataka": "KA", "ka": "KA", "bengaluru": "KA", "bangalore": "KA",
-    "kerala": "KL", "kl": "KL",
-    "madhya pradesh": "MP", "mp": "MP",
-    "maharashtra": "MH", "mh": "MH", "mumbai": "MH",
-    "manipur": "MN", "mn": "MN",
-    "meghalaya": "ML", "ml": "ML",
-    "mizoram": "MZ", "mz": "MZ",
-    "nagaland": "NL", "nl": "NL",
-    "odisha": "OD", "od": "OD",
-    "puducherry": "PY", "py": "PY",
-    "punjab": "PB", "pb": "PB",
-    "rajasthan": "RJ", "rj": "RJ",
-    "sikkim": "SK", "sk": "SK",
-    "tamil nadu": "TN", "tn": "TN", "chennai": "TN",
-    "telangana": "TS", "ts": "TS", "hyderabad": "TS",
-    "tripura": "TR", "tr": "TR",
-    "uttar pradesh": "UP", "up": "UP",
-    "uttarakhand": "UK", "uk": "UK",
+    "andhra pradesh": "AP", "ap": "AP", "assam": "AS", "as": "AS", "bihar": "BR", "br": "BR",
+    "chandigarh": "CH", "delhi": "DL", "new delhi": "DL", "dl": "DL", "goa": "GA", "ga": "GA",
+    "gujarat": "GJ", "gj": "GJ", "haryana": "HR", "hr": "HR", "himachal pradesh": "HP", "hp": "HP",
+    "jharkhand": "JH", "jh": "JH", "karnataka": "KA", "ka": "KA", "bengaluru": "KA",
+    "kerala": "KL", "kl": "KL", "madhya pradesh": "MP", "mp": "MP", "maharashtra": "MH", "mh": "MH",
+    "mumbai": "MH", "odisha": "OD", "od": "OD", "punjab": "PB", "pb": "PB", "rajasthan": "RJ",
+    "rj": "RJ", "tamil nadu": "TN", "tn": "TN", "chennai": "TN", "telangana": "TS", "ts": "TS",
+    "hyderabad": "TS", "uttar pradesh": "UP", "up": "UP", "uttarakhand": "UK", "uk": "UK",
     "west bengal": "WB", "wb": "WB", "kolkata": "WB",
 }
-
 
 def _state_code(raw: str) -> str:
     key = raw.strip().lower()
     return _STATE_MAP.get(key, raw.strip().upper()[:2])
 
-
 def _resolve_tax_type(shipping_state: str) -> str:
-    if not shipping_state:
-        return "IGST"
+    if not shipping_state: return "IGST"
     buyer_code  = _state_code(shipping_state)
     seller_code = _state_code(_S["state"])
     return "CGST+SGST" if buyer_code == seller_code else "IGST"
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  AMOUNT IN WORDS (Indian English)
-# ══════════════════════════════════════════════════════════════════════════════
-
-_ONES = [
-    "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
-    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
-    "Seventeen", "Eighteen", "Nineteen",
-]
+_ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
 _TENS_W = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
-
 
 def _n2w(n: int) -> str:
     if n == 0:         return ""
@@ -247,22 +168,15 @@ def _n2w(n: int) -> str:
     if n < 10_000_000: return _n2w(n // 100_000) + "Lakh " + _n2w(n % 100_000)
     return             _n2w(n // 10_000_000) + "Crore " + _n2w(n % 10_000_000)
 
-
 def _amount_in_words(amount: float) -> str:
     try:
-        rupees = int(amount)
-        paise  = int(round((amount - rupees) * 100))
+        rupees, paise = int(amount), int(round((amount - int(amount)) * 100))
         parts  = []
         if rupees: parts.append(_n2w(rupees).strip() + " Rupees")
         if paise:  parts.append(_n2w(paise).strip() + " Paise")
         return (" and ".join(parts) + " Only") if parts else "Zero Rupees Only"
     except Exception:
         return "Amount as per invoice"
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  REPORTLAB STYLES
-# ══════════════════════════════════════════════════════════════════════════════
 
 _GRAY_BG   = colors.HexColor("#f2f2f2")
 _ROW_ALT   = colors.HexColor("#fafafa")
@@ -272,44 +186,34 @@ _GOLD      = colors.HexColor("#c9a96e")
 _TEXT_DIM  = colors.HexColor("#555555")
 _TEXT_LIGHT= colors.HexColor("#888888")
 
-
 def _styles() -> dict[str, ParagraphStyle]:
     base = getSampleStyleSheet()["Normal"]
-
-    def _s(name: str, **kw) -> ParagraphStyle:
-        return ParagraphStyle(name, parent=base, **kw)
-
+    def _s(name: str, **kw) -> ParagraphStyle: return ParagraphStyle(name, parent=base, **kw)
     return {
         "logo":     _s("logo",    fontName="Helvetica-Bold", fontSize=20, leading=24),
         "doc_h":    _s("doc_h",   fontName="Helvetica-Bold", fontSize=11, leading=14, alignment=TA_RIGHT),
         "doc_sub":  _s("doc_sub", fontSize=7,  alignment=TA_RIGHT, textColor=_TEXT_DIM, leading=10),
         "site":     _s("site",    fontSize=7,  textColor=_TEXT_DIM, leading=10),
-
         "lbl":      _s("lbl",     fontName="Helvetica-Bold", fontSize=8, leading=11),
         "lbl_c":    _s("lbl_c",   fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_CENTER, textColor=_TEXT_DIM),
-
         "b":        _s("b",       fontSize=7.5, leading=10),
         "bb":       _s("bb",      fontName="Helvetica-Bold", fontSize=7.5, leading=10),
         "br":       _s("br",      fontSize=7.5, leading=10, alignment=TA_RIGHT),
         "bbr":      _s("bbr",     fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
         "sm":       _s("sm",      fontSize=6.5, leading=9,  textColor=_TEXT_DIM),
-
         "th":       _s("th",      fontName="Helvetica-Bold", fontSize=7.0, leading=9),
         "thc":      _s("thc",     fontName="Helvetica-Bold", fontSize=7.0, leading=9, alignment=TA_CENTER),
         "thr":      _s("thr",     fontName="Helvetica-Bold", fontSize=7.0, leading=9, alignment=TA_RIGHT),
         "td":       _s("td",      fontSize=7.0, leading=10),
         "tdc":      _s("tdc",     fontSize=7.0, leading=10, alignment=TA_CENTER),
         "tdr":      _s("tdr",     fontSize=7.0, leading=10, alignment=TA_RIGHT),
-
         "sum_lbl":  _s("sum_lbl", fontName="Helvetica-Bold", fontSize=8, leading=11, alignment=TA_RIGHT),
         "sum_val":  _s("sum_val", fontName="Helvetica-Bold", fontSize=8, leading=11, alignment=TA_RIGHT),
-
         "foot":     _s("foot",    fontSize=6.5, leading=9, textColor=_TEXT_LIGHT, alignment=TA_CENTER),
         "words":    _s("words",   fontName="Helvetica-Bold", fontSize=7.5, leading=10),
         "words_v":  _s("words_v", fontSize=7.5, leading=10),
         "sign":     _s("sign",    fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
     }
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  MAIN PDF BUILDER
@@ -319,7 +223,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     buf    = io.BytesIO()
     MARGIN = 20
 
-    # ── Extract values ────────────────────────────────────────────────────────
     order_id     = _safe(order.get("id"))
     order_date   = _parse_date(_safe(order.get("created_at")))
     invoice_date = datetime.datetime.now().strftime("%d-%m-%Y")
@@ -327,21 +230,11 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     is_refund    = status_raw in ("REFUNDED", "CANCELLED")
 
     db_invoice_no = _safe(order.get("invoice_number"))
-    if db_invoice_no:
-        invoice_no = f"{db_invoice_no}"
-    else:
-        seller_state_prefix = _S["state"][:2].upper() or "DL"
-        fy_year = datetime.datetime.now().strftime("%y")
-        invoice_no = f"LV{seller_state_prefix}{fy_year}{_short_id(order_id)[:6]}"
+    invoice_no = f"{db_invoice_no}" if db_invoice_no else f"LV{_S['state'][:2].upper() or 'DL'}{datetime.datetime.now().strftime('%y')}{_short_id(order_id)[:6]}"
 
     doc = SimpleDocTemplate(
-        buf, pagesize=A4,
-        leftMargin=MARGIN, rightMargin=MARGIN,
-        topMargin=MARGIN, bottomMargin=MARGIN,
-        title=f"Luviio Invoice #{invoice_no}",
-        author="Luviio Commerce",
-        subject="Tax Invoice — GST Compliant",
-        creator="Luviio Invoice System",
+        buf, pagesize=A4, leftMargin=MARGIN, rightMargin=MARGIN,
+        topMargin=MARGIN, bottomMargin=MARGIN, title=f"Luviio Invoice #{invoice_no}"
     )
 
     W = 554.0
@@ -353,155 +246,116 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     tax_amt     = _safe_f(order.get("tax_amount"))
     total_amt   = _safe_f(order.get("total_amount"))
 
-    # 🔥 ENTERPRISE SNAPSHOT: Extract Billing Details (Priority for B2B)
-    b_name    = _safe(order.get("billing_name")) or _safe(order.get("shipping_name")) or _safe(customer.get("full_name"), "Valued Customer")
-    b_company = _safe(order.get("billing_company_name")) or _safe(order.get("shipping_company_name"))
+    # ── EXTRACT SHIPPING SNAPSHOT ──
+    s_name    = _safe(order.get("shipping_name")) or _safe(customer.get("full_name"), "Valued Customer")
+    s_company = _safe(order.get("shipping_company_name"))
+    s_phone   = _safe(order.get("shipping_phone")) or _safe(customer.get("phone"))
+    s_email   = _safe(order.get("shipping_email")) or _safe(customer.get("email"))
+    s_line1   = _safe(order.get("shipping_line1"))
+    s_line2   = _safe(order.get("shipping_line2"))
+    s_land    = _safe(order.get("shipping_landmark"))
+    s_city    = _safe(order.get("shipping_city"))
+    s_state   = _safe(order.get("shipping_state"))
+    s_pin     = _safe(order.get("shipping_postal_code"))
+    s_ctry    = _safe(order.get("shipping_country"), "IN")
+
+    # ── EXTRACT BILLING SNAPSHOT (Fallback to Shipping) ──
+    b_name    = _safe(order.get("billing_name")) or s_name
+    b_company = _safe(order.get("billing_company_name")) or s_company
     b_gstin   = _safe(order.get("billing_gstin")) or _safe(order.get("shipping_gstin"))
-    b_phone   = _safe(order.get("billing_phone")) or _safe(order.get("shipping_phone")) or _safe(customer.get("phone"))
-    b_email   = _safe(order.get("billing_email")) or _safe(order.get("shipping_email")) or _safe(customer.get("email"))
+    b_phone   = _safe(order.get("billing_phone")) or s_phone
+    b_email   = _safe(order.get("billing_email")) or s_email
+    b_line1   = _safe(order.get("billing_line1")) or s_line1
+    b_line2   = _safe(order.get("billing_line2")) or s_line2
+    b_land    = _safe(order.get("billing_landmark")) or s_land
+    b_city    = _safe(order.get("billing_city")) or s_city
+    b_state   = _safe(order.get("billing_state")) or s_state
+    b_pin     = _safe(order.get("billing_postal_code")) or s_pin
+    b_ctry    = _safe(order.get("billing_country")) or s_ctry
 
-    b_line1   = _safe(order.get("billing_line1")) or _safe(order.get("shipping_line1"))
-    b_line2   = _safe(order.get("billing_line2")) or _safe(order.get("shipping_line2"))
-    b_land    = _safe(order.get("billing_landmark")) or _safe(order.get("shipping_landmark"))
-    b_city    = _safe(order.get("billing_city")) or _safe(order.get("shipping_city"))
-    b_state   = _safe(order.get("billing_state")) or _safe(order.get("shipping_state"))
-    b_pin     = _safe(order.get("billing_postal_code")) or _safe(order.get("shipping_postal_code"))
-    b_ctry    = _safe(order.get("billing_country")) or _safe(order.get("shipping_country"), "IN")
-
-    tax_type = _resolve_tax_type(b_state or b_city)
+    # Tax depends on Place of Supply (Shipping State in India)
+    tax_type = _resolve_tax_type(s_state or s_city)
     
-    # 🔥 SMART TAX AUTO-DETECT LOGIC
     shipping_is_taxed = False
     eff_rate_pct = 18
 
     if tax_amt > 0:
         rate_on_sub = (tax_amt / subtotal) * 100 if subtotal > 0 else 0
-        diff_sub = abs(rate_on_sub - round(rate_on_sub))
-        
         rate_on_both = (tax_amt / (subtotal + ship_cost)) * 100 if (subtotal + ship_cost) > 0 else 0
-        diff_both = abs(rate_on_both - round(rate_on_both))
-
-        if diff_sub <= 0.05:
+        if abs(rate_on_sub - round(rate_on_sub)) <= 0.05:
             eff_rate_pct = round(rate_on_sub)
             shipping_is_taxed = False
-        elif diff_both <= 0.05:
+        elif abs(rate_on_both - round(rate_on_both)) <= 0.05:
             eff_rate_pct = round(rate_on_both)
             shipping_is_taxed = True
         else:
             eff_rate_pct = round(rate_on_sub)
-            shipping_is_taxed = False
     else:
         eff_rate_pct = 0
-        shipping_is_taxed = False
 
-    doc_type = (
-        "Refund Note / Credit Note"
-        if is_refund
-        else "Tax Invoice / Bill of Supply / Cash Memo"
-    )
+    doc_type = "Refund Note / Credit Note" if is_refund else "Tax Invoice / Bill of Supply"
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     #  BLOCK 1 ── HEADER
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
     hdr = Table([
-        [
-            Paragraph("LUVIIO", S["logo"]),
-            Paragraph(f"<b>{doc_type}</b>", S["doc_h"]),
-        ],
-        [
-            Paragraph(_S["website"], S["site"]),
-            Paragraph("(Original for Recipient)", S["doc_sub"]),
-        ],
+        [Paragraph("LUVIIO", S["logo"]), Paragraph(f"<b>{doc_type}</b>", S["doc_h"])],
+        [Paragraph(_S["website"], S["site"]), Paragraph("(Original for Recipient)", S["doc_sub"])],
     ], colWidths=[W * 0.55, W * 0.45])
-    hdr.setStyle(TableStyle([
-        ("VALIGN",        (0, 0), (-1, -1), "BOTTOM"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ("TOPPADDING",    (0, 0), (-1, -1), 2),
-    ]))
+    hdr.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
     story.append(hdr)
     story.append(HRFlowable(width="100%", thickness=2.5, color=_GOLD, spaceAfter=8))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 2A ── SELLER | BUYER | QR CODE  (Sum = 554 pt)
+    #  BLOCK 2A ── 3 COLUMN ADDRESS GRID: SOLD BY | BILLED TO | SHIPPED TO
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    col_w_block2a = [185.0, 185.0, 184.0]
 
-    col_w_block2a = [204.0, 200.0, 150.0]
-
-    seller_rows = [
-        [Paragraph("<b>Sold By:</b>", S["lbl"])],
-        [Paragraph(_S["name"], S["bb"])],
-    ]
+    # Column 1: Seller
+    seller_rows = [[Paragraph("<b>Sold By:</b>", S["lbl"])], [Paragraph(_S["name"], S["bb"])]]
     for part in [_S["addr1"], _S["addr2"]]:
-        if part:
-            seller_rows.append([Paragraph(part, S["b"])])
-    if _S["email"]:
-        seller_rows.append([Spacer(1, 3)])
-        seller_rows.append([Paragraph(_S["email"], S["sm"])])
-    if _S["pan"]:
-        seller_rows.append([Spacer(1, 3)])
-        seller_rows.append([Paragraph(f"<b>PAN:</b> {_S['pan']}", S["b"])])
-    if _S["gstin"]:
-        seller_rows.append([Paragraph(f"<b>GSTIN:</b> {_S['gstin']}", S["b"])])
+        if part: seller_rows.append([Paragraph(part, S["b"])])
+    if _S["email"]: seller_rows.extend([[Spacer(1, 3)], [Paragraph(_S["email"], S["sm"])]])
+    if _S["pan"]: seller_rows.extend([[Spacer(1, 3)], [Paragraph(f"<b>PAN:</b> {_S['pan']}", S["b"])]])
+    if _S["gstin"]: seller_rows.append([Paragraph(f"<b>GSTIN:</b> {_S['gstin']}", S["b"])])
 
-    # Buyer Row Compilation (Dynamic Name + Company + GSTIN)
-    buyer_rows = [
-        [Paragraph("<b>Billed To:</b>", S["lbl"])],
-    ]
-    
+    # Column 2: Billed To
+    billing_rows = [[Paragraph("<b>Billed To:</b>", S["lbl"])]]
     if b_company:
-        buyer_rows.append([Paragraph(b_company, S["bb"])])
-        buyer_rows.append([Paragraph(f"Attn: {b_name}", S["b"])])
+        billing_rows.append([Paragraph(b_company, S["bb"])])
+        billing_rows.append([Paragraph(f"Attn: {b_name}", S["b"])])
     else:
-        buyer_rows.append([Paragraph(b_name, S["bb"])])
+        billing_rows.append([Paragraph(b_name, S["bb"])])
 
     if b_gstin:
-        buyer_rows.append([Spacer(1, 2)])
-        buyer_rows.append([Paragraph(f"<b>Buyer GSTIN:</b> {b_gstin}", S["b"])])
-        buyer_rows.append([Spacer(1, 2)])
+        billing_rows.append([Spacer(1, 2)])
+        billing_rows.append([Paragraph(f"<b>Buyer GSTIN:</b> {b_gstin}", S["b"])])
 
-    addr_parts = [p for p in [b_line1, b_line2, b_land, b_city, b_state, b_pin, b_ctry] if p]
-    for part in addr_parts:
-        buyer_rows.append([Paragraph(part, S["b"])])
-        
-    if b_phone:
-        buyer_rows.append([Spacer(1, 3)])
-        buyer_rows.append([Paragraph(f"Ph: {b_phone}", S["sm"])])
-    if b_email:
-        buyer_rows.append([Paragraph(b_email, S["sm"])])
+    for part in [b_line1, b_line2, b_land, b_city, b_state, b_pin, b_ctry]:
+        if part: billing_rows.append([Paragraph(part, S["b"])])
+    if b_phone: billing_rows.extend([[Spacer(1, 3)], [Paragraph(f"Ph: {b_phone}", S["sm"])]])
+    if b_email: billing_rows.append([Paragraph(b_email, S["sm"])])
 
-    # QR Code Generation
-    grand_prelim = total_amt if total_amt > 0 else (subtotal + ship_cost + tax_amt)
-    qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|TOTAL:{grand_prelim:.2f}|ORD:{_short_id(order_id)}"
-    qr_drawing = _create_qr(qr_payload, size=130.0)
+    # Column 3: Shipped To
+    shipping_rows = [[Paragraph("<b>Shipped To:</b>", S["lbl"])]]
+    if s_company:
+        shipping_rows.append([Paragraph(s_company, S["bb"])])
+        shipping_rows.append([Paragraph(f"Attn: {s_name}", S["b"])])
+    else:
+        shipping_rows.append([Paragraph(s_name, S["bb"])])
 
-    qr_cell = Table([
-        [Paragraph("<b>SCAN TO VERIFY</b>", S["lbl_c"])],
-        [Spacer(1, 2)],
-        [qr_drawing],
-    ], colWidths=[140.0])
-    qr_cell.setStyle(TableStyle([
-        ("ALIGN",  (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-    ]))
+    for part in [s_line1, s_line2, s_land, s_city, s_state, s_pin, s_ctry]:
+        if part: shipping_rows.append([Paragraph(part, S["b"])])
+    if s_phone: shipping_rows.extend([[Spacer(1, 3)], [Paragraph(f"Ph: {s_phone}", S["sm"])]])
+    if s_email: shipping_rows.append([Paragraph(s_email, S["sm"])])
 
     def _panel(rows, cw: float) -> Table:
         t = Table(rows, colWidths=[cw - 12.0])
-        t.setStyle(TableStyle([
-            ("TOPPADDING",    (0, 0), (-1, -1), 1),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
-        ]))
+        t.setStyle(TableStyle([("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 1), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
         return t
 
     info_top = Table(
-        [[
-            _panel(seller_rows, col_w_block2a[0]),
-            _panel(buyer_rows,  col_w_block2a[1]),
-            qr_cell,
-        ]],
+        [[ _panel(seller_rows, col_w_block2a[0]), _panel(billing_rows, col_w_block2a[1]), _panel(shipping_rows, col_w_block2a[2]) ]],
         colWidths=col_w_block2a,
     )
     info_top.setStyle(TableStyle([
@@ -518,46 +372,57 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     story.append(Spacer(1, 6))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 2B ── NEXT DIV: ORDER DETAILS & INVOICE NUMBER (Sum = 554 pt)
+    #  BLOCK 2B ── META INFO & QR CODE
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
     tracking = _safe(order.get("tracking_number"))
-    order_meta_left = [
+    order_meta = [
         [Paragraph("<b>Order Details:</b>", S["lbl"])],
         [Paragraph(f"<b>Order No:</b> {_short_id(order_id)}", S["b"])],
         [Paragraph(f"<b>Order Date:</b> {order_date}", S["b"])],
         [Paragraph(f"<b>Status:</b> {status_raw}", S["b"])],
     ]
-    order_meta_right = [
+    invoice_meta = [
         [Paragraph("<b>Invoice Details:</b>", S["lbl"])],
         [Paragraph(f"<b>Invoice No:</b> {invoice_no}", S["b"])],
         [Paragraph(f"<b>Invoice Date:</b> {invoice_date}", S["b"])],
         [Paragraph(f"<b>Tracking:</b> {tracking if tracking else '—'}", S["b"])],
     ]
 
+    grand_prelim = total_amt if total_amt > 0 else (subtotal + ship_cost + tax_amt)
+    qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|TOTAL:{grand_prelim:.2f}|ORD:{_short_id(order_id)}"
+    qr_drawing = _create_qr(qr_payload, size=80.0)
+
+    qr_cell = Table([
+        [Paragraph("<b>SCAN TO VERIFY</b>", S["lbl_c"])],
+        [Spacer(1, 2)],
+        [qr_drawing],
+    ], colWidths=[102.0])
+    qr_cell.setStyle(TableStyle([
+        ("ALIGN",  (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+    ]))
+
     info_bottom = Table(
-        [[
-            _panel(order_meta_left,  277.0),
-            _panel(order_meta_right, 277.0),
-        ]],
-        colWidths=[277.0, 277.0],
+        [[ _panel(order_meta, 220.0), _panel(invoice_meta, 220.0), qr_cell ]],
+        colWidths=[220.0, 220.0, 114.0],
     )
     info_bottom.setStyle(TableStyle([
         ("BOX",            (0, 0), (-1, -1), 0.5, _BORDER_C),
         ("LINEBEFORE",     (1, 0), (1, 0),   0.5, _BORDER_C),
+        ("LINEBEFORE",     (2, 0), (2, 0),   0.5, _BORDER_C),
         ("TOPPADDING",     (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING",  (0, 0), (-1, -1), 5),
         ("LEFTPADDING",    (0, 0), (-1, -1), 6),
         ("RIGHTPADDING",   (0, 0), (-1, -1), 6),
-        ("VALIGN",         (0, 0), (-1, -1), "TOP"),
+        ("VALIGN",         (0, 0), (-1, -1), "MIDDLE"),
     ]))
     story.append(info_bottom)
     story.append(Spacer(1, 10))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  BLOCK 3 ── 11-COLUMN ITEMS TABLE WITH HSN (Exact Sum = 554 pt)
+    #  BLOCK 3 ── 11-COLUMN ITEMS TABLE WITH HSN
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
     CW = [18.0, 134.0, 36.0, 50.0, 22.0, 44.0, 54.0, 26.0, 44.0, 52.0, 74.0]
 
     def _h(txt):  return Paragraph(txt, S["th"])
@@ -568,17 +433,8 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     def _dr(txt): return Paragraph(str(txt), S["tdr"])
 
     rows = [[
-        _hc("Sl."),
-        _h("Description"),
-        _hc("HSN"),
-        _hr("Unit Price"),
-        _hc("Qty"),
-        _hr("Discount"),
-        _hr("Net Amount"),
-        _hc("GST %"),
-        _hc("Tax Type"),
-        _hr("Tax Amt"),
-        _hr("Total"),
+        _hc("Sl."), _h("Description"), _hc("HSN"), _hr("Unit Price"), _hc("Qty"),
+        _hr("Discount"), _hr("Net Amount"), _hc("GST %"), _hc("Tax Type"), _hr("Tax Amt"), _hr("Total"),
     ]]
 
     items = order.get("order_items") or order.get("items") or []
@@ -589,13 +445,9 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         name      = _product_name(item)
         hsn       = _product_hsn(item)
         qty       = int(_safe_f(item.get("quantity"), 1))
-        if qty < 1:
-            qty = 1
+        if qty < 1: qty = 1
 
-        unit_p    = _safe_f(
-            item.get("unit_price") or item.get("price_snapshot") or item.get("price")
-        )
-
+        unit_p    = _safe_f(item.get("unit_price") or item.get("price_snapshot") or item.get("price"))
         compare_p = _product_compare_price(item, unit_p)
         disc      = _safe_f(item.get("discount_amount") or item.get("discount"))
 
@@ -608,21 +460,12 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
 
         run_net  += net
         run_tax  += i_tax
-
         display_unit_p = compare_p if (compare_p > unit_p) else unit_p
 
         rows.append([
-            _dc(str(idx)),
-            _d(name),
-            _dc(hsn),
-            _dr(_fmt(display_unit_p)),
-            _dc(str(qty)),
-            _dr(_fmt(disc) if disc > 0 else "—"),
-            _dr(_fmt(net)),
-            _dc(f"{int(eff_rate_pct)}%"),
-            _dc(tax_type),
-            _dr(_fmt(i_tax)),
-            _dr(_fmt(total)),
+            _dc(str(idx)), _d(name), _dc(hsn), _dr(_fmt(display_unit_p)), _dc(str(qty)),
+            _dr(_fmt(disc) if disc > 0 else "—"), _dr(_fmt(net)), _dc(f"{int(eff_rate_pct)}%"),
+            _dc(tax_type), _dr(_fmt(i_tax)), _dr(_fmt(total)),
         ])
 
     if ship_cost > 0:
@@ -630,30 +473,20 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
             s_tax = round(ship_cost * eff_rate_pct / 100, 2)
             gst_pct_str, tax_type_str = f"{int(eff_rate_pct)}%", tax_type
         else:
-            s_tax = 0.0
-            gst_pct_str, tax_type_str = "0%", "-"
+            s_tax, gst_pct_str, tax_type_str = 0.0, "0%", "-"
             
         s_tot = ship_cost + s_tax
         run_net += ship_cost
         run_tax += s_tax
         rows.append([
-            _dc(""),
-            Paragraph("<b>Shipping Charges</b>", S["td"]),
-            _dc("9965"),
-            _dr(_fmt(ship_cost)),
-            _dc("1"),
-            _dr("—"),
-            _dr(_fmt(ship_cost)),
-            _dc(gst_pct_str),
-            _dc(tax_type_str),
-            _dr(_fmt(s_tax)),
-            _dr(_fmt(s_tot)),
+            _dc(""), Paragraph("<b>Shipping Charges</b>", S["td"]), _dc("9965"),
+            _dr(_fmt(ship_cost)), _dc("1"), _dr("—"), _dr(_fmt(ship_cost)),
+            _dc(gst_pct_str), _dc(tax_type_str), _dr(_fmt(s_tax)), _dr(_fmt(s_tot)),
         ])
 
     grand = total_amt if total_amt > 0 else (run_net + run_tax)
     rows.append([
-        Paragraph("<b>Total</b>", S["th"]),
-        "", "", "", "", "", "", "", "",
+        Paragraph("<b>Total</b>", S["th"]), "", "", "", "", "", "", "", "",
         Paragraph(f"<b>{_fmt(run_tax)}</b>", S["thr"]),
         Paragraph(f"<b>{_fmt(grand)}</b>",   S["thr"]),
     ])
@@ -680,7 +513,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     #  BLOCK 4 ── AMOUNT IN WORDS | GST SUMMARY | SIGNATORY
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
     words_str = _amount_in_words(grand)
 
     gst_rows: list[list] = [
@@ -698,25 +530,13 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     if tax_type == "CGST+SGST":
         half_rate = eff_rate_pct / 2
         half_tax  = round(display_tax / 2, 2)
-        gst_rows.append([
-            Paragraph(f"CGST @ {half_rate:.1f}%", S["br"]),
-            Paragraph(_fmt(half_tax), S["bbr"]),
-        ])
-        gst_rows.append([
-            Paragraph(f"SGST @ {half_rate:.1f}%", S["br"]),
-            Paragraph(_fmt(half_tax), S["bbr"]),
-        ])
+        gst_rows.append([Paragraph(f"CGST @ {half_rate:.1f}%", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
+        gst_rows.append([Paragraph(f"SGST @ {half_rate:.1f}%", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
     else:
-        gst_rows.append([
-            Paragraph(f"IGST @ {eff_rate_pct:.0f}%", S["br"]),
-            Paragraph(_fmt(display_tax), S["bbr"]),
-        ])
+        gst_rows.append([Paragraph(f"IGST @ {eff_rate_pct:.0f}%", S["br"]), Paragraph(_fmt(display_tax), S["bbr"])])
 
     gst_rows.append([Paragraph("", S["b"]), Paragraph("", S["b"])])
-    gst_rows.append([
-        Paragraph("<b>Grand Total</b>", S["sum_lbl"]),
-        Paragraph(f"<b>{_fmt(grand)}</b>", S["sum_val"]),
-    ])
+    gst_rows.append([Paragraph("<b>Grand Total</b>", S["sum_lbl"]), Paragraph(f"<b>{_fmt(grand)}</b>", S["sum_val"])])
 
     gst_tbl = Table(gst_rows, colWidths=[150.0, 84.0])
     gst_tbl.setStyle(TableStyle([
@@ -729,24 +549,15 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     ]))
 
     right_col_rows = [
-        [gst_tbl],
-        [Spacer(1, 14)],
-        [Paragraph(f"<b>For {_S['name']}:</b>", S["sign"])],
-        [Spacer(1, 28)],
-        [Paragraph("<b>Authorised Signatory</b>", S["sign"])],
+        [gst_tbl], [Spacer(1, 14)], [Paragraph(f"<b>For {_S['name']}:</b>", S["sign"])],
+        [Spacer(1, 28)], [Paragraph("<b>Authorised Signatory</b>", S["sign"])],
     ]
-
     left_col_rows = [
-        [Paragraph("<b>Amount in Words:</b>", S["words"])],
-        [Spacer(1, 3)],
-        [Paragraph(words_str, S["words_v"])],
+        [Paragraph("<b>Amount in Words:</b>", S["words"])], [Spacer(1, 3)], [Paragraph(words_str, S["words_v"])],
     ]
 
     bottom = Table(
-        [[
-            Table(left_col_rows,  colWidths=[288.0]),
-            Table(right_col_rows, colWidths=[234.0]),
-        ]],
+        [[ Table(left_col_rows, colWidths=[288.0]), Table(right_col_rows, colWidths=[234.0]) ]],
         colWidths=[304.0, 250.0],
     )
     bottom.setStyle(TableStyle([
@@ -761,19 +572,12 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     story.append(KeepTogether(bottom))
     story.append(Spacer(1, 8))
 
-    # ── Footer ────────────────────────────────────────────────────────────
     story.append(HRFlowable(width="100%", thickness=0.4, color=_BORDER_C, spaceAfter=4))
-    footer_note = (
-        "This is a computer-generated invoice and does not require a physical signature. "
-        f"For queries, contact {_S['email']} | {_S['website']}"
-    )
-    if _S["gstin"]:
-        footer_note += f"   GSTIN: {_S['gstin']}"
+    footer_note = f"This is a computer-generated invoice and does not require a physical signature. For queries, contact {_S['email']} | {_S['website']}"
+    if _S["gstin"]: footer_note += f"   GSTIN: {_S['gstin']}"
     story.append(Paragraph(footer_note, S["foot"]))
 
-    # ── Build ─────────────────────────────────────────────────────────────
-    try:
-        doc.build(story)
+    try: doc.build(story)
     except Exception as exc:
         logger.error("PDF invoice build failed: %s", exc, exc_info=True)
         raise RuntimeError(f"Invoice generation failed: {exc}") from exc
