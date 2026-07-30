@@ -6,14 +6,20 @@ Path: app/api/v1/routers/payments.py
 from typing import Any, Dict
 from fastapi import APIRouter, Depends, Request
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.core.dependencies import get_current_user, get_user_id_strict
 from app.services.payments.service import PaymentService
 from app.api.schemas.payment_dto import PaymentIntentRequest, ConfirmPaymentRequest, NotifyFailedRequest
 from app.utils.response import success_response
 
-limiter = Limiter(key_func=get_remote_address)
+# 🔥 FIX: Use safe IP extractor for Load Balancers (like in users router)
+def get_real_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "127.0.0.1"
+
+limiter = Limiter(key_func=get_real_ip)
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
 @router.post("/create-intent")
@@ -25,8 +31,17 @@ async def create_payment_intent(
 ) -> Dict[str, Any]:
     if hasattr(request.state, "actions"): 
         request.state.actions.append(f"Initiating Amazon-Style AOT Checkout -> Target UID: {user_id[:8]}...")
-    client_ip = get_remote_address(request) or "0.0.0.0"
-    data = await PaymentService().create_intent(user_id, client_ip, payload.idempotency_key, str(payload.shipping_address_id))
+    client_ip = get_real_ip(request)
+    
+    billing_id = str(payload.billing_address_id) if payload.billing_address_id else None
+    
+    data = await PaymentService().create_intent(
+        user_id, 
+        client_ip, 
+        payload.idempotency_key, 
+        str(payload.shipping_address_id),
+        billing_id # Passed down!
+    )
     return success_response(data=data)
 
 @router.post("/confirm")
@@ -40,7 +55,7 @@ async def confirm_payment(
     if hasattr(request.state, "actions"): 
         request.state.actions.append(f"Verifying payment success for Intent: {payload.payment_intent_id[:10]}...")
     email = current.get("profile", {}).get("email", "")
-    client_ip = get_remote_address(request) or "0.0.0.0"
+    client_ip = get_real_ip(request)
     data = await PaymentService().confirm_payment(user_id, client_ip, payload.payment_intent_id, email)
     return success_response(data=data)
 

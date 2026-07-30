@@ -3,7 +3,7 @@ Payment Schemas (DTOs)
 ======================
 Path: app/api/schemas/payment_dto.py
 """
-from pydantic import BaseModel, ConfigDict, Field, UUID4
+from pydantic import BaseModel, ConfigDict, Field
 from uuid import UUID
 from typing import Optional
 
@@ -11,6 +11,8 @@ class PaymentIntentRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     idempotency_key: str = Field(..., min_length=10, max_length=100, description="Unique key to prevent duplicate orders")
     shipping_address_id: UUID = Field(..., description="Selected shipping address ID")
+    # 🔥 Added for B2B/GST billing support (Optional so it doesn't break current UI)
+    billing_address_id: Optional[UUID] = Field(None, description="Selected billing address ID, if different from shipping")
 
 class PaymentIntentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

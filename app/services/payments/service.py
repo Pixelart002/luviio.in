@@ -7,7 +7,7 @@ Architecture & Fixes:
   * Cart Lifecycle: Cart is cleared immediately upon successful atomic order creation & stock reservation.
   * Self-Healing Retry Logic: Auto-generates fresh Stripe intents for unlinked/canceled orders.
   * Atomic GST & HSN Snapshots: Locks exact legal inventory prices & tax rates at checkout.
-  * Router-Level Limiting: Removed unsafe in-memory limiters; delegates rate mitigation to slowapi.
+  * Enterprise Snapshots: Captures full B2B/B2C Shipping & Billing address telemetry natively.
   * Idempotent Checkout: Prevents double-charging via UUID-based idempotency keys.
   * Null Intent Guard: Prevents 502 Bad Gateway crashes when Stripe ID is None or Empty in DB.
 """
@@ -15,7 +15,7 @@ import time
 import logging
 from uuid import UUID
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 from nanoid import generate
@@ -30,22 +30,15 @@ from app.enums.order_status import OrderStatus
 
 logger = logging.getLogger(__name__)
 
-
-# ==============================================================================
-# PAYMENT SERVICE ORCHESTRATOR
-# ==============================================================================
-
 class PaymentService:
     def __init__(self) -> None:
         self.repo = AsyncPaymentRepository()
         self.provider = get_payment_provider("stripe")
 
     def _paise(self, amount: Any) -> int:
-        """Converts currency amount to minor units (Paise) using Banker's rounding."""
         return int((Decimal(str(amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
     def _generate_clean_order_number(self) -> str:
-        """Generates Amazon-style readable ID excluding ambiguous letters (0, O, 1, I)."""
         short_id = generate('23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 8)
         return f"ORD-{short_id[:4]}-{short_id[4:]}"
 
@@ -53,8 +46,15 @@ class PaymentService:
     # INTENT CREATION (Checkout Step 1)
     # --------------------------------------------------------------------------
 
-    async def create_intent(self, user_id: str, client_ip: str, idempotency_key: str, address_id: str) -> Dict[str, Any]:
-        # 🛡️ Step 1: Safe UUID Casting Guard (Prevent 500 Crash on malformed input)
+    async def create_intent(
+        self, 
+        user_id: str, 
+        client_ip: str, 
+        idempotency_key: str, 
+        address_id: str,
+        billing_address_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        
         try:
             clean_idem_key = str(UUID(idempotency_key))
         except ValueError:
@@ -63,13 +63,11 @@ class PaymentService:
                 detail=PaymentSecurityMessages.INVALID_IDEMPOTENCY_KEY
             )
 
-        # 🛡️ Step 2: Idempotency & State Machine Check
         existing = await self.repo.get_order_by_idempotency_key(user_id, clean_idem_key)
         if existing:
             if existing.get("status") == OrderStatus.PENDING.value:
                 existing_pi = existing.get("stripe_payment_intent")
                 
-                # 🔥 Null Intent Guard
                 if existing_pi and isinstance(existing_pi, str) and len(existing_pi.strip()) > 0:
                     try:
                         intent = await run_in_threadpool(self.provider.retrieve_intent, existing_pi)
@@ -89,7 +87,6 @@ class PaymentService:
                     except Exception as exc:
                         logger.error("[PAYMENT ERROR] Stripe retrieval failed for existing order: %s", exc)
                 
-                # 🔥 Self-Healing: Generate fresh intent if lost
                 logger.warning("[PAYMENT RECOVERY] Existing order %s lacks valid intent. Replacing...", existing['id'])
                 amount_paise = self._paise(existing.get("total_amount", 0))
                 if amount_paise < PaymentRules.MIN_ORDER_AMOUNT_PAISE:
@@ -113,7 +110,6 @@ class PaymentService:
             else:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.DUPLICATE_ORDER)
 
-        # 🛡️ Step 3: Inventory Exhaustion & Cart Checks
         has_pending = await self.repo.has_active_pending_order(user_id)
         PaymentPolicy.assert_no_active_pending_order(has_pending)
 
@@ -151,9 +147,20 @@ class PaymentService:
         
         PaymentPolicy.assert_minimum_amount(amount_paise)
 
+        # Fetch Shipping Address
         addr = await self.repo.get_shipping_address(address_id, user_id)
         if not addr: 
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
+
+        # 🔥 ENTERPRISE FIX: Fetch Billing Address (if different), else default to Shipping
+        billing_addr = addr
+        is_same_as_shipping = True
+        
+        if billing_address_id and billing_address_id != address_id:
+            fetched_billing = await self.repo.get_shipping_address(billing_address_id, user_id)
+            if fetched_billing:
+                billing_addr = fetched_billing
+                is_same_as_shipping = False
 
         try:
             intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_PENDING", user_id, f"aot_pi_{clean_idem_key}")
@@ -163,32 +170,56 @@ class PaymentService:
 
         order_number = self._generate_clean_order_number()
 
+        # 🚀 ENTERPRISE SNAPSHOT: Dual Shipping & Billing Mapping
         order_data = {
             "customer_id": user_id, 
-            "shipping_address_id": address_id, 
             "status": OrderStatus.PENDING.value,
             "order_number": order_number,
-            **breakdown.as_dict(),
-            "shipping_line1": addr.get("line1"), 
-            "shipping_city": addr.get("city"),
-            "shipping_postal_code": addr.get("postal_code"), 
-            "shipping_country": addr.get("country"),
             "idempotency_key": clean_idem_key, 
-            "stripe_payment_intent": intent["id"]
+            "stripe_payment_intent": intent["id"],
+            **breakdown.as_dict(),
+            
+            # --- SHIPPING SNAPSHOT ---
+            "shipping_address_id": address_id, 
+            "shipping_name": addr.get("full_name"),
+            "shipping_phone": addr.get("phone"),
+            "shipping_email": addr.get("email"),
+            "shipping_line1": addr.get("line1"), 
+            "shipping_line2": addr.get("line2"), 
+            "shipping_landmark": addr.get("landmark"),
+            "shipping_city": addr.get("city"),
+            "shipping_state": addr.get("state"),
+            "shipping_postal_code": addr.get("postal_code"), 
+            "shipping_country": addr.get("country", "IN"),
+            "shipping_company_name": addr.get("company_name"),
+            "shipping_gstin": addr.get("gstin"),
+
+            # --- BILLING SNAPSHOT ---
+            "billing_same_as_shipping": is_same_as_shipping,
+            "billing_address_id": billing_addr.get("id"),
+            "billing_name": billing_addr.get("full_name"),
+            "billing_phone": billing_addr.get("phone"),
+            "billing_email": billing_addr.get("email"),
+            "billing_line1": billing_addr.get("line1"), 
+            "billing_line2": billing_addr.get("line2"), 
+            "billing_landmark": billing_addr.get("landmark"),
+            "billing_city": billing_addr.get("city"),
+            "billing_state": billing_addr.get("state"),
+            "billing_postal_code": billing_addr.get("postal_code"), 
+            "billing_country": billing_addr.get("country", "IN"),
+            "billing_company_name": billing_addr.get("company_name"),
+            "billing_gstin": billing_addr.get("gstin"),
         }
         
         try:
-            # Atomic operation: Locks stock and creates order
             pending_order = await self.repo.create_pending_order_with_reservation(order_data, items_to_deduct)
             await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
             
-            # 🚀 FAANG FIX: Order ban chuka hai, stock lock ho gaya hai -> Turant Cart Khali Karo!
             try:
                 from app.services.cart.service import CartService
                 await CartService().clear_cart(user_id)
                 logger.info(f"Cart cleared successfully for user {user_id[:8]} after order reservation.")
             except Exception as cart_exc:
-                # We don't crash the checkout if cart clearing fails, just log it.
                 logger.error("Failed to clear cart after successful order reservation: %s", cart_exc)
 
         except Exception as e:
@@ -201,10 +232,6 @@ class PaymentService:
             "order_id": pending_order["id"], 
             "order_number": order_number
         }
-
-    # --------------------------------------------------------------------------
-    # PAYMENT CONFIRMATION (Checkout Step 2)
-    # --------------------------------------------------------------------------
 
     async def confirm_payment(self, user_id: str, client_ip: str, pi_id: str, email: str) -> Dict[str, Any]:
         if not pi_id or not isinstance(pi_id, str) or len(pi_id.strip()) == 0:
@@ -244,10 +271,6 @@ class PaymentService:
 
         return {"status": OrderStatus.PAID.value, "order_id": order_id, "message": PaymentMessages.CONFIRMED}
 
-    # --------------------------------------------------------------------------
-    # SMART PAYWALL RETRY (Self-Healing Enterprise Retry)
-    # --------------------------------------------------------------------------
-
     async def retry_payment(self, user_id: str, order_id: str) -> Dict[str, Any]:
         existing_order = await self.repo.get_order_by_id(order_id)
         PaymentPolicy.assert_can_retry(existing_order, user_id)
@@ -286,7 +309,6 @@ class PaymentService:
             return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise)
 
     async def _create_and_link_replacement_intent(self, user_id: str, order_id: str, amount_paise: int) -> Dict[str, Any]:
-        """Helper to generate a fresh Stripe intent and bind it to the order ledger."""
         try:
             new_intent = await run_in_threadpool(
                 self.provider.create_payment_intent, 

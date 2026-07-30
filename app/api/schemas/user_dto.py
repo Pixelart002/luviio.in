@@ -25,6 +25,8 @@ class ProfileUpdate(BaseModel):
 
 class AddressCreate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
+    
+    # ── Core Address Fields ──
     line1: str = Field(..., min_length=3, max_length=255)
     line2: Optional[str] = Field(default=None, max_length=255)
     city: str = Field(..., min_length=2, max_length=100)
@@ -32,6 +34,15 @@ class AddressCreate(BaseModel):
     postal_code: str = Field(..., min_length=3, max_length=20)
     country: str = Field(..., min_length=2, max_length=2)
     is_default: bool = False
+    
+    # ── 🔥 Enterprise B2B / Detail Fields ──
+    full_name: Optional[str] = Field(default=None, max_length=255, description="Specific recipient name for this address")
+    phone: Optional[str] = Field(default=None, max_length=20, description="Specific phone for this address")
+    email: Optional[str] = Field(default=None, max_length=255, description="Specific email for this address")
+    landmark: Optional[str] = Field(default=None, max_length=255)
+    address_type: Optional[str] = Field(default="home", max_length=50, description="e.g., home, work, warehouse")
+    company_name: Optional[str] = Field(default=None, max_length=255)
+    gstin: Optional[str] = Field(default=None, max_length=15, description="Indian GST Identification Number")
 
     @field_validator("country")
     @classmethod
@@ -44,6 +55,27 @@ class AddressCreate(BaseModel):
         if not v.strip():
             raise ValueError(UserSecurityMessages.INVALID_POSTAL)
         return v.strip()
+
+    @field_validator("phone")
+    @classmethod
+    def validate_address_phone(cls, v: Optional[str]) -> Optional[str]:
+        if v:
+            cleaned = ''.join(c for c in v if c.isdigit() or c == '+')
+            if len(cleaned.replace('+', '')) < 10:
+                raise ValueError(UserSecurityMessages.INVALID_PHONE)
+            return cleaned
+        return v
+
+    @field_validator("gstin")
+    @classmethod
+    def validate_gstin(cls, v: Optional[str]) -> Optional[str]:
+        if v:
+            cleaned = v.upper().strip()
+            # Basic structural check for 15 digit Indian GSTIN format
+            if len(cleaned) != 15:
+                raise ValueError("GSTIN must be exactly 15 characters long.")
+            return cleaned
+        return v
 
 class AdminUserUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
