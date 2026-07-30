@@ -15,22 +15,8 @@ Architecture & Fixes:
   ✅ Mathematical precision: exact 554pt nested grid widths (Zero Overflow Guarantee)
   ✅ Automatic Discount Computation via Compare Price vs Unit Price
   ✅ Displays MRP in "Unit Price" column if discount is applied for clear UX math
-  ✅ Reordered & Expanded Layout: Includes HSN Code column and dedicated QR Code block
-  ✅ Layout Restactured: [Sold By | Billing Address | QR Code] -> [Order & Invoice Meta Div]
-  ✅ Sequential Invoice Number support from Database
-
-  🔧 FIX (this version) — discount column was always blank because:
-     1. `products` relation from Supabase can come back as a LIST (`[{...}]`)
-        instead of a dict depending on the FK join shape — the old code only
-        checked `isinstance(obj, dict)` and silently fell through to 0, or
-        crashed with AttributeError if it ever hit that branch.
-     2. `compare_price` was never selected in the DB query in the first place
-        (separate repo-layer fix), so it was always None even when the shape
-        was correct.
-     Both are now handled: a single `_get_relation_obj()` helper unwraps
-     dict-or-list relations everywhere, and compare_price/price/name/hsn all
-     check the order_item's OWN snapshot fields first (correct for a frozen
-     tax invoice) before falling back to the live `products` relation.
+  ✅ B2B / Corporate Ready: Reads Dual Billing & Shipping Snapshots natively
+  ✅ Prints Company Name & Buyer GSTIN if provided
 """
 from __future__ import annotations
 
@@ -127,12 +113,6 @@ def _create_qr(data: str, size: float = 120.0) -> Drawing:
 # ── Product / Relation Extractors ────────────────────────────────────────────
 
 def _get_relation_obj(item: dict) -> dict:
-    """
-    Unwraps the nested Supabase relation (item['products']) regardless of
-    whether Supabase returned it as a dict (`{...}`) or a list (`[{...}]`) —
-    both shapes happen depending on how the FK join was declared. Returns
-    {} if nothing usable is found, so callers never need an isinstance check.
-    """
     for rel in ("products", "product", "item"):
         obj = item.get(rel)
         if isinstance(obj, dict):
@@ -143,10 +123,6 @@ def _get_relation_obj(item: dict) -> dict:
 
 
 def _product_name(item: dict) -> str:
-    """
-    Extract product name from order_item dict.
-    If missing, queries the Supabase DB directly using sync client.
-    """
     for key in ("product_name", "name", "title"):
         val = _safe(item.get(key))
         if val:
@@ -157,7 +133,6 @@ def _product_name(item: dict) -> str:
     if val:
         return val
 
-    # Sync DB Fallback if only product_id exists
     pid = _safe(item.get("product_id"))
     if pid:
         try:
@@ -173,7 +148,6 @@ def _product_name(item: dict) -> str:
 
 
 def _product_hsn(item: dict) -> str:
-    """Extracts HSN Code from item or nested product relation."""
     for key in ("hsn_code", "hsn", "hsn_sac"):
         val = _safe(item.get(key))
         if val:
@@ -186,14 +160,6 @@ def _product_hsn(item: dict) -> str:
 
 
 def _product_compare_price(item: dict, unit_p: float) -> float:
-    """
-    Per-unit MRP / strike-through price used to derive the discount.
-    Priority: the order_item's OWN frozen snapshot field first (this is what
-    the customer actually saw/was charged against at order time — correct
-    for a legal invoice even if the catalog MRP changes later), then the
-    live `products` relation as a fallback for older rows that never got
-    a snapshot written.
-    """
     for key in ("compare_price", "compare_price_snapshot", "mrp"):
         val = item.get(key)
         if val is not None:
@@ -360,12 +326,10 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     status_raw   = _safe(order.get("status"), "paid").upper()
     is_refund    = status_raw in ("REFUNDED", "CANCELLED")
 
-    # 🔥 FIX: Sequential Invoice Number support from DB
     db_invoice_no = _safe(order.get("invoice_number"))
     if db_invoice_no:
         invoice_no = f"{db_invoice_no}"
     else:
-        # Fallback Amazon/Flipkart format if DB number isn't present
         seller_state_prefix = _S["state"][:2].upper() or "DL"
         fy_year = datetime.datetime.now().strftime("%y")
         invoice_no = f"LV{seller_state_prefix}{fy_year}{_short_id(order_id)[:6]}"
@@ -380,7 +344,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         creator="Luviio Invoice System",
     )
 
-    W = 554.0               # Explicit safe width: 595.28 - 40 = 555.28 -> anchor at 554 pt
+    W = 554.0
     S = _styles()
     story: list = []
 
@@ -389,20 +353,24 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     tax_amt     = _safe_f(order.get("tax_amount"))
     total_amt   = _safe_f(order.get("total_amount"))
 
-    sh1   = _safe(order.get("shipping_line1"))
-    sh2   = _safe(order.get("shipping_line2"))
-    city  = _safe(order.get("shipping_city"))
-    state = _safe(order.get("shipping_state"))
-    pin   = _safe(order.get("shipping_postal_code"))
-    ctry  = _safe(order.get("shipping_country"), "IN")
+    # 🔥 ENTERPRISE SNAPSHOT: Extract Billing Details (Priority for B2B)
+    b_name    = _safe(order.get("billing_name")) or _safe(order.get("shipping_name")) or _safe(customer.get("full_name"), "Valued Customer")
+    b_company = _safe(order.get("billing_company_name")) or _safe(order.get("shipping_company_name"))
+    b_gstin   = _safe(order.get("billing_gstin")) or _safe(order.get("shipping_gstin"))
+    b_phone   = _safe(order.get("billing_phone")) or _safe(order.get("shipping_phone")) or _safe(customer.get("phone"))
+    b_email   = _safe(order.get("billing_email")) or _safe(order.get("shipping_email")) or _safe(customer.get("email"))
 
-    c_name  = _safe(customer.get("full_name"), "Valued Customer")
-    c_email = _safe(customer.get("email"))
-    c_phone = _safe(customer.get("phone"))
+    b_line1   = _safe(order.get("billing_line1")) or _safe(order.get("shipping_line1"))
+    b_line2   = _safe(order.get("billing_line2")) or _safe(order.get("shipping_line2"))
+    b_land    = _safe(order.get("billing_landmark")) or _safe(order.get("shipping_landmark"))
+    b_city    = _safe(order.get("billing_city")) or _safe(order.get("shipping_city"))
+    b_state   = _safe(order.get("billing_state")) or _safe(order.get("shipping_state"))
+    b_pin     = _safe(order.get("billing_postal_code")) or _safe(order.get("shipping_postal_code"))
+    b_ctry    = _safe(order.get("billing_country")) or _safe(order.get("shipping_country"), "IN")
 
-    tax_type      = _resolve_tax_type(state or city)
+    tax_type = _resolve_tax_type(b_state or b_city)
     
-    # 🔥 SMART TAX AUTO-DETECT LOGIC (Prevents 28% math glitch on old orders)
+    # 🔥 SMART TAX AUTO-DETECT LOGIC
     shipping_is_taxed = False
     eff_rate_pct = 18
 
@@ -476,20 +444,33 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     if _S["gstin"]:
         seller_rows.append([Paragraph(f"<b>GSTIN:</b> {_S['gstin']}", S["b"])])
 
-    addr_parts = [p for p in [sh1, sh2, city, state, pin, ctry] if p]
+    # Buyer Row Compilation (Dynamic Name + Company + GSTIN)
     buyer_rows = [
-        [Paragraph("<b>Shipping / Billing Address:</b>", S["lbl"])],
-        [Paragraph(c_name, S["bb"])],
+        [Paragraph("<b>Billed To:</b>", S["lbl"])],
     ]
+    
+    if b_company:
+        buyer_rows.append([Paragraph(b_company, S["bb"])])
+        buyer_rows.append([Paragraph(f"Attn: {b_name}", S["b"])])
+    else:
+        buyer_rows.append([Paragraph(b_name, S["bb"])])
+
+    if b_gstin:
+        buyer_rows.append([Spacer(1, 2)])
+        buyer_rows.append([Paragraph(f"<b>Buyer GSTIN:</b> {b_gstin}", S["b"])])
+        buyer_rows.append([Spacer(1, 2)])
+
+    addr_parts = [p for p in [b_line1, b_line2, b_land, b_city, b_state, b_pin, b_ctry] if p]
     for part in addr_parts:
         buyer_rows.append([Paragraph(part, S["b"])])
-    if c_phone:
+        
+    if b_phone:
         buyer_rows.append([Spacer(1, 3)])
-        buyer_rows.append([Paragraph(f"Ph: {c_phone}", S["sm"])])
-    if c_email:
-        buyer_rows.append([Paragraph(c_email, S["sm"])])
+        buyer_rows.append([Paragraph(f"Ph: {b_phone}", S["sm"])])
+    if b_email:
+        buyer_rows.append([Paragraph(b_email, S["sm"])])
 
-    # QR Code Generation (Scannable Condition on Right Side)
+    # QR Code Generation
     grand_prelim = total_amt if total_amt > 0 else (subtotal + ship_cost + tax_amt)
     qr_payload = f"GSTIN:{_S['gstin']}|INV:{invoice_no}|DT:{invoice_date}|TOTAL:{grand_prelim:.2f}|ORD:{_short_id(order_id)}"
     qr_drawing = _create_qr(qr_payload, size=130.0)
@@ -615,9 +596,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
             item.get("unit_price") or item.get("price_snapshot") or item.get("price")
         )
 
-        # 🔥 FIXED: robust to dict-or-list relation shape, item-snapshot-first priority
         compare_p = _product_compare_price(item, unit_p)
-
         disc      = _safe_f(item.get("discount_amount") or item.get("discount"))
 
         if disc == 0.0 and compare_p > unit_p > 0:
@@ -630,7 +609,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         run_net  += net
         run_tax  += i_tax
 
-        # Display MRP (compare_price) as the Unit Price in the PDF if a discount exists
         display_unit_p = compare_p if (compare_p > unit_p) else unit_p
 
         rows.append([
@@ -714,7 +692,6 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     else:
         gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph("FREE", S["bbr"])])
 
-    # GST Summary reflects actual breakdown based on what was taxed
     product_tax_only = round(subtotal * eff_rate_pct / 100, 2)
     display_tax = tax_amt if tax_amt > 0 else product_tax_only
 
