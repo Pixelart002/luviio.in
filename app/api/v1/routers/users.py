@@ -68,7 +68,7 @@ async def add_address(request: Request, payload: AddressCreate, user_id: str = D
     result = await UserService().add_address(user_id, payload.model_dump())
     if hasattr(request.state, "actions"): 
         request.state.actions.append(UserMessages.ADDRESS_ADDED)
-    return success_response(data=result, message=UserMessages.ADDRESS_ADDED, status_code=status.HTTP_201_CREATED)
+    return success_response(data=result, message=UserMessages.ADDRESS_ADDED)
 
 @router.delete("/me/addresses/{address_id}", status_code=status.HTTP_200_OK)
 async def delete_address(request: Request, address_id: UUID, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
