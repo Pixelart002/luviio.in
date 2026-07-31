@@ -332,3 +332,64 @@ class PaymentService:
                 status_code=status.HTTP_502_BAD_GATEWAY, 
                 detail=PaymentSecurityMessages.PAYMENT_FAILED
             ) from exc
+            
+    
+
+    # 🔥 NAYA WEBHOOK HANDLER
+    async def handle_webhook(self, payload: bytes, sig_header: str) -> None:
+        """Handles background events from Stripe (Refunds, Disputes, Failures, Success)."""
+        try:
+            event = self.provider.verify_webhook(payload, sig_header)
+        except Exception as e:
+            logger.error("Webhook verification failed: %s", e)
+            raise ValueError("Invalid Stripe Signature")
+
+        event_type = event.get("type")
+        obj = event.get("data", {}).get("object", {})
+
+        # Find payment intent ID securely
+        pi_id = obj.get("id") if obj.get("object") == "payment_intent" else obj.get("payment_intent")
+        
+        if not pi_id:
+            logger.warning("[WEBHOOK] Ignored %s - No Payment Intent ID found in payload.", event_type)
+            return
+
+        order = await self.repo.get_order_by_payment_intent(pi_id)
+        if not order:
+            logger.warning("[WEBHOOK] Ignored %s - No order found in database for PI %s", event_type, pi_id)
+            return
+
+        order_id = order["id"]
+        current_status = order["status"]
+        customer_id = order["customer_id"]
+
+        logger.info("[WEBHOOK] Received %s for Order %s (Current Status: %s)", event_type, order_id[:8], current_status)
+
+        # EVENT 1: SUCCESS
+        if event_type == "payment_intent.succeeded":
+            if current_status == OrderStatus.PENDING.value:
+                amount = obj.get("amount", 0) / 100
+                await self.repo.settle_order_transaction(order_id, pi_id, amount, customer_id)
+                logger.info("[WEBHOOK] Settled pending order %s automatically via webhook.", order_id[:8])
+
+        # EVENT 2 & 3: CANCELED OR FAILED
+        elif event_type in ["payment_intent.canceled", "payment_intent.payment_failed"]:
+            if current_status == OrderStatus.PENDING.value:
+                # Stock release and cancel using existing safe RPC
+                await self.repo.release_abandoned_order(order_id)
+                logger.info("[WEBHOOK] Cancelled pending order %s and released stock due to payment failure/cancel.", order_id[:8])
+
+        # EVENT 4: REFUNDED
+        elif event_type == "charge.refunded":
+            # Only update if not already refunded/cancelled
+            if current_status not in [OrderStatus.CANCELLED.value, OrderStatus.REFUNDED.value]:
+                await self.repo.update_order_status_via_rpc(order_id, OrderStatus.REFUNDED.value, f"Webhook Auto-Update: {event_type}")
+                logger.info("[WEBHOOK] Marked order %s as Refunded.", order_id[:8])
+
+        # EVENT 5: DISPUTE (Chargeback via Bank)
+        elif event_type == "charge.dispute.created":
+            amount_disputed = obj.get('amount', 0) / 100
+            logger.error("🚨 [WEBHOOK ALERT] Dispute created for order %s. Amount: %s", order_id, amount_disputed)
+            # Add an alert to the order notes, keep the current status
+            alert_note = f"🚨 BANK DISPUTE CREATED for Rs. {amount_disputed}! Check Stripe Dashboard immediately."
+            await self.repo.update_order_status_via_rpc(order_id, current_status, alert_note)

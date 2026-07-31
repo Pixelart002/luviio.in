@@ -136,3 +136,28 @@ class AsyncPaymentRepository:
         except Exception as exc:
             logger.error("DB Error updating payment intent for order %s: %s", order_id, exc, exc_info=True)
             raise
+    
+    
+    # 🔥 NAYE WEBHOOK HELPER METHODS NEECHE ADD KARO:
+    async def get_order_by_payment_intent(self, pi_id: str) -> Optional[Dict[str, Any]]:
+        """Used by webhook to find an order via its Stripe Payment Intent ID."""
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await admin_sb.table("orders").select("*").eq("stripe_payment_intent", pi_id).maybe_single().execute()
+            return getattr(res, "data", None)
+        except Exception as exc:
+            logger.error("DB Error fetching order by PI %s: %s", pi_id, exc, exc_info=True)
+            return None
+
+    async def update_order_status_via_rpc(self, order_id: str, new_status: str, notes: str) -> None:
+        """Used by webhook to push FSM updates like Refunds or Dispute Alerts."""
+        admin_sb = await get_async_admin_supabase()
+        try:
+            await admin_sb.rpc("rpc_admin_update_order_status", {
+                "p_order_id": order_id,
+                "p_new_status": new_status,
+                "p_notes": notes
+            }).execute()
+        except Exception as exc:
+            logger.error("Webhook RPC Error updating status for %s: %s", order_id, exc, exc_info=True)
+        

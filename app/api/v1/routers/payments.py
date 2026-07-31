@@ -4,7 +4,7 @@ Payments Router
 Path: app/api/v1/routers/payments.py
 """
 from typing import Any, Dict
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from slowapi import Limiter
 
 from app.core.dependencies import get_current_user, get_user_id_strict
@@ -80,3 +80,22 @@ async def notify_payment_failed(
     if hasattr(request.state, "actions"): 
         request.state.actions.append(f"Intercepted client-side drop on Intent {payload.payment_intent_id[:10]}...")
     return success_response(message="Failure logged. User can safely retry.")
+
+# 🔥 NAYA WEBHOOK ENDPOINT
+@router.post("/webhook")
+async def stripe_webhook(request: Request):
+    """Listens to Stripe Webhooks for background async state synchronization."""
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    if not sig_header:
+        return Response(content="Missing signature", status_code=400)
+
+    try:
+        await PaymentService().handle_webhook(payload, sig_header)
+    except ValueError as e:
+        return Response(content=str(e), status_code=400)
+    except Exception as e:
+        return Response(content="Internal Server Error", status_code=500)
+
+    return Response(content="Success", status_code=200)
