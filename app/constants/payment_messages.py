@@ -28,7 +28,25 @@ class PaymentSecurityMessages:
     INVALID_METADATA = "Stripe webhook payload is missing required order binding metadata."
     ZERO_AMOUNT_RETRY = "This order has a zero or invalid balance and cannot be retried."
 
+    # 🔥 NEW -- lifecycle hardening messages
+    ORDER_NO_LONGER_RETRYABLE = (
+        "This order can no longer be retried -- it was cancelled because checkout "
+        "wasn't completed in time and the reserved stock was released. "
+        "Please start a new order."
+    )
+    ORDER_CANCELLED_AUTO_REFUNDED = (
+        "This order was already cancelled before your payment went through. "
+        "Your payment has been automatically refunded and will reflect in your "
+        "account within 5-10 business days."
+    )
+
 class PaymentRules:
     MIN_ORDER_AMOUNT_PAISE = 5000  # ₹50 minimum order
     BRUTE_FORCE_MAX_ATTEMPTS = 5
     BRUTE_FORCE_WINDOW_SEC = 60
+
+    # 🔥 NEW -- how long a 'pending' order is allowed to sit with no
+    # successful payment before the abandoned-checkout sweep cancels it
+    # and releases the reserved stock. Kept here (not hardcoded in the
+    # cron file) so it's one single source of truth.
+    ABANDONED_ORDER_TIMEOUT_MINUTES = 30

@@ -10,6 +10,25 @@ Architecture & Fixes:
   * Enterprise Snapshots: Captures full B2B/B2C Shipping & Billing address telemetry natively.
   * Idempotent Checkout: Prevents double-charging via UUID-based idempotency keys.
   * Null Intent Guard: Prevents 502 Bad Gateway crashes when Stripe ID is None or Empty in DB.
+
+Lifecycle-hardening changes in this version (payment-failure / webhook fix):
+  * A `payments` row is now created the moment ANY PaymentIntent is created
+    -- first attempt or retry -- so a failed attempt is never missing from
+    the payments table.
+  * `payment_intent.payment_failed` no longer cancels the order. Stripe
+    keeps a declined PaymentIntent alive & confirmable, so customers can
+    retry on the SAME intent -- immediately cancelling would orphan a
+    perfectly good retry. We only record the failed attempt now.
+  * Only an explicit `payment_intent.canceled` event (fired by our own
+    abandoned-checkout cron, an admin action, or Stripe itself) triggers
+    cancel_order_and_release_stock.
+  * `retry_payment` now explicitly refuses to retry a cancelled/refunded
+    order instead of silently handing back a client_secret for a dead order.
+  * `confirm_payment` and the webhook's success handler now both check for
+    the 'ORDER_ALREADY_CANCELLED' result and auto-refund via Stripe instead
+    of ever letting a cancelled order flip back to 'paid'.
+  * Webhook processing is now idempotent against Stripe's at-least-once
+    delivery via a webhook-event ledger.
 """
 import time
 import logging
@@ -93,14 +112,23 @@ class PaymentService:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PaymentSecurityMessages.ZERO_AMOUNT_RETRY)
                 try:
                     new_intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_RECOVERY", user_id, f"aot_rec_{clean_idem_key}_{int(time.time())}")
-                    await self.repo.update_order_payment_intent(existing["id"], new_intent["id"])
+                    linked = await self.repo.update_order_payment_intent(existing["id"], new_intent["id"])
+                    if not linked:
+                        try:
+                            await run_in_threadpool(self.provider.cancel_intent, new_intent["id"])
+                        except Exception:
+                            pass
+                        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
                     await run_in_threadpool(self.provider.update_intent_metadata, new_intent["id"], {"order_id": existing["id"], "user_id": user_id})
+                    await self.repo.create_or_touch_payment_intent_record(existing["id"], user_id, new_intent["id"], amount_paise / 100)
                     return {
                         "client_secret": new_intent["client_secret"], 
                         "payment_intent_id": new_intent["id"], 
                         "order_id": existing["id"],
                         "order_number": existing.get("order_number", "")
                     }
+                except HTTPException:
+                    raise
                 except Exception as exc:
                     logger.error("[PAYMENT ERROR] Recovery intent creation failed: %s", exc)
                     raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
@@ -214,7 +242,14 @@ class PaymentService:
         try:
             pending_order = await self.repo.create_pending_order_with_reservation(order_data, items_to_deduct)
             await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
-            
+
+            # 🔥 FIX (Problem 1): write the payments row NOW, not only on success.
+            # This is what guarantees the payments table never has a "hole" for
+            # a PaymentIntent that later fails.
+            await self.repo.create_or_touch_payment_intent_record(
+                pending_order["id"], user_id, intent["id"], amount_paise / 100
+            )
+
             try:
                 from app.services.cart.service import CartService
                 await CartService().clear_cart(user_id)
@@ -261,6 +296,25 @@ class PaymentService:
         if result == "ALREADY_PAID":
             return {"status": OrderStatus.PAID.value, "order_id": order_id, "message": PaymentMessages.ALREADY_SETTLED}
 
+        # 🔥 FIX (Problem 3 / Scenario B): the order was cancelled (stock
+        # already released -- possibly resold) before this payment landed.
+        # Never resurrect it as 'paid'. Refund the customer automatically
+        # and surface a clear message instead of a confusing success state.
+        if result == "ORDER_ALREADY_CANCELLED":
+            logger.critical(
+                "[PAYMENT] User %s successfully paid Intent %s but Order %s was already "
+                "cancelled. Auto-refunding to avoid an unfulfillable paid order.",
+                user_id[:8], pi_id, order_id
+            )
+            try:
+                await run_in_threadpool(self.provider.process_refund, pi_id)
+            except Exception as refund_exc:
+                logger.error("[PAYMENT] Auto-refund FAILED for orphaned success %s: %s -- needs manual refund.", pi_id, refund_exc)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED
+            )
+
         if existing_order:
             existing_order["status"] = OrderStatus.PAID.value
         
@@ -274,10 +328,22 @@ class PaymentService:
     async def retry_payment(self, user_id: str, order_id: str) -> Dict[str, Any]:
         existing_order = await self.repo.get_order_by_id(order_id)
         PaymentPolicy.assert_can_retry(existing_order, user_id)
-            
-        if existing_order and existing_order.get("status") == OrderStatus.PAID.value:
+
+        current_status = existing_order.get("status") if existing_order else None
+
+        if current_status == OrderStatus.PAID.value:
             return {"status": OrderStatus.PAID.value, "message": PaymentMessages.RETRY_SUCCESSFUL}
-            
+
+        # 🔥 FIX (Scenario A/B): an order can only reach 'cancelled' now via
+        # an explicit PaymentIntent cancellation or the abandoned-checkout
+        # timeout sweep -- never from a single card decline. If it's here,
+        # the retry window has genuinely closed and stock is gone.
+        if current_status in (OrderStatus.CANCELLED.value, OrderStatus.REFUNDED.value):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE
+            )
+
         amount_paise = self._paise(existing_order.get("total_amount", 0) if existing_order else 0)
         
         if amount_paise < PaymentRules.MIN_ORDER_AMOUNT_PAISE:
@@ -293,7 +359,13 @@ class PaymentService:
             intent = await run_in_threadpool(self.provider.retrieve_intent, pi_id)
             
             if intent.get("status") == "succeeded":
-                await self.repo.settle_order_transaction(order_id, pi_id, intent.get("amount", 0) / 100, user_id)
+                result = await self.repo.settle_order_transaction(order_id, pi_id, intent.get("amount", 0) / 100, user_id)
+                if result == "ORDER_ALREADY_CANCELLED":
+                    try:
+                        await run_in_threadpool(self.provider.process_refund, pi_id)
+                    except Exception:
+                        pass
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)
                 return {"status": OrderStatus.PAID.value, "message": PaymentMessages.RETRY_SUCCESSFUL}
                 
             client_secret = intent.get("client_secret")
@@ -304,6 +376,8 @@ class PaymentService:
 
             return {"client_secret": client_secret, "payment_intent_id": intent.get("id"), "order_id": order_id}
             
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.warning("[PAYMENT RETRY] Stripe lookup failed for %s (%s). Falling back to new intent...", pi_id, exc)
             return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise)
@@ -318,24 +392,60 @@ class PaymentService:
                 user_id, 
                 f"retry_pi_{order_id}_{int(time.time())}"
             )
-            await self.repo.update_order_payment_intent(order_id, new_intent["id"])
+            linked = await self.repo.update_order_payment_intent(order_id, new_intent["id"])
+            if not linked:
+                # 🔥 FIX: order flipped to a terminal state (cron / another
+                # webhook) in the moment between our read and this write.
+                # Don't hand back a client_secret for an intent that isn't
+                # actually attached to a live order -- cancel it on Stripe
+                # too so it can never be confirmed later.
+                try:
+                    await run_in_threadpool(self.provider.cancel_intent, new_intent["id"])
+                except Exception:
+                    pass
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE
+                )
+
             await run_in_threadpool(self.provider.update_intent_metadata, new_intent["id"], {"order_id": order_id, "user_id": user_id})
+
+            # 🔥 FIX (Problem 1): every retry gets its own payments row too.
+            await self.repo.create_or_touch_payment_intent_record(order_id, user_id, new_intent["id"], amount_paise / 100)
             
             return {
                 "client_secret": new_intent.get("client_secret"), 
                 "payment_intent_id": new_intent.get("id"), 
                 "order_id": order_id
             }
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.error("[PAYMENT RETRY] Critical failure creating replacement intent: %s", exc, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY, 
                 detail=PaymentSecurityMessages.PAYMENT_FAILED
             ) from exc
-            
-    
 
-    # 🔥 NAYA WEBHOOK HANDLER
+    async def record_client_reported_failure(self, pi_id: str, reason: str) -> None:
+        """
+        Backs the /notify-failed endpoint. This is a best-effort, client-
+        reported signal (the browser saw Stripe.js return an error) -- it
+        is NOT authoritative and never touches order status. It just gets
+        the failed attempt into the payments table a little faster than
+        waiting for the webhook, for support/analytics visibility.
+        """
+        order = await self.repo.get_order_by_payment_intent(pi_id)
+        if not order:
+            return
+        await self.repo.mark_payment_failed(
+            order["id"], order.get("customer_id"), pi_id,
+            float(order.get("total_amount") or 0), reason=reason or "Client-reported failure"
+        )
+
+    # --------------------------------------------------------------------------
+    # WEBHOOK HANDLER
+    # --------------------------------------------------------------------------
     async def handle_webhook(self, payload: bytes, sig_header: str) -> None:
         """Handles background events from Stripe (Refunds, Disputes, Failures, Success)."""
         try:
@@ -344,6 +454,7 @@ class PaymentService:
             logger.error("Webhook verification failed: %s", e)
             raise ValueError("Invalid Stripe Signature")
 
+        event_id = event.get("id")
         event_type = event.get("type")
         obj = event.get("data", {}).get("object", {})
 
@@ -353,6 +464,15 @@ class PaymentService:
         if not pi_id:
             logger.warning("[WEBHOOK] Ignored %s - No Payment Intent ID found in payload.", event_type)
             return
+
+        # 🔥 FIX: idempotency -- Stripe retries webhooks on any non-2xx/timeout
+        # response, and can redeliver the same event more than once regardless.
+        # Without this, a retried delivery could double-process an event.
+        if event_id:
+            is_new = await self.repo.record_webhook_event(event_id, event_type, pi_id)
+            if not is_new:
+                logger.info("[WEBHOOK] Duplicate delivery of event %s (%s) ignored.", event_id, event_type)
+                return
 
         order = await self.repo.get_order_by_payment_intent(pi_id)
         if not order:
@@ -369,15 +489,43 @@ class PaymentService:
         if event_type == "payment_intent.succeeded":
             if current_status == OrderStatus.PENDING.value:
                 amount = obj.get("amount", 0) / 100
-                await self.repo.settle_order_transaction(order_id, pi_id, amount, customer_id)
-                logger.info("[WEBHOOK] Settled pending order %s automatically via webhook.", order_id[:8])
+                result = await self.repo.settle_order_transaction(order_id, pi_id, amount, customer_id)
+                if result == "ORDER_ALREADY_CANCELLED":
+                    # 🔥 FIX (Scenario B, race with the abandoned-checkout sweep):
+                    # payment succeeded microseconds after we cancelled + released
+                    # stock. Never flip the order back to paid -- refund instead.
+                    logger.critical(
+                        "🚨 [WEBHOOK ALERT] Payment %s succeeded for already-cancelled Order %s. Issuing auto-refund.",
+                        pi_id, order_id
+                    )
+                    try:
+                        await run_in_threadpool(self.provider.process_refund, pi_id)
+                    except Exception as refund_exc:
+                        logger.error("[WEBHOOK] Auto-refund FAILED for orphaned success %s: %s -- needs manual refund.", pi_id, refund_exc)
+                else:
+                    logger.info("[WEBHOOK] Settled pending order %s automatically via webhook.", order_id[:8])
+            # else: already paid / terminal -- nothing to do, this is a safe no-op.
 
-        # EVENT 2 & 3: CANCELED OR FAILED
-        elif event_type in ["payment_intent.canceled", "payment_intent.payment_failed"]:
+        # EVENT 2: PAYMENT FAILED -- record only, DO NOT cancel.
+        # 🔥 FIX (Problem 2 & 3, Scenario A): Stripe keeps a declined
+        # PaymentIntent alive & confirmable so the customer can retry on the
+        # SAME intent. Cancelling the order here would kill that retry path
+        # and release stock that the very next attempt might still need.
+        elif event_type == "payment_intent.payment_failed":
             if current_status == OrderStatus.PENDING.value:
-                # Stock release and cancel using existing safe RPC
-                await self.repo.release_abandoned_order(order_id)
-                logger.info("[WEBHOOK] Cancelled pending order %s and released stock due to payment failure/cancel.", order_id[:8])
+                reason = (obj.get("last_payment_error") or {}).get("message", "Payment failed")
+                error_code = (obj.get("last_payment_error") or {}).get("code")
+                amount = obj.get("amount", 0) / 100
+                await self.repo.mark_payment_failed(order_id, customer_id, pi_id, amount, reason=reason, error_code=error_code)
+                logger.info("[WEBHOOK] Recorded failed attempt for Order %s (PI %s): %s", order_id[:8], pi_id, reason)
+
+        # EVENT 3: EXPLICIT CANCELLATION -- THIS is the terminal signal.
+        # Fired when our abandoned-checkout cron (or an admin, or Stripe
+        # itself) actually cancels the PaymentIntent via the API.
+        elif event_type == "payment_intent.canceled":
+            if current_status == OrderStatus.PENDING.value:
+                await self.repo.release_abandoned_order(order_id, reason=f"stripe_event:{event_type}")
+                logger.info("[WEBHOOK] Cancelled pending order %s and released stock (PI explicitly canceled).", order_id[:8])
 
         # EVENT 4: REFUNDED
         elif event_type == "charge.refunded":

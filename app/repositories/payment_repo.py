@@ -2,6 +2,21 @@
 Payments Repository -- ACID & JIT Hybrid Flow (Enterprise Grade & GST Ready)
 ============================================================================
 Path: app/repositories/payment_repo.py
+
+Lifecycle-hardening changes in this version:
+  * create_or_touch_payment_intent_record() -- eagerly writes a `payments`
+    row the instant a Stripe intent is created (first attempt AND every
+    retry). Guarantees a payments row exists for every attempt, including
+    ones that later fail, before any webhook has even arrived.
+  * mark_payment_failed() -- records a failed attempt via the `mark_payment_failed`
+    RPC, which never downgrades a row that's already succeeded/refunded.
+  * record_webhook_event() -- idempotency ledger so a retried Stripe webhook
+    delivery is never processed twice.
+  * update_order_payment_intent() -- now returns whether the link actually
+    happened (order might have flipped to a terminal state concurrently),
+    instead of silently no-op'ing.
+  * release_abandoned_order() -- accepts a `reason` for the cancellation note.
+  * list_stale_pending_orders() -- powers the abandoned-checkout cron sweep.
 """
 import logging
 from typing import Any, Dict, List, Optional
@@ -101,6 +116,13 @@ class AsyncPaymentRepository:
             raise
 
     async def settle_order_transaction(self, order_id: str, pi_id: str, amount: float, user_id: str) -> str:
+        """
+        Returns one of: 'SETTLED' | 'ALREADY_PAID' | 'ORDER_ALREADY_CANCELLED'.
+        Callers MUST handle 'ORDER_ALREADY_CANCELLED' -- it means the customer's
+        payment succeeded on Stripe's side after the order was already
+        cancelled + stock released on ours. The RPC itself never resurrects
+        the order; the caller is responsible for triggering a refund.
+        """
         admin_sb = await get_async_admin_supabase()
         try:
             res = await admin_sb.rpc(
@@ -113,12 +135,12 @@ class AsyncPaymentRepository:
             logger.error("RPC Error settling order %s: %s", order_id, exc, exc_info=True)
             raise
 
-    async def release_abandoned_order(self, order_id: str) -> str:
+    async def release_abandoned_order(self, order_id: str, reason: str = "order_cancelled") -> str:
         admin_sb = await get_async_admin_supabase()
         try:
             res = await admin_sb.rpc(
                 "cancel_order_and_release_stock",
-                {"p_order_id": order_id}
+                {"p_order_id": order_id, "p_reason": reason}
             ).execute()
             data = getattr(res, "data", None)
             return str(data) if data else "FAILED"
@@ -126,19 +148,102 @@ class AsyncPaymentRepository:
             logger.error("RPC Error releasing stock for order %s: %s", order_id, exc, exc_info=True)
             raise
 
-    async def update_order_payment_intent(self, order_id: str, new_pi_id: str) -> None:
+    async def update_order_payment_intent(self, order_id: str, new_pi_id: str) -> bool:
+        """
+        Returns True if the new intent was actually linked, False if the
+        order was no longer 'pending' (e.g. cancelled by the abandoned-
+        checkout sweep or another webhook in a race). Callers MUST check
+        this -- previously this failure mode was silent, meaning a
+        client_secret could be handed back for an intent that was never
+        actually attached to a live order.
+        """
         admin_sb = await get_async_admin_supabase()
         try:
-            # 🔥 FIX: Added missing closing bracket '}' for the update payload dictionary
-            await admin_sb.table("orders").update({
+            res = await admin_sb.table("orders").update({
                 "stripe_payment_intent": new_pi_id
             }).eq("id", order_id).eq("status", "pending").execute()
+            linked = bool(getattr(res, "data", None))
+            if not linked:
+                logger.warning(
+                    "[PAYMENT] Refused to link new intent %s -- Order %s is no longer 'pending'.",
+                    new_pi_id, order_id
+                )
+            return linked
         except Exception as exc:
             logger.error("DB Error updating payment intent for order %s: %s", order_id, exc, exc_info=True)
             raise
-    
-    
-    # 🔥 NAYE WEBHOOK HELPER METHODS NEECHE ADD KARO:
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 🔥 NEW: payments table -- never-missing, self-healing writes
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def create_or_touch_payment_intent_record(
+        self,
+        order_id: str,
+        user_id: Optional[str],
+        pi_id: str,
+        amount: float,
+    ) -> None:
+        """
+        Eagerly writes a `payments` row the moment a PaymentIntent is
+        created -- both for the first checkout attempt and for every retry
+        that generates a fresh intent. This is what guarantees a payments
+        row exists for every attempt, including ones that later fail, even
+        before any Stripe webhook has arrived.
+
+        Non-fatal by design: if this write fails, mark_payment_failed() and
+        settle_order_transaction() both INSERT ... ON CONFLICT as well, so
+        a missing row here self-heals the moment Stripe sends its first
+        event for this intent.
+        """
+        admin_sb = await get_async_admin_supabase()
+        try:
+            await admin_sb.table("payments").upsert(
+                {
+                    "order_id": order_id,
+                    "user_id": user_id,
+                    "stripe_payment_intent_id": pi_id,
+                    "amount": amount,
+                    "amount_paise": int(round(amount * 100)),
+                    "currency": "INR",
+                    "status": "requires_payment_method",
+                },
+                on_conflict="stripe_payment_intent_id",
+            ).execute()
+        except Exception as exc:
+            logger.error("DB Error creating payment record for PI %s: %s", pi_id, exc, exc_info=True)
+
+    async def mark_payment_failed(
+        self,
+        order_id: str,
+        user_id: Optional[str],
+        pi_id: str,
+        amount: float,
+        reason: Optional[str] = None,
+        error_code: Optional[str] = None,
+    ) -> None:
+        """
+        Records a failed attempt. Never downgrades a payments row that's
+        already 'succeeded'/'refunded' -- guards against Stripe delivering
+        a stale payment_failed event out of order.
+        """
+        admin_sb = await get_async_admin_supabase()
+        try:
+            await admin_sb.rpc("mark_payment_failed", {
+                "p_order_id": order_id,
+                "p_user_id": user_id,
+                "p_pi_id": pi_id,
+                "p_amount": amount,
+                "p_reason": reason,
+                "p_error_code": error_code,
+            }).execute()
+        except Exception as exc:
+            logger.error("RPC Error marking payment %s failed: %s", pi_id, exc, exc_info=True)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 🔥 NEW: webhook helpers
+    # ─────────────────────────────────────────────────────────────────────
+
     async def get_order_by_payment_intent(self, pi_id: str) -> Optional[Dict[str, Any]]:
         """Used by webhook to find an order via its Stripe Payment Intent ID."""
         admin_sb = await get_async_admin_supabase()
@@ -148,6 +253,32 @@ class AsyncPaymentRepository:
         except Exception as exc:
             logger.error("DB Error fetching order by PI %s: %s", pi_id, exc, exc_info=True)
             return None
+
+    async def record_webhook_event(self, event_id: str, event_type: str, pi_id: Optional[str]) -> bool:
+        """
+        Idempotency ledger. Returns True the first time we see this Stripe
+        event id (caller should process it), False on a duplicate delivery
+        (caller should skip it -- Stripe retries webhooks on any non-2xx
+        response or timeout, and can deliver the same event more than once
+        even without an error on our end).
+
+        Fails OPEN on unexpected DB errors: a hiccup in the ledger table
+        should never cause us to silently drop a legitimate webhook.
+        """
+        admin_sb = await get_async_admin_supabase()
+        try:
+            await admin_sb.table("stripe_webhook_events").insert({
+                "event_id": event_id,
+                "event_type": event_type,
+                "payment_intent_id": pi_id,
+            }).execute()
+            return True
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "duplicate key" in msg or "unique" in msg or "23505" in msg:
+                return False
+            logger.error("DB Error recording webhook event %s: %s", event_id, exc, exc_info=True)
+            return True
 
     async def update_order_status_via_rpc(self, order_id: str, new_status: str, notes: str) -> None:
         """Used by webhook to push FSM updates like Refunds or Dispute Alerts."""
@@ -160,4 +291,19 @@ class AsyncPaymentRepository:
             }).execute()
         except Exception as exc:
             logger.error("Webhook RPC Error updating status for %s: %s", order_id, exc, exc_info=True)
-        
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 🔥 NEW: abandoned-checkout cron support
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def list_stale_pending_orders(self, cutoff_iso: str) -> List[Dict[str, Any]]:
+        """Orders stuck in 'pending' created before `cutoff_iso` -- candidates for the abandoned-checkout sweep."""
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await admin_sb.table("orders").select(
+                "id, customer_id, stripe_payment_intent, created_at"
+            ).eq("status", "pending").lt("created_at", cutoff_iso).execute()
+            return getattr(res, "data", None) or []
+        except Exception as exc:
+            logger.error("DB Error listing stale pending orders: %s", exc, exc_info=True)
+            return []

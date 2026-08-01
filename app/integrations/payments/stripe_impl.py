@@ -88,8 +88,12 @@ class StripeProvider(PaymentProvider):
                 secret=getattr(settings, "STRIPE_WEBHOOK_SECRET", ""),
             )
             return {
+                # 🔥 FIX: event id is required for webhook-delivery idempotency
+                # (Stripe retries webhooks on any non-2xx / timeout response,
+                # so without this we have no way to detect "already processed").
+                "id": event["id"],
                 "type": event["type"],
-                "data": event["data"]
+                "data": event["data"],
             }
         except (ValueError, stripe.error.SignatureVerificationError) as e:
             logger.error("Webhook signature verification failed: %s", e)
@@ -102,3 +106,19 @@ class StripeProvider(PaymentProvider):
         except stripe.error.StripeError as e:
             logger.error("Stripe Refund failed: %s", e)
             return False
+
+    # 🔥 NEW
+    def cancel_intent(self, payment_intent_id: str) -> Dict[str, Any]:
+        try:
+            intent = stripe.PaymentIntent.cancel(payment_intent_id)
+            return {
+                "id": intent.id,
+                "status": intent.status,
+            }
+        except stripe.error.StripeError as e:
+            # Not fatal for the caller -- the intent may already be in a
+            # state Stripe won't let us cancel (e.g. already succeeded, or
+            # already canceled). Callers should log and continue with the
+            # DB-side cancellation regardless.
+            logger.warning("Stripe Intent cancel failed for %s: %s", payment_intent_id, e)
+            raise

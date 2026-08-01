@@ -79,7 +79,14 @@ async def notify_payment_failed(
 ) -> Dict[str, Any]:
     if hasattr(request.state, "actions"): 
         request.state.actions.append(f"Intercepted client-side drop on Intent {payload.payment_intent_id[:10]}...")
-    return success_response(message="Failure logged. User can safely retry.")
+    # 🔥 FIX: this used to be a pure no-op. Now it actually gets the failed
+    # attempt into the payments table immediately (best-effort, client-
+    # reported -- never touches order status; the webhook remains the
+    # authoritative source of truth).
+    await PaymentService().record_client_reported_failure(
+        payload.payment_intent_id, payload.error_message or "Client reported failure"
+    )
+    return success_response(message="Failure logged. You can safely retry.")
 
 # 🔥 NAYA WEBHOOK ENDPOINT
 @router.post("/webhook")
