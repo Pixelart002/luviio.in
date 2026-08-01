@@ -33,7 +33,7 @@ async def register(request: Request, payload: RegisterRequest):
     
     if hasattr(request.state, "actions"):
         request.state.actions.extend(["Supabase Auth identity established", "Created profile metadata in DB", "Queued async Welcome Email"])
-    return success_response(message=AuthMessages.REGISTER_SUCCESS, status_code=status.HTTP_201_CREATED)
+    return success_response(message=AuthMessages.REGISTER_SUCCESS)
 
 @router.post("/login", status_code=status.HTTP_200_OK)
 @limiter.limit("5/minute")
