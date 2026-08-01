@@ -1,2 +1,2 @@
 /tests/test.py
-/migrations/add_cancel_order_and_release_stock.sql
+**/migrations/
