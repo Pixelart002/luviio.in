@@ -40,7 +40,7 @@ async def subscribe(request: Request, payload: PushSubscription, user_id: str = 
             request.state.actions.append(f"Purged {result['cleaned']} stale device subscriptions")
         request.state.actions.append("Device subscription securely registered to DB ledger")
         
-    return success_response(data=result, message=result["message"], status_code=status.HTTP_201_CREATED)
+    return success_response(data=result, message=result["message"])
 
 @router.delete("/unsubscribe", status_code=status.HTTP_200_OK)
 async def unsubscribe(request: Request, payload: PushSubscription, current: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
