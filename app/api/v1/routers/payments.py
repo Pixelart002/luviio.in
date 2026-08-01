@@ -32,6 +32,7 @@ async def create_payment_intent(
     if hasattr(request.state, "actions"): 
         request.state.actions.append(f"Initiating Amazon-Style AOT Checkout -> Target UID: {user_id[:8]}...")
     client_ip = get_real_ip(request)
+    user_agent = request.headers.get("user-agent", "")
     
     billing_id = str(payload.billing_address_id) if payload.billing_address_id else None
     
@@ -40,7 +41,8 @@ async def create_payment_intent(
         client_ip, 
         payload.idempotency_key, 
         str(payload.shipping_address_id),
-        billing_id # Passed down!
+        billing_id, # Passed down!
+        user_agent=user_agent,
     )
     return success_response(data=data)
 
@@ -68,7 +70,9 @@ async def retry_payment(
 ) -> Dict[str, Any]:
     if hasattr(request.state, "actions"): 
         request.state.actions.append(f"Initiating Smart Paywall Retry for Order: {order_id[:8]}...")
-    data = await PaymentService().retry_payment(user_id, order_id)
+    client_ip = get_real_ip(request)
+    user_agent = request.headers.get("user-agent", "")
+    data = await PaymentService().retry_payment(user_id, order_id, client_ip=client_ip, user_agent=user_agent)
     return success_response(data=data)
 
 @router.post("/notify-failed")

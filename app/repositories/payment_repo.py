@@ -183,6 +183,8 @@ class AsyncPaymentRepository:
         user_id: Optional[str],
         pi_id: str,
         amount: float,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> None:
         """
         Eagerly writes a `payments` row the moment a PaymentIntent is
@@ -190,6 +192,12 @@ class AsyncPaymentRepository:
         that generates a fresh intent. This is what guarantees a payments
         row exists for every attempt, including ones that later fail, even
         before any Stripe webhook has arrived.
+
+        `attempt_number` is assigned automatically by a DB trigger, and this
+        row's insert/update is mirrored into `payment_attempts` (the
+        append-only audit log) by another DB trigger -- see migration 005.
+        ip_address/user_agent ride along here purely as fraud/support
+        metadata; they never affect order or payment status logic.
 
         Non-fatal by design: if this write fails, mark_payment_failed() and
         settle_order_transaction() both INSERT ... ON CONFLICT as well, so
@@ -207,11 +215,30 @@ class AsyncPaymentRepository:
                     "amount_paise": int(round(amount * 100)),
                     "currency": "INR",
                     "status": "requires_payment_method",
+                    "ip_address": ip_address,
+                    "user_agent": user_agent,
                 },
                 on_conflict="stripe_payment_intent_id",
             ).execute()
         except Exception as exc:
             logger.error("DB Error creating payment record for PI %s: %s", pi_id, exc, exc_info=True)
+
+    async def get_attempt_count(self, order_id: str) -> int:
+        """
+        Number of distinct PaymentIntents (attempts) already tried for this
+        order -- i.e. how many rows exist in `payments` for it. Used to cap
+        retries the way Amazon does: after too many failed attempts on one
+        order, further retries are blocked until the abandoned-checkout
+        sweep eventually cancels it, rather than letting someone hammer the
+        same order indefinitely.
+        """
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await admin_sb.table("payments").select("id", count="exact").eq("order_id", order_id).execute()
+            return getattr(res, "count", None) or 0
+        except Exception as exc:
+            logger.error("DB Error counting payment attempts for order %s: %s", order_id, exc, exc_info=True)
+            return 0
 
     async def mark_payment_failed(
         self,

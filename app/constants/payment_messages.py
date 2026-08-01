@@ -39,6 +39,10 @@ class PaymentSecurityMessages:
         "Your payment has been automatically refunded and will reflect in your "
         "account within 5-10 business days."
     )
+    TOO_MANY_ATTEMPTS = (
+        "Too many failed payment attempts on this order. Please wait a few "
+        "minutes, or place a new order to try a different payment method."
+    )
 
 class PaymentRules:
     MIN_ORDER_AMOUNT_PAISE = 5000  # ₹50 minimum order

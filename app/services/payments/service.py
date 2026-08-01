@@ -29,6 +29,23 @@ Lifecycle-hardening changes in this version (payment-failure / webhook fix):
     of ever letting a cancelled order flip back to 'paid'.
   * Webhook processing is now idempotent against Stripe's at-least-once
     delivery via a webhook-event ledger.
+
+Round 2 (payment_attempts audit trail + Amazon-style attempt limiting):
+  * Every PaymentIntent create now carries ip_address/user_agent into the
+    payments row (previously `client_ip` was accepted but never used
+    anywhere -- dead parameter). A DB trigger mirrors every payments
+    status change into the append-only `payment_attempts` log (see
+    migration 005) -- no Python code has to remember to log an attempt.
+  * `_create_and_link_replacement_intent` now enforces
+    PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS -- once an order has racked up
+    too many attempts, further retries are blocked (429) instead of
+    letting a bad card or a script hammer the same order forever. The
+    order itself is untouched; the abandoned-checkout sweep still cleans
+    it up on its normal timeout.
+  * The inline "recovery" intent-creation branch inside create_intent()
+    was a near-duplicate of _create_and_link_replacement_intent() --
+    removed; it now just calls the shared helper, so the attempt cap and
+    metadata capture apply there too automatically.
 """
 import time
 import logging
@@ -71,7 +88,8 @@ class PaymentService:
         client_ip: str, 
         idempotency_key: str, 
         address_id: str,
-        billing_address_id: Optional[str] = None
+        billing_address_id: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> Dict[str, Any]:
         
         try:
@@ -110,28 +128,16 @@ class PaymentService:
                 amount_paise = self._paise(existing.get("total_amount", 0))
                 if amount_paise < PaymentRules.MIN_ORDER_AMOUNT_PAISE:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PaymentSecurityMessages.ZERO_AMOUNT_RETRY)
-                try:
-                    new_intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_RECOVERY", user_id, f"aot_rec_{clean_idem_key}_{int(time.time())}")
-                    linked = await self.repo.update_order_payment_intent(existing["id"], new_intent["id"])
-                    if not linked:
-                        try:
-                            await run_in_threadpool(self.provider.cancel_intent, new_intent["id"])
-                        except Exception:
-                            pass
-                        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
-                    await run_in_threadpool(self.provider.update_intent_metadata, new_intent["id"], {"order_id": existing["id"], "user_id": user_id})
-                    await self.repo.create_or_touch_payment_intent_record(existing["id"], user_id, new_intent["id"], amount_paise / 100)
-                    return {
-                        "client_secret": new_intent["client_secret"], 
-                        "payment_intent_id": new_intent["id"], 
-                        "order_id": existing["id"],
-                        "order_number": existing.get("order_number", "")
-                    }
-                except HTTPException:
-                    raise
-                except Exception as exc:
-                    logger.error("[PAYMENT ERROR] Recovery intent creation failed: %s", exc)
-                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
+                # 🔥 FIX: reuse the single replacement-intent helper (was
+                # duplicated inline here before) -- this also means the
+                # attempt-count cap and ip/user_agent metadata capture apply
+                # here too, automatically, with no separate code path to
+                # keep in sync.
+                result = await self._create_and_link_replacement_intent(
+                    user_id, existing["id"], amount_paise, ip_address=client_ip, user_agent=user_agent
+                )
+                result["order_number"] = existing.get("order_number", "")
+                return result
 
             elif existing.get("status") == OrderStatus.PAID.value:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ALREADY_PAID)
@@ -247,7 +253,8 @@ class PaymentService:
             # This is what guarantees the payments table never has a "hole" for
             # a PaymentIntent that later fails.
             await self.repo.create_or_touch_payment_intent_record(
-                pending_order["id"], user_id, intent["id"], amount_paise / 100
+                pending_order["id"], user_id, intent["id"], amount_paise / 100,
+                ip_address=client_ip, user_agent=user_agent
             )
 
             try:
@@ -325,7 +332,7 @@ class PaymentService:
 
         return {"status": OrderStatus.PAID.value, "order_id": order_id, "message": PaymentMessages.CONFIRMED}
 
-    async def retry_payment(self, user_id: str, order_id: str) -> Dict[str, Any]:
+    async def retry_payment(self, user_id: str, order_id: str, client_ip: Optional[str] = None, user_agent: Optional[str] = None) -> Dict[str, Any]:
         existing_order = await self.repo.get_order_by_id(order_id)
         PaymentPolicy.assert_can_retry(existing_order, user_id)
 
@@ -353,7 +360,7 @@ class PaymentService:
             
         if not pi_id or not isinstance(pi_id, str) or len(pi_id.strip()) == 0:
             logger.info("[PAYMENT RETRY] No intent linked to Order %s. Generating fresh intent...", order_id[:8])
-            return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise)
+            return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise, ip_address=client_ip, user_agent=user_agent)
 
         try:
             intent = await run_in_threadpool(self.provider.retrieve_intent, pi_id)
@@ -372,7 +379,7 @@ class PaymentService:
             
             if intent.get("status") == "canceled" or not client_secret:
                 logger.warning("[PAYMENT RETRY] Intent %s is canceled/dead. Replacing...", pi_id)
-                return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise)
+                return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise, ip_address=client_ip, user_agent=user_agent)
 
             return {"client_secret": client_secret, "payment_intent_id": intent.get("id"), "order_id": order_id}
             
@@ -380,9 +387,25 @@ class PaymentService:
             raise
         except Exception as exc:
             logger.warning("[PAYMENT RETRY] Stripe lookup failed for %s (%s). Falling back to new intent...", pi_id, exc)
-            return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise)
+            return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise, ip_address=client_ip, user_agent=user_agent)
 
-    async def _create_and_link_replacement_intent(self, user_id: str, order_id: str, amount_paise: int) -> Dict[str, Any]:
+    async def _create_and_link_replacement_intent(
+        self, user_id: str, order_id: str, amount_paise: int,
+        ip_address: Optional[str] = None, user_agent: Optional[str] = None
+    ) -> Dict[str, Any]:
+        # 🔥 NEW (Amazon-style retry cap): block further retries once an
+        # order has racked up too many attempts. Keeps a single bad card
+        # (or a scripted attack) from hammering the same order forever --
+        # the order itself is untouched and will still get cleaned up by
+        # the abandoned-checkout sweep on its normal timeout.
+        attempt_count = await self.repo.get_attempt_count(order_id)
+        if attempt_count >= PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS:
+            logger.warning("[PAYMENT RETRY] Order %s hit the %d-attempt cap. Blocking further retries.", order_id[:8], PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=PaymentSecurityMessages.TOO_MANY_ATTEMPTS
+            )
+
         try:
             new_intent = await run_in_threadpool(
                 self.provider.create_payment_intent, 
@@ -411,7 +434,10 @@ class PaymentService:
             await run_in_threadpool(self.provider.update_intent_metadata, new_intent["id"], {"order_id": order_id, "user_id": user_id})
 
             # 🔥 FIX (Problem 1): every retry gets its own payments row too.
-            await self.repo.create_or_touch_payment_intent_record(order_id, user_id, new_intent["id"], amount_paise / 100)
+            await self.repo.create_or_touch_payment_intent_record(
+                order_id, user_id, new_intent["id"], amount_paise / 100,
+                ip_address=ip_address, user_agent=user_agent
+            )
             
             return {
                 "client_secret": new_intent.get("client_secret"), 

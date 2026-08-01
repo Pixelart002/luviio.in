@@ -2,6 +2,19 @@
 Order Repository — Async Enterprise Grade (HEAVILY LOGGED & GST READY)
 ======================================================================
 Path: app/repositories/order_repo.py
+
+🔥 FIX: cancel_order_and_restore_stock() used to do its own thing --
+status flip via `rpc_admin_update_order_status`, then a plain Python loop
+calling `increment_stock` once per item with NO row lock, NO stock_audit
+trail, and NO idempotency guard (call it twice -- e.g. a double-click, or
+this running at the same moment the payment webhook cancels the same
+order -- and stock gets restored TWICE). That was a second, divergent,
+weaker cancellation path living alongside the proper
+`cancel_order_and_release_stock` RPC used by the payment webhook.
+
+Both paths now go through the SAME atomic RPC: row-locked, idempotent,
+writes a stock_audit row per item, and is the single source of truth for
+"what does cancelling an order actually do".
 """
 import logging
 from typing import Any, Optional, Tuple, List
@@ -92,6 +105,14 @@ class AsyncOrderRepository:
             return None
 
     async def cancel_order_and_restore_stock(self, order_id: str, user_id: Optional[str] = None) -> Optional[dict[str, Any]]:
+        """
+        Customer- or admin-initiated cancellation. Delegates entirely to the
+        `cancel_order_and_release_stock` RPC -- the SAME one the payment
+        webhook and the abandoned-checkout cron use -- so there is exactly
+        ONE implementation of "cancel + restore stock" in the whole system:
+        row-locked, writes a stock_audit row per item, and idempotent
+        (calling it twice, or racing the webhook, can't double-restore stock).
+        """
         admin_sb = await get_async_admin_supabase()
         logger.info(f"[REPO:ORDERS] Cancelling order {order_id} and restoring stock.")
         try:
@@ -105,31 +126,19 @@ class AsyncOrderRepository:
                 logger.warning(f"[REPO:ORDERS] Cancel failed. Order {order_id} invalid state or access denied.")
                 return None
             
-            # 2. 🔥 EXECUTING THE NEW CASCADE RPC FOR CANCELLATION
-            res = await admin_sb.rpc("rpc_admin_update_order_status", {
+            # 2. 🔥 FIX: single atomic RPC -- no more separate status-flip +
+            # unlocked per-item increment_stock loop.
+            result = await admin_sb.rpc("cancel_order_and_release_stock", {
                 "p_order_id": order_id,
-                "p_new_status": "cancelled"
+                "p_reason": "customer_requested" if user_id else "admin_requested"
             }).execute()
-            
-            if not res or not res.data:
+
+            outcome = getattr(result, "data", None)
+            if outcome not in ("CANCELLED", "ALREADY_CANCELLED"):
+                logger.warning(f"[REPO:ORDERS] Unexpected outcome cancelling order {order_id}: {outcome}")
                 return None
-                
-            updated_order = res.data
-            
-            # 3. Restore stock
-            items_res = await admin_sb.table("order_items").select("product_id, quantity").eq("order_id", order_id).execute()
-            
-            for item in (items_res.data or []):
-                if item.get("product_id"):
-                    try:
-                        await admin_sb.rpc("increment_stock", {
-                            "p_id": item["product_id"],
-                            "p_qty": item["quantity"]
-                        }).execute()
-                    except Exception as e:
-                        logger.error(f"[REPO:ORDERS] Stock restore failed for product {item['product_id']}: {e}")
-            
-            return updated_order
+
+            return await self.get_order_by_id(order_id)
         except Exception as e:
             logger.error(f"[REPO:ORDERS] Error during cancel & restore for {order_id}: {e}", exc_info=True)
             return None
