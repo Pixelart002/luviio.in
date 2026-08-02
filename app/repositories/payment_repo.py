@@ -129,7 +129,7 @@ class AsyncPaymentRepository:
         try:
             res = await admin_sb.rpc(
                 "settle_order_transaction",
-                {"p_order_id": order_id, "p_payment_intent": pi_id, "p_amount": amount, "p_user_id": user_id}
+                {"p_order_id": order_id, "p_pi_id": pi_id, "p_amount": amount, "p_user_id": user_id}
             ).execute()
             data = getattr(res, "data", None)
             return str(data) if data else "FAILED"
@@ -208,25 +208,18 @@ class AsyncPaymentRepository:
         """
         admin_sb = await get_async_admin_supabase()
         try:
-            # ip_address and user_agent are excluded from the upsert payload
-            # because the payments.ip_address column is typed `inet` in
-            # production, and PostgREST does not implicitly cast a JSON string
-            # to inet -- sending a plain string raises:
-            #   "column ip_address is of type inet but expression is of type text"
-            # Migration 006 (migrations/006_ip_address_and_webhook_idempotency_fix.sql)
-            # converts the column to `text`; once that migration has been applied
-            # these fields can be re-added to the payload below.
-            payload: dict = {
-                "order_id": order_id,
-                "user_id": user_id,
-                "stripe_payment_intent_id": pi_id,
-                "amount": amount,
-                "amount_paise": int(round(amount * 100)),
-                "currency": "INR",
-                "status": "requires_payment_method",
-            }
             await admin_sb.table("payments").upsert(
-                payload,
+                {
+                    "order_id": order_id,
+                    "user_id": user_id,
+                    "stripe_payment_intent_id": pi_id,
+                    "amount": amount,
+                    "amount_paise": int(round(amount * 100)),
+                    "currency": "INR",
+                    "status": "requires_payment_method",
+                    "ip_address": ip_address,
+                    "user_agent": user_agent,
+                },
                 on_conflict="stripe_payment_intent_id",
             ).execute()
         except Exception as exc:
