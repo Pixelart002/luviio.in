@@ -10,8 +10,10 @@ Lifecycle-hardening changes in this version:
     ones that later fail, before any webhook has even arrived.
   * mark_payment_failed() -- records a failed attempt via the `mark_payment_failed`
     RPC, which never downgrades a row that's already succeeded/refunded.
-  * record_webhook_event() -- idempotency ledger so a retried Stripe webhook
-    delivery is never processed twice.
+  * record_webhook_event() / mark_webhook_event_processed() -- idempotency
+    ledger so a retried Stripe webhook delivery is never processed twice,
+    while a delivery that crashed mid-processing (never reached
+    mark_webhook_event_processed) is correctly allowed to be retried.
   * update_order_payment_intent() -- now returns whether the link actually
     happened (order might have flipped to a terminal state concurrently),
     instead of silently no-op'ing.
@@ -283,29 +285,48 @@ class AsyncPaymentRepository:
 
     async def record_webhook_event(self, event_id: str, event_type: str, pi_id: Optional[str]) -> bool:
         """
-        Idempotency ledger. Returns True the first time we see this Stripe
-        event id (caller should process it), False on a duplicate delivery
-        (caller should skip it -- Stripe retries webhooks on any non-2xx
-        response or timeout, and can deliver the same event more than once
-        even without an error on our end).
+        🔥 FIX: previously this marked an event as "seen" the instant it
+        arrived -- so if processing then crashed for ANY reason (a bug, a
+        transient DB error) and we returned 500, Stripe's retry would be
+        told "already handled, skip" and get a 200 back. Stripe stops
+        retrying after that. Net effect: a real successful payment could
+        get silently stuck in 'pending' forever, with no further signal
+        from Stripe. Confirmed in production logs after the ip_address
+        type bug caused settle_order_transaction to throw.
+
+        Now uses claim_webhook_event(), which only returns False (skip)
+        if this event was already marked FULLY PROCESSED by a prior,
+        successful run. A delivery for an event that was received but
+        never finished (crashed) is correctly treated as "not done yet"
+        and reprocessed -- safe, because every RPC in this flow already
+        guards its own idempotency (ALREADY_PAID / ALREADY_CANCELLED).
+
+        Caller MUST call mark_processed() after successfully handling the
+        event -- see handle_webhook().
 
         Fails OPEN on unexpected DB errors: a hiccup in the ledger table
         should never cause us to silently drop a legitimate webhook.
         """
         admin_sb = await get_async_admin_supabase()
         try:
-            await admin_sb.table("stripe_webhook_events").insert({
-                "event_id": event_id,
-                "event_type": event_type,
-                "payment_intent_id": pi_id,
+            res = await admin_sb.rpc("claim_webhook_event", {
+                "p_event_id": event_id,
+                "p_event_type": event_type,
+                "p_pi_id": pi_id,
             }).execute()
-            return True
+            should_process = getattr(res, "data", None)
+            return True if should_process is None else bool(should_process)
         except Exception as exc:
-            msg = str(exc).lower()
-            if "duplicate key" in msg or "unique" in msg or "23505" in msg:
-                return False
-            logger.error("DB Error recording webhook event %s: %s", event_id, exc, exc_info=True)
+            logger.error("DB Error claiming webhook event %s: %s", event_id, exc, exc_info=True)
             return True
+
+    async def mark_webhook_event_processed(self, event_id: str) -> None:
+        """Call ONLY after the event's handler has completed without raising."""
+        admin_sb = await get_async_admin_supabase()
+        try:
+            await admin_sb.rpc("mark_webhook_event_processed", {"p_event_id": event_id}).execute()
+        except Exception as exc:
+            logger.error("DB Error marking webhook event %s processed: %s", event_id, exc, exc_info=True)
 
     async def update_order_status_via_rpc(self, order_id: str, new_status: str, notes: str) -> None:
         """Used by webhook to push FSM updates like Refunds or Dispute Alerts."""

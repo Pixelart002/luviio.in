@@ -493,16 +493,20 @@ class PaymentService:
 
         # 🔥 FIX: idempotency -- Stripe retries webhooks on any non-2xx/timeout
         # response, and can redeliver the same event more than once regardless.
-        # Without this, a retried delivery could double-process an event.
+        # claim_webhook_event only returns False for an event that was already
+        # marked FULLY PROCESSED -- a delivery for an event that crashed
+        # mid-processing last time is correctly let through again.
         if event_id:
-            is_new = await self.repo.record_webhook_event(event_id, event_type, pi_id)
-            if not is_new:
-                logger.info("[WEBHOOK] Duplicate delivery of event %s (%s) ignored.", event_id, event_type)
+            should_process = await self.repo.record_webhook_event(event_id, event_type, pi_id)
+            if not should_process:
+                logger.info("[WEBHOOK] Duplicate delivery of event %s (%s) ignored (already processed).", event_id, event_type)
                 return
 
         order = await self.repo.get_order_by_payment_intent(pi_id)
         if not order:
             logger.warning("[WEBHOOK] Ignored %s - No order found in database for PI %s", event_type, pi_id)
+            if event_id:
+                await self.repo.mark_webhook_event_processed(event_id)
             return
 
         order_id = order["id"]
@@ -511,59 +515,76 @@ class PaymentService:
 
         logger.info("[WEBHOOK] Received %s for Order %s (Current Status: %s)", event_type, order_id[:8], current_status)
 
-        # EVENT 1: SUCCESS
-        if event_type == "payment_intent.succeeded":
-            if current_status == OrderStatus.PENDING.value:
-                amount = obj.get("amount", 0) / 100
-                result = await self.repo.settle_order_transaction(order_id, pi_id, amount, customer_id)
-                if result == "ORDER_ALREADY_CANCELLED":
-                    # 🔥 FIX (Scenario B, race with the abandoned-checkout sweep):
-                    # payment succeeded microseconds after we cancelled + released
-                    # stock. Never flip the order back to paid -- refund instead.
-                    logger.critical(
-                        "🚨 [WEBHOOK ALERT] Payment %s succeeded for already-cancelled Order %s. Issuing auto-refund.",
-                        pi_id, order_id
-                    )
-                    try:
-                        await run_in_threadpool(self.provider.process_refund, pi_id)
-                    except Exception as refund_exc:
-                        logger.error("[WEBHOOK] Auto-refund FAILED for orphaned success %s: %s -- needs manual refund.", pi_id, refund_exc)
-                else:
-                    logger.info("[WEBHOOK] Settled pending order %s automatically via webhook.", order_id[:8])
-            # else: already paid / terminal -- nothing to do, this is a safe no-op.
+        # 🔥 FIX: everything below is the actual processing. If ANY of it
+        # raises, we deliberately do NOT mark the event processed -- the
+        # exception propagates up, the router answers 500, and Stripe's
+        # retry will legitimately be allowed to try again (see
+        # claim_webhook_event). Only a clean run marks it done.
+        try:
+            # EVENT 1: SUCCESS
+            if event_type == "payment_intent.succeeded":
+                if current_status == OrderStatus.PENDING.value:
+                    amount = obj.get("amount", 0) / 100
+                    result = await self.repo.settle_order_transaction(order_id, pi_id, amount, customer_id)
+                    if result == "ORDER_ALREADY_CANCELLED":
+                        # 🔥 FIX (Scenario B, race with the abandoned-checkout sweep):
+                        # payment succeeded microseconds after we cancelled + released
+                        # stock. Never flip the order back to paid -- refund instead.
+                        logger.critical(
+                            "🚨 [WEBHOOK ALERT] Payment %s succeeded for already-cancelled Order %s. Issuing auto-refund.",
+                            pi_id, order_id
+                        )
+                        try:
+                            await run_in_threadpool(self.provider.process_refund, pi_id)
+                        except Exception as refund_exc:
+                            logger.error("[WEBHOOK] Auto-refund FAILED for orphaned success %s: %s -- needs manual refund.", pi_id, refund_exc)
+                    else:
+                        logger.info("[WEBHOOK] Settled pending order %s automatically via webhook.", order_id[:8])
+                # else: already paid / terminal -- nothing to do, this is a safe no-op.
 
-        # EVENT 2: PAYMENT FAILED -- record only, DO NOT cancel.
-        # 🔥 FIX (Problem 2 & 3, Scenario A): Stripe keeps a declined
-        # PaymentIntent alive & confirmable so the customer can retry on the
-        # SAME intent. Cancelling the order here would kill that retry path
-        # and release stock that the very next attempt might still need.
-        elif event_type == "payment_intent.payment_failed":
-            if current_status == OrderStatus.PENDING.value:
-                reason = (obj.get("last_payment_error") or {}).get("message", "Payment failed")
-                error_code = (obj.get("last_payment_error") or {}).get("code")
-                amount = obj.get("amount", 0) / 100
-                await self.repo.mark_payment_failed(order_id, customer_id, pi_id, amount, reason=reason, error_code=error_code)
-                logger.info("[WEBHOOK] Recorded failed attempt for Order %s (PI %s): %s", order_id[:8], pi_id, reason)
+            # EVENT 2: PAYMENT FAILED -- record only, DO NOT cancel.
+            # 🔥 FIX (Problem 2 & 3, Scenario A): Stripe keeps a declined
+            # PaymentIntent alive & confirmable so the customer can retry on the
+            # SAME intent. Cancelling the order here would kill that retry path
+            # and release stock that the very next attempt might still need.
+            elif event_type == "payment_intent.payment_failed":
+                if current_status == OrderStatus.PENDING.value:
+                    reason = (obj.get("last_payment_error") or {}).get("message", "Payment failed")
+                    error_code = (obj.get("last_payment_error") or {}).get("code")
+                    amount = obj.get("amount", 0) / 100
+                    await self.repo.mark_payment_failed(order_id, customer_id, pi_id, amount, reason=reason, error_code=error_code)
+                    logger.info("[WEBHOOK] Recorded failed attempt for Order %s (PI %s): %s", order_id[:8], pi_id, reason)
 
-        # EVENT 3: EXPLICIT CANCELLATION -- THIS is the terminal signal.
-        # Fired when our abandoned-checkout cron (or an admin, or Stripe
-        # itself) actually cancels the PaymentIntent via the API.
-        elif event_type == "payment_intent.canceled":
-            if current_status == OrderStatus.PENDING.value:
-                await self.repo.release_abandoned_order(order_id, reason=f"stripe_event:{event_type}")
-                logger.info("[WEBHOOK] Cancelled pending order %s and released stock (PI explicitly canceled).", order_id[:8])
+            # EVENT 3: EXPLICIT CANCELLATION -- THIS is the terminal signal.
+            # Fired when our abandoned-checkout cron (or an admin, or Stripe
+            # itself) actually cancels the PaymentIntent via the API.
+            elif event_type == "payment_intent.canceled":
+                if current_status == OrderStatus.PENDING.value:
+                    await self.repo.release_abandoned_order(order_id, reason=f"stripe_event:{event_type}")
+                    logger.info("[WEBHOOK] Cancelled pending order %s and released stock (PI explicitly canceled).", order_id[:8])
 
-        # EVENT 4: REFUNDED
-        elif event_type == "charge.refunded":
-            # Only update if not already refunded/cancelled
-            if current_status not in [OrderStatus.CANCELLED.value, OrderStatus.REFUNDED.value]:
-                await self.repo.update_order_status_via_rpc(order_id, OrderStatus.REFUNDED.value, f"Webhook Auto-Update: {event_type}")
-                logger.info("[WEBHOOK] Marked order %s as Refunded.", order_id[:8])
+            # EVENT 4: REFUNDED
+            elif event_type == "charge.refunded":
+                # Only update if not already refunded/cancelled
+                if current_status not in [OrderStatus.CANCELLED.value, OrderStatus.REFUNDED.value]:
+                    await self.repo.update_order_status_via_rpc(order_id, OrderStatus.REFUNDED.value, f"Webhook Auto-Update: {event_type}")
+                    logger.info("[WEBHOOK] Marked order %s as Refunded.", order_id[:8])
 
-        # EVENT 5: DISPUTE (Chargeback via Bank)
-        elif event_type == "charge.dispute.created":
-            amount_disputed = obj.get('amount', 0) / 100
-            logger.error("🚨 [WEBHOOK ALERT] Dispute created for order %s. Amount: %s", order_id, amount_disputed)
-            # Add an alert to the order notes, keep the current status
-            alert_note = f"🚨 BANK DISPUTE CREATED for Rs. {amount_disputed}! Check Stripe Dashboard immediately."
-            await self.repo.update_order_status_via_rpc(order_id, current_status, alert_note)
+            # EVENT 5: DISPUTE (Chargeback via Bank)
+            elif event_type == "charge.dispute.created":
+                amount_disputed = obj.get('amount', 0) / 100
+                logger.error("🚨 [WEBHOOK ALERT] Dispute created for order %s. Amount: %s", order_id, amount_disputed)
+                # Add an alert to the order notes, keep the current status
+                alert_note = f"🚨 BANK DISPUTE CREATED for Rs. {amount_disputed}! Check Stripe Dashboard immediately."
+                await self.repo.update_order_status_via_rpc(order_id, current_status, alert_note)
+
+            # Any other event type (payment_intent.created, .processing,
+            # .requires_action, etc.) -- nothing for us to do, falls through
+            # here and still gets marked processed below.
+
+        except Exception:
+            logger.error("[WEBHOOK] Processing FAILED for event %s (%s) on order %s -- leaving unmarked for retry.", event_id, event_type, order_id[:8], exc_info=True)
+            raise
+
+        if event_id:
+            await self.repo.mark_webhook_event_processed(event_id)
