@@ -4,12 +4,13 @@ Payments Repository -- ACID & JIT Hybrid Flow (Enterprise Grade & GST Ready)
 Path: app/repositories/payment_repo.py
 
 Lifecycle-hardening changes in this version:
-  * create_or_touch_payment_intent_record() -- eagerly writes a `payments`
-    row the instant a Stripe intent is created (first attempt AND every
-    retry). Guarantees a payments row exists for every attempt, including
-    ones that later fail, before any webhook has even arrived.
-  * mark_payment_failed() -- records a failed attempt via the `mark_payment_failed`
-    RPC, which never downgrades a row that's already succeeded/refunded.
+  * record_payment_attempt() -- THE single write path for both `payments`
+    (one row per order -- the rollup header) and `payment_attempts` (one
+    row per PaymentIntent -- the detail log). Called for intent creation,
+    every retry, and failure recording. Success goes through
+    settle_order_transaction() instead (needs its own order-status guard).
+  * get_attempt_count() -- reads `total_attempts` directly off the order's
+    single payments header row.
   * record_webhook_event() / mark_webhook_event_processed() -- idempotency
     ledger so a retried Stripe webhook delivery is never processed twice,
     while a delivery that crashed mid-processing (never reached
@@ -129,7 +130,7 @@ class AsyncPaymentRepository:
         try:
             res = await admin_sb.rpc(
                 "settle_order_transaction",
-                {"p_order_id": order_id, "p_payment_intent": pi_id, "p_amount": amount, "p_user_id": user_id}
+                {"p_order_id": order_id, "p_pi_id": pi_id, "p_amount": amount, "p_user_id": user_id}
             ).execute()
             data = getattr(res, "data", None)
             return str(data) if data else "FAILED"
@@ -179,95 +180,72 @@ class AsyncPaymentRepository:
     # 🔥 NEW: payments table -- never-missing, self-healing writes
     # ─────────────────────────────────────────────────────────────────────
 
-    async def create_or_touch_payment_intent_record(
+    async def record_payment_attempt(
         self,
         order_id: str,
         user_id: Optional[str],
         pi_id: str,
         amount: float,
+        status: str,
+        payment_method: Optional[str] = None,
+        error_code: Optional[str] = None,
+        error_message: Optional[str] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
     ) -> None:
         """
-        Eagerly writes a `payments` row the moment a PaymentIntent is
-        created -- both for the first checkout attempt and for every retry
-        that generates a fresh intent. This is what guarantees a payments
-        row exists for every attempt, including ones that later fail, even
-        before any Stripe webhook has arrived.
+        The ONE place that writes to `payments` (one row per order -- the
+        rollup header: total_attempts, latest_attempt_number,
+        successful_attempt_number, etc.) and `payment_attempts` (one row
+        per PaymentIntent -- the detail log), atomically, inside the
+        `record_payment_attempt` RPC. No triggers are involved -- this is
+        the single, explicit, readable code path for every write to either
+        table.
 
-        `attempt_number` is assigned automatically by a DB trigger, and this
-        row's insert/update is mirrored into `payment_attempts` (the
-        append-only audit log) by another DB trigger -- see migration 005.
-        ip_address/user_agent ride along here purely as fraud/support
-        metadata; they never affect order or payment status logic.
+        Called for:
+          * a fresh PaymentIntent at checkout      -> status='requires_payment_method'
+          * every retry's fresh PaymentIntent       -> status='requires_payment_method'
+          * a webhook/client-reported failure       -> status='failed' (+ error_code/error_message)
+        Success is handled by settle_order_transaction() instead, since
+        that also needs to flip the order to 'paid' with its own guard
+        against resurrecting a cancelled order.
 
-        Non-fatal by design: if this write fails, mark_payment_failed() and
-        settle_order_transaction() both INSERT ... ON CONFLICT as well, so
-        a missing row here self-heals the moment Stripe sends its first
-        event for this intent.
+        Non-fatal by design: logs and continues on error so a payments/
+        payment_attempts write issue never blocks checkout, retry, or
+        webhook processing.
         """
         admin_sb = await get_async_admin_supabase()
         try:
-            await admin_sb.table("payments").upsert(
-                {
-                    "order_id": order_id,
-                    "user_id": user_id,
-                    "stripe_payment_intent_id": pi_id,
-                    "amount": amount,
-                    "amount_paise": int(round(amount * 100)),
-                    "currency": "INR",
-                    "status": "requires_payment_method",
-                    "ip_address": ip_address,
-                    "user_agent": user_agent,
-                },
-                on_conflict="stripe_payment_intent_id",
-            ).execute()
-        except Exception as exc:
-            logger.error("DB Error creating payment record for PI %s: %s", pi_id, exc, exc_info=True)
-
-    async def get_attempt_count(self, order_id: str) -> int:
-        """
-        Number of distinct PaymentIntents (attempts) already tried for this
-        order -- i.e. how many rows exist in `payments` for it. Used to cap
-        retries the way Amazon does: after too many failed attempts on one
-        order, further retries are blocked until the abandoned-checkout
-        sweep eventually cancels it, rather than letting someone hammer the
-        same order indefinitely.
-        """
-        admin_sb = await get_async_admin_supabase()
-        try:
-            res = await admin_sb.table("payments").select("id", count="exact").eq("order_id", order_id).execute()
-            return getattr(res, "count", None) or 0
-        except Exception as exc:
-            logger.error("DB Error counting payment attempts for order %s: %s", order_id, exc, exc_info=True)
-            return 0
-
-    async def mark_payment_failed(
-        self,
-        order_id: str,
-        user_id: Optional[str],
-        pi_id: str,
-        amount: float,
-        reason: Optional[str] = None,
-        error_code: Optional[str] = None,
-    ) -> None:
-        """
-        Records a failed attempt. Never downgrades a payments row that's
-        already 'succeeded'/'refunded' -- guards against Stripe delivering
-        a stale payment_failed event out of order.
-        """
-        admin_sb = await get_async_admin_supabase()
-        try:
-            await admin_sb.rpc("mark_payment_failed", {
+            await admin_sb.rpc("record_payment_attempt", {
                 "p_order_id": order_id,
                 "p_user_id": user_id,
                 "p_pi_id": pi_id,
                 "p_amount": amount,
-                "p_reason": reason,
+                "p_status": status,
+                "p_payment_method": payment_method,
                 "p_error_code": error_code,
+                "p_error_message": error_message,
+                "p_ip_address": ip_address,
+                "p_user_agent": user_agent,
             }).execute()
         except Exception as exc:
-            logger.error("RPC Error marking payment %s failed: %s", pi_id, exc, exc_info=True)
+            logger.error("RPC Error recording payment attempt for PI %s: %s", pi_id, exc, exc_info=True)
+
+    async def get_attempt_count(self, order_id: str) -> int:
+        """
+        Reads `total_attempts` directly off the order's single payments
+        header row. Used to cap retries the way Amazon does: after too
+        many failed attempts on one order, further retries are blocked
+        until the abandoned-checkout sweep eventually cancels it.
+        """
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await admin_sb.table("payments").select("total_attempts").eq("order_id", order_id).maybe_single().execute()
+            data = getattr(res, "data", None)
+            return (data or {}).get("total_attempts") or 0
+        except Exception as exc:
+            logger.error("DB Error reading attempt count for order %s: %s", order_id, exc, exc_info=True)
+            return 0
 
     # ─────────────────────────────────────────────────────────────────────
     # 🔥 NEW: webhook helpers

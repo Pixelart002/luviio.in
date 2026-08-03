@@ -1,0 +1,1 @@
+pg_dump "postgresql://postgres:[YOUR-PASSWORD]@db.enqcujmzxtrbfkaungpm.supabase.co:5432/postgres" -f backup.sql

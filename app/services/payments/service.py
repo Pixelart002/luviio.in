@@ -46,6 +46,22 @@ Round 2 (payment_attempts audit trail + Amazon-style attempt limiting):
     was a near-duplicate of _create_and_link_replacement_intent() --
     removed; it now just calls the shared helper, so the attempt cap and
     metadata capture apply there too automatically.
+
+Round 3 (payments/payment_attempts redesigned as header + detail):
+  * `payments` is now ONE ROW PER ORDER (the rollup header: total_attempts,
+    latest_attempt_number, successful_attempt_number, latest_payment_intent_id,
+    etc.) and `payment_attempts` is ONE ROW PER PaymentIntent (the detail
+    log, linked via payment_id). This matches the actual live schema and
+    fixes columns that were never being populated under the old per-PI
+    `payments` design.
+  * create_or_touch_payment_intent_record() and mark_payment_failed() are
+    gone -- replaced by ONE method, record_payment_attempt(), used for
+    intent creation, every retry, and failure recording alike. Success
+    still goes through settle_order_transaction() (needs its own
+    order-status guard against resurrecting a cancelled order).
+  * No more DB triggers auto-mirroring payments -> payment_attempts --
+    every write to either table happens explicitly inside the RPCs, so the
+    whole flow is readable from the SQL/Python alone, with no hidden magic.
 """
 import time
 import logging
@@ -249,12 +265,13 @@ class PaymentService:
             pending_order = await self.repo.create_pending_order_with_reservation(order_data, items_to_deduct)
             await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
 
-            # 🔥 FIX (Problem 1): write the payments row NOW, not only on success.
-            # This is what guarantees the payments table never has a "hole" for
+            # 🔥 FIX (Problem 1): write the payments header + payment_attempts
+            # detail row NOW, not only on success. This is what guarantees
+            # the payments/payment_attempts tables never have a "hole" for
             # a PaymentIntent that later fails.
-            await self.repo.create_or_touch_payment_intent_record(
+            await self.repo.record_payment_attempt(
                 pending_order["id"], user_id, intent["id"], amount_paise / 100,
-                ip_address=client_ip, user_agent=user_agent
+                status="requires_payment_method", ip_address=client_ip, user_agent=user_agent
             )
 
             try:
@@ -433,10 +450,11 @@ class PaymentService:
 
             await run_in_threadpool(self.provider.update_intent_metadata, new_intent["id"], {"order_id": order_id, "user_id": user_id})
 
-            # 🔥 FIX (Problem 1): every retry gets its own payments row too.
-            await self.repo.create_or_touch_payment_intent_record(
+            # 🔥 FIX (Problem 1): every retry gets its own payment_attempts
+            # detail row too, and bumps the order's payments header.
+            await self.repo.record_payment_attempt(
                 order_id, user_id, new_intent["id"], amount_paise / 100,
-                ip_address=ip_address, user_agent=user_agent
+                status="requires_payment_method", ip_address=ip_address, user_agent=user_agent
             )
             
             return {
@@ -464,9 +482,10 @@ class PaymentService:
         order = await self.repo.get_order_by_payment_intent(pi_id)
         if not order:
             return
-        await self.repo.mark_payment_failed(
+        await self.repo.record_payment_attempt(
             order["id"], order.get("customer_id"), pi_id,
-            float(order.get("total_amount") or 0), reason=reason or "Client-reported failure"
+            float(order.get("total_amount") or 0), status="failed",
+            error_message=reason or "Client-reported failure"
         )
 
     # --------------------------------------------------------------------------
@@ -552,7 +571,10 @@ class PaymentService:
                     reason = (obj.get("last_payment_error") or {}).get("message", "Payment failed")
                     error_code = (obj.get("last_payment_error") or {}).get("code")
                     amount = obj.get("amount", 0) / 100
-                    await self.repo.mark_payment_failed(order_id, customer_id, pi_id, amount, reason=reason, error_code=error_code)
+                    await self.repo.record_payment_attempt(
+                        order_id, customer_id, pi_id, amount, status="failed",
+                        error_code=error_code, error_message=reason
+                    )
                     logger.info("[WEBHOOK] Recorded failed attempt for Order %s (PI %s): %s", order_id[:8], pi_id, reason)
 
             # EVENT 3: EXPLICIT CANCELLATION -- THIS is the terminal signal.
