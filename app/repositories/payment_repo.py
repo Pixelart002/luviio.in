@@ -118,7 +118,8 @@ class AsyncPaymentRepository:
             logger.error("RPC Error reserving stock and creating order: %s", exc, exc_info=True)
             raise
 
-    async def settle_order_transaction(self, order_id: str, pi_id: str, amount: float, user_id: str) -> str:
+    # 🔥 FIX: Added payment_method explicitly here
+    async def settle_order_transaction(self, order_id: str, pi_id: str, amount: float, user_id: str, payment_method: Optional[str] = None) -> str:
         """
         Returns one of: 'SETTLED' | 'ALREADY_PAID' | 'ORDER_ALREADY_CANCELLED'.
         Callers MUST handle 'ORDER_ALREADY_CANCELLED' -- it means the customer's
@@ -130,7 +131,13 @@ class AsyncPaymentRepository:
         try:
             res = await admin_sb.rpc(
                 "settle_order_transaction",
-                {"p_order_id": order_id, "p_pi_id": pi_id, "p_amount": amount, "p_user_id": user_id}
+                {
+                    "p_order_id": order_id, 
+                    "p_pi_id": pi_id, 
+                    "p_amount": amount, 
+                    "p_user_id": user_id,
+                    "p_payment_method": payment_method # Passes the method (card/upi/etc.) to SQL
+                }
             ).execute()
             data = getattr(res, "data", None)
             return str(data) if data else "FAILED"

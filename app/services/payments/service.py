@@ -10,58 +10,7 @@ Architecture & Fixes:
   * Enterprise Snapshots: Captures full B2B/B2C Shipping & Billing address telemetry natively.
   * Idempotent Checkout: Prevents double-charging via UUID-based idempotency keys.
   * Null Intent Guard: Prevents 502 Bad Gateway crashes when Stripe ID is None or Empty in DB.
-
-Lifecycle-hardening changes in this version (payment-failure / webhook fix):
-  * A `payments` row is now created the moment ANY PaymentIntent is created
-    -- first attempt or retry -- so a failed attempt is never missing from
-    the payments table.
-  * `payment_intent.payment_failed` no longer cancels the order. Stripe
-    keeps a declined PaymentIntent alive & confirmable, so customers can
-    retry on the SAME intent -- immediately cancelling would orphan a
-    perfectly good retry. We only record the failed attempt now.
-  * Only an explicit `payment_intent.canceled` event (fired by our own
-    abandoned-checkout cron, an admin action, or Stripe itself) triggers
-    cancel_order_and_release_stock.
-  * `retry_payment` now explicitly refuses to retry a cancelled/refunded
-    order instead of silently handing back a client_secret for a dead order.
-  * `confirm_payment` and the webhook's success handler now both check for
-    the 'ORDER_ALREADY_CANCELLED' result and auto-refund via Stripe instead
-    of ever letting a cancelled order flip back to 'paid'.
-  * Webhook processing is now idempotent against Stripe's at-least-once
-    delivery via a webhook-event ledger.
-
-Round 2 (payment_attempts audit trail + Amazon-style attempt limiting):
-  * Every PaymentIntent create now carries ip_address/user_agent into the
-    payments row (previously `client_ip` was accepted but never used
-    anywhere -- dead parameter). A DB trigger mirrors every payments
-    status change into the append-only `payment_attempts` log (see
-    migration 005) -- no Python code has to remember to log an attempt.
-  * `_create_and_link_replacement_intent` now enforces
-    PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS -- once an order has racked up
-    too many attempts, further retries are blocked (429) instead of
-    letting a bad card or a script hammer the same order forever. The
-    order itself is untouched; the abandoned-checkout sweep still cleans
-    it up on its normal timeout.
-  * The inline "recovery" intent-creation branch inside create_intent()
-    was a near-duplicate of _create_and_link_replacement_intent() --
-    removed; it now just calls the shared helper, so the attempt cap and
-    metadata capture apply there too automatically.
-
-Round 3 (payments/payment_attempts redesigned as header + detail):
-  * `payments` is now ONE ROW PER ORDER (the rollup header: total_attempts,
-    latest_attempt_number, successful_attempt_number, latest_payment_intent_id,
-    etc.) and `payment_attempts` is ONE ROW PER PaymentIntent (the detail
-    log, linked via payment_id). This matches the actual live schema and
-    fixes columns that were never being populated under the old per-PI
-    `payments` design.
-  * create_or_touch_payment_intent_record() and mark_payment_failed() are
-    gone -- replaced by ONE method, record_payment_attempt(), used for
-    intent creation, every retry, and failure recording alike. Success
-    still goes through settle_order_transaction() (needs its own
-    order-status guard against resurrecting a cancelled order).
-  * No more DB triggers auto-mirroring payments -> payment_attempts --
-    every write to either table happens explicitly inside the RPCs, so the
-    whole flow is readable from the SQL/Python alone, with no hidden magic.
+  * Payment Method Tracking: Extracts 'card', 'upi', etc. from Stripe Intents & Webhooks.
 """
 import time
 import logging
@@ -144,11 +93,7 @@ class PaymentService:
                 amount_paise = self._paise(existing.get("total_amount", 0))
                 if amount_paise < PaymentRules.MIN_ORDER_AMOUNT_PAISE:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PaymentSecurityMessages.ZERO_AMOUNT_RETRY)
-                # 🔥 FIX: reuse the single replacement-intent helper (was
-                # duplicated inline here before) -- this also means the
-                # attempt-count cap and ip/user_agent metadata capture apply
-                # here too, automatically, with no separate code path to
-                # keep in sync.
+                
                 result = await self._create_and_link_replacement_intent(
                     user_id, existing["id"], amount_paise, ip_address=client_ip, user_agent=user_agent
                 )
@@ -202,7 +147,7 @@ class PaymentService:
         if not addr: 
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
 
-        # 🔥 ENTERPRISE FIX: Fetch Billing Address (if different), else default to Shipping
+        # Fetch Billing Address (if different), else default to Shipping
         billing_addr = addr
         is_same_as_shipping = True
         
@@ -220,7 +165,7 @@ class PaymentService:
 
         order_number = self._generate_clean_order_number()
 
-        # 🚀 ENTERPRISE SNAPSHOT: Dual Shipping & Billing Mapping
+        # Dual Shipping & Billing Mapping
         order_data = {
             "customer_id": user_id, 
             "status": OrderStatus.PENDING.value,
@@ -265,10 +210,6 @@ class PaymentService:
             pending_order = await self.repo.create_pending_order_with_reservation(order_data, items_to_deduct)
             await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
 
-            # 🔥 FIX (Problem 1): write the payments header + payment_attempts
-            # detail row NOW, not only on success. This is what guarantees
-            # the payments/payment_attempts tables never have a "hole" for
-            # a PaymentIntent that later fails.
             await self.repo.record_payment_attempt(
                 pending_order["id"], user_id, intent["id"], amount_paise / 100,
                 status="requires_payment_method", ip_address=client_ip, user_agent=user_agent
@@ -313,17 +254,23 @@ class PaymentService:
         PaymentPolicy.assert_can_confirm(existing_order, user_id)
 
         try:
-            result = await self.repo.settle_order_transaction(order_id, intent["id"], intent.get("amount", 0) / 100, user_id)
+            # 🔥 FIX: Extract Payment Method
+            pm_types = intent.get("payment_method_types", [])
+            pm_type = pm_types[0] if pm_types else "card"
+
+            result = await self.repo.settle_order_transaction(
+                order_id, 
+                intent["id"], 
+                intent.get("amount", 0) / 100, 
+                user_id,
+                payment_method=pm_type # Passthorugh
+            )
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=PaymentSecurityMessages.RACE_CONDITION) from exc
 
         if result == "ALREADY_PAID":
             return {"status": OrderStatus.PAID.value, "order_id": order_id, "message": PaymentMessages.ALREADY_SETTLED}
 
-        # 🔥 FIX (Problem 3 / Scenario B): the order was cancelled (stock
-        # already released -- possibly resold) before this payment landed.
-        # Never resurrect it as 'paid'. Refund the customer automatically
-        # and surface a clear message instead of a confusing success state.
         if result == "ORDER_ALREADY_CANCELLED":
             logger.critical(
                 "[PAYMENT] User %s successfully paid Intent %s but Order %s was already "
@@ -358,10 +305,6 @@ class PaymentService:
         if current_status == OrderStatus.PAID.value:
             return {"status": OrderStatus.PAID.value, "message": PaymentMessages.RETRY_SUCCESSFUL}
 
-        # 🔥 FIX (Scenario A/B): an order can only reach 'cancelled' now via
-        # an explicit PaymentIntent cancellation or the abandoned-checkout
-        # timeout sweep -- never from a single card decline. If it's here,
-        # the retry window has genuinely closed and stock is gone.
         if current_status in (OrderStatus.CANCELLED.value, OrderStatus.REFUNDED.value):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -383,7 +326,11 @@ class PaymentService:
             intent = await run_in_threadpool(self.provider.retrieve_intent, pi_id)
             
             if intent.get("status") == "succeeded":
-                result = await self.repo.settle_order_transaction(order_id, pi_id, intent.get("amount", 0) / 100, user_id)
+                # Fallback extraction on retry if needed
+                pm_types = intent.get("payment_method_types", [])
+                pm_type = pm_types[0] if pm_types else "card"
+                
+                result = await self.repo.settle_order_transaction(order_id, pi_id, intent.get("amount", 0) / 100, user_id, payment_method=pm_type)
                 if result == "ORDER_ALREADY_CANCELLED":
                     try:
                         await run_in_threadpool(self.provider.process_refund, pi_id)
@@ -410,11 +357,6 @@ class PaymentService:
         self, user_id: str, order_id: str, amount_paise: int,
         ip_address: Optional[str] = None, user_agent: Optional[str] = None
     ) -> Dict[str, Any]:
-        # 🔥 NEW (Amazon-style retry cap): block further retries once an
-        # order has racked up too many attempts. Keeps a single bad card
-        # (or a scripted attack) from hammering the same order forever --
-        # the order itself is untouched and will still get cleaned up by
-        # the abandoned-checkout sweep on its normal timeout.
         attempt_count = await self.repo.get_attempt_count(order_id)
         if attempt_count >= PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS:
             logger.warning("[PAYMENT RETRY] Order %s hit the %d-attempt cap. Blocking further retries.", order_id[:8], PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS)
@@ -434,11 +376,6 @@ class PaymentService:
             )
             linked = await self.repo.update_order_payment_intent(order_id, new_intent["id"])
             if not linked:
-                # 🔥 FIX: order flipped to a terminal state (cron / another
-                # webhook) in the moment between our read and this write.
-                # Don't hand back a client_secret for an intent that isn't
-                # actually attached to a live order -- cancel it on Stripe
-                # too so it can never be confirmed later.
                 try:
                     await run_in_threadpool(self.provider.cancel_intent, new_intent["id"])
                 except Exception:
@@ -450,8 +387,6 @@ class PaymentService:
 
             await run_in_threadpool(self.provider.update_intent_metadata, new_intent["id"], {"order_id": order_id, "user_id": user_id})
 
-            # 🔥 FIX (Problem 1): every retry gets its own payment_attempts
-            # detail row too, and bumps the order's payments header.
             await self.repo.record_payment_attempt(
                 order_id, user_id, new_intent["id"], amount_paise / 100,
                 status="requires_payment_method", ip_address=ip_address, user_agent=user_agent
@@ -472,13 +407,6 @@ class PaymentService:
             ) from exc
 
     async def record_client_reported_failure(self, pi_id: str, reason: str) -> None:
-        """
-        Backs the /notify-failed endpoint. This is a best-effort, client-
-        reported signal (the browser saw Stripe.js return an error) -- it
-        is NOT authoritative and never touches order status. It just gets
-        the failed attempt into the payments table a little faster than
-        waiting for the webhook, for support/analytics visibility.
-        """
         order = await self.repo.get_order_by_payment_intent(pi_id)
         if not order:
             return
@@ -492,7 +420,6 @@ class PaymentService:
     # WEBHOOK HANDLER
     # --------------------------------------------------------------------------
     async def handle_webhook(self, payload: bytes, sig_header: str) -> None:
-        """Handles background events from Stripe (Refunds, Disputes, Failures, Success)."""
         try:
             event = self.provider.verify_webhook(payload, sig_header)
         except Exception as e:
@@ -503,18 +430,12 @@ class PaymentService:
         event_type = event.get("type")
         obj = event.get("data", {}).get("object", {})
 
-        # Find payment intent ID securely
         pi_id = obj.get("id") if obj.get("object") == "payment_intent" else obj.get("payment_intent")
         
         if not pi_id:
             logger.warning("[WEBHOOK] Ignored %s - No Payment Intent ID found in payload.", event_type)
             return
 
-        # 🔥 FIX: idempotency -- Stripe retries webhooks on any non-2xx/timeout
-        # response, and can redeliver the same event more than once regardless.
-        # claim_webhook_event only returns False for an event that was already
-        # marked FULLY PROCESSED -- a delivery for an event that crashed
-        # mid-processing last time is correctly let through again.
         if event_id:
             should_process = await self.repo.record_webhook_event(event_id, event_type, pi_id)
             if not should_process:
@@ -534,21 +455,20 @@ class PaymentService:
 
         logger.info("[WEBHOOK] Received %s for Order %s (Current Status: %s)", event_type, order_id[:8], current_status)
 
-        # 🔥 FIX: everything below is the actual processing. If ANY of it
-        # raises, we deliberately do NOT mark the event processed -- the
-        # exception propagates up, the router answers 500, and Stripe's
-        # retry will legitimately be allowed to try again (see
-        # claim_webhook_event). Only a clean run marks it done.
         try:
             # EVENT 1: SUCCESS
             if event_type == "payment_intent.succeeded":
                 if current_status == OrderStatus.PENDING.value:
                     amount = obj.get("amount", 0) / 100
-                    result = await self.repo.settle_order_transaction(order_id, pi_id, amount, customer_id)
+                    
+                    # 🔥 FIX: Extract Payment Method from Webhook
+                    pm_types = obj.get("payment_method_types", [])
+                    pm_type = pm_types[0] if pm_types else "card"
+
+                    result = await self.repo.settle_order_transaction(
+                        order_id, pi_id, amount, customer_id, payment_method=pm_type
+                    )
                     if result == "ORDER_ALREADY_CANCELLED":
-                        # 🔥 FIX (Scenario B, race with the abandoned-checkout sweep):
-                        # payment succeeded microseconds after we cancelled + released
-                        # stock. Never flip the order back to paid -- refund instead.
                         logger.critical(
                             "🚨 [WEBHOOK ALERT] Payment %s succeeded for already-cancelled Order %s. Issuing auto-refund.",
                             pi_id, order_id
@@ -559,27 +479,26 @@ class PaymentService:
                             logger.error("[WEBHOOK] Auto-refund FAILED for orphaned success %s: %s -- needs manual refund.", pi_id, refund_exc)
                     else:
                         logger.info("[WEBHOOK] Settled pending order %s automatically via webhook.", order_id[:8])
-                # else: already paid / terminal -- nothing to do, this is a safe no-op.
 
             # EVENT 2: PAYMENT FAILED -- record only, DO NOT cancel.
-            # 🔥 FIX (Problem 2 & 3, Scenario A): Stripe keeps a declined
-            # PaymentIntent alive & confirmable so the customer can retry on the
-            # SAME intent. Cancelling the order here would kill that retry path
-            # and release stock that the very next attempt might still need.
             elif event_type == "payment_intent.payment_failed":
                 if current_status == OrderStatus.PENDING.value:
                     reason = (obj.get("last_payment_error") or {}).get("message", "Payment failed")
                     error_code = (obj.get("last_payment_error") or {}).get("code")
                     amount = obj.get("amount", 0) / 100
+                    
+                    # 🔥 FIX: Extract Payment Method from Failed Webhook
+                    pm_types = obj.get("payment_method_types", [])
+                    pm_type = pm_types[0] if pm_types else "card"
+
                     await self.repo.record_payment_attempt(
                         order_id, customer_id, pi_id, amount, status="failed",
+                        payment_method=pm_type,
                         error_code=error_code, error_message=reason
                     )
                     logger.info("[WEBHOOK] Recorded failed attempt for Order %s (PI %s): %s", order_id[:8], pi_id, reason)
 
-            # EVENT 3: EXPLICIT CANCELLATION -- THIS is the terminal signal.
-            # Fired when our abandoned-checkout cron (or an admin, or Stripe
-            # itself) actually cancels the PaymentIntent via the API.
+            # EVENT 3: EXPLICIT CANCELLATION
             elif event_type == "payment_intent.canceled":
                 if current_status == OrderStatus.PENDING.value:
                     await self.repo.release_abandoned_order(order_id, reason=f"stripe_event:{event_type}")
@@ -587,22 +506,16 @@ class PaymentService:
 
             # EVENT 4: REFUNDED
             elif event_type == "charge.refunded":
-                # Only update if not already refunded/cancelled
                 if current_status not in [OrderStatus.CANCELLED.value, OrderStatus.REFUNDED.value]:
                     await self.repo.update_order_status_via_rpc(order_id, OrderStatus.REFUNDED.value, f"Webhook Auto-Update: {event_type}")
                     logger.info("[WEBHOOK] Marked order %s as Refunded.", order_id[:8])
 
-            # EVENT 5: DISPUTE (Chargeback via Bank)
+            # EVENT 5: DISPUTE
             elif event_type == "charge.dispute.created":
                 amount_disputed = obj.get('amount', 0) / 100
                 logger.error("🚨 [WEBHOOK ALERT] Dispute created for order %s. Amount: %s", order_id, amount_disputed)
-                # Add an alert to the order notes, keep the current status
                 alert_note = f"🚨 BANK DISPUTE CREATED for Rs. {amount_disputed}! Check Stripe Dashboard immediately."
                 await self.repo.update_order_status_via_rpc(order_id, current_status, alert_note)
-
-            # Any other event type (payment_intent.created, .processing,
-            # .requires_action, etc.) -- nothing for us to do, falls through
-            # here and still gets marked processed below.
 
         except Exception:
             logger.error("[WEBHOOK] Processing FAILED for event %s (%s) on order %s -- leaving unmarked for retry.", event_id, event_type, order_id[:8], exc_info=True)
