@@ -254,7 +254,7 @@ def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
     tax_rate           = Decimal(str(config.get("tax_rate", 18.0))) / Decimal("100")
     shipping_flat      = Decimal(str(config.get("shipping_flat", 99.0)))
     shipping_threshold = Decimal(str(config.get("shipping_threshold", 999.0)))
-    store_mov          = Decimal(str(config.get("store_mov", 0.0)))
+    store_mov          = Decimal(str(config.get("store_mov", 1000.0)))
 
     if not tax_enabled:
         return ZeroTaxPricing(
