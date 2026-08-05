@@ -18,14 +18,14 @@ from app.utils.documents.pdf_invoice import build_invoice_pdf
 from app.enums.order_status import OrderStatus
 from app.constants.order_messages import OrderMessages, OrderSecurityMessages
 
+# 🔥 THE WIRING: Importing the Pricing Engine we built!
+from app.services.pricing.service import get_pricing_for_user
+
 logger = logging.getLogger(__name__)
 
-# 🔥 UPDATED: Finite State Machine (FSM) Matrix for Order Lifecycles
 STATUS_TRANSITIONS = {
     OrderStatus.PENDING: {OrderStatus.PAID, OrderStatus.CANCELLED},
-    # Paid order can move to Processing, Shipped, Cancelled, or be Refunded directly.
     OrderStatus.PAID: {OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.CANCELLED, OrderStatus.REFUNDED},
-    # Processing means warehouse is packing it. From here, it ships or gets cancelled/refunded.
     OrderStatus.PROCESSING: {OrderStatus.SHIPPED, OrderStatus.CANCELLED, OrderStatus.REFUNDED},
     OrderStatus.SHIPPED: {OrderStatus.DELIVERED},
     OrderStatus.DELIVERED: {OrderStatus.REFUNDED},
@@ -40,10 +40,6 @@ class OrderService:
     def __init__(self):
         self.repo = AsyncOrderRepository()
         self.user_repo = AsyncUserRepository()
-        # 🔥 STORE CONFIG (Future me isko Settings API se le sakte ho)
-        self.STORE_MOV = Decimal("500.00") 
-        self.FREE_SHIPPING_THRESHOLD = Decimal("999.00")
-        self.STANDARD_SHIPPING_FEE = Decimal("99.00")
 
     def _sanitize(self, order: Dict[str, Any]) -> Dict[str, Any]:
         if not order: 
@@ -73,95 +69,92 @@ class OrderService:
         return sanitized
 
     async def create_order_from_cart(self, user_id: str, address_id: str, notes: Optional[str] = None, idempotency_key: Optional[str] = None) -> Dict[str, Any]:
-        """Reads user cart, validates Business Policies (MOQ/MOV), and creates order."""
+        """Reads user cart, delegates Math to Pricing Engine, and creates order."""
         
         # 1. Fetch Cart & User Data
         cart_data = await self.repo.get_cart_for_checkout(user_id)
         if not cart_data or not cart_data.get("cart_items"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Your cart is empty. Cannot initiate checkout.")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Your cart is empty.")
 
-        user_data = await self.user_repo.get_user_by_id(user_id)
-        user_tier = user_data.get("tier", "normal") if user_data else "normal"
+        user_data = await self.user_repo.get_user_by_id(user_id) or {}
 
-        total_subtotal = Decimal("0.00")
-        total_tax = Decimal("0.00")
-        total_discount = Decimal("0.00")
+        # 2. Gatekeeper Check: Warehouse Stock Only
+        for item in cart_data["cart_items"]:
+            prod = item.get("products")
+            if not prod: continue
+            if prod["stock"] < item["quantity"]:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for: {prod['name']}")
+
+        # 3. 🔥 CALL THE PRICING ENGINE (Handles Math, MOQ, MOV, VIP Tier)
+        # TODO: Aap is config ko future me DB (Settings Service) se le aana
+        store_config = {
+            "tax_enabled": True,
+            "shipping_enabled": True,
+            "tax_rate": 18.0,
+            "shipping_flat": 99.0,
+            "shipping_threshold": 999.0,
+            "store_mov": 500.0, # Minimum Order Value
+            "currency": "INR"
+        }
+        
+        pricing_engine = get_pricing_for_user(user=user_data, config=store_config)
+        
+        # 💥 Magic Happens Here (Crashes automatically if MOQ/MOV fail)
+        breakdown = pricing_engine.calculate(cart_data["cart_items"])
+
+        # 4. Prepare Order & Item Payloads
         items_payload = []
-
         for item in cart_data["cart_items"]:
             prod = item.get("products")
             if not prod: continue
 
-            qty = item["quantity"]
+            qty = Decimal(str(item["quantity"]))
             
-            # 🛡️ BUSINESS POLICY 1: Stock Check
-            if prod["stock"] < qty:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for item: {prod['name']}")
+            # Since pricing_engine.calculate ran, these snapshots are 100% safe & strict
+            unit_price = Decimal(str(item["price_snapshot"]))
+            gst_pct = int(item["gst_percentage_snapshot"])
             
-            # 🛡️ BUSINESS POLICY 2: MOQ (Minimum Order Quantity)
-            item_moq = prod.get("moq") or 1
-            if qty < item_moq:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Minimum order quantity for '{prod['name']}' is {item_moq}.")
-
-            unit_price = Decimal(str(prod["price"]))
-            compare_price = Decimal(str(prod["compare_price"] or unit_price))
             subtotal = unit_price * qty
-
-            # Math
-            discount_per_item = max(Decimal("0.00"), compare_price - unit_price)
-            discount_amount = discount_per_item * qty
-            gst_pct = Decimal(str(prod.get("gst_percentage") or 18))
-            tax_amount = (subtotal * (gst_pct / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-            total_subtotal += subtotal
-            total_tax += tax_amount
-            total_discount += discount_amount
+            tax_amount = subtotal * (Decimal(str(gst_pct)) / Decimal("100"))
+            
+            compare_price = Decimal(str(prod.get("compare_price") or unit_price))
+            discount_amount = max(Decimal("0.00"), compare_price - unit_price) * qty
 
             items_payload.append({
                 "product_id": prod["id"],
                 "product_name": prod["name"],
                 "unit_price": float(unit_price),
-                "quantity": qty,
+                "quantity": int(qty),
                 "subtotal": float(subtotal),
                 "compare_price": float(compare_price),
                 "hsn_code": prod.get("hsn_code") or "9988",
-                "gst_percentage": int(gst_pct),
+                "gst_percentage": gst_pct,
                 "tax_amount": float(tax_amount),
                 "discount_amount": float(discount_amount)
             })
 
-        # 🛡️ BUSINESS POLICY 3: MOV (Minimum Order Value)
-        if total_subtotal > Decimal("0") and total_subtotal < self.STORE_MOV:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Minimum order value is ₹{self.STORE_MOV}. Your subtotal is ₹{total_subtotal}.")
-
-        # 🛡️ BUSINESS POLICY 4: VIP / Prime Shipping Tiers
-        if user_tier in ["vip", "premium", "prime"]:
-            shipping_cost = Decimal("0.00") # VIP users get free shipping
-        else:
-            shipping_cost = Decimal("0.00") if total_subtotal >= self.FREE_SHIPPING_THRESHOLD else self.STANDARD_SHIPPING_FEE
-            
-        total_amount = total_subtotal + total_tax + shipping_cost
-
         order_data = {
             "customer_id": user_id,
             "status": OrderStatus.PENDING.value,
-            "subtotal": float(total_subtotal),
-            "shipping_cost": float(shipping_cost),
-            "tax_amount": float(total_tax),
-            "total_amount": float(total_amount),
+            "subtotal": float(breakdown.subtotal),
+            "shipping_cost": float(breakdown.shipping),
+            "tax_amount": float(breakdown.tax),
+            "total_amount": float(breakdown.total),
             "shipping_address_id": str(address_id),
             "notes": notes,
             "idempotency_key": idempotency_key,
-            "currency": "INR",
+            "currency": breakdown.currency,
             "tax_type": "IGST"
         }
 
+        # 5. Save to Database
         created_order = await self.repo.create_order_with_items(order_data, items_payload, user_id)
         if not created_order:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create order due to database conflict.")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create order.")
 
         return self._sanitize(created_order)
 
+    # ── OTHER METHODS REMAIN EXACTLY THE SAME ──
     async def get_user_orders(self, user_id: str, status_filter: str, page: int, page_size: int) -> Tuple[List[Dict[str, Any]], int]:
         items, total = await self.repo.get_user_orders(user_id, status_filter, page, page_size)
         return [self._sanitize(o) for o in items], total
