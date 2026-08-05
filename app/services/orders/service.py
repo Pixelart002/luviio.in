@@ -40,6 +40,10 @@ class OrderService:
     def __init__(self):
         self.repo = AsyncOrderRepository()
         self.user_repo = AsyncUserRepository()
+        # 🔥 STORE CONFIG (Future me isko Settings API se le sakte ho)
+        self.STORE_MOV = Decimal("500.00") 
+        self.FREE_SHIPPING_THRESHOLD = Decimal("999.00")
+        self.STANDARD_SHIPPING_FEE = Decimal("99.00")
 
     def _sanitize(self, order: Dict[str, Any]) -> Dict[str, Any]:
         if not order: 
@@ -69,10 +73,15 @@ class OrderService:
         return sanitized
 
     async def create_order_from_cart(self, user_id: str, address_id: str, notes: Optional[str] = None, idempotency_key: Optional[str] = None) -> Dict[str, Any]:
-        """Reads user cart, calculates GST/Discounts, locks snapshots, and creates order."""
+        """Reads user cart, validates Business Policies (MOQ/MOV), and creates order."""
+        
+        # 1. Fetch Cart & User Data
         cart_data = await self.repo.get_cart_for_checkout(user_id)
         if not cart_data or not cart_data.get("cart_items"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Your cart is empty. Cannot initiate checkout.")
+
+        user_data = await self.user_repo.get_user_by_id(user_id)
+        user_tier = user_data.get("tier", "normal") if user_data else "normal"
 
         total_subtotal = Decimal("0.00")
         total_tax = Decimal("0.00")
@@ -81,22 +90,26 @@ class OrderService:
 
         for item in cart_data["cart_items"]:
             prod = item.get("products")
-            if not prod:
-                continue
+            if not prod: continue
 
             qty = item["quantity"]
+            
+            # 🛡️ BUSINESS POLICY 1: Stock Check
             if prod["stock"] < qty:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for item: {prod['name']}")
+            
+            # 🛡️ BUSINESS POLICY 2: MOQ (Minimum Order Quantity)
+            item_moq = prod.get("moq") or 1
+            if qty < item_moq:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Minimum order quantity for '{prod['name']}' is {item_moq}.")
 
             unit_price = Decimal(str(prod["price"]))
             compare_price = Decimal(str(prod["compare_price"] or unit_price))
             subtotal = unit_price * qty
 
-            # Discount Math
+            # Math
             discount_per_item = max(Decimal("0.00"), compare_price - unit_price)
             discount_amount = discount_per_item * qty
-
-            # GST Math
             gst_pct = Decimal(str(prod.get("gst_percentage") or 18))
             tax_amount = (subtotal * (gst_pct / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
@@ -117,7 +130,16 @@ class OrderService:
                 "discount_amount": float(discount_amount)
             })
 
-        shipping_cost = Decimal("0.00") if total_subtotal >= Decimal("999.00") else Decimal("99.00")
+        # 🛡️ BUSINESS POLICY 3: MOV (Minimum Order Value)
+        if total_subtotal > Decimal("0") and total_subtotal < self.STORE_MOV:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Minimum order value is ₹{self.STORE_MOV}. Your subtotal is ₹{total_subtotal}.")
+
+        # 🛡️ BUSINESS POLICY 4: VIP / Prime Shipping Tiers
+        if user_tier in ["vip", "premium", "prime"]:
+            shipping_cost = Decimal("0.00") # VIP users get free shipping
+        else:
+            shipping_cost = Decimal("0.00") if total_subtotal >= self.FREE_SHIPPING_THRESHOLD else self.STANDARD_SHIPPING_FEE
+            
         total_amount = total_subtotal + total_tax + shipping_cost
 
         order_data = {

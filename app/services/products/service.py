@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from app.repositories.product_repo import AsyncProductRepository
 from app.permissions.policies.product_policy import ProductPolicy
 from app.constants.product_messages import ProductSecurityMessages
-from app.services.image import upload_product_image, delete_product_image
+from app.utils.image import upload_product_image, delete_product_image
 
 logger = logging.getLogger(__name__)
 
