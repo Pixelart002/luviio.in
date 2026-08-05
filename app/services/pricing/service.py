@@ -113,7 +113,7 @@ class StandardPricing(PricingStrategy):
             item_qty = Decimal(str(item["quantity"]))
 
             # 🔥 STRICT MOQ CHECK (Business Gatekeeper)
-            item_moq = Decimal(str(prod_data.get("moq") or 1))
+            item_moq = Decimal(str(prod_data.get("moq") or 10))
             if item_qty < item_moq:
                 raise HTTPException(status_code=400, detail=f"Minimum Order Quantity for '{prod_data.get('name', 'this item')}' is {int(item_moq)}.")
 
