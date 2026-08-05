@@ -9,7 +9,7 @@ import os
 import logging
 from typing import Any
 
-from app.services.bus import (
+from app.events.bus import (
     OrderCreatedEvent, OrderPaidEvent, OrderFailedEvent, 
     OrderShippedEvent, OrderStatusChangedEvent, LowStockEvent
 )
