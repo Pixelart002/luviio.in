@@ -113,7 +113,7 @@ class StandardPricing(PricingStrategy):
             item_qty = Decimal(str(item["quantity"]))
 
             # 🔥 STRICT MOQ CHECK (Business Gatekeeper)
-            item_moq = Decimal(str(prod_data.get("moq") or 10))
+            item_moq = Decimal(str(prod_data.get("moq") or 0))
             if item_qty < item_moq:
                 raise HTTPException(status_code=400, detail=f"Minimum Order Quantity for '{prod_data.get('name', 'this item')}' is {int(item_moq)}.")
 
@@ -254,7 +254,7 @@ def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
     tax_rate           = Decimal(str(config.get("tax_rate", 18.0))) / Decimal("100")
     shipping_flat      = Decimal(str(config.get("shipping_flat", 99.0)))
     shipping_threshold = Decimal(str(config.get("shipping_threshold", 999.0)))
-    store_mov          = Decimal(str(config.get("store_mov", 1000.0)))
+    store_mov          = Decimal(str(config.get("store_mov", 0.0)))
 
     if not tax_enabled:
         return ZeroTaxPricing(
