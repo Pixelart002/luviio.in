@@ -1,0 +1,6 @@
+table_name,trigger_name,exact_trigger_code
+orders,trg_auto_format_gst_invoice,CREATE TRIGGER trg_auto_format_gst_invoice BEFORE INSERT OR UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION auto_format_gst_invoice()
+orders,trg_orders_touch_updated_at,CREATE TRIGGER trg_orders_touch_updated_at BEFORE UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION fn_touch_updated_at()
+payments,trg_assign_payment_attempt_number,CREATE TRIGGER trg_assign_payment_attempt_number BEFORE INSERT ON public.payments FOR EACH ROW EXECUTE FUNCTION fn_assign_payment_attempt_number()
+payments,trg_log_payment_attempt,CREATE TRIGGER trg_log_payment_attempt AFTER INSERT OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION fn_log_payment_attempt()
+payments,trg_payments_touch_updated_at,CREATE TRIGGER trg_payments_touch_updated_at BEFORE UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION fn_touch_updated_at()

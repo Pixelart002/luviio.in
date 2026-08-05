@@ -1,0 +1,16 @@
+my_table,my_column,foreign_table,foreign_column,constraint_name
+orders,customer_id,users,id,orders_customer_id_fkey
+products,category_id,categories,id,products_category_id_fkey
+product_images,product_id,products,id,product_images_product_id_fkey
+addresses,user_id,users,id,addresses_user_id_fkey
+order_items,order_id,orders,id,order_items_order_id_fkey
+order_items,product_id,products,id,order_items_product_id_fkey
+cart_items,cart_id,carts,id,cart_items_cart_id_fkey
+payments,order_id,orders,id,payments_order_id_fkey
+payments,user_id,users,id,payments_user_id_fkey
+orders,shipping_address_id,addresses,id,orders_shipping_address_id_fkey
+push_subscriptions,user_id,users,id,push_subscriptions_user_id_fkey
+payment_attempts,payment_id,payments,id,payment_attempts_payment_id_fkey
+stock_audit,product_id,products,id,stock_audit_product_id_fkey
+carts,user_id,users,id,carts_user_id_fkey
+cart_items,product_id,products,id,cart_items_product_id_fkey

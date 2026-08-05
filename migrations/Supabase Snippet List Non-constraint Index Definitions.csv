@@ -1,0 +1,29 @@
+tablename,indexname,exact_index_code
+addresses,addresses_user_id_idx,CREATE INDEX addresses_user_id_idx ON public.addresses USING btree (user_id);
+cart_items,idx_cart_items_cart,CREATE INDEX idx_cart_items_cart ON public.cart_items USING btree (cart_id);
+carts,idx_carts_updated_at,CREATE INDEX idx_carts_updated_at ON public.carts USING btree (updated_at);
+carts,idx_carts_user_id,CREATE INDEX idx_carts_user_id ON public.carts USING btree (user_id);
+order_items,order_items_order_id_idx,CREATE INDEX order_items_order_id_idx ON public.order_items USING btree (order_id);
+order_items,order_items_product_idx,CREATE INDEX order_items_product_idx ON public.order_items USING btree (product_id);
+orders,idx_orders_idem,"CREATE UNIQUE INDEX idx_orders_idem ON public.orders USING btree (customer_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);"
+orders,idx_orders_status_created,"CREATE INDEX idx_orders_status_created ON public.orders USING btree (status, created_at);"
+orders,orders_customer_id_idx,CREATE INDEX orders_customer_id_idx ON public.orders USING btree (customer_id);
+orders,orders_idempotency_key_idx,"CREATE UNIQUE INDEX orders_idempotency_key_idx ON public.orders USING btree (customer_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);"
+orders,orders_stripe_pi_idx,CREATE INDEX orders_stripe_pi_idx ON public.orders USING btree (stripe_payment_intent) WHERE (stripe_payment_intent IS NOT NULL);
+orders,uq_orders_user_idempotency,"CREATE UNIQUE INDEX uq_orders_user_idempotency ON public.orders USING btree (customer_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);"
+payment_attempts,idx_payment_attempts_order_id,CREATE INDEX idx_payment_attempts_order_id ON public.payment_attempts USING btree (order_id);
+payment_attempts,idx_payment_attempts_payment_id,CREATE INDEX idx_payment_attempts_payment_id ON public.payment_attempts USING btree (payment_id);
+payment_attempts,idx_payment_attempts_pi_id,CREATE INDEX idx_payment_attempts_pi_id ON public.payment_attempts USING btree (stripe_payment_intent_id);
+payment_attempts,idx_payment_attempts_user_id,CREATE INDEX idx_payment_attempts_user_id ON public.payment_attempts USING btree (user_id);
+payments,idx_payments_latest_pi,CREATE INDEX idx_payments_latest_pi ON public.payments USING btree (latest_payment_intent_id);
+payments,idx_payments_order_id,CREATE INDEX idx_payments_order_id ON public.payments USING btree (order_id);
+payments,idx_payments_status_created,"CREATE INDEX idx_payments_status_created ON public.payments USING btree (status, created_at DESC);"
+payments,idx_payments_user_id,CREATE INDEX idx_payments_user_id ON public.payments USING btree (user_id);
+products,products_fts_idx,CREATE INDEX products_fts_idx ON public.products USING gin (fts);
+products,products_sku_unique_idx,CREATE UNIQUE INDEX products_sku_unique_idx ON public.products USING btree (sku) WHERE (sku IS NOT NULL);
+push_subscriptions,push_subs_user_id_covering_idx,"CREATE INDEX push_subs_user_id_covering_idx ON public.push_subscriptions USING btree (user_id) INCLUDE (endpoint, subscription_json);"
+stock_audit,stock_audit_created_at_idx,CREATE INDEX stock_audit_created_at_idx ON public.stock_audit USING btree (created_at DESC);
+stock_audit,stock_audit_product_id_idx,CREATE INDEX stock_audit_product_id_idx ON public.stock_audit USING btree (product_id);
+stock_audit,stock_audit_sku_idx,CREATE INDEX stock_audit_sku_idx ON public.stock_audit USING btree (sku) WHERE (sku IS NOT NULL);
+system_settings,idx_settings_category,CREATE INDEX idx_settings_category ON public.system_settings USING btree (category);
+system_settings,idx_settings_public,CREATE INDEX idx_settings_public ON public.system_settings USING btree (is_public) WHERE (is_public = true);

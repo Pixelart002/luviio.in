@@ -1,0 +1,387 @@
+function_name,exact_sql_code
+auto_format_gst_invoice,"CREATE OR REPLACE FUNCTION public.auto_format_gst_invoice()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_fy text;
+    v_seq text;
+BEGIN
+    -- Determine current Financial Year (April to March format: ""26-27"")
+    IF EXTRACT(MONTH FROM NOW()) >= 4 THEN
+        v_fy := TO_CHAR(NOW(), 'YY') || '-' || TO_CHAR(NOW() + INTERVAL '1 year', 'YY');
+    ELSE
+        v_fy := TO_CHAR(NOW() - INTERVAL '1 year', 'YY') || '-' || TO_CHAR(NOW(), 'YY');
+    END IF;
+
+    -- Scenario A: If Python sends a raw number like '92', automatically format it!
+    IF NEW.invoice_number IS NOT NULL AND NEW.invoice_number ~ '^[0-9]+$' THEN
+        v_seq := LPAD(NEW.invoice_number, 5, '0');
+        NEW.invoice_number := 'INV/' || v_fy || '/' || v_seq;
+        
+    -- Scenario B: If NOTHING is passed, auto-generate sequentially ONLY when 'paid' (GST Compliance)
+    ELSIF NEW.invoice_number IS NULL AND NEW.status = 'paid' THEN
+        v_seq := LPAD(nextval('public.gst_invoice_seq')::text, 5, '0');
+        NEW.invoice_number := 'INV/' || v_fy || '/' || v_seq;
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+"
+cancel_order_and_release_stock,"CREATE OR REPLACE FUNCTION public.cancel_order_and_release_stock(p_order_id uuid, p_reason text DEFAULT 'order_cancelled'::text)
+ RETURNS text
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_status TEXT;
+    v_item RECORD;
+BEGIN
+    SELECT status INTO v_status FROM public.orders WHERE id = p_order_id FOR UPDATE;
+    IF v_status IN ('cancelled', 'refunded') THEN RETURN 'ALREADY_CANCELLED'; END IF;
+    
+    -- Restore Stock
+    FOR v_item IN SELECT product_id, quantity FROM public.order_items WHERE order_id = p_order_id LOOP
+        UPDATE public.products SET stock = stock + v_item.quantity WHERE id = v_item.product_id;
+    END LOOP;
+
+    -- Mark Cancelled
+    UPDATE public.orders 
+       SET status = 'cancelled', 
+           notes = COALESCE(notes, '') || ' | Cancel Reason: ' || p_reason,
+           cancelled_at = NOW(),
+           updated_at = NOW()
+     WHERE id = p_order_id;
+
+    RETURN 'CANCELLED';
+END;
+$function$
+"
+claim_webhook_event,"CREATE OR REPLACE FUNCTION public.claim_webhook_event(p_event_id text, p_event_type text, p_pi_id text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_existing_status text;
+BEGIN
+    SELECT status INTO v_existing_status
+      FROM public.webhook_events_ledger
+     WHERE event_id = p_event_id;
+
+    IF v_existing_status = 'processed' THEN
+        RETURN false; -- Skip duplicate execution
+    END IF;
+
+    INSERT INTO public.webhook_events_ledger (event_id, event_type, stripe_payment_intent_id, status)
+    VALUES (p_event_id, p_event_type, p_pi_id, 'pending')
+    ON CONFLICT (event_id) DO UPDATE 
+       SET status = 'pending';
+
+    RETURN true;
+END;
+$function$
+"
+create_pending_order_with_reservation,"CREATE OR REPLACE FUNCTION public.create_pending_order_with_reservation(p_order_data jsonb, p_items jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  v_order_id uuid;
+  v_result   jsonb;
+  v_item     jsonb;
+  v_prod_id  uuid;
+  v_qty      int;
+  v_merged_item jsonb;
+BEGIN
+  -- Atomic stock deduction
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
+  LOOP
+      v_prod_id := (v_item->>'product_id')::uuid;
+      v_qty := (v_item->>'quantity')::int;
+
+      UPDATE public.products
+         SET stock = stock - v_qty
+       WHERE id = v_prod_id 
+         AND stock >= v_qty;
+
+      IF NOT FOUND THEN
+          RAISE EXCEPTION 'Inventory depleted for product_id: %', v_prod_id;
+      END IF;
+  END LOOP;
+
+  v_order_id := gen_random_uuid();
+  
+  -- 🔥 THE FIX: Explicitly inject created_at and updated_at into the JSON 
+  -- so jsonb_populate_record doesn't wipe them out to null.
+  p_order_data := p_order_data || jsonb_build_object(
+      'id', v_order_id,
+      'tax_type', COALESCE(p_order_data->>'tax_type', 'IGST'),
+      'created_at', COALESCE(p_order_data->>'created_at', NOW()::text),
+      'updated_at', NOW()::text
+  );
+
+  INSERT INTO public.orders
+  SELECT * FROM jsonb_populate_record(null::public.orders, p_order_data);
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
+  LOOP
+      v_merged_item := v_item || jsonb_build_object(
+          'id', gen_random_uuid(), 
+          'order_id', v_order_id,
+          'created_at', NOW()::text
+      );
+      
+      INSERT INTO public.order_items
+      SELECT * FROM jsonb_populate_record(null::public.order_items, v_merged_item);
+  END LOOP;
+
+  SELECT row_to_json(o)::jsonb INTO v_result
+  FROM public.orders o WHERE o.id = v_order_id;
+
+  RETURN v_result;
+END;
+$function$
+"
+fn_assign_payment_attempt_number,"CREATE OR REPLACE FUNCTION public.fn_assign_payment_attempt_number()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    IF NEW.attempt_number IS NULL THEN
+        SELECT COUNT(*) + 1 INTO NEW.attempt_number
+          FROM public.payments
+         WHERE order_id = NEW.order_id;
+    END IF;
+    RETURN NEW;
+END;
+$function$
+"
+fn_log_payment_attempt,"CREATE OR REPLACE FUNCTION public.fn_log_payment_attempt()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    IF TG_OP = 'UPDATE' AND NEW.status IS NOT DISTINCT FROM OLD.status THEN
+        RETURN NEW;
+    END IF;
+
+    BEGIN
+        INSERT INTO public.payment_attempts (
+            order_id, user_id, stripe_payment_intent_id, attempt_number,
+            status, amount, amount_paise, currency, payment_method,
+            failure_code, failure_reason, ip_address, user_agent
+        ) VALUES (
+            NEW.order_id, NEW.user_id, NEW.stripe_payment_intent_id, NEW.attempt_number,
+            NEW.status, NEW.amount, NEW.amount_paise, NEW.currency, NEW.payment_method,
+            NEW.failure_code, NEW.failure_reason, NEW.ip_address::text, NEW.user_agent::text
+        );
+    EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING 'fn_log_payment_attempt failed for PI % (order %): %',
+            NEW.stripe_payment_intent_id, NEW.order_id, SQLERRM;
+    END;
+
+    RETURN NEW;
+END;
+$function$
+"
+fn_touch_updated_at,"CREATE OR REPLACE FUNCTION public.fn_touch_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$function$
+"
+mark_payment_failed,"CREATE OR REPLACE FUNCTION public.mark_payment_failed(p_order_id uuid, p_user_id uuid, p_pi_id text, p_amount numeric, p_reason text DEFAULT NULL::text, p_error_code text DEFAULT NULL::text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+    INSERT INTO public.payments (
+        order_id, user_id, stripe_payment_intent_id, amount, amount_paise,
+        currency, status, failure_reason, failure_code
+    ) VALUES (
+        p_order_id, p_user_id, p_pi_id, p_amount, ROUND(p_amount * 100),
+        'INR', 'failed', p_reason, p_error_code
+    )
+    ON CONFLICT (stripe_payment_intent_id) DO UPDATE
+        SET status = 'failed', failure_reason = EXCLUDED.failure_reason, failure_code = EXCLUDED.failure_code
+        WHERE public.payments.status NOT IN ('succeeded', 'refunded', 'succeeded_orphaned');
+END;
+$function$
+"
+mark_webhook_event_processed,"CREATE OR REPLACE FUNCTION public.mark_webhook_event_processed(p_event_id text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+    UPDATE public.webhook_events_ledger
+       SET status = 'processed',
+           processed_at = now()
+     WHERE event_id = p_event_id;
+END;
+$function$
+"
+record_payment_attempt,"CREATE OR REPLACE FUNCTION public.record_payment_attempt(p_order_id uuid, p_user_id uuid, p_pi_id text, p_amount numeric, p_status text, p_payment_method text DEFAULT NULL::text, p_error_code text DEFAULT NULL::text, p_error_message text DEFAULT NULL::text, p_ip_address text DEFAULT NULL::text, p_user_agent text DEFAULT NULL::text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_payment_id uuid;
+    v_attempt_count int;
+BEGIN
+    -- [1. UPDATE/INSERT PAYMENTS HEADER]
+    SELECT id, COALESCE(attempt_number, 1) INTO v_payment_id, v_attempt_count 
+    FROM public.payments WHERE stripe_payment_intent_id = p_pi_id LIMIT 1;
+
+    IF v_payment_id IS NULL THEN
+        SELECT COALESCE(MAX(total_attempts), 0) + 1 INTO v_attempt_count 
+        FROM public.payments WHERE order_id = p_order_id;
+
+        INSERT INTO public.payments (
+            order_id, user_id, stripe_payment_intent_id, amount, amount_paise, currency,
+            status, payment_method, error_code, error_message, ip_address, user_agent,
+            total_attempts, attempt_number, latest_attempt_number, latest_payment_intent_id, 
+            first_attempt_at, last_attempt_at, updated_at
+        ) VALUES (
+            p_order_id, p_user_id, p_pi_id, p_amount, ROUND(p_amount * 100)::bigint, 'INR',
+            p_status, p_payment_method, p_error_code, p_error_message, p_ip_address, p_user_agent,
+            v_attempt_count, v_attempt_count, v_attempt_count, p_pi_id, 
+            NOW(), NOW(), NOW()
+        ) RETURNING id INTO v_payment_id;
+    ELSE
+        UPDATE public.payments SET
+            status = p_status,
+            payment_method = COALESCE(p_payment_method, payment_method),
+            error_code = COALESCE(p_error_code, error_code),
+            error_message = COALESCE(p_error_message, error_message),
+            latest_attempt_number = v_attempt_count,
+            latest_payment_intent_id = p_pi_id,
+            last_attempt_at = NOW(),
+            updated_at = NOW()
+        WHERE id = v_payment_id;
+    END IF;
+
+    -- [2. 🔥 THE FIX: UPSERT INTO PAYMENT ATTEMPTS]
+    -- Agar pehle se row hai toh naya insert karne ki jagah status aur error_message update kar dega
+    INSERT INTO public.payment_attempts (
+        payment_id, order_id, user_id, stripe_payment_intent_id, attempt_number,
+        status, amount, amount_paise, currency, error_message, created_at
+    ) VALUES (
+        v_payment_id, p_order_id, p_user_id, p_pi_id, v_attempt_count,
+        p_status, p_amount, ROUND(p_amount * 100)::bigint, 'INR', p_error_message, NOW()
+    )
+    ON CONFLICT (stripe_payment_intent_id) DO UPDATE 
+    SET status = EXCLUDED.status,
+        error_message = EXCLUDED.error_message,
+        amount = EXCLUDED.amount,
+        amount_paise = EXCLUDED.amount_paise;
+END;
+$function$
+"
+rpc_admin_update_order_status,"CREATE OR REPLACE FUNCTION public.rpc_admin_update_order_status(p_order_id uuid, p_new_status text, p_tracking_number text DEFAULT NULL::text, p_notes text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_order jsonb;
+BEGIN
+    UPDATE public.orders
+    SET 
+        status = p_new_status,
+        tracking_number = COALESCE(p_tracking_number, tracking_number),
+        notes = CASE 
+                   WHEN p_notes IS NOT NULL THEN COALESCE(notes, '') || ' | ' || p_notes 
+                   ELSE notes 
+                END,
+        updated_at = NOW(),
+        refunded_at = CASE WHEN p_new_status = 'refunded' THEN NOW() ELSE refunded_at END,
+        shipped_at = CASE WHEN p_new_status = 'shipped' THEN NOW() ELSE shipped_at END,
+        delivered_at = CASE WHEN p_new_status = 'delivered' THEN NOW() ELSE delivered_at END,
+        cancelled_at = CASE WHEN p_new_status = 'cancelled' THEN NOW() ELSE cancelled_at END
+    WHERE id = p_order_id
+    RETURNING to_jsonb(orders.*) INTO v_order;
+    
+    RETURN v_order;
+END;
+$function$
+"
+settle_order_transaction,"CREATE OR REPLACE FUNCTION public.settle_order_transaction(p_order_id uuid, p_pi_id text, p_amount numeric, p_user_id uuid, p_payment_method text DEFAULT NULL::text)
+ RETURNS text
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_payment_id uuid;
+    v_current_status text;
+    v_attempt int; -- 🔥 Naya variable taaki attempt count miss na ho
+BEGIN
+    -- 1. Lock order for Concurrency Guard
+    SELECT status INTO v_current_status FROM public.orders
+     WHERE id = p_order_id AND customer_id = p_user_id FOR UPDATE;
+
+    IF NOT FOUND THEN RETURN 'ORDER_NOT_FOUND'; END IF;
+    IF v_current_status = 'paid' THEN RETURN 'ALREADY_PAID'; END IF;
+    IF v_current_status IN ('cancelled', 'refunded') THEN RETURN 'ORDER_ALREADY_CANCELLED'; END IF;
+
+    -- 2. Fetch existing payment header & its attempt number
+    SELECT id, COALESCE(attempt_number, 1) INTO v_payment_id, v_attempt 
+    FROM public.payments WHERE stripe_payment_intent_id = p_pi_id LIMIT 1;
+    
+    IF v_payment_id IS NULL THEN
+        -- Agar Webhook pehle aa gaya, toh properly count nikal kar insert karo
+        SELECT COALESCE(MAX(total_attempts), 0) + 1 INTO v_attempt 
+        FROM public.payments WHERE order_id = p_order_id;
+
+        INSERT INTO public.payments (
+            order_id, user_id, stripe_payment_intent_id, amount, amount_paise, 
+            currency, status, payment_method, 
+            total_attempts, attempt_number, latest_attempt_number, successful_attempt_number, 
+            latest_payment_intent_id, updated_at
+        ) VALUES (
+            p_order_id, p_user_id, p_pi_id, p_amount, ROUND(p_amount * 100)::bigint, 
+            'INR', 'succeeded', p_payment_method, 
+            v_attempt, v_attempt, v_attempt, v_attempt, -- 🔥 Yahan saare attempt track honge
+            p_pi_id, NOW()
+        ) RETURNING id INTO v_payment_id;
+    ELSE
+        UPDATE public.payments 
+        SET status = 'succeeded', 
+            payment_method = COALESCE(p_payment_method, payment_method),
+            successful_attempt_number = v_attempt,
+            updated_at = NOW() 
+        WHERE id = v_payment_id;
+    END IF;
+
+    -- 3. UPSERT into Payment Attempts
+    INSERT INTO public.payment_attempts (
+        payment_id, order_id, user_id, stripe_payment_intent_id, attempt_number, 
+        status, amount, amount_paise, currency, error_message, created_at
+    ) VALUES (
+        v_payment_id, p_order_id, p_user_id, p_pi_id, v_attempt, 
+        'succeeded', p_amount, ROUND(p_amount * 100)::bigint, 'INR', NULL, NOW()
+    )
+    ON CONFLICT (stripe_payment_intent_id) DO UPDATE 
+    SET status = 'succeeded', 
+        amount = EXCLUDED.amount, 
+        amount_paise = EXCLUDED.amount_paise,
+        error_message = NULL; -- 🔥 Purana error message hata dega
+
+    -- 4. Mark FSM Order Paid
+    UPDATE public.orders
+       SET status = 'paid', stripe_payment_intent = p_pi_id, paid_at = COALESCE(paid_at, NOW()), updated_at = NOW()
+     WHERE id = p_order_id;
+
+    RETURN 'SETTLED';
+END;
+$function$
+"

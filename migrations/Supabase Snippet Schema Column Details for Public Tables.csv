@@ -1,0 +1,207 @@
+table_name,column_name,exact_data_type,is_nullable,column_default
+addresses,id,uuid,NO,gen_random_uuid()
+addresses,user_id,uuid,YES,null
+addresses,line1,text,NO,null
+addresses,line2,text,YES,null
+addresses,city,text,NO,null
+addresses,state,text,YES,null
+addresses,postal_code,text,NO,null
+addresses,country,character(2),NO,null
+addresses,is_default,boolean,YES,false
+addresses,created_at,timestamp with time zone,YES,now()
+addresses,deleted_at,timestamp with time zone,YES,null
+addresses,full_name,text,YES,null
+addresses,phone,text,YES,null
+addresses,email,text,YES,null
+addresses,landmark,text,YES,null
+addresses,address_type,text,YES,'home'::text
+addresses,company_name,text,YES,null
+addresses,gstin,text,YES,null
+cart_items,id,uuid,NO,gen_random_uuid()
+cart_items,cart_id,uuid,NO,null
+cart_items,product_id,uuid,NO,null
+cart_items,quantity,integer,NO,null
+cart_items,price_snapshot,numeric,NO,null
+cart_items,added_at,timestamp with time zone,NO,now()
+carts,id,uuid,NO,gen_random_uuid()
+carts,user_id,uuid,NO,null
+carts,created_at,timestamp with time zone,NO,now()
+carts,updated_at,timestamp with time zone,NO,now()
+categories,id,uuid,NO,gen_random_uuid()
+categories,name,text,NO,null
+categories,slug,text,NO,null
+categories,description,text,YES,null
+categories,image_url,text,YES,null
+categories,is_active,boolean,YES,true
+categories,created_at,timestamp with time zone,YES,now()
+order_items,id,uuid,NO,gen_random_uuid()
+order_items,order_id,uuid,YES,null
+order_items,product_id,uuid,YES,null
+order_items,product_name,text,YES,null
+order_items,unit_price,numeric,NO,null
+order_items,quantity,integer,NO,null
+order_items,subtotal,numeric,YES,null
+order_items,compare_price,numeric,YES,0.00
+order_items,hsn_code,text,YES,'9988'::text
+order_items,gst_percentage,integer,YES,18
+order_items,tax_amount,numeric,YES,0.00
+order_items,discount_amount,numeric,YES,0.00
+orders,id,uuid,NO,gen_random_uuid()
+orders,customer_id,uuid,YES,null
+orders,status,text,YES,'pending'::text
+orders,subtotal,numeric,YES,null
+orders,shipping_cost,numeric,YES,null
+orders,tax_amount,numeric,YES,null
+orders,total_amount,numeric,YES,null
+orders,stripe_payment_intent,text,YES,null
+orders,shipping_line1,text,YES,null
+orders,shipping_line2,text,YES,null
+orders,shipping_city,text,YES,null
+orders,shipping_state,text,YES,null
+orders,shipping_postal_code,text,YES,null
+orders,shipping_country,text,YES,null
+orders,notes,text,YES,null
+orders,tracking_number,text,YES,null
+orders,created_at,timestamp with time zone,YES,now()
+orders,shipping_address_id,uuid,YES,null
+orders,idempotency_key,text,YES,null
+orders,currency,text,YES,'INR'::text
+orders,updated_at,timestamp with time zone,YES,now()
+orders,invoice_number,text,YES,null
+orders,tax_type,text,YES,'IGST'::text
+orders,order_number,text,YES,null
+orders,shipping_name,text,YES,null
+orders,shipping_phone,text,YES,null
+orders,shipping_email,text,YES,null
+orders,shipping_landmark,text,YES,null
+orders,shipping_company_name,text,YES,null
+orders,shipping_gstin,text,YES,null
+orders,billing_same_as_shipping,boolean,YES,true
+orders,billing_address_id,uuid,YES,null
+orders,billing_name,text,YES,null
+orders,billing_phone,text,YES,null
+orders,billing_email,text,YES,null
+orders,billing_line1,text,YES,null
+orders,billing_line2,text,YES,null
+orders,billing_landmark,text,YES,null
+orders,billing_city,text,YES,null
+orders,billing_state,text,YES,null
+orders,billing_postal_code,text,YES,null
+orders,billing_country,text,YES,null
+orders,billing_company_name,text,YES,null
+orders,billing_gstin,text,YES,null
+orders,fulfilled_at,timestamp with time zone,YES,null
+orders,cancelled_at,timestamp with time zone,YES,null
+orders,delivered_at,timestamp with time zone,YES,null
+orders,paid_at,timestamp with time zone,YES,null
+orders,shipped_at,timestamp with time zone,YES,null
+orders,refunded_at,timestamp with time zone,YES,null
+payment_attempts,id,uuid,NO,gen_random_uuid()
+payment_attempts,payment_id,uuid,NO,null
+payment_attempts,order_id,uuid,YES,null
+payment_attempts,user_id,uuid,YES,null
+payment_attempts,stripe_payment_intent_id,text,YES,null
+payment_attempts,attempt_number,integer,YES,null
+payment_attempts,status,text,NO,null
+payment_attempts,amount,numeric,NO,null
+payment_attempts,amount_paise,bigint,YES,null
+payment_attempts,currency,text,NO,null
+payment_attempts,error_message,text,YES,null
+payment_attempts,created_at,timestamp with time zone,YES,now()
+payments,id,uuid,NO,gen_random_uuid()
+payments,order_id,uuid,YES,null
+payments,user_id,uuid,YES,null
+payments,stripe_payment_intent_id,text,YES,null
+payments,amount,numeric,NO,null
+payments,amount_paise,bigint,YES,null
+payments,currency,text,NO,'INR'::text
+payments,status,text,NO,'requires_payment_method'::text
+payments,payment_method,text,YES,null
+payments,error_code,text,YES,null
+payments,error_message,text,YES,null
+payments,failure_reason,text,YES,null
+payments,failure_code,text,YES,null
+payments,attempt_number,integer,YES,null
+payments,total_attempts,integer,NO,1
+payments,latest_attempt_number,integer,YES,null
+payments,successful_attempt_number,integer,YES,null
+payments,latest_payment_intent_id,text,YES,null
+payments,ip_address,text,YES,null
+payments,user_agent,text,YES,null
+payments,gateway_metadata,jsonb,YES,'{}'::jsonb
+payments,first_attempt_at,timestamp with time zone,YES,null
+payments,last_attempt_at,timestamp with time zone,YES,null
+payments,created_at,timestamp with time zone,YES,now()
+payments,updated_at,timestamp with time zone,YES,now()
+pricing_config,id,uuid,NO,gen_random_uuid()
+pricing_config,tax_rate,numeric,NO,null
+pricing_config,shipping_flat,numeric,NO,null
+pricing_config,shipping_threshold,numeric,NO,null
+pricing_config,currency,text,NO,null
+pricing_config,tax_enabled,boolean,NO,true
+pricing_config,shipping_enabled,boolean,NO,true
+pricing_config,created_at,timestamp with time zone,YES,now()
+pricing_config,updated_at,timestamp with time zone,YES,now()
+product_images,id,uuid,NO,gen_random_uuid()
+product_images,product_id,uuid,YES,null
+product_images,url,text,NO,null
+product_images,alt,text,YES,null
+product_images,position,integer,YES,0
+products,id,uuid,NO,gen_random_uuid()
+products,name,text,NO,null
+products,slug,text,NO,null
+products,description,text,YES,null
+products,short_description,text,YES,null
+products,sku,text,YES,null
+products,category_id,uuid,YES,null
+products,price,numeric,NO,null
+products,compare_price,numeric,YES,null
+products,stock,integer,YES,0
+products,low_stock_threshold,integer,YES,10
+products,weight_grams,integer,YES,null
+products,image_url,text,YES,null
+products,is_active,boolean,YES,true
+products,created_at,timestamp with time zone,YES,now()
+products,fts,tsvector,YES,null
+products,images,ARRAY,YES,'{}'::text[]
+products,hsn_code,text,YES,'9988'::text
+products,gst_percentage,integer,YES,18
+products,discount_amount,numeric,YES,null
+products,discount_percentage,integer,YES,null
+push_subscriptions,id,uuid,NO,gen_random_uuid()
+push_subscriptions,user_id,uuid,NO,null
+push_subscriptions,endpoint,text,NO,null
+push_subscriptions,subscription_json,text,NO,null
+push_subscriptions,created_at,timestamp with time zone,NO,now()
+push_subscriptions,updated_at,timestamp with time zone,NO,now()
+stock_audit,id,uuid,NO,gen_random_uuid()
+stock_audit,product_id,uuid,NO,null
+stock_audit,sku,text,YES,null
+stock_audit,delta,integer,NO,null
+stock_audit,stock_after,integer,YES,null
+stock_audit,reason,text,YES,null
+stock_audit,created_at,timestamp with time zone,NO,now()
+system_settings,key,text,NO,null
+system_settings,category,text,NO,null
+system_settings,data_type,text,NO,null
+system_settings,value,jsonb,NO,null
+system_settings,default_value,jsonb,NO,null
+system_settings,description,text,YES,null
+system_settings,is_system_locked,boolean,NO,false
+system_settings,is_public,boolean,NO,false
+system_settings,created_at,timestamp with time zone,NO,now()
+system_settings,updated_at,timestamp with time zone,NO,now()
+users,id,uuid,NO,null
+users,email,text,NO,null
+users,full_name,text,YES,''::text
+users,phone,text,YES,''::text
+users,role,text,YES,'customer'::text
+users,is_active,boolean,YES,true
+users,created_at,timestamp with time zone,YES,now()
+users,updated_at,timestamp with time zone,YES,now()
+webhook_events_ledger,event_id,text,NO,null
+webhook_events_ledger,event_type,text,NO,null
+webhook_events_ledger,stripe_payment_intent_id,text,YES,null
+webhook_events_ledger,status,text,NO,'pending'::text
+webhook_events_ledger,processed_at,timestamp with time zone,YES,null
+webhook_events_ledger,created_at,timestamp with time zone,YES,now()
