@@ -22,7 +22,7 @@ from starlette.concurrency import run_in_threadpool
 from nanoid import generate
 
 from app.repositories.payment_repo import AsyncPaymentRepository
-from app.services.pricing import get_pricing_from_config
+from app.services.pricing.service import get_pricing_from_config
 from app.events.bus import get_event_bus, OrderPaidEvent
 from app.integrations.payments.registry import get_payment_provider
 from app.permissions.policies.payment_policies import PaymentPolicy

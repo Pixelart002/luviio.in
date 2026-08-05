@@ -11,7 +11,7 @@ from typing import Any, Dict
 from fastapi import HTTPException, status
 
 from app.repositories.cart_repo import AsyncCartRepository
-from app.services.pricing import get_pricing_from_config
+from app.services.pricing.service import get_pricing_from_config
 from app.permissions.policies.cart_policies import CartPolicy
 from app.constants.cart_messages import CartSecurityMessages, CartMessages
 from app.integrations.push.webpush_impl import send_push_to_user
