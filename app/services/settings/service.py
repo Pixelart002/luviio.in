@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from app.repositories.settings_repo import AsyncSettingsRepository
 from app.permissions.policies.settings_policies import SettingsPolicy
 from app.constants.settings_messages import SettingsRules
-from app.events.registry import get_event_bus
+from app.events.bus import get_event_bus
 from app.events.settings_events import SettingUpdatedEvent, SettingResetEvent
 
 logger = logging.getLogger(__name__)

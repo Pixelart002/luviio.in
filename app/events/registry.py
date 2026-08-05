@@ -6,7 +6,7 @@ Path: app/events/registry.py
 Registers all background task handlers to their respective events on the EventBus.
 """
 import logging
-from app.services.events import (
+from app.events.bus  import (
     get_event_bus, 
     OrderCreatedEvent, OrderPaidEvent, OrderFailedEvent, 
     OrderShippedEvent, OrderStatusChangedEvent, LowStockEvent

@@ -12,7 +12,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from app.repositories.order_repo import AsyncOrderRepository
 from app.repositories.user_repo import AsyncUserRepository
 from app.permissions.policies.order_policy import OrderPolicy
-from app.events.registry import get_event_bus, OrderShippedEvent, OrderStatusChangedEvent
+from app.events.bus import get_event_bus, OrderShippedEvent, OrderStatusChangedEvent
 from app.integrations.payments.registry import get_payment_provider
 from app.utils.documents.pdf_invoice import build_invoice_pdf
 from app.enums.order_status import OrderStatus
