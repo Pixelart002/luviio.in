@@ -1,13 +1,12 @@
 """
-Pricing Service — SSOT Architecture (B2B, MOQ, MOV, VIP & STRICT TAX)
-=====================================================================
+Pricing Service — SSOT Architecture (Strict Mode, VIP)
+======================================================
 Path: app/services/pricing/service.py
 
 Architecture Upgrades:
   ✅ STRICT MODE — If GST%, Price, or Qty is missing, it crashes (Halt Order).
   ✅ DB Toggles Respected — tax_enabled and shipping_enabled perfectly handled.
   ✅ VIP/Premium Tiers — Dynamic free shipping for 'premium' users.
-  ✅ MOQ & MOV — Halts checkout if below Minimum Quantity or Minimum Value.
 """
 from __future__ import annotations
 
@@ -80,14 +79,12 @@ class StandardPricing(PricingStrategy):
         shipping_threshold: Decimal,
         shipping_flat:      Decimal,
         tax_rate:           Decimal,
-        currency:           str,
-        store_mov:          Decimal = Decimal("0")
+        currency:           str
     ) -> None:
         self._threshold = shipping_threshold
         self._flat      = shipping_flat
         self._tax_rate  = tax_rate
         self._currency  = currency
-        self._mov       = store_mov
 
     @property
     def shipping_enabled(self) -> bool: return self._flat > Decimal("0") or self._threshold > Decimal("0")
@@ -112,11 +109,6 @@ class StandardPricing(PricingStrategy):
                 raise HTTPException(status_code=500, detail="CRITICAL: Item quantity missing.")
             item_qty = Decimal(str(item["quantity"]))
 
-            # 🔥 STRICT MOQ CHECK (Business Gatekeeper)
-            item_moq = Decimal(str(prod_data.get("moq") or 0))
-            if item_qty < item_moq:
-                raise HTTPException(status_code=400, detail=f"Minimum Order Quantity for '{prod_data.get('name', 'this item')}' is {int(item_moq)}.")
-
             price_val = item.get("price_snapshot") or item.get("unit_price") or prod_data.get("price")
             if price_val is None:
                 raise HTTPException(status_code=500, detail="CRITICAL: Product price missing.")
@@ -137,10 +129,6 @@ class StandardPricing(PricingStrategy):
             calc_subtotal += item_sub
             calc_tax      += item_tax
 
-        # 🔥 STRICT MOV CHECK (Business Gatekeeper)
-        if calc_subtotal > Decimal("0") and calc_subtotal < self._mov:
-            raise HTTPException(status_code=400, detail=f"Minimum Order Value is {self._currency} {self._mov}.")
-
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
 
@@ -155,13 +143,11 @@ class ZeroTaxPricing(PricingStrategy):
         self,
         shipping_threshold: Decimal,
         shipping_flat:      Decimal,
-        currency:           str,
-        store_mov:          Decimal = Decimal("0")
+        currency:           str
     ) -> None:
         self._threshold = shipping_threshold
         self._flat      = shipping_flat
         self._currency  = currency
-        self._mov       = store_mov
 
     @property
     def shipping_enabled(self) -> bool: return self._flat > Decimal("0") or self._threshold > Decimal("0")
@@ -185,11 +171,6 @@ class ZeroTaxPricing(PricingStrategy):
                 raise HTTPException(status_code=500, detail="CRITICAL: Item quantity missing.")
             item_qty = Decimal(str(item["quantity"]))
 
-            # 🔥 STRICT MOQ CHECK
-            item_moq = Decimal(str(prod_data.get("moq") or 1))
-            if item_qty < item_moq:
-                raise HTTPException(status_code=400, detail=f"Minimum Order Quantity for '{prod_data.get('name', 'this item')}' is {int(item_moq)}.")
-
             price_val = item.get("price_snapshot") or item.get("unit_price") or prod_data.get("price")
             if price_val is None:
                 raise HTTPException(status_code=500, detail="CRITICAL: Product price missing.")
@@ -199,10 +180,6 @@ class ZeroTaxPricing(PricingStrategy):
             item["gst_percentage_snapshot"] = float(0)
 
             calc_subtotal += item_price * item_qty
-
-        # 🔥 STRICT MOV CHECK
-        if calc_subtotal > Decimal("0") and calc_subtotal < self._mov:
-            raise HTTPException(status_code=400, detail=f"Minimum Order Value is {self._currency} {self._mov}.")
 
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
@@ -254,14 +231,12 @@ def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
     tax_rate           = Decimal(str(config.get("tax_rate", 18.0))) / Decimal("100")
     shipping_flat      = Decimal(str(config.get("shipping_flat", 99.0)))
     shipping_threshold = Decimal(str(config.get("shipping_threshold", 999.0)))
-    store_mov          = Decimal(str(config.get("store_mov", 0.0)))
 
     if not tax_enabled:
         return ZeroTaxPricing(
             shipping_threshold=shipping_threshold if shipping_enabled else Decimal("0"),
             shipping_flat=shipping_flat if shipping_enabled else Decimal("0"),
-            currency=currency,
-            store_mov=store_mov
+            currency=currency
         )
 
     if not shipping_enabled:
@@ -269,16 +244,14 @@ def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
             shipping_threshold=Decimal("0"),
             shipping_flat=Decimal("0"),
             tax_rate=tax_rate,
-            currency=currency,
-            store_mov=store_mov
+            currency=currency
         )
 
     return StandardPricing(
         shipping_threshold=shipping_threshold,
         shipping_flat=shipping_flat,
         tax_rate=tax_rate,
-        currency=currency,
-        store_mov=store_mov
+        currency=currency
     )
 
 def get_pricing_for_user(user: dict[str, Any], config: dict[str, Any] | None) -> PricingStrategy:

@@ -85,21 +85,12 @@ class OrderService:
             if prod["stock"] < item["quantity"]:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for: {prod['name']}")
 
-        # 3. 🔥 CALL THE PRICING ENGINE (Handles Math, MOQ, MOV, VIP Tier)
-        # TODO: Aap is config ko future me DB (Settings Service) se le aana
-        store_config = {
-            "tax_enabled": True,
-            "shipping_enabled": True,
-            "tax_rate": 18.0,
-            "shipping_flat": 99.0,
-            "shipping_threshold": 999.0,
-            "store_mov": 500.0, # Minimum Order Value
-            "currency": "INR"
-        }
+        # 3. 🔥 CALL THE PRICING ENGINE (Dynamic from DB)
+        store_config = await self.repo.get_pricing_config()
         
         pricing_engine = get_pricing_for_user(user=user_data, config=store_config)
         
-        # 💥 Magic Happens Here (Crashes automatically if MOQ/MOV fail)
+        # 💥 Magic Happens Here (Strict Math & VIP Logic)
         breakdown = pricing_engine.calculate(cart_data["cart_items"])
 
         # 4. Prepare Order & Item Payloads
