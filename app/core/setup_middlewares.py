@@ -15,6 +15,9 @@ from app.api.middlewares.security import (
 from app.api.middlewares.cors import cors_middleware
 from app.api.middlewares.logger import PureWindowLoggerMiddleware 
 
+# 🔥 FIX: Import the MaintenanceMiddleware here!
+from app.core.maintenance import MaintenanceMiddleware
+
 def apply_middlewares(app: FastAPI) -> None:
     app.middleware("http")(cors_middleware)
     app.add_middleware(RequestIDMiddleware)
@@ -26,4 +29,6 @@ def apply_middlewares(app: FastAPI) -> None:
 
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    
+    # 🔥 Now it will work perfectly
     app.add_middleware(MaintenanceMiddleware)
