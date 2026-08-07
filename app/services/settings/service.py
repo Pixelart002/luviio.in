@@ -6,11 +6,13 @@ Path: app/services/settings/service.py
 import time
 import logging
 from typing import Any, Dict, List, Optional
+from fastapi import HTTPException, status
 from app.repositories.settings_repo import AsyncSettingsRepository
 from app.permissions.policies.settings_policies import SettingsPolicy
 from app.constants.settings_messages import SettingsRules
 from app.events.bus import get_event_bus
 from app.events.settings_events import SettingUpdatedEvent, SettingResetEvent
+from app.constants.settings_messages import SettingsSecurityMessages
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +44,26 @@ class SettingsService:
             _cache_timestamp = time.time()
         return items
 
+    # 🔥 FIX APPLIED HERE: Cache Warming & Safe Reading
     async def get_by_key(self, key: str) -> Dict[str, Any]:
-        if self._is_cache_valid() and key in _settings_cache:
+        # 1. Agar cache expire ho gaya ya khaali hai, toh "Warm Up" karo!
+        if not self._is_cache_valid() or key not in _settings_cache:
+            await self.get_all() # Ye DB se saari settings layega aur cache bhar dega
+            
+        # 2. Ab cache me se uthao (0ms delay)
+        if key in _settings_cache:
             return _settings_cache[key]
-        
-        setting = await self.repo.get_setting_by_key(key)
-        return SettingsPolicy.assert_can_modify(setting, "super_admin") # Simple existence assertion
+            
+        # 3. Agar aisi setting hai hi nahi (Typo in key)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=SettingsSecurityMessages.NOT_FOUND
+        )
 
     async def update(self, key: str, new_value: Any, user_id: str, user_role: str, reason: str = "Admin override") -> Dict[str, Any]:
         existing = await self.repo.get_setting_by_key(key)
+        if not existing:
+             raise HTTPException(status_code=404, detail=SettingsSecurityMessages.NOT_FOUND)
         
         # 🛡️ Step 1: ABAC Lock & Role Check
         SettingsPolicy.assert_can_modify(existing, user_role)
@@ -75,6 +88,9 @@ class SettingsService:
 
     async def reset(self, key: str, user_id: str, user_role: str) -> Dict[str, Any]:
         existing = await self.repo.get_setting_by_key(key)
+        if not existing:
+             raise HTTPException(status_code=404, detail=SettingsSecurityMessages.NOT_FOUND)
+             
         SettingsPolicy.assert_can_modify(existing, user_role)
 
         default_value = existing["default_value"]

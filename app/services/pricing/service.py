@@ -1,13 +1,13 @@
 """
 Pricing Service — SSOT Architecture (STRICT MODE & ZERO FALLBACKS)
 ==================================================================
-Path: app/services/pricing.py
+Path: app/services/pricing/service.py
 
 Architecture Upgrades:
   ✅ ZERO FALLBACKS — If GST%, Price, or Qty is missing, it crashes (Halt Order).
-  ✅ Strict Item-Level Math — Tax is calculated strictly on items only.
+  ✅ Strict Item-Level Math — Tax is calculated strictly on items only (No Global Tax).
   ✅ Pure Shipping Fee — Flat shipping fee added directly to total without tax logic.
-  ✅ Zero Discount Bloat — Stripped all discount calculation & snapshots (handled at PDF/Order level).
+  ✅ Zero Discount Bloat — Stripped all discount calculation & snapshots.
 """
 from __future__ import annotations
 
@@ -66,10 +66,6 @@ class PricingStrategy(ABC):
 
     @property
     @abstractmethod
-    def tax_rate(self) -> Decimal: ...
-
-    @property
-    @abstractmethod
     def currency(self) -> str: ...
 
 
@@ -82,12 +78,10 @@ class StandardPricing(PricingStrategy):
         self,
         shipping_threshold: Decimal,
         shipping_flat:      Decimal,
-        tax_rate:           Decimal,
         currency:           str,
     ) -> None:
         self._threshold = shipping_threshold
         self._flat      = shipping_flat
-        self._tax_rate  = tax_rate
         self._currency  = currency
 
     @property
@@ -97,10 +91,6 @@ class StandardPricing(PricingStrategy):
     @property
     def shipping_threshold(self) -> Decimal:
         return self._threshold
-
-    @property
-    def tax_rate(self) -> Decimal:
-        return self._tax_rate
 
     @property
     def currency(self) -> str:
@@ -140,7 +130,7 @@ class StandardPricing(PricingStrategy):
                 )
             item_price = Decimal(str(price_val))
 
-            # 3. Strict GST Percentage Check
+            # 3. Strict Item-Level GST Percentage Check
             item_gst_pct = (
                 prod_data.get("gst_percentage")
                 if prod_data.get("gst_percentage") is not None
@@ -149,11 +139,11 @@ class StandardPricing(PricingStrategy):
             if item_gst_pct is None:
                 raise HTTPException(
                     status_code=500,
-                    detail="CRITICAL: GST percentage missing.",
+                    detail="CRITICAL: Item GST percentage missing.",
                 )
             item_tax_rate = Decimal(str(item_gst_pct)) / Decimal("100")
 
-            # ✅ Essential Live Snapshots Only (No Discount Snapshots)
+            # ✅ Essential Live Snapshots Only
             item["price_snapshot"]          = float(round(item_price, 2))
             item["gst_percentage_snapshot"] = float(item_gst_pct)
 
@@ -205,10 +195,6 @@ class ZeroTaxPricing(PricingStrategy):
     @property
     def shipping_threshold(self) -> Decimal:
         return self._threshold
-
-    @property
-    def tax_rate(self) -> Decimal:
-        return Decimal("0")
 
     @property
     def currency(self) -> str:
@@ -285,10 +271,6 @@ class FreeShippingPricing(PricingStrategy):
         return self._base.shipping_threshold
 
     @property
-    def tax_rate(self) -> Decimal:
-        return self._base.tax_rate
-
-    @property
     def currency(self) -> str:
         return self._base.currency
 
@@ -328,7 +310,6 @@ def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
     shipping_enabled = config.get("shipping_enabled", True)
     currency         = config.get("currency", "INR")
 
-    tax_rate           = Decimal(str(config.get("tax_rate", 18.0))) / Decimal("100")
     shipping_flat      = Decimal(str(config.get("shipping_flat", 99.0)))
     shipping_threshold = Decimal(str(config.get("shipping_threshold", 999.0)))
 
@@ -347,14 +328,12 @@ def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
         return StandardPricing(
             shipping_threshold=Decimal("0"),
             shipping_flat=Decimal("0"),
-            tax_rate=tax_rate,
             currency=currency,
         )
 
     return StandardPricing(
         shipping_threshold=shipping_threshold,
         shipping_flat=shipping_flat,
-        tax_rate=tax_rate,
         currency=currency,
     )
 
@@ -362,4 +341,14 @@ def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
 def get_pricing_for_user(
     user: dict[str, Any], config: dict[str, Any] | None
 ) -> PricingStrategy:
-    return get_pricing_from_config(config)
+    """
+    VIP / Premium members get Free Shipping wrapper.
+    """
+    base_strategy = get_pricing_from_config(config)
+
+    user_tier = user.get("tier") if user else "normal"
+    
+    if user_tier in ["premium", "vip", "prime"]:
+        return FreeShippingPricing(base_strategy)
+
+    return base_strategy
