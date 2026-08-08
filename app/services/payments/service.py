@@ -293,24 +293,6 @@ class PaymentService:
             get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
         except Exception as e: 
             logger.error("Event bus failed: %s", e)
-        
-        
-        
-        import asyncio
-        try:
-            from app.services.push.service import PushService
-            
-            # Use order number if available, else fallback to 8-char order ID
-            short_id = existing_order.get("order_number") or str(order_id)[:8].upper()
-            
-            asyncio.create_task(PushService().send_notification(
-                user_id=user_id,
-                title="Payment Successful! 🎉",
-                body=f"Your order #{short_id} has been placed. We're packing it up!"
-            ))
-            logger.info(f"Push notification triggered for Order {short_id} to User {user_id[:8]}")
-        except Exception as e:
-            logger.warning(f"Push Notification skipped/failed: {e}")
 
         return {"status": OrderStatus.PAID.value, "order_id": order_id, "message": PaymentMessages.CONFIRMED}
 
