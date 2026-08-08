@@ -480,20 +480,7 @@ class PaymentService:
                     else:
                         logger.info("[WEBHOOK] Settled pending order %s automatically via webhook.", order_id[:8])
                         
-                        # 🔥 PUSH NOTIFICATION TRIGGER (Runs in Background via Webhook)
-                        import asyncio
-                        try:
-                            from app.services.push.service import PushService
-                            short_id = order.get("order_number") or str(order_id)[:8].upper()
-                            asyncio.create_task(PushService().send_notification(
-                                user_id=customer_id,
-                                title="Payment Successful! 🎉",
-                                body=f"Your order #{short_id} has been placed. We're packing it up!"
-                            ))
-                            logger.info(f"Push notification triggered for Order {short_id} via Webhook")
-                        except Exception as e:
-                            logger.warning(f"Push Notification skipped/failed: {e}")
-            
+                        
             
             
             
