@@ -58,6 +58,24 @@ class PushService:
             "vapid_configured": bool(VAPID_PUBLIC_KEY)
         }
 
+    # 🔥 NEW: self-test dispatch, reuses the exact same send path as real
+    # notifications so a success here means the full pipeline actually works.
+    async def send_test_notification(self, user_id: str) -> Dict[str, Any]:
+        count = await self.repo.count_user_subscriptions(user_id)
+        if count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No active subscriptions found for this account — subscribe on this device first.",
+            )
+        sent = await send_push_to_user(
+            user_id=user_id,
+            title="Luviio — Test Notification",
+            body="If you're seeing this, push notifications are working end-to-end. 🎉",
+            icon="/icon-192.png",
+            url="/",
+        )
+        return {"sent": sent, "subscriptions_targeted": count}
+
     # 🔥 ENTERPRISE UPGRADE: Bounded Concurrent Scatter-Gather Dispatch
     async def send_batch_notification(self, user_ids: List[str], title: str, body: str, icon: str, url: str) -> Dict[str, Any]:
         PushPolicy.assert_valid_batch_size(user_ids)

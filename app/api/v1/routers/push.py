@@ -66,6 +66,22 @@ async def subscription_status(request: Request, user_id: str = Depends(get_user_
         
     return success_response(data=result)
 
+# 🔥 NEW: self-test — sends a real push to every device the CALLER themself is
+# subscribed on. Lets you verify the whole pipeline (VAPID + subscription +
+# webpush delivery) without needing admin rights or another user's ID.
+@router.post("/test", status_code=status.HTTP_200_OK)
+@limiter.limit("5/minute")
+async def send_test_notification(request: Request, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Self-test push dispatch requested by UID: {user_id[:8]}...")
+
+    result = await PushService().send_test_notification(user_id)
+
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Self-test push -> sent to {result['sent']} device(s)")
+
+    return success_response(data=result, message=PushMessages.TEST_SENT if hasattr(PushMessages, "TEST_SENT") else "Test notification dispatched")
+
 @router.post("/admin/send", dependencies=[Depends(require_permission(AdminPermissions.MANAGE_SETTINGS))], status_code=status.HTTP_200_OK)
 async def send_batch_notification(request: Request, payload: BatchNotificationRequest) -> Dict[str, Any]:
     if hasattr(request.state, "actions"): 
