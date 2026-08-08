@@ -3,7 +3,7 @@ User Schemas (DTOs)
 ===================
 Path: app/api/schemas/user_dto.py
 """
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Any, List, Optional
 from app.constants.user_messages import UserSecurityMessages
 from app.enums.roles import UserRole
@@ -38,7 +38,7 @@ class AddressCreate(BaseModel):
     # ── 🔥 Enterprise B2B / Detail Fields ──
     full_name: Optional[str] = Field(default=None, max_length=255, description="Specific recipient name for this address")
     phone: Optional[str] = Field(default=None, max_length=20, description="Specific phone for this address")
-    email: Optional[str] = Field(default=None, max_length=255, description="Specific email for this address")
+    email: Optional[EmailStr] = Field(default=None, description="Specific email for this address")
     landmark: Optional[str] = Field(default=None, max_length=255)
     address_type: Optional[str] = Field(default="home", max_length=50, description="e.g., home, work, warehouse")
     company_name: Optional[str] = Field(default=None, max_length=255)

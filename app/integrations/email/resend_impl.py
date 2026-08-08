@@ -5,6 +5,7 @@ Architecture Layer: External Integrations
 Path: app/integrations/email/resend_impl.py
 """
 import os
+import re
 import logging
 import base64
 from typing import Any
@@ -31,6 +32,9 @@ TEXT       = "#f0ece4"
 TEXT_MUTED = "#7a7368"
 BORDER     = "#1e1c18"
 DEFAULT_HERO_GIF = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExcGZ4bHhkM2M5bndkZnJ5a3gxeThwbWxnNnc4c2h1bnV4ZHl4b3V4eSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7aCRZYNerX4ovPwI/giphy.gif"
+
+# Minimal email format check — catches bare strings like 'behe' that Resend rejects
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 def _email_template(title: str, content: str, preheader: str = "", hero_image: str = "") -> str:
     hero_html = ""
@@ -107,6 +111,12 @@ def _email_template(title: str, content: str, preheader: str = "", hero_image: s
 async def _async_safe_send(params: dict, log_context: str) -> bool:
     if not resend.api_key:
         logger.warning(f"[EMAIL SKIPPED] Missing RESEND_API_KEY. Context: {log_context}")
+        return False
+    to_raw = params.get("to", [])
+    to_addresses = [to_raw] if isinstance(to_raw, str) else list(to_raw)
+    invalid = [addr for addr in to_addresses if not _EMAIL_RE.match(str(addr))]
+    if invalid:
+        logger.warning(f"[EMAIL SKIPPED] Invalid address(es) {invalid} — {log_context}")
         return False
     try:
         # Pushing sync I/O into a threadpool so it doesn't block the ASGI loop
