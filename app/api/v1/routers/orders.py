@@ -36,7 +36,7 @@ async def create_order_from_cart(
         notes=payload.notes,
         idempotency_key=payload.idempotency_key
     )
-    return success_response(data=order, message="Order placed successfully.", status_code=201)
+    return success_response(data=order, message="Order placed successfully.")
 
 @router.get("/my", status_code=status.HTTP_200_OK)
 async def my_orders(

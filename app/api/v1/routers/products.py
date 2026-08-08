@@ -27,7 +27,7 @@ async def create_category(request: Request, payload: CategoryCreate) -> Dict[str
     if hasattr(request.state, "actions"): 
         request.state.actions.append(f"Admin creating new category -> '{payload.name}'")
     result = await ProductService().create_category(payload.model_dump())
-    return success_response(data=result, message=ProductMessages.CATEGORY_CREATED, status_code=status.HTTP_201_CREATED)
+    return success_response(data=result, message=ProductMessages.CATEGORY_CREATED)
 
 @router.delete("/categories/{category_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.DELETE))])
 async def delete_category(request: Request, category_id: uuid.UUID) -> Dict[str, Any]:
@@ -63,7 +63,7 @@ async def create_product(request: Request, payload: ProductCreate) -> Dict[str, 
     if hasattr(request.state, "actions"): 
         request.state.actions.append(f"Admin inserting new product -> SKU: {payload.sku or 'Auto'}")
     result = await ProductService().create_product(payload.model_dump())
-    return success_response(data=result, message=ProductMessages.PRODUCT_CREATED, status_code=status.HTTP_201_CREATED)
+    return success_response(data=result, message=ProductMessages.PRODUCT_CREATED)
 
 @router.patch("/products/{product_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
 async def update_product(request: Request, product_id: uuid.UUID, payload: ProductUpdate) -> Dict[str, Any]:
