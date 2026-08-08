@@ -63,7 +63,7 @@ class AsyncProductRepository:
         
         # 🔥 'images' array replaced with relational 'product_images' join
         q = admin_sb.table("products").select(
-            "id, name, slug, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, is_active, created_at, hsn_code, gst_percentage, discount_amount, discount_percentage, categories(name, slug), product_images(id, url, alt, position)",
+            "id, name, slug, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, attributes, is_active, created_at, hsn_code, gst_percentage, discount_amount, discount_percentage, categories(name, slug), product_images(id, url, alt, position)",
             count="exact"
         ).eq("is_active", True)
 
@@ -100,7 +100,7 @@ class AsyncProductRepository:
     async def get_product_by_id(self, product_id: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("products").select(
-            "id, name, slug, sku, price, compare_price, stock, hsn_code, gst_percentage, image_url, is_active, product_images(id, url, alt, position)"
+            "id, name, slug, sku, price, compare_price, stock, hsn_code, gst_percentage, image_url, attributes, is_active, product_images(id, url, alt, position)"
         ).eq("id", product_id).limit(1).execute()
         data_list = getattr(res, "data", None)
         return self._format_product_images(data_list[0]) if data_list else None

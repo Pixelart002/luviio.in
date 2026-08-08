@@ -80,6 +80,7 @@ class ProductService:
         data["image_url"] = data["images"][0] if data["images"] else None
         data["hsn_code"] = str(data.get("hsn_code") or "9988").strip()
         data["gst_percentage"] = int(data.get("gst_percentage") if data.get("gst_percentage") is not None else 18)
+        data["attributes"] = data.get("attributes") or {}
 
         res = await self.repo.create_product(data)
         if not res: 
