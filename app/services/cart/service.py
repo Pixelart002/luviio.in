@@ -31,6 +31,26 @@ class CartService:
         )
         pricing_engine = get_pricing_from_config(config)
 
+        # 🔥 FIX: an empty cart is a normal, valid state (new user / just cleared) —
+        # not an error. pricing_engine.calculate() is STRICT MODE and raises a 400
+        # on an empty items list (by design, for the checkout /pricing/calculate
+        # endpoint where an empty payload really is a mistake). Short-circuit here
+        # instead of letting that guard turn "cart is empty" into a broken page.
+        if not raw_items:
+            return {
+                "items": [],
+                "item_count": 0,
+                "subtotal": 0.0,
+                "shipping_cost": 0.0,
+                "tax_amount": 0.0,
+                "total_amount": 0.0,
+                "free_shipping_eligible": False,
+                "amount_to_free_shipping": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0,
+                "free_shipping_threshold": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0,
+                "has_unavailable_items": False,
+                "currency": "INR",
+            }
+
         enriched = []
         subtotal = Decimal("0")
         has_unavailable = False
