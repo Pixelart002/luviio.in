@@ -480,11 +480,8 @@ class PaymentService:
                     else:
                         logger.info("[WEBHOOK] Settled pending order %s automatically via webhook.", order_id[:8])
                         
-                    
-                    
-                    
-                    
-                    import asyncio
+                        # 🔥 PUSH NOTIFICATION TRIGGER (Runs in Background via Webhook)
+                        import asyncio
                         try:
                             from app.services.push.service import PushService
                             short_id = order.get("order_number") or str(order_id)[:8].upper()
