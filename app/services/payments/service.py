@@ -479,10 +479,42 @@ class PaymentService:
                             logger.error("[WEBHOOK] Auto-refund FAILED for orphaned success %s: %s -- needs manual refund.", pi_id, refund_exc)
                     else:
                         logger.info("[WEBHOOK] Settled pending order %s automatically via webhook.", order_id[:8])
-                        
-                        
-            
-            
+
+                        # 🔥 FIX: this is the RACE CONDITION FIX. Stripe's webhook almost
+                        # always arrives before the client's POST /payments/confirm call.
+                        # settle_order_transaction() is idempotent, so whichever caller
+                        # gets here FIRST is the one that actually transitions the order
+                        # to PAID (result == "SETTLED") -- the other caller sees
+                        # "ALREADY_PAID" and short-circuits without publishing.
+                        # Previously ONLY confirm_payment() published OrderPaidEvent, so
+                        # in the near-universal case where the webhook wins the race,
+                        # NOTHING ever published the event -- no push, no email, ever.
+                        if result == "SETTLED":
+                            try:
+                                event = OrderPaidEvent(
+                                    order=order,
+                                    customer_email=(
+                                        order.get("shipping_email")
+                                        or order.get("billing_email")
+                                        or ""
+                                    ),
+                                    customer_id=customer_id,
+                                )
+
+                                get_event_bus().publish(event)
+
+                                logger.info(
+                                    "[WEBHOOK] OrderPaidEvent published successfully for Order %s",
+                                    order_id[:8],
+                                )
+
+                            except Exception as e:
+                                logger.error(
+                                    "[WEBHOOK] OrderPaidEvent publish FAILED for Order %s: %s",
+                                    order_id[:8],
+                                    e,
+                                    exc_info=True,
+                                )
 
             # EVENT 2: PAYMENT FAILED -- record only, DO NOT cancel.
             elif event_type == "payment_intent.payment_failed":
