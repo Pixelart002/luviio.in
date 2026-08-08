@@ -137,17 +137,6 @@ class OrderService:
         created_order = await self.repo.create_order_with_items(order_data, items_payload, user_id)
         if not created_order:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create order due to database conflict.")
-        import asyncio
-        try:
-            # NOTE: Apne Push Service ka exact import path aur function name yahan adjust kar lena
-            from app.services.push.service import PushService 
-            asyncio.create_task(PushService().send_notification(
-                user_id=user_id,
-                title="Order Confirmed! 🎉",
-                body=f"Your order #{str(created_order['id'])[:8].upper()} has been placed successfully."
-            ))
-        except Exception as e:
-            logger.warning(f"Push Notification skipped/failed: {e}")
 
         return self._sanitize(created_order)
 
