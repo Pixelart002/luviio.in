@@ -21,6 +21,7 @@ from app.core.exceptions import register_exception_handlers
 # 🔥 Events & Cron
 from app.events.registry import register_all_event_handlers
 from app.cron.scheduler import start_cron_jobs
+from app.events.handlers.whatsapp_alerts import register_whatsapp_handlers
 
 # 🔥 Routers
 from app.api.v1.routers.health import router as health_router
@@ -68,6 +69,7 @@ apply_middlewares(app)
 
 # 2. Mount Enterprise Error Handlers (Catches Domain Exceptions globally)
 register_exception_handlers(app)
+register_whatsapp_handlers()
 
 # ── Router Registration ───────────────────────────────────────────────────────
 # Load Balancer Health Check (Root level)
