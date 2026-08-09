@@ -440,6 +440,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     items = order.get("order_items") or order.get("items") or []
     run_tax  = 0.0
     run_net  = 0.0
+    rate_breakdown: dict[float, float] = {}  # {rate: taxable_amount} — for the rate-wise summary below
 
     for idx, item in enumerate(items, 1):
         name      = _product_name(item)
@@ -455,16 +456,25 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
             disc = round((compare_p - unit_p) * qty, 2)
 
         net   = _safe_f(item.get("subtotal")) or (unit_p * qty)
-        i_tax = round(net * eff_rate_pct / 100, 2)
+
+        # 🔥 FIX: previously every row used the single order-wide `eff_rate_pct`
+        # (a blended rate reverse-derived from order.tax_amount / subtotal),
+        # so a cart with mixed GST rates (e.g. one 5% item among 18% items)
+        # showed the WRONG rate AND wrong tax amount for the minority-rate
+        # items. Each order_item already carries its own correct
+        # gst_percentage (see ProductCreate/order_items schema) -- use that.
+        item_rate_pct = _safe_f(item.get("gst_percentage"), eff_rate_pct)
+        i_tax = round(net * item_rate_pct / 100, 2)
         total = net + i_tax
 
         run_net  += net
         run_tax  += i_tax
+        rate_breakdown[item_rate_pct] = rate_breakdown.get(item_rate_pct, 0.0) + net
         display_unit_p = compare_p if (compare_p > unit_p) else unit_p
 
         rows.append([
             _dc(str(idx)), _d(name), _dc(hsn), _dr(_fmt(display_unit_p)), _dc(str(qty)),
-            _dr(_fmt(disc) if disc > 0 else "—"), _dr(_fmt(net)), _dc(f"{int(eff_rate_pct)}%"),
+            _dr(_fmt(disc) if disc > 0 else "—"), _dr(_fmt(net)), _dc(f"{item_rate_pct:g}%"),
             _dc(tax_type), _dr(_fmt(i_tax)), _dr(_fmt(total)),
         ])
 
@@ -472,6 +482,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         if shipping_is_taxed:
             s_tax = round(ship_cost * eff_rate_pct / 100, 2)
             gst_pct_str, tax_type_str = f"{int(eff_rate_pct)}%", tax_type
+            rate_breakdown[eff_rate_pct] = rate_breakdown.get(eff_rate_pct, 0.0) + ship_cost
         else:
             s_tax, gst_pct_str, tax_type_str = 0.0, "0%", "-"
             
@@ -525,15 +536,32 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
         gst_rows.append([Paragraph("Shipping", S["br"]), Paragraph("FREE", S["bbr"])])
 
     product_tax_only = round(subtotal * eff_rate_pct / 100, 2)
-    display_tax = tax_amt if tax_amt > 0 else product_tax_only
+    # 🔥 FIX: run_tax is now the SUM of correctly-computed per-item taxes
+    # (see the items loop above) -- use that instead of re-deriving from the
+    # single blended eff_rate_pct, which was wrong for mixed-rate orders.
+    display_tax = run_tax if run_tax > 0 else (tax_amt if tax_amt > 0 else product_tax_only)
 
-    if tax_type == "CGST+SGST":
+    distinct_rates = [r for r in rate_breakdown if r > 0]
+    if len(distinct_rates) > 1:
+        # Mixed-rate order: show each rate's taxable amount + tax separately --
+        # a single blended "@ X%" line would misrepresent the actual GST charged.
+        for rate in sorted(rate_breakdown.keys()):
+            base = rate_breakdown[rate]
+            rate_tax = round(base * rate / 100, 2)
+            if tax_type == "CGST+SGST":
+                half_rate, half_tax = rate / 2, round(rate_tax / 2, 2)
+                gst_rows.append([Paragraph(f"CGST @ {half_rate:.1f}% (on {_fmt(base)})", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
+                gst_rows.append([Paragraph(f"SGST @ {half_rate:.1f}% (on {_fmt(base)})", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
+            else:
+                gst_rows.append([Paragraph(f"IGST @ {rate:g}% (on {_fmt(base)})", S["br"]), Paragraph(_fmt(rate_tax), S["bbr"])])
+    elif tax_type == "CGST+SGST":
         half_rate = eff_rate_pct / 2
         half_tax  = round(display_tax / 2, 2)
         gst_rows.append([Paragraph(f"CGST @ {half_rate:.1f}%", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
         gst_rows.append([Paragraph(f"SGST @ {half_rate:.1f}%", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
     else:
-        gst_rows.append([Paragraph(f"IGST @ {eff_rate_pct:.0f}%", S["br"]), Paragraph(_fmt(display_tax), S["bbr"])])
+        rate_label = distinct_rates[0] if distinct_rates else eff_rate_pct
+        gst_rows.append([Paragraph(f"IGST @ {rate_label:g}%", S["br"]), Paragraph(_fmt(display_tax), S["bbr"])])
 
     gst_rows.append([Paragraph("", S["b"]), Paragraph("", S["b"])])
     gst_rows.append([Paragraph("<b>Grand Total</b>", S["sum_lbl"]), Paragraph(f"<b>{_fmt(grand)}</b>", S["sum_val"])])
