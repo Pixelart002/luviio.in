@@ -541,27 +541,18 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     # single blended eff_rate_pct, which was wrong for mixed-rate orders.
     display_tax = run_tax if run_tax > 0 else (tax_amt if tax_amt > 0 else product_tax_only)
 
-    distinct_rates = [r for r in rate_breakdown if r > 0]
-    if len(distinct_rates) > 1:
-        # Mixed-rate order: show each rate's taxable amount + tax separately --
-        # a single blended "@ X%" line would misrepresent the actual GST charged.
-        for rate in sorted(rate_breakdown.keys()):
-            base = rate_breakdown[rate]
-            rate_tax = round(base * rate / 100, 2)
-            if tax_type == "CGST+SGST":
-                half_rate, half_tax = rate / 2, round(rate_tax / 2, 2)
-                gst_rows.append([Paragraph(f"CGST @ {half_rate:.1f}% (on {_fmt(base)})", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
-                gst_rows.append([Paragraph(f"SGST @ {half_rate:.1f}% (on {_fmt(base)})", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
-            else:
-                gst_rows.append([Paragraph(f"IGST @ {rate:g}% (on {_fmt(base)})", S["br"]), Paragraph(_fmt(rate_tax), S["bbr"])])
-    elif tax_type == "CGST+SGST":
-        half_rate = eff_rate_pct / 2
-        half_tax  = round(display_tax / 2, 2)
-        gst_rows.append([Paragraph(f"CGST @ {half_rate:.1f}%", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
-        gst_rows.append([Paragraph(f"SGST @ {half_rate:.1f}%", S["br"]), Paragraph(_fmt(half_tax), S["bbr"])])
-    else:
-        rate_label = distinct_rates[0] if distinct_rates else eff_rate_pct
-        gst_rows.append([Paragraph(f"IGST @ {rate_label:g}%", S["br"]), Paragraph(_fmt(display_tax), S["bbr"])])
+    # 🔥 FIX: the Price Summary box used to break tax into CGST/SGST lines,
+    # and into a separate line PER GST rate for mixed-rate orders -- ending up
+    # with several confusing lines here. The line-items table above already
+    # shows the exact GST% and Tax Amt per product for compliance, so this
+    # summary box now just shows the total taxable base + one combined "Tax"
+    # figure, matching how Shipping is shown as a single line above it.
+    # 🔥 FIX: previously showed BOTH "Total Taxable Value" and "Tax" as two
+    # separate lines here -- collapsing to just the single "Tax" line the
+    # person asked for (Subtotal -> Shipping -> Tax -> Grand Total). The
+    # itemized table above still has the full per-item GST% / taxable value
+    # breakdown for compliance -- this summary box is just the quick totals.
+    gst_rows.append([Paragraph("Tax", S["br"]), Paragraph(_fmt(display_tax), S["bbr"])])
 
     gst_rows.append([Paragraph("", S["b"]), Paragraph("", S["b"])])
     gst_rows.append([Paragraph("<b>Grand Total</b>", S["sum_lbl"]), Paragraph(f"<b>{_fmt(grand)}</b>", S["sum_val"])])
