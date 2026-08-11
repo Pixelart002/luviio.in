@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 from nanoid import generate
+from email_validator import validate_email, EmailNotValidError
 
 from app.repositories.payment_repo import AsyncPaymentRepository
 from app.services.pricing.service import get_pricing_from_config
@@ -147,6 +148,18 @@ class PaymentService:
         if not addr: 
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
 
+        # 🔥 FIX: hard-require a valid email on the address before checkout proceeds.
+        # New addresses are already validated at save-time (AddressCreate now uses
+        # EmailStr), but addresses saved before that fix can still have garbage or
+        # missing email in the DB — this was silently producing orders with
+        # shipping_email="behe" etc., which then failed to send the payment
+        # confirmation email. No fallback to account email by design — the
+        # address's own email is required, full stop.
+        try:
+            validate_email(addr.get("email") or "", check_deliverability=False)
+        except EmailNotValidError:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
+
         # Fetch Billing Address (if different), else default to Shipping
         billing_addr = addr
         is_same_as_shipping = True
@@ -156,6 +169,10 @@ class PaymentService:
             if fetched_billing:
                 billing_addr = fetched_billing
                 is_same_as_shipping = False
+                try:
+                    validate_email(billing_addr.get("email") or "", check_deliverability=False)
+                except EmailNotValidError:
+                    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
 
         try:
             intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_PENDING", user_id, f"aot_pi_{clean_idem_key}")

@@ -17,6 +17,7 @@ class PaymentSecurityMessages:
     OUT_OF_STOCK = "Item '{name}' is currently out of stock or inactive."
     INVALID_AMOUNT = "Order total is below the minimum allowed amount of ₹{min_amount}."
     ADDRESS_NOT_FOUND = "The selected shipping address could not be found."
+    ADDRESS_EMAIL_MISSING = "This address is missing a valid email — please edit it and add one before checking out (needed for order confirmations and invoices)."
     PAYMENT_FAILED = "Payment processing failed. Please verify your details."
     INTENT_STATE_ERROR = "Payment session is in an unrecoverable state: {status}."
     UNAUTHORIZED_ACCESS = "You are not authorized to process payment for this order."
