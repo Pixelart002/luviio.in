@@ -1,7 +1,7 @@
 """
 CORS Middleware — Production Grade
 ===================================
-Handles Cross-Origin Resource Sharing with strict whitelisting.
+Handles Cross-Origin Resource Sharing with  strict whitelisting.
 
 SECURITY:
   • Production: Only whitelisted origins allowed → 403 for others
