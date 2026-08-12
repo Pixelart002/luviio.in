@@ -92,7 +92,7 @@ class AsyncPaymentRepository:
             return getattr(res, "data", None)
         except Exception as exc:
             logger.error("DB Error checking idempotency key %s: %s", idempotency_key, exc, exc_info=True)
-            return None
+            raise 
 
     async def get_order_by_id(self, order_id: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
