@@ -65,6 +65,11 @@ class AsyncOrderRepository:
             }).execute()
 
             outcome = getattr(result, "data", None)
+            if outcome == "ORDER_ALREADY_FULFILLED":
+                # Expected rejection, not an error — order already shipped/delivered,
+                # cancelling it (and adding stock back) would be factually wrong.
+                logger.info(f"[REPO:ORDERS] Cancel refused for {order_id} — already shipped/delivered.")
+                return None
             if outcome not in ("CANCELLED", "ALREADY_CANCELLED"):
                 logger.warning(f"[REPO:ORDERS] Unexpected outcome cancelling order {order_id}: {outcome}")
                 return None
