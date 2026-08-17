@@ -1,4 +1,4 @@
-name: Temporary Payment Tests
+name: Temporary Backend Smoke Tests
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ env:
   PYTHONPATH: ${{ github.workspace }}
 
 jobs:
-  payment-tests:
+  backend-smoke-tests:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,5 +31,5 @@ jobs:
       - name: Verify application package
         run: python -c "import app; print('app import OK')"
 
-      - name: Run payment service tests
-        run: pytest tests/test_payment_service_unit.py -v
+      - name: Run complete backend smoke flow
+        run: pytest tests/test_backend_smoke_flow.py -v -s
