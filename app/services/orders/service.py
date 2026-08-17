@@ -1,6 +1,6 @@
 """
-Order Service — Enterprise Business Logic & State Machine (GST Ready)
-=====================================================================
+Order Service — Enterprise Business Logic & State Machine (Dynamic Settings & GST Ready)
+======================================================================================
 Path: app/services/orders/service.py
 """
 import logging
@@ -18,14 +18,15 @@ from app.utils.documents.pdf_invoice import build_invoice_pdf
 from app.enums.order_status import OrderStatus
 from app.constants.order_messages import OrderMessages, OrderSecurityMessages
 
+# 🔥 IMPORT SETTINGS ENGINE FOR DYNAMIC CHECKOUT CONFIG
+from app.services.settings.core_engine import SettingsCoreEngine
+
 logger = logging.getLogger(__name__)
 
-# 🔥 UPDATED: Finite State Machine (FSM) Matrix for Order Lifecycles
+# Finite State Machine (FSM) Matrix for Order Lifecycles
 STATUS_TRANSITIONS = {
     OrderStatus.PENDING: {OrderStatus.PAID, OrderStatus.CANCELLED},
-    # Paid order can move to Processing, Shipped, Cancelled, or be Refunded directly.
     OrderStatus.PAID: {OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.CANCELLED, OrderStatus.REFUNDED},
-    # Processing means warehouse is packing it. From here, it ships or gets cancelled/refunded.
     OrderStatus.PROCESSING: {OrderStatus.SHIPPED, OrderStatus.CANCELLED, OrderStatus.REFUNDED},
     OrderStatus.SHIPPED: {OrderStatus.DELIVERED},
     OrderStatus.DELIVERED: {OrderStatus.REFUNDED},
@@ -40,6 +41,15 @@ class OrderService:
     def __init__(self):
         self.repo = AsyncOrderRepository()
         self.user_repo = AsyncUserRepository()
+        self.settings = SettingsCoreEngine()
+
+    async def _get_setting_val(self, key: str, fallback: Any) -> Any:
+        """Helper to fetch settings with a safe fallback in case the DB key is missing."""
+        try:
+            data = await self.settings.fetch_by_key(key)
+            return data.get("value", fallback)
+        except HTTPException:
+            return fallback
 
     def _sanitize(self, order: Dict[str, Any]) -> Dict[str, Any]:
         if not order: 
@@ -69,10 +79,15 @@ class OrderService:
         return sanitized
 
     async def create_order_from_cart(self, user_id: str, address_id: str, notes: Optional[str] = None, idempotency_key: Optional[str] = None) -> Dict[str, Any]:
-        """Reads user cart, calculates GST/Discounts, locks snapshots, and creates order."""
+        """Reads user cart, calculates GST/Discounts via Dynamic DB Settings, locks snapshots, and creates order."""
         cart_data = await self.repo.get_cart_for_checkout(user_id)
         if not cart_data or not cart_data.get("cart_items"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Your cart is empty. Cannot initiate checkout.")
+
+        # 🚀 DYNAMIC CHECKOUT SETTINGS FETCH
+        free_shipping_limit = Decimal(str(await self._get_setting_val("free_shipping_threshold", 1499.00)))
+        base_shipping_cost = Decimal(str(await self._get_setting_val("standard_shipping_cost", 45.90)))
+        default_gst = Decimal(str(await self._get_setting_val("default_gst_percentage", 18)))
 
         total_subtotal = Decimal("0.00")
         total_tax = Decimal("0.00")
@@ -96,8 +111,8 @@ class OrderService:
             discount_per_item = max(Decimal("0.00"), compare_price - unit_price)
             discount_amount = discount_per_item * qty
 
-            # GST Math
-            gst_pct = Decimal(str(prod.get("gst_percentage") or 18))
+            # Dynamic GST Math
+            gst_pct = Decimal(str(prod.get("gst_percentage") or default_gst))
             tax_amount = (subtotal * (gst_pct / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
             total_subtotal += subtotal
@@ -117,7 +132,8 @@ class OrderService:
                 "discount_amount": float(discount_amount)
             })
 
-        shipping_cost = Decimal("0.00") if total_subtotal >= Decimal("999.00") else Decimal("99.00")
+        # Dynamic Shipping Cost Check
+        shipping_cost = Decimal("0.00") if total_subtotal >= free_shipping_limit else base_shipping_cost
         total_amount = total_subtotal + total_tax + shipping_cost
 
         order_data = {

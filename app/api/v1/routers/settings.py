@@ -1,8 +1,4 @@
-"""
-Settings Router — Async Standardized Endpoints
-==============================================
-Path: app/api/v1/routers/settings.py
-"""
+# Path: app/api/v1/routers/settings.py
 import logging
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query, Request, status
@@ -11,7 +7,9 @@ from slowapi.util import get_remote_address
 
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
 from app.permissions.settings import SettingsPermissions
-from app.services.settings.service import SettingsService
+
+# 🔥 Import the newly segregated Admin Service
+from app.services.settings.admin_service import AdminSettingsService
 from app.api.schemas.settings_dto import SettingUpdate, SettingListResponse, SettingResponse
 from app.constants.settings_messages import SettingsMessages
 from app.utils.response import success_response
@@ -29,7 +27,7 @@ async def list_settings(
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin querying system settings registry (Category: {category or 'ALL'})")
 
-    items = await SettingsService().get_all(category=category, force_refresh=force_refresh)
+    items = await AdminSettingsService().get_all(category=category, force_refresh=force_refresh)
     return success_response(data={"items": items, "total": len(items)}, message=SettingsMessages.FETCHED)
 
 @router.patch("/{key}", status_code=status.HTTP_200_OK, response_model=Dict[str, Any], dependencies=[Depends(require_permission(SettingsPermissions.UPDATE))])
@@ -45,11 +43,12 @@ async def update_setting(
         request.state.actions.append(f"Initiating setting mutation -> Key: '{key}' | Reason: {payload.reason or 'None'}")
 
     user_role = current_user.get("role") or current_user.get("profile", {}).get("role", "admin")
-    updated = await SettingsService().update(
+    
+    updated = await AdminSettingsService().update_core_setting(
         key=key,
         new_value=payload.value,
-        user_id=user_id,
-        user_role=user_role,
+        admin_id=user_id,
+        role=user_role,
         reason=payload.reason or "Admin UI override"
     )
 
@@ -70,7 +69,12 @@ async def reset_setting(
         request.state.actions.append(f"Admin restoring setting '{key}' to factory default...")
 
     user_role = current_user.get("role") or current_user.get("profile", {}).get("role", "admin")
-    restored = await SettingsService().reset(key=key, user_id=user_id, user_role=user_role)
+    
+    restored = await AdminSettingsService().reset_to_default(
+        key=key, 
+        admin_id=user_id, 
+        role=user_role
+    )
 
     if hasattr(request.state, "actions"):
         request.state.actions.append("Setting restored to default & cache invalidated")
