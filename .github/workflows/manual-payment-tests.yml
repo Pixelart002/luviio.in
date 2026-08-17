@@ -6,6 +6,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
 jobs:
   payment-tests:
     runs-on: ubuntu-latest
@@ -24,6 +27,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-asyncio
+
+      - name: Verify application package
+        run: python -c "import app; print('app import OK')"
 
       - name: Run payment service tests
         run: pytest tests/test_payment_service_unit.py -v
