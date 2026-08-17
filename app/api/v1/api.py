@@ -18,7 +18,7 @@ from app.api.v1.routers import (
     cart, 
     invoice, 
     admin_verify,
-    settings_router
+    settings
 )
 
 api_router = APIRouter()
@@ -36,4 +36,4 @@ api_router.include_router(push.router)
 api_router.include_router(admin_verify.router)
 api_router.include_router(cart.router)
 api_router.include_router(invoice.router)
-api_router.include_router(settings_router.router)
+api_router.include_router(settings.router)
