@@ -3,7 +3,6 @@ Payments Router
 ===============
 Path: app/api/v1/routers/payments.py
 """
-import uuid
 from typing import Any, Dict
 from fastapi import APIRouter, Depends, Request, Response
 from slowapi import Limiter
@@ -111,16 +110,3 @@ async def stripe_webhook(request: Request):
         return Response(content="Internal Server Error", status_code=500)
 
     return Response(content="Success", status_code=200)
-    
-
-
-@router.get("/idempotency-key")
-@limiter.limit("20/minute")
-async def get_checkout_idempotency_key(
-    request: Request,
-    user_id: str = Depends(get_user_id_strict)
-) -> Dict[str, Any]:
-    """Generates a secure, server-side idempotency key for checkout."""
-    # Backend-generated UUID ensures no client-side duplication/manipulation
-    secure_key = str(uuid.uuid4())
-    return success_response(data={"idempotency_key": secure_key})
