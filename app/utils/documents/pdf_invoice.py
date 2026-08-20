@@ -552,7 +552,7 @@ def build_invoice_pdf(order: dict[str, Any], customer: dict[str, Any]) -> bytes:
     # person asked for (Subtotal -> Shipping -> Tax -> Grand Total). The
     # itemized table above still has the full per-item GST% / taxable value
     # breakdown for compliance -- this summary box is just the quick totals.
-    gst_rows.append([Paragraph("Tax", S["br"]), Paragraph(_fmt(display_tax), S["bbr"])])
+    gst_rows.append([Paragraph("GST", S["br"]), Paragraph(_fmt(display_tax), S["bbr"])])
 
     gst_rows.append([Paragraph("", S["b"]), Paragraph("", S["b"])])
     gst_rows.append([Paragraph("<b>Grand Total</b>", S["sum_lbl"]), Paragraph(f"<b>{_fmt(grand)}</b>", S["sum_val"])])
