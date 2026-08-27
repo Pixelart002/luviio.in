@@ -6,6 +6,7 @@ Path: app/api/schemas/user_dto.py
 from pydantic import BaseModel, ConfigDict, Field, field_validator, EmailStr
 from typing import Any, List, Optional
 from app.constants.user_messages import UserSecurityMessages
+from app.constants.regex import RegexPatterns
 from app.enums.roles import UserRole
 
 class ProfileUpdate(BaseModel):
@@ -69,6 +70,13 @@ class AddressCreate(BaseModel):
             if len(cleaned.replace('+', '')) < 10:
                 raise ValueError(UserSecurityMessages.INVALID_PHONE)
             return cleaned
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def validate_address_email(cls, v: Optional[str]) -> Optional[str]:
+        if v and not RegexPatterns.EMAIL.match(v):
+            raise ValueError("Invalid email format. Must follow 'user@example.com'.")
         return v
 
     @field_validator("gstin")
