@@ -21,11 +21,14 @@ Lifecycle-hardening changes in this version:
   * release_abandoned_order() -- accepts a `reason` for the cancellation note.
   * list_stale_pending_orders() -- powers the abandoned-checkout cron sweep.
 """
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
+
+_TRANSIENT_ERROR_SIGNALS = ("522", "524", "timeout", "timed out", "connection", "network", "json could not be generated")
 
 class AsyncPaymentRepository:
     def __init__(self):
@@ -330,13 +333,33 @@ class AsyncPaymentRepository:
     # ─────────────────────────────────────────────────────────────────────
 
     async def list_stale_pending_orders(self, cutoff_iso: str) -> List[Dict[str, Any]]:
-        """Orders stuck in 'pending' created before `cutoff_iso` -- candidates for the abandoned-checkout sweep."""
+        """Orders stuck in 'pending' created before `cutoff_iso` -- candidates for the abandoned-checkout sweep.
+
+        Retries up to 3 times with exponential backoff on transient Supabase/Cloudflare
+        connectivity errors (e.g. HTTP 522 connection timeout) before giving up.
+        Returns an empty list on persistent failure so the cron sweep is safely skipped.
+        """
         admin_sb = await get_async_admin_supabase()
-        try:
-            res = await admin_sb.table("orders").select(
-                "id, customer_id, stripe_payment_intent, created_at"
-            ).eq("status", "pending").lt("created_at", cutoff_iso).execute()
-            return getattr(res, "data", None) or []
-        except Exception as exc:
-            logger.error("DB Error listing stale pending orders: %s", exc, exc_info=True)
-            return []
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                res = await admin_sb.table("orders").select(
+                    "id, customer_id, stripe_payment_intent, created_at"
+                ).eq("status", "pending").lt("created_at", cutoff_iso).execute()
+                return getattr(res, "data", None) or []
+            except Exception as exc:
+                exc_str = str(exc).lower()
+                is_transient = any(signal in exc_str for signal in _TRANSIENT_ERROR_SIGNALS)
+                if is_transient and attempt < max_attempts:
+                    delay = 2 ** attempt  # 2s, 4s
+                    logger.warning(
+                        "DB transient error listing stale pending orders (attempt %d/%d), retrying in %ds: %s",
+                        attempt, max_attempts, delay, exc,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(
+                        "DB Error listing stale pending orders after %d attempt(s): %s",
+                        attempt, exc, exc_info=True,
+                    )
+                    return []

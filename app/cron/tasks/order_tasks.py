@@ -44,6 +44,10 @@ async def cleanup_abandoned_orders() -> None:
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=PaymentRules.ABANDONED_ORDER_TIMEOUT_MINUTES)
     stale_orders = await repo.list_stale_pending_orders(cutoff.isoformat())
 
+    if stale_orders is None:
+        logger.warning("[CRON] Abandoned-order sweep skipped: could not reach database.")
+        return
+
     if not stale_orders:
         logger.info("[CRON] No abandoned orders found.")
         return
