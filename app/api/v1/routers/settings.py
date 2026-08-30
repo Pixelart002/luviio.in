@@ -13,6 +13,7 @@ from app.services.settings.admin_service import AdminSettingsService
 from app.api.schemas.settings_dto import SettingUpdate, SettingListResponse, SettingResponse
 from app.constants.settings_messages import SettingsMessages
 from app.utils.response import success_response
+from app.core.maintenance import invalidate_maintenance_cache
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
@@ -52,6 +53,8 @@ async def update_setting(
         reason=payload.reason or "Admin UI override"
     )
 
+    invalidate_maintenance_cache()
+
     if hasattr(request.state, "actions"):
         request.state.actions.append("Setting mutated successfully & global TTL cache purged")
 
@@ -75,6 +78,8 @@ async def reset_setting(
         admin_id=user_id, 
         role=user_role
     )
+
+    invalidate_maintenance_cache()
 
     if hasattr(request.state, "actions"):
         request.state.actions.append("Setting restored to default & cache invalidated")

@@ -17,6 +17,7 @@ from app.core.logger import setup_logging
 from app.core.monitoring import init_sentry
 from app.core.setup_middlewares import apply_middlewares
 from app.core.exceptions import register_exception_handlers
+from app.core.maintenance import maintenance_middleware
 
 # 🔥 Events & Cron
 from app.events.registry import register_all_event_handlers
@@ -65,6 +66,9 @@ app = FastAPI(
 # ── Global App Configuration ──────────────────────────────────────────────────
 # 1. Mount Security, CORS, Rate Limiters, and PureWindow Logger
 apply_middlewares(app)
+
+# 2. Enforce the system_settings.maintenance_mode flag for every business route.
+app.middleware("http")(maintenance_middleware)
 
 # 2. Mount Enterprise Error Handlers (Catches Domain Exceptions globally)
 register_exception_handlers(app)
