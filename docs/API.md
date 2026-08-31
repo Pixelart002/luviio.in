@@ -2,7 +2,7 @@
 
 ## Base URL
 
-Local: `http://localhost:8000`  
+Local: `https://apparent-jordanna-pixelart002-42e39ac6.koyeb.app`  
 Production: use the deployed API origin.
 
 OpenAPI is available at `/docs` and `/openapi.json` when enabled by deployment policy.

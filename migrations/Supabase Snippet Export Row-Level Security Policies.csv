@@ -5,25 +5,25 @@ addresses,addresses_select_own,CREATE POLICY addresses_select_own ON public.addr
 addresses,addresses_update_own,CREATE POLICY addresses_update_own ON public.addresses AS PERMISSIVE FOR UPDATE TO public USING ((auth.uid() = user_id));
 addresses,service_role_all_addresses,CREATE POLICY service_role_all_addresses ON public.addresses AS PERMISSIVE FOR ALL TO public USING (true) WITH CHECK (true);
 cart_items,Users can delete own cart items,"CREATE POLICY ""Users can delete own cart items"" ON public.cart_items AS PERMISSIVE FOR DELETE TO authenticated USING ((EXISTS ( SELECT 1
-   FROM carts
-  WHERE ((carts.id = cart_items.cart_id) AND (carts.user_id = auth.uid())))));"
+FROM carts
+WHERE ((carts.id = cart_items.cart_id) AND (carts.user_id = auth.uid())))));"
 cart_items,Users can insert into own cart items,"CREATE POLICY ""Users can insert into own cart items"" ON public.cart_items AS PERMISSIVE FOR INSERT TO authenticated WITH CHECK ((EXISTS ( SELECT 1
-   FROM carts
-  WHERE ((carts.id = cart_items.cart_id) AND (carts.user_id = auth.uid())))));"
+FROM carts
+WHERE ((carts.id = cart_items.cart_id) AND (carts.user_id = auth.uid())))));"
 cart_items,Users can manage own cart items,"CREATE POLICY ""Users can manage own cart items"" ON public.cart_items AS PERMISSIVE FOR ALL TO public USING ((cart_id IN ( SELECT carts.id
-   FROM carts
-  WHERE (carts.user_id = auth.uid()))));"
+FROM carts
+WHERE (carts.user_id = auth.uid()))));"
 cart_items,Users can update own cart items,"CREATE POLICY ""Users can update own cart items"" ON public.cart_items AS PERMISSIVE FOR UPDATE TO authenticated USING ((EXISTS ( SELECT 1
-   FROM carts
-  WHERE ((carts.id = cart_items.cart_id) AND (carts.user_id = auth.uid()))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM carts
-  WHERE ((carts.id = cart_items.cart_id) AND (carts.user_id = auth.uid())))));"
+FROM carts
+WHERE ((carts.id = cart_items.cart_id) AND (carts.user_id = auth.uid()))))) WITH CHECK ((EXISTS ( SELECT 1
+FROM carts
+WHERE ((carts.id = cart_items.cart_id) AND (carts.user_id = auth.uid())))));"
 cart_items,Users can view own cart items,"CREATE POLICY ""Users can view own cart items"" ON public.cart_items AS PERMISSIVE FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
-   FROM carts
-  WHERE ((carts.id = cart_items.cart_id) AND (carts.user_id = auth.uid())))));"
+FROM carts
+WHERE ((carts.id = cart_items.cart_id) AND (carts.user_id = auth.uid())))));"
 cart_items,cart_items_owner,"CREATE POLICY cart_items_owner ON public.cart_items AS PERMISSIVE FOR ALL TO public USING ((cart_id IN ( SELECT carts.id
-   FROM carts
-  WHERE (carts.user_id = auth.uid()))));"
+FROM carts
+WHERE (carts.user_id = auth.uid()))));"
 carts,Users can create own cart,"CREATE POLICY ""Users can create own cart"" ON public.carts AS PERMISSIVE FOR INSERT TO authenticated WITH CHECK ((auth.uid() = user_id));"
 carts,Users can delete own cart,"CREATE POLICY ""Users can delete own cart"" ON public.carts AS PERMISSIVE FOR DELETE TO authenticated USING ((auth.uid() = user_id));"
 carts,Users can manage own cart,"CREATE POLICY ""Users can manage own cart"" ON public.carts AS PERMISSIVE FOR ALL TO public USING ((auth.uid() = user_id)) WITH CHECK ((auth.uid() = user_id));"
@@ -33,8 +33,8 @@ carts,carts_owner,CREATE POLICY carts_owner ON public.carts AS PERMISSIVE FOR AL
 categories,categories_select_all,CREATE POLICY categories_select_all ON public.categories AS PERMISSIVE FOR SELECT TO public USING (true);
 categories,service_role_all_categories,CREATE POLICY service_role_all_categories ON public.categories AS PERMISSIVE FOR ALL TO public USING (true) WITH CHECK (true);
 order_items,order_items_select_own,"CREATE POLICY order_items_select_own ON public.order_items AS PERMISSIVE FOR SELECT TO public USING ((EXISTS ( SELECT 1
-   FROM orders
-  WHERE ((orders.id = order_items.order_id) AND (orders.customer_id = auth.uid())))));"
+FROM orders
+WHERE ((orders.id = order_items.order_id) AND (orders.customer_id = auth.uid())))));"
 order_items,service_role_all_order_items,CREATE POLICY service_role_all_order_items ON public.order_items AS PERMISSIVE FOR ALL TO public USING (true) WITH CHECK (true);
 orders,orders_insert_own,CREATE POLICY orders_insert_own ON public.orders AS PERMISSIVE FOR INSERT TO public WITH CHECK ((auth.uid() = customer_id));
 orders,orders_select_own,CREATE POLICY orders_select_own ON public.orders AS PERMISSIVE FOR SELECT TO public USING ((auth.uid() = customer_id));
@@ -48,8 +48,8 @@ product_images,service_role_all_images,CREATE POLICY service_role_all_images ON 
 products,products_select_all,CREATE POLICY products_select_all ON public.products AS PERMISSIVE FOR SELECT TO public USING (true);
 products,service_role_all_products,CREATE POLICY service_role_all_products ON public.products AS PERMISSIVE FOR ALL TO public USING (true) WITH CHECK (true);
 system_settings,Admins can read system settings,"CREATE POLICY ""Admins can read system settings"" ON public.system_settings AS PERMISSIVE FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
-   FROM users u
-  WHERE ((u.id = auth.uid()) AND (u.is_active = true) AND (u.role = 'admin'::text)))));"
+FROM users u
+WHERE ((u.id = auth.uid()) AND (u.is_active = true) AND (u.role = 'admin'::text)))));"
 system_settings,Public settings are readable by everyone,"CREATE POLICY ""Public settings are readable by everyone"" ON public.system_settings AS PERMISSIVE FOR SELECT TO public USING ((is_public = true));"
 users,service_role_all_users,CREATE POLICY service_role_all_users ON public.users AS PERMISSIVE FOR ALL TO public USING (true) WITH CHECK (true);
 users,users_select_own,CREATE POLICY users_select_own ON public.users AS PERMISSIVE FOR SELECT TO public USING ((auth.uid() = id));
