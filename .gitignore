@@ -1,1 +1,29 @@
-/tests/test.py
+# Python generated files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments and local secrets
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Test and tooling output
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Build and deployment artifacts
+dist/
+build/
+*.egg-info/
+.vercel/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
