@@ -97,6 +97,18 @@ See [`docs/SECURITY.md`](docs/SECURITY.md).
 
 Avoid putting business logic in routers or database queries in services. Do not delete a module until its replacement exists, imports are migrated, tests pass, and the change is recorded.
 
+## Cleanup and replacements
+
+| Old/stale item | Current replacement | Status |
+|---|---|---|
+| `requirements.txt` | `pyproject.toml` + `uv.lock` | Removed; prevents buildpack ambiguity |
+| `test_backend_smoke_flow.py` | Focused tests under `tests/` | Removed and replaced |
+| Duplicate settings storage logic | `SettingsCoreEngine` | Consolidated |
+| `app.services.settings.service.SettingsService` | Role-specific services + core engine | Retained as a compatibility facade |
+| Old documented tree entries | `structure.md` generated from tracked source | Documentation corrected |
+
+Compatibility files are not deleted until import scans prove they are unused. This prevents a cleanup from becoming a production outage.
+
 ## Deployment
 
 Vercel uses the Python build configuration from `pyproject.toml` and `uv.lock`. Keep exactly one Python package-manager lockfile, run the locked sync check before deployment, and configure secrets through project environment variables.

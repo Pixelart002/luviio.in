@@ -87,6 +87,6 @@ luviio.in/
 
 ## Deprecated/stale entries removed from the old document
 
-The old tree listed root `app.py`, `requirements.txt`, `app/api/v1/app.py`, `inventory.py`, and several folders that are not present in this repository. The real entrypoint is `app/main.py`; dependencies are managed only by `pyproject.toml` and `uv.lock`. No source module was deleted during this documentation pass without a verified replacement.
+The old tree listed root `app.py`, `requirements.txt`, `app/api/v1/app.py`, `inventory.py`, and several folders that are not present in this repository. The real entrypoint is `app/main.py`; dependencies are managed only by `pyproject.toml` and `uv.lock`. The old smoke test was replaced by focused tests under `tests/`. The settings facade remains intentionally as a compatibility adapter; its storage logic was replaced by `SettingsCoreEngine`.
 
 For an exact current list, use `git ls-files`; this prevents documentation from becoming a second stale source of truth.
