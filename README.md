@@ -17,8 +17,10 @@ Useful checks:
 uv lock --check
 uv sync --locked --no-dev --no-editable
 python -m compileall -q app
-pytest -q
+uv run pytest -q
 ```
+
+The test suite is recreated from scratch and documented in [`docs/TESTING.md`](docs/TESTING.md). It uses mocks at external service boundaries, so local tests do not require live Supabase, Stripe, email, push, or scheduler credentials.
 
 `pyproject.toml` and `uv.lock` are the only dependency files. Do not add `requirements.txt`, Pipenv, Poetry, or another lockfile.
 
