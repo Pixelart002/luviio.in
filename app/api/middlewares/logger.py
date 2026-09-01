@@ -121,7 +121,9 @@ class PureWindowLoggerMiddleware(BaseHTTPMiddleware):
 {actions_text}
 {C.CYAN}└─────────────────────────────────────────────────────────────┘{C.RESET}
 """
-            logging.getLogger("uvicorn.error").info(
+            logger = logging.getLogger("uvicorn.error")
+            logger.info(window)
+            logger.info(
                 "request_summary method=%s path=%s status=%s duration_ms=%.2f user_id=%s",
                 request.method,
                 request.url.path,
