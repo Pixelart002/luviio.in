@@ -121,7 +121,14 @@ class PureWindowLoggerMiddleware(BaseHTTPMiddleware):
 {actions_text}
 {C.CYAN}└─────────────────────────────────────────────────────────────┘{C.RESET}
 """
-            print(window)
+            logging.getLogger("uvicorn.error").info(
+                "request_summary method=%s path=%s status=%s duration_ms=%.2f user_id=%s",
+                request.method,
+                request.url.path,
+                status,
+                process_time,
+                request.state.user_id if hasattr(request.state, "user_id") else "anonymous",
+            )
 
             # Re-raise so FastAPI still returns its 500 Internal Server Error JSON
             if unhandled_exc:

@@ -90,7 +90,7 @@ def upload_product_image(file_bytes: bytes, product_id: str, *, filename: str = 
             thumb_path = f"products/{product_id}/{unique_id}_thumb.webp"
             _upload_to_storage(thumbnail, thumb_path)
         except Exception as exc:
-            pass
+            logger.warning("Thumbnail generation failed for product %s: %s", product_id[:8], exc)
     return url
 
 def upload_multiple_images(files: list[tuple[bytes, str]], product_id: str, *, max_images: int = 10) -> list[str]:
@@ -105,7 +105,8 @@ def upload_multiple_images(files: list[tuple[bytes, str]], product_id: str, *, m
             try:
                 path = url.split(f"/{STORAGE_BUCKET}/")[1] if f"/{STORAGE_BUCKET}/" in url else None
                 if path: _delete_from_storage(path)
-            except Exception: pass
+            except Exception as cleanup_error:
+                logger.warning("Image rollback cleanup failed: %s", cleanup_error)
         raise ValueError(f"Failed to upload {len(errors)} image(s): {'; '.join(errors)}")
     return urls
 
@@ -125,5 +126,5 @@ def delete_all_product_images(product_id: str) -> int:
             sb.storage.from_(STORAGE_BUCKET).remove(paths)
             return len(paths)
     except Exception as exc:
-        pass
+        logger.error("Bulk image deletion failed for product %s: %s", product_id[:8], exc, exc_info=True)
     return 0
