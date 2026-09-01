@@ -17,4 +17,4 @@ Before every release, run the checks in `docs/ARCHITECTURE.md`, review changed r
 
 ## Cleanup rule
 
-Delete stale code only after its replacement is committed, all imports are migrated, tests cover the behavior, and a tracked-file/import scan shows no consumers. Compatibility adapters may remain temporarily, but they must contain delegation only—not a second business-logic implementation.
+Delete stale code only after its replacement is committed, all imports are migrated, tests cover the behavior, and a tracked-file/import scan shows no consumers. Compatibility adapters may remain temporarily, but they must contain delegation only—not a second business-logic implementation. Best-effort cleanup paths (thumbnail rollback, remote cancellation, queue delivery) now emit safe server logs instead of silently swallowing failures; provider details and secrets are never returned to clients.

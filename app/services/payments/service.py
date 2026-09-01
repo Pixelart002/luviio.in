@@ -351,8 +351,13 @@ class PaymentService:
                 if result == "ORDER_ALREADY_CANCELLED":
                     try:
                         await run_in_threadpool(self.provider.process_refund, pi_id)
-                    except Exception:
-                        pass
+                    except Exception as refund_error:
+                        logger.error(
+                            "[PAYMENT RETRY] Refund failed for cancelled order %s: %s",
+                            order_id[:8],
+                            refund_error,
+                            exc_info=True,
+                        )
                     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)
                 return {"status": OrderStatus.PAID.value, "message": PaymentMessages.RETRY_SUCCESSFUL}
                 
@@ -395,8 +400,13 @@ class PaymentService:
             if not linked:
                 try:
                     await run_in_threadpool(self.provider.cancel_intent, new_intent["id"])
-                except Exception:
-                    pass
+                except Exception as cancel_error:
+                    logger.error(
+                        "[PAYMENT RETRY] Replacement intent cancellation failed for order %s: %s",
+                        order_id[:8],
+                        cancel_error,
+                        exc_info=True,
+                    )
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE
