@@ -62,8 +62,10 @@ async def cors_middleware(request: Request, call_next):
         allowed = True
         final_origin = None
 
-    elif origin in allowed_origins:
-        # ── Whitelisted origin: Browser request from allowed domain ───────────
+    elif "*" in allowed_origins or origin in allowed_origins:
+        # ── Explicit wildcard or whitelisted origin ──────────────────────────
+        # With credentials enabled we must echo the request origin; returning
+        # `*` makes browsers reject the response as a network/CORS error.
         allowed = True
         final_origin = origin
 
@@ -81,11 +83,15 @@ async def cors_middleware(request: Request, call_next):
             "CORS BLOCKED | origin=%s method=%s path=%s",
             origin, request.method, request.url.path
         )
+        blocked_headers = {"Vary": "Origin"}
+        if origin:
+            blocked_headers["Access-Control-Allow-Origin"] = "null"
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content={
                 "detail": "Origin not allowed. Contact support if you believe this is an error.",
             },
+            headers=blocked_headers,
         )
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -99,7 +105,8 @@ async def cors_middleware(request: Request, call_next):
             "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
             "Access-Control-Allow-Headers": (
                 "Content-Type, Authorization, X-Requested-With, "
-                "X-Request-ID, Accept, Accept-Language, Cache-Control"
+                "X-Request-ID, Accept, Accept-Language, Cache-Control, Origin, "
+                "X-CSRF-Token, X-Client-Version"
             ),
             "Access-Control-Max-Age": "86400",  # Cache preflight for 24 hours
         }
