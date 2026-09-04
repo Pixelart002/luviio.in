@@ -30,7 +30,7 @@ class ProductPolicy:
     @staticmethod
     def assert_can_modify_inventory(user_role: Optional[str]) -> None:
         """
-        ABAC Guard: Verifies that the user holds sufficient privileges (Manager+) 
+        ABAC Guard: Verifies that the user holds sufficient privileges (Manager+)
         to mutate physical inventory stock levels.
         """
         if not user_role:

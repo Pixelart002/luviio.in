@@ -1,7 +1,7 @@
 """
 Event Bus — Observer Pattern + Background Processing
 =====================================================
-Path: app/services/events.py
+Path: app/events/bus.py
 
 Architecture Upgrades:
   1. Handlers completely removed from this file.

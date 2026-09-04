@@ -2,7 +2,7 @@
 Image Service — Supabase Storage
 =================================
 Architecture Layer: Services (Domain Logic)
-Path: app/services/image.py
+Path: app/utils/image.py
 """
 import io
 import logging

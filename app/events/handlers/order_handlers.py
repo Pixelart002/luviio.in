@@ -1,7 +1,7 @@
 """
 Order Event Handlers (Hooks)
 ============================
-Path: app/hooks/handlers/order_handlers.py
+Path: app/events/handlers/order_handlers.py
 
 Contains all application reactions to order-related events.
 """

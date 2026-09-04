@@ -24,7 +24,7 @@ from email_validator import validate_email, EmailNotValidError
 
 from app.repositories.payment_repo import AsyncPaymentRepository
 from app.services.pricing.service import get_pricing_from_config
-from app.events.bus import get_event_bus, OrderPaidEvent
+from app.events.bus import get_event_bus, OrderPaidEvent, OrderCreatedEvent, OrderFailedEvent
 from app.integrations.payments.registry import get_payment_provider
 from app.permissions.policies.payment_policies import PaymentPolicy
 from app.constants.payment_messages import PaymentMessages, PaymentSecurityMessages, PaymentRules
@@ -239,6 +239,17 @@ class PaymentService:
             except Exception as cart_exc:
                 logger.error("Failed to clear cart after successful order reservation: %s", cart_exc)
 
+            # Publish OrderCreatedEvent so admin new-order push fires
+            try:
+                customer_email = await self.repo.get_customer_email(user_id)
+                get_event_bus().publish(OrderCreatedEvent(
+                    order=pending_order,
+                    customer_email=customer_email,
+                    customer_id=user_id
+                ))
+            except Exception as event_exc:
+                logger.error("Failed to publish OrderCreatedEvent: %s", event_exc)
+
         except Exception as e:
             logger.error("[CRITICAL DB ERROR] Atomic Reservation Failed: %s", e)
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION) from e
@@ -257,8 +268,19 @@ class PaymentService:
         try:
             intent = await run_in_threadpool(self.provider.retrieve_intent, pi_id)
             if intent.get("status") != "succeeded":
+                # Publish OrderFailedEvent so customer gets payment-failed push
+                try:
+                    fail_order_id = intent.get("metadata", {}).get("order_id", "")
+                    get_event_bus().publish(OrderFailedEvent(
+                        order={"id": fail_order_id},
+                        customer_email=email,
+                        customer_id=user_id,
+                        reason="payment_failed"
+                    ))
+                except Exception as event_exc:
+                    logger.error("Failed to publish OrderFailedEvent: %s", event_exc)
                 raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=PaymentSecurityMessages.PAYMENT_FAILED)
-        except HTTPException: 
+        except HTTPException:
             raise
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
@@ -560,6 +582,22 @@ class PaymentService:
                         error_code=error_code, error_message=reason
                     )
                     logger.info("[WEBHOOK] Recorded failed attempt for Order %s (PI %s): %s", order_id[:8], pi_id, reason)
+
+                    # Publish OrderFailedEvent so customer gets payment-failed push
+                    try:
+                        fail_email = (
+                            order.get("shipping_email")
+                            or order.get("billing_email")
+                            or ""
+                        )
+                        get_event_bus().publish(OrderFailedEvent(
+                            order=order,
+                            customer_email=fail_email,
+                            customer_id=customer_id,
+                            reason="payment_failed"
+                        ))
+                    except Exception as event_exc:
+                        logger.error("[WEBHOOK] Failed to publish OrderFailedEvent: %s", event_exc)
 
             # EVENT 3: EXPLICIT CANCELLATION
             elif event_type == "payment_intent.canceled":

@@ -35,7 +35,7 @@ class OrderPolicy:
             return True
         if not user_role:
             return False
-        
+
         privileged_roles = {
             UserRole.SUPER_ADMIN.value if hasattr(UserRole.SUPER_ADMIN, "value") else "super_admin",
             UserRole.ADMIN.value if hasattr(UserRole.ADMIN, "value") else "admin",
@@ -49,9 +49,9 @@ class OrderPolicy:
 
     @classmethod
     def assert_can_view(
-        cls, 
-        order: Optional[Dict[str, Any]], 
-        current_user_id: str, 
+        cls,
+        order: Optional[Dict[str, Any]],
+        current_user_id: str,
         is_admin: bool = False,
         user_role: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -61,18 +61,18 @@ class OrderPolicy:
         """
         if not order:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, 
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail=OrderSecurityMessages.ORDER_NOT_FOUND
             )
 
         order_owner = str(order.get("customer_id", ""))
         if not cls._is_privileged_role(user_role, is_admin) and order_owner != str(current_user_id):
             logger.warning(
-                "ABAC IDOR Block | User %s attempted to read Order owned by %s", 
+                "ABAC IDOR Block | User %s attempted to read Order owned by %s",
                 current_user_id[:8], order_owner[:8]
             )
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, 
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail=OrderSecurityMessages.UNAUTHORIZED_ACCESS
             )
 
@@ -80,9 +80,9 @@ class OrderPolicy:
 
     @classmethod
     def assert_can_cancel(
-        cls, 
-        order: Dict[str, Any], 
-        current_user_id: str, 
+        cls,
+        order: Dict[str, Any],
+        current_user_id: str,
         is_admin: bool = False,
         user_role: Optional[str] = None
     ) -> None:
@@ -91,7 +91,7 @@ class OrderPolicy:
         """
         if not order:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, 
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail=OrderSecurityMessages.ORDER_NOT_FOUND
             )
 
@@ -99,36 +99,36 @@ class OrderPolicy:
         order_owner = str(order.get("customer_id", ""))
         if not cls._is_privileged_role(user_role, is_admin) and order_owner != str(current_user_id):
             logger.warning(
-                "ABAC IDOR Block | User %s attempted to cancel Order owned by %s", 
+                "ABAC IDOR Block | User %s attempted to cancel Order owned by %s",
                 current_user_id[:8], order_owner[:8]
             )
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, 
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail=OrderSecurityMessages.UNAUTHORIZED_ACCESS
             )
 
         # 2. Finite State Machine Check
         current_status = str(order.get("status", "")).lower()
-        
+
         # 🔥 FIX: Added PROCESSING to cancellable states (Can cancel while packing)
         cancellable_states = {
-            OrderStatus.PENDING.value, 
-            OrderStatus.PAID.value, 
+            OrderStatus.PENDING.value,
+            OrderStatus.PAID.value,
             OrderStatus.PROCESSING.value
         }
-        
+
         if current_status not in cancellable_states:
             logger.warning("ABAC State Block | Order status '%s' cannot be cancelled", current_status)
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, 
+                status_code=status.HTTP_409_CONFLICT,
                 detail=OrderSecurityMessages.INVALID_CANCEL_STATE
             )
 
     @classmethod
     def assert_can_download_invoice(
-        cls, 
-        order: Dict[str, Any], 
-        current_user_id: str, 
+        cls,
+        order: Dict[str, Any],
+        current_user_id: str,
         is_admin: bool = False,
         user_role: Optional[str] = None
     ) -> None:
@@ -137,35 +137,35 @@ class OrderPolicy:
         """
         if not order:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, 
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail=OrderSecurityMessages.ORDER_NOT_FOUND
             )
 
         order_owner = str(order.get("customer_id", ""))
         if not cls._is_privileged_role(user_role, is_admin) and order_owner != str(current_user_id):
             logger.warning(
-                "ABAC IDOR Block | User %s attempted to download invoice for Order owned by %s", 
+                "ABAC IDOR Block | User %s attempted to download invoice for Order owned by %s",
                 current_user_id[:8], order_owner[:8]
             )
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, 
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail=OrderSecurityMessages.UNAUTHORIZED_ACCESS
             )
 
         current_status = str(order.get("status", "")).lower()
-        
+
         # 🔥 FIX: Added PROCESSING so users can download invoice during warehouse packing
         valid_invoice_states = {
-            OrderStatus.PAID.value, 
-            OrderStatus.PROCESSING.value, 
-            OrderStatus.SHIPPED.value, 
-            OrderStatus.DELIVERED.value, 
+            OrderStatus.PAID.value,
+            OrderStatus.PROCESSING.value,
+            OrderStatus.SHIPPED.value,
+            OrderStatus.DELIVERED.value,
             OrderStatus.REFUNDED.value
         }
-        
+
         if current_status not in valid_invoice_states:
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, 
+                status_code=status.HTTP_409_CONFLICT,
                 detail=OrderSecurityMessages.INVOICE_UNAVAILABLE
             )
 
@@ -175,10 +175,10 @@ class OrderPolicy:
 
     @classmethod
     def can_cancel_order(
-        cls, 
-        user_role: str, 
-        user_id: str, 
-        order_customer_id: str, 
+        cls,
+        user_role: str,
+        user_id: str,
+        order_customer_id: str,
         current_status: str
     ) -> bool:
         """
@@ -192,11 +192,11 @@ class OrderPolicy:
             OrderStatus.PAID.value if hasattr(OrderStatus.PAID, "value") else "paid",
             OrderStatus.PROCESSING.value if hasattr(OrderStatus.PROCESSING, "value") else "processing"
         }
-        
+
         if str(current_status).lower() not in cancellable_states:
             raise LuviioException(
-                "Order cannot be cancelled in its current state.", 
-                code="INVALID_STATE", 
+                "Order cannot be cancelled in its current state.",
+                code="INVALID_STATE",
                 status_code=400
             )
 
