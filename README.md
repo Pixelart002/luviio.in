@@ -51,6 +51,8 @@ Request
 
 Feature routers and invoice routing have been migrated out of `app/api/v1/routers/`. The legacy router directory is no longer part of the tracked source tree. Invoice generation now belongs to the Orders domain; health is an infrastructure concern under `app/infrastructure/health/`.
 
+The Settings domain now owns its core engine and role-scoped settings services. Legacy `app/services/settings/*` implementations are cleanup candidates and will be removed only after the final repository-wide reference scan.
+
 For the complete source tree and migration rules, read [`structure.md`](structure.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Environment variables
@@ -105,10 +107,11 @@ Avoid putting business logic in routers or database queries in services. Do not 
 | Feature routers in `app/api/v1/routers/` | `app/domains/*/router.py` | Removed |
 | Invoice router in `app/api/v1/routers/invoice.py` | `app/domains/orders/router.py` | Migrated |
 | Health router in `app/api/v1/routers/health.py` | `app/infrastructure/health/router.py` | Migrated |
+| Settings core engine in `app/services/settings/core_engine.py` | `app/domains/settings/core_engine.py` | Promoted; legacy cleanup pending final scan |
+| Settings role services in `app/services/settings/*_service.py` | `app/domains/settings/*_service.py` | Promoted; legacy cleanup pending final scan |
 | `requirements.txt` | `pyproject.toml` + `uv.lock` | Removed |
 | `test_backend_smoke_flow.py` | Focused tests under `tests/` | Removed/replaced |
 | Duplicate settings storage logic | `SettingsCoreEngine` | Consolidated |
-| `app.services.settings.service.SettingsService` | Role-specific services + core engine | Compatibility cleanup pending import scan |
 | Legacy services/repositories | Canonical domain services/repositories | Migrate imports first; delete only after zero-reference scan |
 
 Compatibility code is removed only after the canonical replacement exists, all imports are migrated, and a repository-wide reference scan shows no live dependency. This prevents cleanup from becoming a production outage.
