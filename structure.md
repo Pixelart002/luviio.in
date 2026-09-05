@@ -20,16 +20,17 @@ luviio.in/
     │   ├── middlewares/
     │   ├── schemas/
     │   └── v1/
-    │       ├── api.py
-    │       └── routers/
-    │           ├── health.py
-    │           └── invoice.py
+    │       └── api.py
     ├── core/
     ├── constants/
     ├── cron/
     ├── enums/
     ├── events/
     ├── integrations/
+    ├── infrastructure/
+    │   └── health/
+    │       ├── __init__.py
+    │       └── router.py
     ├── permissions/
     ├── utils/
     └── domains/
@@ -52,30 +53,39 @@ luviio.in/
 
 ## Ownership
 
-`app/domains/<domain>/router.py` owns domain HTTP routing, `service.py` owns business rules/orchestration, and `repository.py` owns database access. Shared DTOs remain under `app/api/schemas`; cross-cutting authorization remains under `app/permissions`; provider adapters remain under `app/integrations`.
+`app/api/v1/api.py` is the versioned HTTP composition point only. Domain HTTP routing belongs to `app/domains/<domain>/router.py`. Shared request/response DTO contracts remain under `app/api/schemas`; HTTP middleware remains under `app/api/middlewares`.
 
-`app/api/v1/api.py` is the route composition point. It imports feature routers from `app/domains/*/router.py`. Only `health.py` and `invoice.py` remain under `app/api/v1/routers/` because they are not duplicate feature routers.
+`app/infrastructure/health/router.py` owns the load-balancer/database health endpoint because health is cross-cutting infrastructure, not a business domain. Invoice generation is part of the Orders domain and is exposed from `app/domains/orders/router.py`.
 
-## Cleanup status
+Each domain owns its router, service, repository, and domain-specific contracts/policy where applicable. Cross-cutting authorization remains under `app/permissions`; provider adapters remain under `app/integrations`.
+
+## API migration status
 
 Completed:
 
-- Removed the old feature-router copies from `app/api/v1/routers/` after their domain router replacements were active.
-- Removed the broken `My-frontend-` gitlink/submodule entry that had no `.gitmodules` definition.
-- Kept `pyproject.toml` + `uv.lock` as the dependency source of truth.
-- Updated the route aggregator to use canonical domain routers.
+- Removed all feature-router copies from `app/api/v1/routers/`.
+- Migrated invoice HTTP routing into `app/domains/orders/router.py`.
+- Migrated health HTTP routing into `app/infrastructure/health/router.py`.
+- Updated `app/api/v1/api.py` and `app/main.py` to use the new locations.
+- Removed the now-obsolete `app/api/v1/routers/` tracked files.
+- Updated README and architecture documentation in the same cleanup cycle.
+
+The API layer is intentionally retained as a thin transport/composition layer. `app/api/schemas` is not considered legacy merely because it lives under `api`; these are HTTP contract DTOs and are shared by domain routers.
+
+## Broader cleanup status
 
 In progress:
 
 - Repository-wide import migration from `app.services.*` / `app.repositories.*` to canonical domain modules.
-- Removal of compatibility wrappers and legacy implementations only after zero-reference scans.
-- Tests and deployment smoke verification after structural cleanup.
+- Promotion of compatibility wrappers into concrete domain implementations where required.
+- Removal of legacy implementations only after zero-reference scans.
+- Syntax/tests and deployment smoke verification after structural cleanup.
 
 ## Safe deletion rule
 
 A legacy module is deleted only when:
 
-1. Its canonical domain replacement exists.
+1. Its canonical replacement exists.
 2. Production code no longer imports it.
 3. Tests no longer import it.
 4. Documentation/examples no longer require it.
