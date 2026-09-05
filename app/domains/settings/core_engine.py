@@ -1,11 +1,83 @@
-"""
-Settings Domain — Core Engine
-=============================
-Path: app/domains/settings/core_engine.py
+"""Canonical settings cache/DB/event engine."""
+import time
+import logging
+from typing import Any, Dict, List, Optional
+from fastapi import HTTPException, status
 
-Re-exports the canonical SettingsCoreEngine that resolves setting values,
-defaults, and type coercion.
-"""
-from app.services.settings.core_engine import SettingsCoreEngine
+from app.domains.settings.repository import AsyncSettingsRepository
+from app.events.bus import get_event_bus
+from app.events.settings_events import SettingUpdatedEvent, SettingResetEvent
+from app.constants.settings_messages import SettingsRules, SettingsSecurityMessages
 
-__all__ = ["SettingsCoreEngine"]
+logger = logging.getLogger(__name__)
+
+_settings_cache: Dict[str, Any] = {}
+_cache_timestamp: float = 0.0
+
+
+class SettingsCoreEngine:
+    """Core engine for settings cache, persistence, and event dispatch."""
+
+    def __init__(self) -> None:
+        self.repo = AsyncSettingsRepository()
+
+    def is_cache_valid(self) -> bool:
+        return (
+            time.time() - _cache_timestamp < SettingsRules.CACHE_TTL_SECONDS
+            and bool(_settings_cache)
+        )
+
+    def invalidate_cache(self) -> None:
+        global _settings_cache, _cache_timestamp
+        _settings_cache.clear()
+        _cache_timestamp = 0.0
+        logger.info("System Settings in-memory cache invalidated.")
+
+    async def fetch_all(
+        self, category: Optional[str] = None, force_refresh: bool = False
+    ) -> List[Dict[str, Any]]:
+        global _settings_cache, _cache_timestamp
+        if not force_refresh and not category and self.is_cache_valid():
+            return list(_settings_cache.values())
+        items = await self.repo.get_all_settings(category)
+        if not category:
+            _settings_cache = {item["key"]: item for item in items}
+            _cache_timestamp = time.time()
+        return items
+
+    async def fetch_by_key(self, key: str) -> Dict[str, Any]:
+        if not self.is_cache_valid() or key not in _settings_cache:
+            await self.fetch_all()
+        if key in _settings_cache:
+            return _settings_cache[key]
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=SettingsSecurityMessages.NOT_FOUND,
+        )
+
+    async def mutate_setting(
+        self, key: str, new_value: Any, old_value: Any, user_id: str, reason: str
+    ) -> Dict[str, Any]:
+        updated = await self.repo.update_setting_value(key, new_value)
+        self.invalidate_cache()
+        try:
+            get_event_bus().publish(SettingUpdatedEvent(
+                key=key, old_value=old_value, new_value=new_value,
+                updated_by=user_id, reason=reason,
+            ))
+        except Exception as exc:
+            logger.error("Failed to dispatch SettingUpdatedEvent: %s", exc)
+        return updated
+
+    async def reset_to_default(
+        self, key: str, default_value: Any, user_id: str
+    ) -> Dict[str, Any]:
+        restored = await self.repo.reset_setting_to_default(key, default_value)
+        self.invalidate_cache()
+        try:
+            get_event_bus().publish(SettingResetEvent(
+                key=key, restored_value=default_value, reset_by=user_id,
+            ))
+        except Exception as exc:
+            logger.error("Failed to dispatch SettingResetEvent: %s", exc)
+        return restored
