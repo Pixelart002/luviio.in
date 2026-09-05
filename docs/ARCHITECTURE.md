@@ -40,7 +40,7 @@ The API layer is therefore intentionally thin: `app/main.py` owns application as
 
 ## Settings boundary
 
-`SettingsCoreEngine` is the single storage/cache/event pipeline. `AdminSettingsService`, `ManagerSettingsService`, and `CustomerSettingsService` are role-specific policy facades. The old `SettingsService` import remains as a compatibility facade and delegates to the same engine; new code must prefer the role-specific services.
+The Settings domain now owns `SettingsCoreEngine`, `AdminSettingsService`, `ManagerSettingsService`, and `CustomerSettingsService`, backed by `app/domains/settings/repository.py`. These components no longer depend on the legacy settings service package. The old `app/services/settings/*` files are cleanup candidates and must be removed only after the final reference scan confirms no live imports remain.
 
 ## Change rules
 
