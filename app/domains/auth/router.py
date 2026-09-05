@@ -23,46 +23,75 @@ _COOKIE_KWARGS = dict(key="refresh_token", httponly=True, secure=True, samesite=
 @limiter.limit("5/minute")
 async def register(request: Request, payload: RegisterRequest):
     if hasattr(request.state, "actions"):
-        request.state.actions.append("Registration request received")
-    data = await AuthService().register(payload)
-    return success_response(data=data, message=AuthMessages.REGISTERED)
-
-@router.post("/login")
-@limiter.limit("10/minute")
-async def login(request: Request, payload: LoginRequest, response: Response):
+        request.state.actions.append(f"Initiating registration for: {payload.email}")
+    client_ip = get_remote_address(request) or "0.0.0.0"
+    await AuthService().register_user(payload.email, payload.password, payload.full_name or "", client_ip)
     if hasattr(request.state, "actions"):
-        request.state.actions.append("Login request received")
-    data = await AuthService().login(payload)
-    refresh_token = data.pop("refresh_token", None)
-    if refresh_token:
-        response.set_cookie(value=refresh_token, **_COOKIE_KWARGS)
-    return success_response(data=data, message=AuthMessages.LOGIN_SUCCESS)
+        request.state.actions.extend(["Supabase Auth identity established", "Created profile metadata in DB", "Queued async Welcome Email"])
+    return success_response(message=AuthMessages.REGISTER_SUCCESS)
 
-@router.post("/forgot-password")
+@router.post("/login", status_code=status.HTTP_200_OK)
 @limiter.limit("5/minute")
-async def forgot_password(request: Request, payload: ForgotPasswordRequest):
-    await AuthService().forgot_password(payload.email)
-    return success_response(message=AuthMessages.PASSWORD_RESET_SENT)
+async def login(request: Request, response: Response, payload: LoginRequest):
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Authenticating credentials for: {payload.email}")
+    client_ip = get_remote_address(request) or "0.0.0.0"
+    session_data = await AuthService().login_user(payload.email, payload.password, client_ip)
+    if hasattr(request.state, "actions"):
+        request.state.actions.extend([f"Identity verified -> UID: {session_data['user_id'][:8]}...", "Issued secure HttpOnly Refresh Cookie"])
+    response.set_cookie(**_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=7 * 24 * 60 * 60)
+    data = {"access_token": session_data["access_token"], "token_type": "bearer", "expires_in": session_data["expires_in"], "user": {"id": session_data["user_id"], "email": session_data["email"]}}
+    return success_response(data=data)
 
-@router.post("/reset-password")
-@limiter.limit("5/minute")
-async def reset_password(request: Request, payload: ResetPasswordRequest):
-    await AuthService().reset_password(payload.token, payload.password)
-    return success_response(message=AuthMessages.PASSWORD_RESET_SUCCESS)
-
-@router.post("/refresh")
-@limiter.limit("20/minute")
-async def refresh(request: Request, response: Response, refresh_token: str | None = Cookie(default=None)):
+@router.post("/refresh", status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
+async def refresh(request: Request, response: Response, refresh_token: str | None = Cookie(None)):
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Intercepted session refresh cookie")
     if not refresh_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.MISSING_REFRESH_TOKEN)
-    data = await AuthService().refresh(refresh_token)
-    new_refresh = data.pop("refresh_token", None)
-    if new_refresh:
-        response.set_cookie(value=new_refresh, **_COOKIE_KWARGS)
-    return success_response(data=data, message=AuthMessages.TOKEN_REFRESHED)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.INVALID_REFRESH_TOKEN)
+    session_data = await AuthService().refresh_user_session(refresh_token)
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Session successfully refreshed & prolonged")
+    response.set_cookie(**_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=7 * 24 * 60 * 60)
+    return success_response(data={"access_token": session_data["access_token"], "token_type": "bearer", "expires_in": session_data["expires_in"]})
 
-@router.post("/logout")
-async def logout(request: Request, response: Response, current_user: dict[str, Any] = Depends(get_current_user)):
-    await AuthService().logout(current_user)
-    response.delete_cookie("refresh_token", path="/api/v1/auth")
+@router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout(request: Request, response: Response, refresh_token: str | None = Cookie(None)):
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Executing user sign-out sequence")
+    await AuthService().logout_user(refresh_token)
+    response.delete_cookie(**_COOKIE_KWARGS)
+    if hasattr(request.state, "actions"):
+        request.state.actions.extend(["Revoked active token in Supabase Vault", "Destroyed local HttpOnly auth cookies"])
     return success_response(message=AuthMessages.LOGOUT_SUCCESS)
+
+@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+@limiter.limit("3/minute")
+async def forgot_password(request: Request, payload: ForgotPasswordRequest):
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Requesting password recovery dispatch for: {payload.email}")
+    client_ip = get_remote_address(request) or "0.0.0.0"
+    await AuthService().process_forgot_password(payload.email, client_ip)
+    return success_response(message=AuthMessages.FORGOT_PWD_SUCCESS)
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+async def reset_password(request: Request, payload: ResetPasswordRequest):
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Validating secure recovery token for password reset...")
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.MISSING_AUTH_HEADER)
+    access_token = auth_header.split(" ")[1]
+    await AuthService().process_reset_password(access_token, payload.new_password)
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Password updated securely via User Context (IDOR Prevented)")
+    return success_response(message=AuthMessages.RESET_PWD_SUCCESS)
+
+@router.get("/session", status_code=status.HTTP_200_OK)
+async def check_session(request: Request, current: dict[str, Any] = Depends(get_current_user)):
+    user_id = current.get("sub") or current.get("profile", {}).get("id", "")
+    email = current.get("email") or current.get("profile", {}).get("email", "")
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Session inspected -> Valid for: {email}")
+    return success_response(data={"authenticated": True, "user_id": user_id, "email": email, "expires_at": current.get("exp")}, message=AuthMessages.SESSION_VALID)
