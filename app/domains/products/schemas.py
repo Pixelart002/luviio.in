@@ -1,12 +1,9 @@
-"""
-Product Schemas (DTOs)
-======================
-Path: app/api/schemas/product_dto.py
-"""
-from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
+"""Product HTTP schemas owned by the Products domain."""
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
 from app.constants.product_messages import ProductSecurityMessages, ProductRules
+
 
 class CategoryCreate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -15,12 +12,9 @@ class CategoryCreate(BaseModel):
     description: Optional[str] = Field(default=None, max_length=1000)
     image_url: Optional[str] = None
 
-# 🔥 SMART ATTRIBUTES SCHEMA
-class ProductAttributes(BaseModel):
-    # 'extra="allow"' ka matlab: Jo keys define nahi hain (custom), unko block mat karo, accept kar lo!
-    model_config = ConfigDict(extra='allow')
 
-    # 🟢 Native / Pre-defined Attributes (Admin inko directly use kar sakta hai)
+class ProductAttributes(BaseModel):
+    model_config = ConfigDict(extra="allow")
     color: Optional[str] = Field(default=None, alias="Color")
     material: Optional[str] = Field(default=None, alias="Material")
     finish_type: Optional[str] = Field(default=None, alias="Finish Type")
@@ -43,10 +37,7 @@ class ProductCreate(BaseModel):
     weight_grams: Optional[int] = Field(default=None, ge=0)
     image_url: Optional[str] = None
     images: List[str] = Field(default_factory=list)
-    
-    # 🔥 Accept ProductAttributes model, but convert to dict on validation
     attributes: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    
     hsn_code: Optional[str] = Field(default="9988", max_length=20)
     gst_percentage: Optional[int] = Field(default=18)
     is_active: bool = True
@@ -64,6 +55,7 @@ class ProductCreate(BaseModel):
             raise ValueError(ProductSecurityMessages.INVALID_COMPARE_PRICE)
         return self
 
+
 class ProductUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     name: Optional[str] = Field(default=None, min_length=2, max_length=255)
@@ -76,10 +68,7 @@ class ProductUpdate(BaseModel):
     weight_grams: Optional[int] = Field(default=None, ge=0)
     image_url: Optional[str] = None
     images: Optional[List[str]] = None
-    
-    # 🔥 Same update logic
     attributes: Optional[Dict[str, Any]] = None
-    
     category_id: Optional[str] = None
     hsn_code: Optional[str] = Field(default=None, max_length=20)
     gst_percentage: Optional[int] = None
