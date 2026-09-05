@@ -39,6 +39,12 @@ The old shared `app/api/schemas` DTO package has now been retired. Domain reques
 
 The API layer is intentionally thin: `app/main.py` owns application assembly, `app/api/v1/api.py` composes the versioned route table, and domain/infrastructure modules own endpoint behavior.
 
+## Payment domain migration
+
+Payments now have a single canonical repository under `app/domains/payments/repository.py`. The abandoned-order cron imports that repository directly, and payment tests target `app/domains/payments.service` ownership. The duplicate legacy payment service under `app/services/payments/service.py` has been removed.
+
+`app/repositories/payment_repo.py` is retained only as a temporary compatibility shim for legacy consumers; it re-exports the canonical payments repository and contains no independent persistence implementation. It must be removed after the remaining legacy repository imports are migrated and verification is complete.
+
 ## Middleware and horizontal scaling
 
 Middleware remains outside domains because it applies uniformly to every worker/instance. Request IDs are server-generated, body limits are enforced before oversized payloads reach business logic, security headers are added centrally, and compression avoids already-compressed/streaming responses. Middleware must remain stateless and must never be a correctness source of truth; shared correctness state belongs in database/cache infrastructure.
@@ -62,4 +68,4 @@ The Settings domain owns `SettingsCoreEngine`, role-scoped settings services, an
 
 ## Safe migration rule
 
-Never remove a legacy module because its name looks old. First add the canonical replacement, migrate every import, run syntax/tests, perform a repository-wide reference scan, then remove the stale module.
+Never remove a legacy module because its name looks old. First add the canonical replacement, migrate every import, run syntax/tests, perform a repository-wide reference scan, then remove the stale module. Temporary compatibility shims are acceptable only when they contain no duplicate business logic and have an explicit removal condition.
