@@ -5,7 +5,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_health_database_success(monkeypatch):
-    import app.api.v1.routers.health as health
+    from app.infrastructure.health import router as health
 
     query = Mock()
     query.select.return_value = query
