@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.services.pricing.service import StandardPricing
+from app.domains.pricing.service import StandardPricing
 
 
 @pytest.fixture
