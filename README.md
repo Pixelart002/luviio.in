@@ -29,28 +29,27 @@ The test suite is recreated from scratch and documented in [`docs/TESTING.md`](d
 ```text
 Request
   -> app/main.py
-  -> middleware and maintenance guard
-  -> app/api/v1/routers
-  -> app/api/schemas
-  -> app/core/dependencies and app/permissions
-  -> app/services
-  -> app/repositories
-  -> Supabase
+  -> middleware / maintenance guard
+  -> app/api/v1/api.py
+  -> app/domains/<domain>/router.py
+  -> app/domains/<domain>/service.py
+  -> app/domains/<domain>/repository.py
+  -> Supabase / integrations
 ```
 
-- `app/api`: HTTP layer only. Routes validate input, call services, and format responses.
-- `app/api/schemas`: Pydantic request and response models.
-- `app/services`: business rules and orchestration.
-- `app/repositories`: database queries only.
-- `app/permissions`: role and permission decisions.
-- `app/core`: settings, Supabase clients, middleware, errors, logging, and shared infrastructure.
+- `app/api`: shared HTTP infrastructure, DTO schemas, and the v1 route aggregator.
+- `app/domains`: canonical feature ownership. Each migrated domain owns its router, service, repository, schemas/policy where applicable.
+- `app/core`: authentication dependencies, configuration, middleware, Supabase clients, errors, logging, and shared infrastructure.
+- `app/permissions`: authorization policies and permission definitions.
 - `app/integrations`: Stripe, email, push, and other provider adapters.
 - `app/events`: domain events and event handlers.
 - `app/cron`: retry-safe scheduled jobs.
 - `tests`: regression and security tests.
 - `docs`: detailed design and operational guides.
 
-For the complete tree and rules, read [`structure.md`](structure.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+`app/api/v1/api.py` is only the composition point; business routers are imported from their canonical domain homes. The old feature routers under `app/api/v1/routers/` have been removed. Health and invoice remain there because they are infrastructure/document-generation entry points rather than duplicated feature routers.
+
+For the complete source tree and migration rules, read [`structure.md`](structure.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Environment variables
 
@@ -101,17 +100,18 @@ Avoid putting business logic in routers or database queries in services. Do not 
 
 | Old/stale item | Current replacement | Status |
 |---|---|---|
-| `requirements.txt` | `pyproject.toml` + `uv.lock` | Removed; prevents buildpack ambiguity |
-| `test_backend_smoke_flow.py` | Focused tests under `tests/` | Removed and replaced |
+| Feature routers in `app/api/v1/routers/` | `app/domains/*/router.py` | Removed from the active tree |
+| `requirements.txt` | `pyproject.toml` + `uv.lock` | Removed |
+| `test_backend_smoke_flow.py` | Focused tests under `tests/` | Removed/replaced |
 | Duplicate settings storage logic | `SettingsCoreEngine` | Consolidated |
-| `app.services.settings.service.SettingsService` | Role-specific services + core engine | Retained as a compatibility facade |
-| Old documented tree entries | `structure.md` generated from tracked source | Documentation corrected |
+| `app.services.settings.service.SettingsService` | Role-specific services + core engine | Compatibility cleanup pending import scan |
+| Legacy services/repositories | Canonical domain services/repositories | Migrate imports first; delete only after zero-reference scan |
 
-Compatibility files are not deleted until import scans prove they are unused. This prevents a cleanup from becoming a production outage.
+Compatibility code is removed only after the canonical replacement exists, all imports are migrated, and a repository-wide reference scan shows no live dependency. This prevents cleanup from becoming a production outage.
 
 ## Deployment
 
-Vercel uses the Python build configuration from `pyproject.toml` and `uv.lock`. Keep exactly one Python package-manager lockfile, run the locked sync check before deployment, and configure secrets through project environment variables.
+Vercel/Koyeb deployment configuration uses the Python package metadata and locked dependencies. Keep exactly one Python package-manager lockfile, run the locked sync check before deployment, and configure secrets through project environment variables.
 
 More guides: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), [`docs/API.md`](docs/API.md), and [`docs/DATABASE.md`](docs/DATABASE.md).
 
