@@ -1,7 +1,5 @@
 """
-Product Repository — Async Enterprise Grade (With GST & HSN Support)
-====================================================================
-Path: app/repositories/product_repo.py
+Product Domain Repository — Async Enterprise Grade (GST & HSN support).
 """
 import logging
 from typing import Any, Dict, List, Optional, Tuple
@@ -14,19 +12,12 @@ class AsyncProductRepository:
         pass
 
     def _format_product_images(self, product: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Helper: Maps relational `product_images` table back to a simple `images` array 
-        so the frontend doesn't break.
-        """
         if "product_images" in product:
             imgs = product.pop("product_images") or []
-            # Sort images by their position field (0, 1, 2...)
             imgs.sort(key=lambda x: x.get("position", 0) if x.get("position") is not None else 0)
-            # Extract just the URLs for the frontend
             product["images"] = [img["url"] for img in imgs if "url" in img]
         return product
-    
-    # ── Categories ───────────────────────────────────────────────────────────
+
     async def get_active_categories(self) -> List[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("categories").select("*").eq("is_active", True).execute()
@@ -48,60 +39,37 @@ class AsyncProductRepository:
         res = await admin_sb.table("categories").update({"is_active": False}).eq("id", category_id).execute()
         return bool(getattr(res, "data", None))
 
-    # ── Products ─────────────────────────────────────────────────────────────
-    async def get_products(
-        self, 
-        page: int, 
-        page_size: int, 
-        category_slug: Optional[str], 
-        search: Optional[str], 
-        min_price: Optional[float], 
-        max_price: Optional[float], 
-        in_stock: Optional[bool]
-    ) -> Tuple[List[Dict[str, Any]], int]:
+    async def get_products(self, page: int, page_size: int, category_slug: Optional[str], search: Optional[str], min_price: Optional[float], max_price: Optional[float], in_stock: Optional[bool]) -> Tuple[List[Dict[str, Any]], int]:
         admin_sb = await get_async_admin_supabase()
-        
-        # 🔥 'images' array replaced with relational 'product_images' join
-        q = admin_sb.table("products").select(
-            "id, name, slug, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, attributes, is_active, created_at, hsn_code, gst_percentage, discount_amount, discount_percentage, categories(name, slug), product_images(id, url, alt, position)",
-            count="exact"
-        ).eq("is_active", True)
-
+        q = admin_sb.table("products").select("id, name, slug, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, attributes, is_active, created_at, hsn_code, gst_percentage, discount_amount, discount_percentage, categories(name, slug), product_images(id, url, alt, position)", count="exact").eq("is_active", True)
         if category_slug:
             cat = await admin_sb.table("categories").select("id").eq("slug", category_slug).limit(1).execute()
             if cat and getattr(cat, "data", None):
                 q = q.eq("category_id", cat.data[0]["id"])
             else:
                 return [], 0
-
-        if search: 
+        if search:
             q = q.ilike("name", f"%{search}%")
-        if min_price is not None: 
+        if min_price is not None:
             q = q.gte("price", min_price)
-        if max_price is not None: 
+        if max_price is not None:
             q = q.lte("price", max_price)
-        if in_stock: 
+        if in_stock:
             q = q.gt("stock", 0)
-
         offset = (page - 1) * page_size
         res = await q.range(offset, offset + page_size - 1).execute()
-        
         raw_products = getattr(res, "data", None) or []
-        formatted_products = [self._format_product_images(p) for p in raw_products]
-        
-        return formatted_products, res.count or 0
+        return [self._format_product_images(p) for p in raw_products], res.count or 0
 
     async def get_product_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("products").select("*, categories(name, slug), product_images(id, url, alt, position)").eq("slug", slug).eq("is_active", True).limit(1).execute()
         data_list = getattr(res, "data", None)
         return self._format_product_images(data_list[0]) if data_list else None
-        
+
     async def get_product_by_id(self, product_id: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.table("products").select(
-            "id, name, slug, sku, price, compare_price, stock, hsn_code, gst_percentage, image_url, attributes, is_active, product_images(id, url, alt, position)"
-        ).eq("id", product_id).limit(1).execute()
+        res = await admin_sb.table("products").select("id, name, slug, sku, price, compare_price, stock, hsn_code, gst_percentage, image_url, attributes, is_active, product_images(id, url, alt, position)").eq("id", product_id).limit(1).execute()
         data_list = getattr(res, "data", None)
         return self._format_product_images(data_list[0]) if data_list else None
 
@@ -121,27 +89,23 @@ class AsyncProductRepository:
             if exclude_product_id:
                 q = q.neq("id", exclude_product_id)
             existing = await q.limit(1).execute()
-            if not getattr(existing, "data", None): 
+            if not getattr(existing, "data", None):
                 return slug
             slug = f"{base_slug}-{counter}"
             counter += 1
 
     async def create_product(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
-        # 🔥 Crash protection: Remove 'images' array if service passes it by mistake
         safe_data = dict(data)
-        safe_data.pop("images", None) 
-        
+        safe_data.pop("images", None)
         res = await admin_sb.table("products").insert(safe_data).execute()
         data_list = getattr(res, "data", None)
         return data_list[0] if data_list else None
 
     async def update_product(self, product_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
-        # 🔥 Crash protection: Remove 'images' array if service passes it by mistake
         safe_data = dict(data)
         safe_data.pop("images", None)
-        
         res = await admin_sb.table("products").update(safe_data).eq("id", product_id).execute()
         data_list = getattr(res, "data", None)
         return data_list[0] if data_list else None
@@ -151,22 +115,16 @@ class AsyncProductRepository:
         res = await admin_sb.table("products").update({"is_active": False}).eq("id", product_id).execute()
         return bool(getattr(res, "data", None))
 
-    # ── Relational Image Synchronization ─────────────────────────────────────
     async def sync_product_images_table(self, product_id: str, image_urls: List[str]) -> None:
-        """Synchronizes the relational product_images table to match the array ordering."""
         admin_sb = await get_async_admin_supabase()
         try:
             await admin_sb.table("product_images").delete().eq("product_id", product_id).execute()
             if image_urls:
-                records = [
-                    {"product_id": product_id, "url": url, "position": idx}
-                    for idx, url in enumerate(image_urls)
-                ]
+                records = [{"product_id": product_id, "url": url, "position": idx} for idx, url in enumerate(image_urls)]
                 await admin_sb.table("product_images").insert(records).execute()
         except Exception as exc:
             logger.warning("Non-fatal: Failed to sync relational product_images for %s: %s", product_id, exc)
 
-    # ── Product Variants (From Previous Update) ──────────────────────────────
     async def get_product_variants(self, product_id: str) -> List[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("product_variants").select("*").eq("product_id", product_id).eq("is_active", True).execute()
