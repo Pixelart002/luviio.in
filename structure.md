@@ -18,7 +18,6 @@ luviio.in/
     ├── main.py
     ├── api/
     │   ├── middlewares/
-    │   ├── schemas/
     │   └── v1/
     │       └── api.py
     ├── core/
@@ -53,27 +52,37 @@ luviio.in/
 
 ## Ownership
 
-`app/api/v1/api.py` is the versioned HTTP composition point only. Domain HTTP routing belongs to `app/domains/<domain>/router.py`. Shared request/response DTO contracts remain under `app/api/schemas`; HTTP middleware remains under `app/api/middlewares`.
+`app/api/v1/api.py` is the versioned HTTP composition point only. Domain HTTP routing belongs to `app/domains/<domain>/router.py`. Domain-specific HTTP schemas now live with their owning domain under `app/domains/<domain>/schemas.py`. `app/api/schemas` is being retired after all imports are migrated.
+
+`app/api/middlewares` remains the correct boundary for HTTP/ASGI middleware. These components are cross-cutting transport concerns, not business-domain logic.
 
 `app/infrastructure/health/router.py` owns the load-balancer/database health endpoint because health is cross-cutting infrastructure, not a business domain. Invoice generation is part of the Orders domain and is exposed from `app/domains/orders/router.py`.
 
 Each domain owns its router, service, repository, and domain-specific contracts/policy where applicable. Cross-cutting authorization remains under `app/permissions`; provider adapters remain under `app/integrations`.
 
-## API migration status
+## API/schema migration status
 
 Completed:
 
 - Removed all feature-router copies from `app/api/v1/routers/`.
 - Migrated invoice HTTP routing into `app/domains/orders/router.py`.
 - Migrated health HTTP routing into `app/infrastructure/health/router.py`.
-- Updated `app/api/v1/api.py` and `app/main.py` to use the new locations.
-- Removed the now-obsolete `app/api/v1/routers/` tracked files.
-- Promoted SettingsCoreEngine and all role-scoped settings services into `app/domains/settings/`.
-- Updated Shipping and Settings domain imports to use the canonical settings engine/services.
-- Updated health regression test to the new infrastructure location.
-- Updated README and architecture documentation alongside the structural migrations.
+- Migrated Auth, Cart, Orders, Payments, Settings, and Users routers to domain-owned schemas.
+- Confirmed domain-owned schema modules exist for the migrated vertical slices.
+- Kept middleware under the HTTP transport boundary and hardened request-ID/header behavior.
+- Updated documentation alongside the structural changes.
 
-The API layer is intentionally retained as a thin transport/composition layer. `app/api/schemas` is not considered legacy merely because it lives under `api`; these are HTTP contract DTOs and are shared by domain routers.
+Remaining schema migration:
+
+- Products and Notifications router imports still need migration to their domain schema modules.
+- Admin schema ownership is already under `app/domains/admin/schemas.py`; remaining consumers should use that path.
+- After all imports are migrated, perform a repository-wide zero-reference scan and delete `app/api/schemas/` only if no live references remain.
+
+## Middleware boundary
+
+`app/api/middlewares` currently owns CORS, request logging, request IDs, body-size limits, GZip, server-header hardening, and browser security headers. `app/core/setup_middlewares.py` is the composition point and should remain free of business logic.
+
+Security middleware now generates a server-owned UUID request ID, strips client-supplied duplicate IDs, removes framework fingerprint headers instead of advertising a custom server signature, and emits HSTS only for HTTPS requests.
 
 ## Broader cleanup status
 
@@ -81,6 +90,7 @@ In progress:
 
 - Final repository-wide reference scan for legacy `app/services/settings/*` implementations before deletion.
 - Repository-wide import migration from remaining `app.services.*` / `app.repositories.*` to canonical domain modules.
+- Completion of remaining API schema imports and deletion of the old API schema package after verification.
 - Removal of legacy implementations only after zero-reference scans.
 - Syntax/tests and deployment smoke verification after structural cleanup.
 
