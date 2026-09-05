@@ -37,8 +37,10 @@ Request
   -> Supabase / integrations
 ```
 
-- `app/api`: shared HTTP infrastructure, DTO schemas, and the v1 route aggregator.
-- `app/domains`: canonical feature ownership. Each migrated domain owns its router, service, repository, schemas/policy where applicable.
+- `app/api`: HTTP composition, versioning, shared DTO schemas, and API middleware.
+- `app/api/v1/api.py`: the only versioned route composition point; it contains no business logic.
+- `app/domains`: canonical feature ownership. Each migrated domain owns its router, service, repository, and domain-specific contracts/policy where applicable.
+- `app/infrastructure`: cross-cutting infrastructure endpoints such as the load-balancer health router.
 - `app/core`: authentication dependencies, configuration, middleware, Supabase clients, errors, logging, and shared infrastructure.
 - `app/permissions`: authorization policies and permission definitions.
 - `app/integrations`: Stripe, email, push, and other provider adapters.
@@ -47,7 +49,7 @@ Request
 - `tests`: regression and security tests.
 - `docs`: detailed design and operational guides.
 
-`app/api/v1/api.py` is only the composition point; business routers are imported from their canonical domain homes. The old feature routers under `app/api/v1/routers/` have been removed. Health and invoice remain there because they are infrastructure/document-generation entry points rather than duplicated feature routers.
+Feature routers and invoice routing have been migrated out of `app/api/v1/routers/`. The legacy router directory is no longer part of the tracked source tree. Invoice generation now belongs to the Orders domain; health is an infrastructure concern under `app/infrastructure/health/`.
 
 For the complete source tree and migration rules, read [`structure.md`](structure.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -100,7 +102,9 @@ Avoid putting business logic in routers or database queries in services. Do not 
 
 | Old/stale item | Current replacement | Status |
 |---|---|---|
-| Feature routers in `app/api/v1/routers/` | `app/domains/*/router.py` | Removed from the active tree |
+| Feature routers in `app/api/v1/routers/` | `app/domains/*/router.py` | Removed |
+| Invoice router in `app/api/v1/routers/invoice.py` | `app/domains/orders/router.py` | Migrated |
+| Health router in `app/api/v1/routers/health.py` | `app/infrastructure/health/router.py` | Migrated |
 | `requirements.txt` | `pyproject.toml` + `uv.lock` | Removed |
 | `test_backend_smoke_flow.py` | Focused tests under `tests/` | Removed/replaced |
 | Duplicate settings storage logic | `SettingsCoreEngine` | Consolidated |
