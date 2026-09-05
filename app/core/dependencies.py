@@ -16,7 +16,8 @@ from gotrue.errors import AuthApiError
 from app.core.supabase import get_async_admin_supabase
 from app.repositories.user_repo import AsyncUserRepository
 from app.core.exceptions import UnauthorizedAction, UnauthenticatedUser
-from app.permissions.base import ROLE_PERMISSIONS
+from app.permissions.base import ROLE_PERMISSIONS, get_static_role_permissions
+from app.permissions.overrides import get_effective_permissions
 from app.enums.roles import UserRole
 from app.utils.timestamp import ts_to_iso  # 🔥 FIX: Imported your Timestamp Utility
 
@@ -137,14 +138,16 @@ async def get_user_id_strict(current_user: Dict[str, Any] = Depends(get_current_
 def require_permission(required_perm: str) -> Callable:
     async def permission_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
         role = current_user.get("profile", {}).get("role", UserRole.CUSTOMER.value if hasattr(UserRole.CUSTOMER, "value") else "customer")
-        user_perms = ROLE_PERMISSIONS.get(role, [])
-        
-        if "*" in user_perms: 
+        static_base = get_static_role_permissions(role)
+        # 🔥 DB-driven overrides: admins can enable/disable perms per role at runtime.
+        user_perms = await get_effective_permissions(role, static_base)
+
+        if "*" in user_perms:
             return current_user
-            
+
         if required_perm not in user_perms:
             logger.warning(f"PBAC Block | User {current_user.get('sub')} missing perm: {required_perm}")
             raise UnauthorizedAction(f"Missing required permission: {required_perm}")
-            
+
         return current_user
     return permission_checker

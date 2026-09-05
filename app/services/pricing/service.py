@@ -342,13 +342,22 @@ def get_pricing_for_user(
     user: dict[str, Any], config: dict[str, Any] | None
 ) -> PricingStrategy:
     """
-    VIP / Premium members get Free Shipping wrapper.
+    Tier-based perks (SSOT: app/domains/subscriptions/tier_registry.py).
+
+    Premium / Platinum members get Free Shipping wrapper. Tier names are
+    normalized through the registry, so legacy strings (vip/prime/normal)
+    resolve to the 3-tier system: free -> premium -> platinum.
     """
+    from app.domains.subscriptions.tier_registry import normalize_tier, get_tier_perks
+
     base_strategy = get_pricing_from_config(config)
 
-    user_tier = user.get("tier") if user else "normal"
-    
-    if user_tier in ["premium", "vip", "prime"]:
+    user_tier = user.get("tier") if user else "free"
+    perks = get_tier_perks(user_tier)
+
+    # NOTE: `perks.discount_percent` is the MEMBER discount applied at the
+    # order level (coupons/orders integration), NOT a product-price change.
+    if perks.free_shipping:
         return FreeShippingPricing(base_strategy)
 
     return base_strategy

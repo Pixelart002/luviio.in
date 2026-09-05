@@ -13,6 +13,7 @@ class PaymentIntentRequest(BaseModel):
     shipping_address_id: UUID = Field(..., description="Selected shipping address ID")
     # 🔥 Added for B2B/GST billing support (Optional so it doesn't break current UI)
     billing_address_id: Optional[UUID] = Field(None, description="Selected billing address ID, if different from shipping")
+    coupon_code: Optional[str] = Field(None, max_length=40, description="Optional promo code to apply at checkout")
 
 class PaymentIntentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

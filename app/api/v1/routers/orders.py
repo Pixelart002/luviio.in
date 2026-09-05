@@ -6,16 +6,25 @@ Path: app/api/v1/routers/orders.py
 import logging
 from uuid import UUID
 from typing import Any, Dict
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
 from app.permissions.orders import OrderPermissions
 from app.enums.roles import UserRole
 from app.api.schemas.order_dto import OrderAdminUpdate, OrderCancelResponse, OrderCreateFromCartRequest
 from app.services.orders.service import OrderService
+from app.services.payments.service import PaymentService
 from app.constants.order_messages import OrderMessages
 from app.utils.response import success_response
 from app.utils.pagination import paginate
+
+
+def _get_real_ip(request: Request) -> str:
+    """Safe client IP extraction (Load-Balancer aware)."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "127.0.0.1"
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/orders", tags=["Orders"])
@@ -26,17 +35,34 @@ async def create_order_from_cart(
     payload: OrderCreateFromCartRequest,
     user_id: str = Depends(get_user_id_strict)
 ):
-    """Initiates checkout: Calculates GST, deductions, locks snapshots, creates order & clears cart."""
-    if hasattr(request.state, "actions"): 
+    """Initiates checkout via the LIVE payment flow: GST breakdown, stock
+    reservation, order creation + cart clearing, and optional coupon discount.
+
+    Rewired to ``PaymentService.create_intent`` — the single real order-creation
+    path (the old service method calling the removed ``create_order_with_items``
+    repo method was dead code and has been deleted).
+    """
+    if not payload.idempotency_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="idempotency_key is required for checkout.",
+        )
+
+    if hasattr(request.state, "actions"):
         request.state.actions.append(f"Checkout initiated by UID: {user_id[:8]}...")
-        
-    order = await OrderService().create_order_from_cart(
+
+    client_ip = _get_real_ip(request)
+    user_agent = request.headers.get("user-agent", "")
+
+    data = await PaymentService().create_intent(
         user_id=user_id,
+        client_ip=client_ip,
+        idempotency_key=payload.idempotency_key,
         address_id=str(payload.shipping_address_id),
-        notes=payload.notes,
-        idempotency_key=payload.idempotency_key
+        user_agent=user_agent,
+        coupon_code=payload.coupon_code,
     )
-    return success_response(data=order, message="Order placed successfully.")
+    return success_response(data=data, message="Order placed successfully.")
 
 @router.get("/my", status_code=status.HTTP_200_OK)
 async def my_orders(

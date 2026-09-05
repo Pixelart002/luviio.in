@@ -37,12 +37,13 @@ async def create_payment_intent(
     billing_id = str(payload.billing_address_id) if payload.billing_address_id else None
     
     data = await PaymentService().create_intent(
-        user_id, 
-        client_ip, 
-        payload.idempotency_key, 
+        user_id,
+        client_ip,
+        payload.idempotency_key,
         str(payload.shipping_address_id),
         billing_id, # Passed down!
         user_agent=user_agent,
+        coupon_code=payload.coupon_code,
     )
     return success_response(data=data)
 

@@ -13,6 +13,7 @@ class OrderCreateFromCartRequest(BaseModel):
     shipping_address_id: UUID = Field(..., description="UUID of the selected shipping address")
     notes: Optional[str] = Field(None, max_length=1000, description="Optional customer instructions")
     idempotency_key: Optional[str] = Field(None, max_length=100, description="Prevent duplicate orders on network retry")
+    coupon_code: Optional[str] = Field(None, max_length=40, description="Optional promo code to apply at checkout")
 
 class OrderAdminUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)

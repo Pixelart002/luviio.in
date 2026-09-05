@@ -49,13 +49,14 @@ class PaymentService:
     # --------------------------------------------------------------------------
 
     async def create_intent(
-        self, 
-        user_id: str, 
-        client_ip: str, 
-        idempotency_key: str, 
+        self,
+        user_id: str,
+        client_ip: str,
+        idempotency_key: str,
         address_id: str,
         billing_address_id: Optional[str] = None,
         user_agent: Optional[str] = None,
+        coupon_code: Optional[str] = None,
     ) -> Dict[str, Any]:
         
         try:
@@ -106,6 +107,12 @@ class PaymentService:
             else:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.DUPLICATE_ORDER)
 
+        # Per-user capability gate (big-software pattern): an admin can block
+        # checkout for a specific user at runtime (e.g. unpaid subscription).
+        from app.permissions.action_control import assert_action_enabled
+        await assert_action_enabled(user_id, "checkout",
+                                    "Checkout is currently disabled for your account.")
+
         has_pending = await self.repo.has_active_pending_order(user_id)
         PaymentPolicy.assert_no_active_pending_order(has_pending)
 
@@ -140,8 +147,27 @@ class PaymentService:
         config = await self.repo.get_pricing_config()
         breakdown = get_pricing_from_config(config).calculate(items=items_to_deduct)
         amount_paise = self._paise(breakdown.total)
-        
+
         PaymentPolicy.assert_minimum_amount(amount_paise)
+
+        # ── Coupon integration (LIVE checkout path) ─────────────────────────────
+        # Resolve the promo against the goods subtotal (pre-tax). The discount is
+        # deducted from the charged amount and recorded on the order; redemption is
+        # persisted only once payment succeeds (see confirm_payment).
+        coupon_id, coupon_code_resolved = None, coupon_code
+        coupon_discount = Decimal("0")
+        goods_subtotal = subtotal  # raw goods subtotal accumulated in the cart loop
+        if coupon_code:
+            from app.domains.coupons.service import CouponService
+            resolved = await CouponService().resolve_discount_for_checkout(
+                coupon_code, float(goods_subtotal), user_id
+            )
+            coupon_discount = Decimal(str(resolved.get("discount") or 0))
+            coupon_id = resolved.get("coupon_id")
+            coupon_code_resolved = resolved.get("code")
+            if coupon_discount > 0:
+                amount_paise = self._paise(max(breakdown.total - coupon_discount, Decimal("0")))
+                PaymentPolicy.assert_minimum_amount(amount_paise)
 
         # Fetch Shipping Address
         addr = await self.repo.get_shipping_address(address_id, user_id)
@@ -187,10 +213,18 @@ class PaymentService:
             "customer_id": user_id, 
             "status": OrderStatus.PENDING.value,
             "order_number": order_number,
-            "idempotency_key": clean_idem_key, 
+            "idempotency_key": clean_idem_key,
             "stripe_payment_intent": intent["id"],
+            "coupon_id": coupon_id,
+            "coupon_code": coupon_code_resolved,
+            "discount_amount": float(coupon_discount),
             **breakdown.as_dict(),
-            
+
+            # Override the money the card is actually charged: the pre-discount
+            # total from breakdown.as_dict() is replaced by the net figure, so the
+            # order's total_amount reconciles with the Stripe intent amount.
+            "total_amount": float(max(breakdown.total - coupon_discount, Decimal("0"))),
+
             # --- SHIPPING SNAPSHOT ---
             "shipping_address_id": address_id, 
             "shipping_name": addr.get("full_name"),
@@ -327,10 +361,24 @@ class PaymentService:
 
         if existing_order:
             existing_order["status"] = OrderStatus.PAID.value
-        
-        try: 
+
+        # ── Coupon redemption: persist only now that payment actually succeeded ──
+        # record_redemption is idempotent per order (repo check + DB unique index),
+        # so repeated confirm/retry calls can't double-count usage.
+        coupon_id_order = (existing_order or {}).get("coupon_id")
+        if coupon_id_order:
+            try:
+                from app.domains.coupons.repository import AsyncCouponRepository
+                await AsyncCouponRepository().record_redemption(
+                    coupon_id_order, user_id, order_id,
+                    float((existing_order or {}).get("discount_amount") or 0)
+                )
+            except Exception as coupon_exc:
+                logger.error("[PAYMENT] Coupon redemption failed for order %s: %s", order_id, coupon_exc)
+
+        try:
             get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
-        except Exception as e: 
+        except Exception as e:
             logger.error("Event bus failed: %s", e)
 
         return {"status": OrderStatus.PAID.value, "order_id": order_id, "message": PaymentMessages.CONFIRMED}
@@ -381,6 +429,19 @@ class PaymentService:
                             exc_info=True,
                         )
                     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)
+
+                # Record coupon redemption (idempotent per order) now that the
+                # retried payment actually succeeded.
+                coupon_id_order = (existing_order or {}).get("coupon_id")
+                if coupon_id_order:
+                    try:
+                        from app.domains.coupons.repository import AsyncCouponRepository
+                        await AsyncCouponRepository().record_redemption(
+                            coupon_id_order, user_id, order_id,
+                            float((existing_order or {}).get("discount_amount") or 0)
+                        )
+                    except Exception as coupon_exc:
+                        logger.error("[PAYMENT] Coupon redemption failed (retry) for order %s: %s", order_id, coupon_exc)
                 return {"status": OrderStatus.PAID.value, "message": PaymentMessages.RETRY_SUCCESSFUL}
                 
             client_secret = intent.get("client_secret")

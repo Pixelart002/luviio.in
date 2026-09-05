@@ -4,10 +4,9 @@ Order Service — Enterprise Business Logic & State Machine (Dynamic Settings & 
 Path: app/services/orders/service.py
 """
 import logging
-from typing import Any, Dict, Tuple, Optional, List
+from typing import Any, Dict, Tuple, List
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
-from decimal import Decimal, ROUND_HALF_UP
 
 from app.repositories.order_repo import AsyncOrderRepository
 from app.repositories.user_repo import AsyncUserRepository
@@ -17,9 +16,6 @@ from app.integrations.payments.registry import get_payment_provider
 from app.utils.documents.pdf_invoice import build_invoice_pdf
 from app.enums.order_status import OrderStatus
 from app.constants.order_messages import OrderMessages, OrderSecurityMessages
-
-# 🔥 IMPORT SETTINGS ENGINE FOR DYNAMIC CHECKOUT CONFIG
-from app.services.settings.core_engine import SettingsCoreEngine
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +37,6 @@ class OrderService:
     def __init__(self):
         self.repo = AsyncOrderRepository()
         self.user_repo = AsyncUserRepository()
-        self.settings = SettingsCoreEngine()
-
-    async def _get_setting_val(self, key: str, fallback: Any) -> Any:
-        """Helper to fetch settings with a safe fallback in case the DB key is missing."""
-        try:
-            data = await self.settings.fetch_by_key(key)
-            return data.get("value", fallback)
-        except HTTPException:
-            return fallback
 
     def _sanitize(self, order: Dict[str, Any]) -> Dict[str, Any]:
         if not order: 
@@ -77,84 +64,6 @@ class OrderService:
                 del item["products"]
                 
         return sanitized
-
-    async def create_order_from_cart(self, user_id: str, address_id: str, notes: Optional[str] = None, idempotency_key: Optional[str] = None) -> Dict[str, Any]:
-        """Reads user cart, calculates GST/Discounts via Dynamic DB Settings, locks snapshots, and creates order."""
-        cart_data = await self.repo.get_cart_for_checkout(user_id)
-        if not cart_data or not cart_data.get("cart_items"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Your cart is empty. Cannot initiate checkout.")
-
-        # 🚀 DYNAMIC CHECKOUT SETTINGS FETCH
-        free_shipping_limit = Decimal(str(await self._get_setting_val("free_shipping_threshold", 1499.00)))
-        base_shipping_cost = Decimal(str(await self._get_setting_val("standard_shipping_cost", 45.90)))
-        default_gst = Decimal(str(await self._get_setting_val("default_gst_percentage", 18)))
-
-        total_subtotal = Decimal("0.00")
-        total_tax = Decimal("0.00")
-        total_discount = Decimal("0.00")
-        items_payload = []
-
-        for item in cart_data["cart_items"]:
-            prod = item.get("products")
-            if not prod:
-                continue
-
-            qty = item["quantity"]
-            if prod["stock"] < qty:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for item: {prod['name']}")
-
-            unit_price = Decimal(str(prod["price"]))
-            compare_price = Decimal(str(prod["compare_price"] or unit_price))
-            subtotal = unit_price * qty
-
-            # Discount Math
-            discount_per_item = max(Decimal("0.00"), compare_price - unit_price)
-            discount_amount = discount_per_item * qty
-
-            # Dynamic GST Math
-            gst_pct = Decimal(str(prod.get("gst_percentage") or default_gst))
-            tax_amount = (subtotal * (gst_pct / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-            total_subtotal += subtotal
-            total_tax += tax_amount
-            total_discount += discount_amount
-
-            items_payload.append({
-                "product_id": prod["id"],
-                "product_name": prod["name"],
-                "unit_price": float(unit_price),
-                "quantity": qty,
-                "subtotal": float(subtotal),
-                "compare_price": float(compare_price),
-                "hsn_code": prod.get("hsn_code") or "9988",
-                "gst_percentage": int(gst_pct),
-                "tax_amount": float(tax_amount),
-                "discount_amount": float(discount_amount)
-            })
-
-        # Dynamic Shipping Cost Check
-        shipping_cost = Decimal("0.00") if total_subtotal >= free_shipping_limit else base_shipping_cost
-        total_amount = total_subtotal + total_tax + shipping_cost
-
-        order_data = {
-            "customer_id": user_id,
-            "status": OrderStatus.PENDING.value,
-            "subtotal": float(total_subtotal),
-            "shipping_cost": float(shipping_cost),
-            "tax_amount": float(total_tax),
-            "total_amount": float(total_amount),
-            "shipping_address_id": str(address_id),
-            "notes": notes,
-            "idempotency_key": idempotency_key,
-            "currency": "INR",
-            "tax_type": "IGST"
-        }
-
-        created_order = await self.repo.create_order_with_items(order_data, items_payload, user_id)
-        if not created_order:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create order due to database conflict.")
-
-        return self._sanitize(created_order)
 
     async def get_user_orders(self, user_id: str, status_filter: str, page: int, page_size: int) -> Tuple[List[Dict[str, Any]], int]:
         items, total = await self.repo.get_user_orders(user_id, status_filter, page, page_size)
