@@ -12,7 +12,7 @@ from fastapi import HTTPException
 
 from app.domains.shipping.repository import AsyncShippingRepository
 from app.domains.shipping.policy import ShippingPolicy
-from app.services.settings.core_engine import SettingsCoreEngine
+from app.domains.settings.core_engine import SettingsCoreEngine
 from app.constants.shipping_messages import (
     SHIPPING_FLAT, SHIPPING_FREE_THRESHOLD, SHIPPING_PER_ITEM, SHIPPING_WEIGHT,
 )
@@ -24,7 +24,6 @@ class ShippingService:
     def __init__(self) -> None:
         self.repo = AsyncShippingRepository()
 
-    # ── Admin CRUD ───────────────────────────────────────────────────────────
     async def list_methods(self, active_only: bool) -> List[Dict[str, Any]]:
         return await self.repo.list_active_methods() if active_only else await self.repo.list_all()
 
@@ -46,7 +45,6 @@ class ShippingService:
         ShippingPolicy.assert_method(await self.repo.get_by_id(method_id))
         await self.repo.delete(method_id)
 
-    # ── Rate computation ─────────────────────────────────────────────────────
     async def compute_rate(self, subtotal: float, item_count: int = 1,
                            weight_kg: float = 0.0, method_id: Optional[str] = None,
                            pincode: Optional[str] = None) -> Dict[str, Any]:
@@ -57,8 +55,6 @@ class ShippingService:
                 raise HTTPException(status_code=400, detail="This shipping method is inactive.")
             return self._compute_method_rate(method, subtotal, item_count, weight_kg)
 
-        # No explicit method -> fall back to dynamic store settings (safe default,
-        # identical to the legacy order-flow formula: free above threshold).
         settings = SettingsCoreEngine()
         try:
             threshold = float(str(await settings.fetch_by_key("free_shipping_threshold")).replace("'", "").replace('"', "") or 1499.0)
@@ -105,7 +101,6 @@ class ShippingService:
         methods = await self.repo.list_active_methods()
         if not methods:
             return None
-        # Prefer the flat method as the "standard" fallback; else the first.
         for m in methods:
             if m.get("type") == SHIPPING_FLAT:
                 return m
