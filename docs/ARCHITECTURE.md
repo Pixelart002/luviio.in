@@ -45,6 +45,12 @@ Payments have a single canonical repository under `app/domains/payments/reposito
 
 `app/repositories/payment_repo.py` remains only as a temporary compatibility shim; it contains no independent persistence implementation and has an explicit removal condition after remaining legacy imports are migrated.
 
+The canonical payment repository implementation was preserved during the path/documentation cleanup. Its module path is now documented as `app/domains/payments/repository.py`.
+
+## Pricing domain migration
+
+Pricing ownership is canonical under `app/domains/pricing/service.py`. Pricing tests now import the canonical domain service, and the legacy Cart Service consumes the canonical pricing implementation. The legacy pricing module remains temporarily while Payment/Cart legacy compatibility imports are completed; it must not contain divergent business logic.
+
 ## Admin domain migration
 
 Admin routing, business logic, and persistence now have canonical ownership under `app/domains/admin/`. The admin router imports `AdminService` from the domain, and the domain service imports `AsyncAdminRepository` from the domain repository. The duplicate legacy `app/services/admin/service.py` and `app/repositories/admin_repo.py` implementations have been removed.
