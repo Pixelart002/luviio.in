@@ -1,7 +1,7 @@
 """
 Push Service — Enterprise Orchestration & Concurrent Dispatch
 =============================================================
-Path: app/services/notifications/push.py
+Path: app/domains/notifications/service.py
 """
 import json
 import asyncio
@@ -9,10 +9,10 @@ import logging
 from typing import Any, Dict, List
 from fastapi import HTTPException, status
 
-from app.repositories.push_repo import AsyncPushRepository
+from app.domains.notifications.repository import AsyncPushRepository
 from app.integrations.push.webpush_impl import send_push_to_user
 from app.permissions.policies.push_policies import PushPolicy, VAPID_PUBLIC_KEY
-from app.constants.push_messages import PushMessages, PushSecurityMessages, PushRules
+from app.constants.push_messages import PushMessages, PushRules
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +36,11 @@ class PushService:
 
     async def subscribe(self, user_id: str, endpoint: str, p256dh: str, auth: str) -> Dict[str, Any]:
         PushPolicy.assert_valid_endpoint(endpoint)
-        
         if await self.repo.is_duplicate_subscription(user_id, endpoint):
             return {"message": "Already subscribed", "cleaned": 0}
 
         cleaned = await self._cleanup_stale_subscriptions(user_id)
         sub_json = json.dumps({"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth}})
-
         await self.repo.upsert_subscription(user_id, endpoint, sub_json)
         return {"message": PushMessages.SUBSCRIBED, "cleaned": cleaned}
 
@@ -52,14 +50,12 @@ class PushService:
     async def get_status(self, user_id: str) -> Dict[str, Any]:
         count = await self.repo.count_user_subscriptions(user_id)
         return {
-            "subscribed": count > 0, 
-            "subscription_count": count, 
-            "max_allowed": PushRules.MAX_SUBSCRIPTIONS_PER_USER, 
+            "subscribed": count > 0,
+            "subscription_count": count,
+            "max_allowed": PushRules.MAX_SUBSCRIPTIONS_PER_USER,
             "vapid_configured": bool(VAPID_PUBLIC_KEY)
         }
 
-    # 🔥 NEW: self-test dispatch, reuses the exact same send path as real
-    # notifications so a success here means the full pipeline actually works.
     async def send_test_notification(self, user_id: str) -> Dict[str, Any]:
         count = await self.repo.count_user_subscriptions(user_id)
         if count == 0:
@@ -76,12 +72,10 @@ class PushService:
         )
         return {"sent": sent, "subscriptions_targeted": count}
 
-    # 🔥 ENTERPRISE UPGRADE: Bounded Concurrent Scatter-Gather Dispatch
     async def send_batch_notification(self, user_ids: List[str], title: str, body: str, icon: str, url: str) -> Dict[str, Any]:
         PushPolicy.assert_valid_batch_size(user_ids)
-        
         results: Dict[str, Any] = {"success": 0, "failed": 0, "details": []}
-        semaphore = asyncio.Semaphore(20)  # Limit concurrent outbound HTTP sockets to 20
+        semaphore = asyncio.Semaphore(20)
 
         async def _bounded_send(uid: str) -> Dict[str, Any]:
             async with semaphore:
@@ -94,7 +88,6 @@ class PushService:
                     logger.warning("Push dispatch failed for user %s: %s", uid[:8], str(exc)[:100])
                     return {"user_id": uid, "status": f"error: {str(exc)[:100]}", "success": False}
 
-        # Execute all notifications concurrently
         tasks = [_bounded_send(uid) for uid in user_ids]
         batch_outcomes = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -115,7 +108,7 @@ class PushService:
         total = await self.repo.get_total_subscriptions_count()
         unique_users = await self.repo.get_unique_subscribed_users()
         return {
-            "total_subscriptions": total, 
+            "total_subscriptions": total,
             "unique_users": unique_users,
             "avg_per_user": round(total / unique_users, 1) if unique_users > 0 else 0,
             "vapid_configured": bool(VAPID_PUBLIC_KEY),
