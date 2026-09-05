@@ -1,12 +1,12 @@
 """
 User Service — Enterprise Orchestration & Policy Enforcement
 ============================================================
-Path: app/services/users/service.py
+Path: app/domains/users/service.py
 """
 import logging
 from typing import Any, Dict, List, Tuple, Optional
 
-from app.repositories.user_repo import AsyncUserRepository
+from app.domains.users.repository import AsyncUserRepository
 from app.permissions.policies.user_policies import UserPolicy
 from app.constants.user_messages import UserRules, UserSecurityMessages
 from app.core.exceptions import LuviioException, ResourceNotFound
@@ -18,7 +18,7 @@ class UserService:
         self.repo = AsyncUserRepository()
 
     async def update_profile(self, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        if not data: 
+        if not data:
             return {}
         try:
             res = await self.repo.update_profile(user_id, data)
@@ -44,55 +44,41 @@ class UserService:
         except Exception as exc:
             logger.error("Error counting addresses for %s: %s", user_id[:8], exc, exc_info=True)
             raise LuviioException(UserSecurityMessages.DB_OPERATION_FAILED, "DB_ERROR", 500) from exc
-
-        # 🛡️ Enforce ABAC Address Limit
         UserPolicy.assert_address_limit(current_count)
-
         should_be_default = payload.get("is_default", False) or current_count == 0
-
         if should_be_default:
-            try: 
+            try:
                 await self.repo.unset_default_address(user_id)
-            except Exception as exc: 
+            except Exception as exc:
                 logger.warning("Non-fatal error unsetting default address for %s: %s", user_id[:8], exc)
-
         payload.update({"user_id": user_id, "is_default": should_be_default})
-        
         try:
             res = await self.repo.create_address(payload)
-            if not res: 
+            if not res:
                 raise RuntimeError("Insert returned empty payload")
             return res
         except Exception as exc:
             logger.error("Error adding address for %s: %s", user_id[:8], exc, exc_info=True)
             raise LuviioException(UserSecurityMessages.DB_OPERATION_FAILED, "DB_ERROR", 500) from exc
 
-    # 🔥 FIX: Amazon Style Address Deletion (Soft vs Hard Delete)
     async def delete_address(self, user_id: str, address_id: str) -> None:
         existing = await self.repo.get_address(address_id, user_id)
         if not existing:
             raise ResourceNotFound("Address")
-            
         was_default = existing.get("is_default", False)
-
         try:
             is_locked = await self.repo.is_address_in_active_order(address_id)
-            
             if is_locked:
-                # Active order exists -> Hide the address from user but keep it for the system
                 await self.repo.soft_delete_address(address_id)
             else:
-                # Free address -> Completely wipe from database
                 await self.repo.hard_delete_address(address_id)
-                
         except Exception as exc:
             logger.error("Error deleting address %s for user %s: %s", address_id[:8], user_id[:8], exc, exc_info=True)
             raise LuviioException(UserSecurityMessages.DB_OPERATION_FAILED, "DB_ERROR", 500) from exc
-
         if was_default:
-            try: 
+            try:
                 await self.repo.set_new_default_address(user_id)
-            except Exception as exc: 
+            except Exception as exc:
                 logger.warning("Non-fatal error setting new default address for %s: %s", user_id[:8], exc)
 
     async def get_users_paginated(self, page: int, page_size: int, search: Optional[str] = None, role_filter: Optional[str] = None) -> Tuple[List[Dict[str, Any]], int]:
@@ -103,16 +89,12 @@ class UserService:
             raise LuviioException(UserSecurityMessages.DB_OPERATION_FAILED, "DB_ERROR", 500) from exc
 
     async def admin_update_user(self, admin_id: str, target_user_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        if not payload: 
+        if not payload:
             raise LuviioException(UserSecurityMessages.NO_FIELDS_TO_UPDATE, "INVALID_PAYLOAD", 400)
-
-        # 🛡️ Enforce ABAC Admin Self-Demotion Guard
         UserPolicy.assert_admin_not_downgrading_self(admin_id, target_user_id, payload)
-
         existing = await self.repo.get_user_by_id(target_user_id)
-        if not existing: 
+        if not existing:
             raise ResourceNotFound("User")
-
         try:
             res = await self.repo.update_profile(target_user_id, payload)
             if not res:
@@ -126,14 +108,12 @@ class UserService:
 
     async def get_user_detail(self, target_user_id: str) -> Dict[str, Any]:
         user = await self.repo.get_user_by_id(target_user_id)
-        if not user: 
+        if not user:
             raise ResourceNotFound("User")
-        
-        try: 
+        try:
             total_orders = await self.repo.count_user_orders(target_user_id)
-        except Exception as exc: 
+        except Exception as exc:
             logger.warning("Error fetching order count for %s: %s", target_user_id[:8], exc)
             total_orders = 0
-        
         user["total_orders"] = total_orders
         return user
