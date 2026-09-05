@@ -4,11 +4,11 @@ import pytest
 
 
 def build_service(monkeypatch):
-    from app.services.payments.service import PaymentService
+    from app.domains.payments.service import PaymentService
 
     provider = Mock()
     monkeypatch.setattr(
-        "app.services.payments.service.get_payment_provider",
+        "app.domains.payments.service.get_payment_provider",
         lambda name="stripe": provider,
     )
     return PaymentService(), provider
