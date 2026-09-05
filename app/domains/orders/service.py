@@ -1,7 +1,5 @@
 """
-Order Service — Enterprise Business Logic & State Machine (Dynamic Settings & GST Ready)
-======================================================================================
-Path: app/domains/orders/service.py
+Order Domain Service — Enterprise Business Logic & State Machine.
 """
 import logging
 from typing import Any, Dict, Tuple, List
@@ -9,7 +7,7 @@ from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 
 from app.domains.orders.repository import AsyncOrderRepository
-from app.repositories.user_repo import AsyncUserRepository
+from app.domains.users.repository import AsyncUserRepository
 from app.permissions.policies.order_policies import OrderPolicy
 from app.events.bus import get_event_bus, OrderShippedEvent, OrderStatusChangedEvent
 from app.integrations.payments.registry import get_payment_provider
@@ -45,10 +43,7 @@ class OrderService:
             if field in sanitized:
                 sanitized[field] = mask_fn(sanitized[field])
         if "order_items" in sanitized:
-            sanitized["order_items"] = [
-                {k: v for k, v in item.items() if k not in {"order_id", "created_at", "updated_at"}}
-                for item in sanitized["order_items"]
-            ]
+            sanitized["order_items"] = [{k: v for k, v in item.items() if k not in {"order_id", "created_at", "updated_at"}} for item in sanitized["order_items"]]
         for item in sanitized.get("order_items", []):
             if "products" in item and isinstance(item["products"], dict):
                 prod = item["products"]
@@ -80,10 +75,7 @@ class OrderService:
         if not updated:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.CONCURRENCY_CONFLICT)
         try:
-            get_event_bus().publish(OrderStatusChangedEvent(
-                order=updated, customer_id=user_id,
-                old_status=actual_old_status, new_status=OrderStatus.CANCELLED.value
-            ))
+            get_event_bus().publish(OrderStatusChangedEvent(order=updated, customer_id=user_id, old_status=actual_old_status, new_status=OrderStatus.CANCELLED.value))
         except Exception as e:
             logger.error(f"Event bus dispatch failed during order cancel: {e}")
         return {"status": OrderStatus.CANCELLED.value, "order_id": order_id, "message": OrderMessages.CANCEL_SUCCESS}
@@ -131,15 +123,9 @@ class OrderService:
         if target_status_str == OrderStatus.SHIPPED.value:
             email = await self.repo.get_user_email(current_res["customer_id"])
             if email:
-                get_event_bus().publish(OrderShippedEvent(
-                    order=result, customer_email=email, customer_id=current_res["customer_id"],
-                    tracking_number=payload_data.get("tracking_number")
-                ))
+                get_event_bus().publish(OrderShippedEvent(order=result, customer_email=email, customer_id=current_res["customer_id"], tracking_number=payload_data.get("tracking_number")))
         elif target_status_str in (OrderStatus.DELIVERED.value, OrderStatus.REFUNDED.value, OrderStatus.CANCELLED.value):
-            get_event_bus().publish(OrderStatusChangedEvent(
-                order=result, customer_id=current_res["customer_id"],
-                old_status=current_status_enum.value, new_status=target_status_str
-            ))
+            get_event_bus().publish(OrderStatusChangedEvent(order=result, customer_id=current_res["customer_id"], old_status=current_status_enum.value, new_status=target_status_str))
         return self._sanitize(result)
 
     async def generate_invoice_pdf(self, order_id: str, user_id: str, is_admin: bool) -> bytes:
