@@ -1,26 +1,11 @@
 """
 Order Cron Tasks
 ================
-Path: app/cron/tasks/order_tasks.py
+Abandoned-checkout reconciliation and stock-release sweep.
 
-🔥 FIX (Problem 3 / Scenario C -- abandoned checkout):
-This job was previously commented out entirely, so a 'pending' order with
-no successful payment (browser closed, webhook dropped, network died mid-
-checkout) stayed 'pending' forever with its stock reserved indefinitely.
-
-Runs every 15 minutes. For every order that has been 'pending' for longer
-than PaymentRules.ABANDONED_ORDER_TIMEOUT_MINUTES:
-  1. Re-checks the PaymentIntent directly with Stripe first (self-healing --
-     covers the case where the success webhook itself was the thing that
-     got dropped).
-  2. If it actually succeeded -> settle the order now.
-  3. Otherwise -> explicitly CANCEL the PaymentIntent on Stripe (so a stale
-     browser tab can never complete payment after this point), then cancel
-     the order and release its reserved stock via the atomic RPC.
-
-This is the ONLY place (besides an explicit `payment_intent.canceled`
-webhook) that should ever cancel a 'pending' order over a failed payment --
-a single card decline must NOT cancel the order; see payments/service.py.
+The payment repository is owned by the payments domain. This cron module is
+only an application scheduler/entrypoint and must not depend on legacy
+repository paths.
 """
 import logging
 from datetime import datetime, timedelta, timezone
@@ -28,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from starlette.concurrency import run_in_threadpool
 
 from app.cron.registry import cron_task
-from app.repositories.payment_repo import AsyncPaymentRepository
+from app.domains.payments.repository import AsyncPaymentRepository
 from app.integrations.payments.registry import get_payment_provider
 from app.constants.payment_messages import PaymentRules
 
@@ -66,9 +51,8 @@ async def cleanup_abandoned_orders() -> None:
                     logger.info("[CRON] Order %s recovered to PAID (missed webhook). Result: %s", order_id[:8], result)
                     continue
 
-                # Explicitly cancel on Stripe's side FIRST -- this is what
-                # prevents a customer's stale checkout tab from completing
-                # payment on this intent after we've released the stock.
+                # Explicitly cancel on Stripe's side FIRST -- this prevents a
+                # stale checkout tab from completing payment after stock release.
                 if intent.get("status") != "canceled":
                     try:
                         await run_in_threadpool(provider.cancel_intent, pi_id)
@@ -78,8 +62,7 @@ async def cleanup_abandoned_orders() -> None:
                             pi_id, cancel_exc
                         )
                         # If Stripe refuses the cancel because it just
-                        # succeeded, don't proceed to cancel the order --
-                        # re-check on the next sweep instead of racing it.
+                        # succeeded, re-check instead of racing cancellation.
                         refreshed = await run_in_threadpool(provider.retrieve_intent, pi_id)
                         if refreshed.get("status") == "succeeded":
                             result = await repo.settle_order_transaction(
