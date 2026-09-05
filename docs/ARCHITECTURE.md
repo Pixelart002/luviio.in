@@ -41,9 +41,13 @@ The API layer is intentionally thin: `app/main.py` owns application assembly, `a
 
 ## Payment domain migration
 
-Payments now have a single canonical repository under `app/domains/payments/repository.py`. The abandoned-order cron imports that repository directly, and payment tests target `app/domains/payments/service.py` ownership. The duplicate legacy payment service under `app/services/payments/service.py` has been removed.
+Payments have a single canonical repository under `app/domains/payments/repository.py`. The abandoned-order cron imports that repository directly, and payment tests target `app/domains/payments/service.py` ownership. The duplicate legacy payment service has been removed.
 
-`app/repositories/payment_repo.py` is retained only as a temporary compatibility shim for legacy consumers; it re-exports the canonical payments repository and contains no independent persistence implementation. It must be removed after the remaining legacy repository imports are migrated and verification is complete.
+`app/repositories/payment_repo.py` remains only as a temporary compatibility shim; it contains no independent persistence implementation and has an explicit removal condition after remaining legacy imports are migrated.
+
+## Admin domain migration
+
+Admin routing, business logic, and persistence now have canonical ownership under `app/domains/admin/`. The admin router imports `AdminService` from the domain, and the domain service imports `AsyncAdminRepository` from the domain repository. The duplicate legacy `app/services/admin/service.py` and `app/repositories/admin_repo.py` implementations have been removed.
 
 ## Middleware and horizontal scaling
 
