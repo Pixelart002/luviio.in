@@ -1,10 +1,10 @@
 """
 Push Notifications Repository — Async Enterprise Grade
 ======================================================
-Path: app/repositories/push_repo.py
+Path: app/domains/notifications/repository.py
 """
 import logging
-from typing import Any, Dict, List
+from typing import List
 from fastapi import HTTPException, status
 from app.core.supabase import get_async_admin_supabase
 from app.constants.push_messages import PushSecurityMessages
@@ -12,9 +12,8 @@ from app.constants.push_messages import PushSecurityMessages
 logger = logging.getLogger(__name__)
 
 class AsyncPushRepository:
-    def __init__(self) -> None:
-        pass
-    
+    """Persistence boundary for push notification subscriptions."""
+
     async def count_user_subscriptions(self, user_id: str) -> int:
         admin_sb = await get_async_admin_supabase()
         try:
