@@ -1,18 +1,32 @@
 """
-Payments Domain Schemas (DTOs)
-==============================
-Path: app/domains/payments/schemas.py
+Payment Schemas (DTOs)
+======================
+Path: app/api/schemas/payment_dto.py
 """
-from app.api.schemas.payment_dto import (
-    PaymentIntentRequest,
-    PaymentIntentResponse,
-    ConfirmPaymentRequest,
-    NotifyFailedRequest,
-)
+from pydantic import BaseModel, ConfigDict, Field
+from uuid import UUID
+from typing import Optional
 
-__all__ = [
-    "PaymentIntentRequest",
-    "PaymentIntentResponse",
-    "ConfirmPaymentRequest",
-    "NotifyFailedRequest",
-]
+class PaymentIntentRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    idempotency_key: str = Field(..., min_length=10, max_length=100, description="Unique key to prevent duplicate orders")
+    shipping_address_id: UUID = Field(..., description="Selected shipping address ID")
+    # 🔥 Added for B2B/GST billing support (Optional so it doesn't break current UI)
+    billing_address_id: Optional[UUID] = Field(None, description="Selected billing address ID, if different from shipping")
+    coupon_code: Optional[str] = Field(None, max_length=40, description="Optional promo code to apply at checkout")
+
+class PaymentIntentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    client_secret: str
+    payment_intent_id: str
+    order_id: str
+    order_number: str
+
+class ConfirmPaymentRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    payment_intent_id: str = Field(..., min_length=5, max_length=100, description="Stripe Payment Intent ID")
+
+class NotifyFailedRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    payment_intent_id: str = Field(..., min_length=5, max_length=100, description="Stripe Payment Intent ID")
+    error_message: Optional[str] = Field(default="", max_length=500, description="Reason for failure")
