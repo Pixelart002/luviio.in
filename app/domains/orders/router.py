@@ -1,7 +1,7 @@
 """
 Order Router — Async Hardened Production Grade
 ==============================================
-Path: app/api/v1/routers/orders.py
+Path: app/domains/orders/router.py
 """
 import logging
 from uuid import UUID
@@ -12,8 +12,8 @@ from app.core.dependencies import get_current_user, get_user_id_strict, require_
 from app.permissions.orders import OrderPermissions
 from app.enums.roles import UserRole
 from app.api.schemas.order_dto import OrderAdminUpdate, OrderCancelResponse, OrderCreateFromCartRequest
-from app.services.orders.service import OrderService
-from app.services.payments.service import PaymentService
+from app.domains.orders.service import OrderService
+from app.domains.payments.service import PaymentService
 from app.constants.order_messages import OrderMessages
 from app.utils.response import success_response
 from app.utils.pagination import paginate
