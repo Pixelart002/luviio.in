@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from app.domains.shipping.repository import AsyncShippingRepository
 from app.domains.shipping.policy import ShippingPolicy
+from app.services.settings.core_engine import SettingsCoreEngine
 from app.constants.shipping_messages import (
     SHIPPING_FLAT, SHIPPING_FREE_THRESHOLD, SHIPPING_PER_ITEM, SHIPPING_WEIGHT,
 )
@@ -58,7 +59,6 @@ class ShippingService:
 
         # No explicit method -> fall back to dynamic store settings (safe default,
         # identical to the legacy order-flow formula: free above threshold).
-        from app.services.settings.core_engine import SettingsCoreEngine
         settings = SettingsCoreEngine()
         try:
             threshold = float(str(await settings.fetch_by_key("free_shipping_threshold")).replace("'", "").replace('"', "") or 1499.0)
@@ -79,7 +79,8 @@ class ShippingService:
             "applied_type": "settings_default",
         }
 
-    def _compute_method_rate(self, method: dict[str, Any], subtotal: float,
+    @staticmethod
+    def _compute_method_rate(method: dict[str, Any], subtotal: float,
                              item_count: int, weight_kg: float) -> Dict[str, Any]:
         mtype = method["type"]
         if mtype == SHIPPING_FLAT:
