@@ -1,17 +1,17 @@
 """Backward-compatible facade for the canonical settings engine.
 
 New code should use the role-specific services in this package. This facade
-keeps the historical import path working while ensuring reads and writes use
-one cache, repository, and event pipeline.
+keeps the historical SettingsService API while using only canonical domain
+components internally.
 """
 from typing import Any, Dict, List, Optional
 
-from app.services.settings.core_engine import SettingsCoreEngine
+from app.domains.settings.core_engine import SettingsCoreEngine
 from app.permissions.policies.settings_policies import SettingsPolicy
 
 
 class SettingsService:
-    """Compatibility API delegating all storage work to ``SettingsCoreEngine``."""
+    """Compatibility API delegating storage work to the domain engine."""
 
     def __init__(self) -> None:
         self.engine = SettingsCoreEngine()
