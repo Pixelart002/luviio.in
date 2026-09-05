@@ -8,7 +8,7 @@ from slowapi.util import get_remote_address
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
 from app.permissions.settings import SettingsPermissions
 from app.domains.settings.admin_service import AdminSettingsService
-from app.api.schemas.settings_dto import SettingUpdate
+from app.domains.settings.schemas import SettingUpdate
 from app.constants.settings_messages import SettingsMessages
 from app.utils.response import success_response
 from app.core.maintenance import invalidate_maintenance_cache
