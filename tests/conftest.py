@@ -1,5 +1,17 @@
 import os
 from collections.abc import Iterator
+
+# Set safe test-only defaults before test modules import application packages.
+_TEST_ENVIRONMENT = {
+    "APP_ENV": "development",
+    "SB_URL": "https://test.supabase.co",
+    "SB_KEY": "test-anon-key",
+    "SB_SERVICE_ROLE_KEY": "test-service-key",
+    "SUPABASE_JWT_SECRET": "test-jwt-secret",
+    "STRIPE_SECRET_KEY": "sk_test_placeholder",
+    "STRIPE_WEBHOOK_SECRET": "whsec_placeholder",
+}
+os.environ.update(_TEST_ENVIRONMENT)
 from unittest.mock import Mock
 
 import pytest

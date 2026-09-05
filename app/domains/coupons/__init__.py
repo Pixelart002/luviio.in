@@ -10,6 +10,4 @@ rewritten (see pricing separation in `app/domains/subscriptions`).
 
 Tables: `coupons`, `coupon_redemptions`.
 """
-from app.domains.coupons.router import router
-
-__all__ = ["router"]
+__all__: list[str] = []

@@ -92,7 +92,8 @@ class CouponService:
             "coupon_id": coupon["id"],
         }
 
-    def _compute_discount(self, coupon: dict[str, Any], subtotal: float) -> float:
+    @staticmethod
+    def _compute_discount(coupon: dict[str, Any], subtotal: float) -> float:
         if coupon["type"] == COUPON_TYPE_PERCENT:
             discount = subtotal * (float(coupon["value"]) / 100.0)
         else:

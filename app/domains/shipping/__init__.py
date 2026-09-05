@@ -15,6 +15,4 @@ This domain makes shipping a first-class, configurable concern:
 Order pricing itself (GST, totals) stays in `app/domains/pricing` + orders —
 shipping just contributes the `shipping_cost` line.
 """
-from app.domains.shipping.router import router
-
-__all__ = ["router"]
+__all__: list[str] = []

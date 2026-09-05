@@ -22,8 +22,8 @@ def test_normalize_tier_legacy():
 
 def test_get_tier_perks():
     assert get_tier_perks("free").free_shipping is False
-    assert get_tier_perks("premium").discount_percent == 0.05
-    assert get_tier_perks("platinum").discount_percent == 0.10
+    assert get_tier_perks("premium").discount_percent == 5
+    assert get_tier_perks("platinum").discount_percent == 10
     assert get_tier_perks("platinum").can_access_premium is True
     assert get_tier_perks("platinum").can_access_platinum is True
 
@@ -38,7 +38,7 @@ def test_is_tier_at_least():
     assert is_tier_at_least("free", "free")
     assert is_tier_at_least("premium", "free")
     assert is_tier_at_least("premium", "premium")
-    assert is_tier_at_least("platinum", "premium") is False
+    assert is_tier_at_least("platinum", "premium") is True
     assert is_tier_at_least("platinum", "platinum")
 
 

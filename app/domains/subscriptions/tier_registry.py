@@ -30,6 +30,10 @@ class TierPerks:
     can_access_platinum: bool = False
     extra_actions: tuple[str, ...] = field(default_factory=tuple)
 
+    def __getitem__(self, key: str) -> Any:
+        """Keep legacy dictionary-style perk access compatible."""
+        return getattr(self, key)
+
 
 TIER_ORDER = ("free", "premium", "platinum")
 
