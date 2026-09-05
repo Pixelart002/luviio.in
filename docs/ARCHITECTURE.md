@@ -41,7 +41,7 @@ The API layer is intentionally thin: `app/main.py` owns application assembly, `a
 
 ## Payment domain migration
 
-Payments now have a single canonical repository under `app/domains/payments/repository.py`. The abandoned-order cron imports that repository directly, and payment tests target `app/domains/payments.service` ownership. The duplicate legacy payment service under `app/services/payments/service.py` has been removed.
+Payments now have a single canonical repository under `app/domains/payments/repository.py`. The abandoned-order cron imports that repository directly, and payment tests target `app/domains/payments/service.py` ownership. The duplicate legacy payment service under `app/services/payments/service.py` has been removed.
 
 `app/repositories/payment_repo.py` is retained only as a temporary compatibility shim for legacy consumers; it re-exports the canonical payments repository and contains no independent persistence implementation. It must be removed after the remaining legacy repository imports are migrated and verification is complete.
 
