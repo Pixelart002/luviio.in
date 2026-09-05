@@ -49,6 +49,10 @@ Payments have a single canonical repository under `app/domains/payments/reposito
 
 Admin routing, business logic, and persistence now have canonical ownership under `app/domains/admin/`. The admin router imports `AdminService` from the domain, and the domain service imports `AsyncAdminRepository` from the domain repository. The duplicate legacy `app/services/admin/service.py` and `app/repositories/admin_repo.py` implementations have been removed.
 
+## Notifications domain migration
+
+Push notification routing, orchestration, and persistence now have canonical ownership under `app/domains/notifications/`. The router imports `PushService` from the domain service, and the domain service imports `AsyncPushRepository` from the domain repository. The duplicate legacy `app/services/notifications/push.py` and `app/repositories/push_repo.py` modules have been removed.
+
 ## Middleware and horizontal scaling
 
 Middleware remains outside domains because it applies uniformly to every worker/instance. Request IDs are server-generated, body limits are enforced before oversized payloads reach business logic, security headers are added centrally, and compression avoids already-compressed/streaming responses. Middleware must remain stateless and must never be a correctness source of truth; shared correctness state belongs in database/cache infrastructure.
