@@ -1,13 +1,11 @@
-"""
-Product Domain Router — canonical HTTP boundary.
-"""
+"""Product Domain Router — canonical HTTP boundary."""
 import uuid
 from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from app.core.dependencies import require_permission
 from app.permissions.products import ProductPermissions
 from app.domains.products.service import ProductService
-from app.api.schemas.product_dto import CategoryCreate, ProductCreate, ProductUpdate
+from app.domains.products.schemas import CategoryCreate, ProductCreate, ProductUpdate
 from app.constants.product_messages import ProductMessages
 from app.utils.response import success_response
 from app.utils.pagination import paginate
