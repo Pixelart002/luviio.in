@@ -1,6 +1,6 @@
 # Luviio Backend — Verified Source Tree
 
-> This document describes the current source layout. Git is the authority for exact tracked filenames; generated `__pycache__/` files are excluded.
+> Git is the authority for exact tracked filenames. Generated `__pycache__/` files are excluded.
 
 ```text
 luviio.in/
@@ -12,81 +12,76 @@ luviio.in/
 ├── uv.lock
 ├── structure.md
 ├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── SECURITY.md
-│   ├── SETTINGS.md
-│   ├── API.md
-│   ├── DATABASE.md
-│   ├── DEPLOYMENT.md
-│   └── CONTRIBUTING.md
 ├── migrations/
+├── tests/
 └── app/
     ├── main.py
     ├── api/
     │   ├── middlewares/
-    │   │   ├── cors.py
-    │   │   ├── logger.py
-    │   │   └── security.py
     │   ├── schemas/
-    │   │   ├── admin_dto.py
-    │   │   ├── auth_dto.py
-    │   │   ├── cart_dto.py
-    │   │   ├── order_dto.py
-    │   │   ├── payment_dto.py
-    │   │   ├── product_dto.py
-    │   │   ├── push_dto.py
-    │   │   ├── settings_dto.py
-    │   │   └── user_dto.py
     │   └── v1/
     │       ├── api.py
     │       └── routers/
-    │           ├── admin_verify.py
-    │           ├── auth.py
-    │           ├── cart.py
     │           ├── health.py
-    │           ├── invoice.py
-    │           ├── orders.py
-    │           ├── payments.py
-    │           ├── products.py
-    │           ├── push.py
-    │           ├── settings.py
-    │           └── users.py
-    ├── constants/
+    │           └── invoice.py
     ├── core/
-    │   ├── config.py
-    │   ├── dependencies.py
-    │   ├── exceptions.py
-    │   ├── logger.py
-    │   ├── maintenance.py
-    │   ├── monitoring.py
-    │   ├── queue.py
-    │   ├── rate_limit.py
-    │   ├── setup_middlewares.py
-    │   └── supabase.py
+    ├── constants/
     ├── cron/
     ├── enums/
     ├── events/
+    ├── integrations/
     ├── permissions/
-    ├── repositories/
-    ├── services/
-    │   ├── auth/
-    │   ├── carts/
-    │   ├── orders/
-    │   ├── payments/
-    │   ├── products/
-    │   ├── push/
-    │   ├── settings/
-    │   └── users/
-    └── utils/
-└── tests/
+    ├── utils/
+    └── domains/
+        ├── admin/
+        ├── auth/
+        ├── cart/
+        ├── coupons/
+        ├── inventory/
+        ├── notifications/
+        ├── orders/
+        ├── payments/
+        ├── pricing/
+        ├── products/
+        ├── rbac/
+        ├── settings/
+        ├── shipping/
+        ├── subscriptions/
+        └── users/
 ```
 
 ## Ownership
 
-`routers` handle HTTP, `schemas` validate data, `services` implement business rules, `repositories` talk to Supabase, `permissions` authorize, and `core` provides shared infrastructure. New features should follow that flow instead of adding database calls inside routers.
+`app/domains/<domain>/router.py` owns domain HTTP routing, `service.py` owns business rules/orchestration, and `repository.py` owns database access. Shared DTOs remain under `app/api/schemas`; cross-cutting authorization remains under `app/permissions`; provider adapters remain under `app/integrations`.
 
-## Deprecated/stale entries removed from the old document
+`app/api/v1/api.py` is the route composition point. It imports feature routers from `app/domains/*/router.py`. Only `health.py` and `invoice.py` remain under `app/api/v1/routers/` because they are not duplicate feature routers.
 
-The old tree listed root `app.py`, `requirements.txt`, `app/api/v1/app.py`, `inventory.py`, and several folders that are not present in this repository. The real entrypoint is `app/main.py`; dependencies are managed only by `pyproject.toml` and `uv.lock`. The old smoke test was replaced by focused tests under `tests/`. The settings facade remains intentionally as a compatibility adapter; its storage logic was replaced by `SettingsCoreEngine`.
+## Cleanup status
 
-For an exact current list, use `git ls-files`; this prevents documentation from becoming a second stale source of truth.
+Completed:
+
+- Removed the old feature-router copies from `app/api/v1/routers/` after their domain router replacements were active.
+- Removed the broken `My-frontend-` gitlink/submodule entry that had no `.gitmodules` definition.
+- Kept `pyproject.toml` + `uv.lock` as the dependency source of truth.
+- Updated the route aggregator to use canonical domain routers.
+
+In progress:
+
+- Repository-wide import migration from `app.services.*` / `app.repositories.*` to canonical domain modules.
+- Removal of compatibility wrappers and legacy implementations only after zero-reference scans.
+- Tests and deployment smoke verification after structural cleanup.
+
+## Safe deletion rule
+
+A legacy module is deleted only when:
+
+1. Its canonical domain replacement exists.
+2. Production code no longer imports it.
+3. Tests no longer import it.
+4. Documentation/examples no longer require it.
+5. A repository-wide reference scan returns zero live references.
+6. The replacement has been syntax/test checked.
+
+This prevents architectural cleanup from causing a production outage.
+
+For an exact tracked-file list, use `git ls-files` rather than maintaining a second manually curated tree.
