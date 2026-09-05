@@ -68,7 +68,10 @@ Completed:
 - Migrated health HTTP routing into `app/infrastructure/health/router.py`.
 - Updated `app/api/v1/api.py` and `app/main.py` to use the new locations.
 - Removed the now-obsolete `app/api/v1/routers/` tracked files.
-- Updated README and architecture documentation in the same cleanup cycle.
+- Promoted SettingsCoreEngine and all role-scoped settings services into `app/domains/settings/`.
+- Updated Shipping and Settings domain imports to use the canonical settings engine/services.
+- Updated health regression test to the new infrastructure location.
+- Updated README and architecture documentation alongside the structural migrations.
 
 The API layer is intentionally retained as a thin transport/composition layer. `app/api/schemas` is not considered legacy merely because it lives under `api`; these are HTTP contract DTOs and are shared by domain routers.
 
@@ -76,8 +79,8 @@ The API layer is intentionally retained as a thin transport/composition layer. `
 
 In progress:
 
-- Repository-wide import migration from `app.services.*` / `app.repositories.*` to canonical domain modules.
-- Promotion of compatibility wrappers into concrete domain implementations where required.
+- Final repository-wide reference scan for legacy `app/services/settings/*` implementations before deletion.
+- Repository-wide import migration from remaining `app.services.*` / `app.repositories.*` to canonical domain modules.
 - Removal of legacy implementations only after zero-reference scans.
 - Syntax/tests and deployment smoke verification after structural cleanup.
 
