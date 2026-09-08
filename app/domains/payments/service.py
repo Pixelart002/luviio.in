@@ -1,7 +1,7 @@
 """
 Payment Service -- Enterprise Orchestration (With Atomic GST & HSN Snapshots)
 =============================================================================
-Path: app/services/payments/service.py
+Path: app/domains/payments/service.py
 
 Architecture & Fixes:
   * Cart Lifecycle: Cart is cleared immediately upon successful atomic order creation & stock reservation.
@@ -28,8 +28,8 @@ from app.enums.order_status import OrderStatus
 from app.events.bus import OrderCreatedEvent, OrderFailedEvent, OrderPaidEvent, get_event_bus
 from app.integrations.payments.registry import get_payment_provider
 from app.permissions.policies.payment_policies import PaymentPolicy
-from app.repositories.payment_repo import AsyncPaymentRepository
-from app.services.pricing.service import get_pricing_from_config
+from app.domains.payments.repository import AsyncPaymentRepository
+from app.domains.pricing.service import get_pricing_from_config
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +268,7 @@ class PaymentService:
             )
 
             try:
-                from app.services.cart.service import CartService
+                from app.domains.cart.service import CartService
                 await CartService().clear_cart(user_id)
                 logger.info(f"Cart cleared successfully for user {user_id[:8]} after order reservation.")
             except Exception as cart_exc:
