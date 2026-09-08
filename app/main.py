@@ -22,6 +22,7 @@ from app.core.setup_middlewares import apply_middlewares
 from app.cron.scheduler import start_cron_jobs
 from app.events.registry import register_all_event_handlers
 from app.infrastructure.health.router import router as health_router
+from app.infrastructure.social_share.router import router as social_share_router
 
 configure_logging()
 init_sentry()
@@ -58,6 +59,10 @@ register_exception_handlers(app)
 
 # Root-level load-balancer health check.
 app.include_router(health_router)
+
+# Public server-rendered social previews. These routes intentionally sit
+# outside /api/v1 because the resulting URL is suitable for link sharing.
+app.include_router(social_share_router)
 
 # Versioned business API.
 app.include_router(api_router, prefix="/api/v1")
