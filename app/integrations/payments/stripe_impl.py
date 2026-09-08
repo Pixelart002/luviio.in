@@ -70,6 +70,7 @@ class StripeProvider(PaymentProvider):
     def retrieve_intent(self, payment_intent_id: str) -> Dict[str, Any]:
         try:
             intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            payment_method_types = list(getattr(intent, "payment_method_types", None) or [])
             return {
                 "id": intent.id,
                 "status": intent.status,
@@ -77,6 +78,7 @@ class StripeProvider(PaymentProvider):
                 "currency": intent.currency,
                 "metadata": intent.metadata,
                 "client_secret": intent.client_secret,
+                "payment_method_types": payment_method_types,
             }
         except stripe.error.StripeError as e:
             logger.error("Stripe Intent retrieval failed: %s", e)
