@@ -4,10 +4,10 @@ import pytest
 
 
 def test_settings_facade_uses_canonical_engine(monkeypatch):
-    from app.services.settings.service import SettingsService
+    from app.domains.settings.service import SettingsService
 
     engine = Mock()
-    monkeypatch.setattr("app.services.settings.service.SettingsCoreEngine", lambda: engine)
+    monkeypatch.setattr("app.domains.settings.service.SettingsCoreEngine", lambda: engine)
 
     service = SettingsService()
 
