@@ -74,7 +74,14 @@ Remaining:
 
 - Migrate any remaining `app.api.schemas.*` imports.
 - Perform a repository-wide zero-reference scan before removing the remaining shared schema files.
-- Continue legacy `app.services.*` / `app.repositories.*` migration domain-by-domain.
+
+## Domain migration status
+
+The legacy feature implementations have been migrated into canonical domain ownership. Retired top-level service/repository modules and the temporary pricing/payment compatibility shims have been removed.
+
+Canonical payment ownership is `app/domains/payments/`; payment orchestration imports its repository and pricing service directly from canonical domain modules. Pricing ownership is `app/domains/pricing/service.py`.
+
+New application code must not import from `app.services.*` or `app.repositories.*`.
 
 ## Middleware boundary
 
