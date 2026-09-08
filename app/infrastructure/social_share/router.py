@@ -19,7 +19,7 @@ router = APIRouter(tags=["Social Share"])
 
 def _frontend_product_url(slug: str) -> str:
     base = settings.FRONTEND_URL.rstrip("/")
-    return f"{base}/products/{quote(slug, safe='')}"
+    return f"{base}/product/{quote(slug, safe='')}"
 
 
 def _first_image(product: Dict[str, Any]) -> str | None:
