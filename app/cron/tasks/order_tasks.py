@@ -46,7 +46,11 @@ async def cleanup_abandoned_orders() -> None:
                 # that got lost, not the payment itself.
                 if intent.get("status") == "succeeded":
                     result = await repo.settle_order_transaction(
-                        order_id, pi_id, intent.get("amount", 0) / 100, customer_id
+                        order_id,
+                        pi_id,
+                        intent.get("amount", 0) / 100,
+                        customer_id,
+                        stripe_currency=intent.get("currency"),
                     )
                     logger.info("[CRON] Order %s recovered to PAID (missed webhook). Result: %s", order_id[:8], result)
                     continue
@@ -66,7 +70,11 @@ async def cleanup_abandoned_orders() -> None:
                         refreshed = await run_in_threadpool(provider.retrieve_intent, pi_id)
                         if refreshed.get("status") == "succeeded":
                             result = await repo.settle_order_transaction(
-                                order_id, pi_id, refreshed.get("amount", 0) / 100, customer_id
+                                order_id,
+                                pi_id,
+                                refreshed.get("amount", 0) / 100,
+                                customer_id,
+                                stripe_currency=refreshed.get("currency"),
                             )
                             logger.info("[CRON] Order %s recovered to PAID on retry check. Result: %s", order_id[:8], result)
                             continue
