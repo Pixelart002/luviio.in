@@ -1,33 +1,26 @@
 # Settings and Runtime Controls
 
-## Who should use it?
+## Purpose
 
-- **Super admin:** system-locked and high-impact controls.
-- **Admin:** operational and feature settings.
-- **Manager:** only the settings explicitly granted by policy.
-- **Developer:** adds typed keys and connects them to a real consumer.
-- **Customer:** never gets direct settings API access.
+`system_settings` stores operational configuration that may be changed at runtime by authorized administrators. It is not a secrets store and it is not a replacement for business records, RBAC policy, or provider credentials.
+
+## Access model
+
+- **Super admin:** system-locked and high-impact controls according to policy.
+- **Admin:** operational and feature settings permitted by policy.
+- **Manager:** only explicitly granted settings.
+- **Developer:** defines typed keys and connects them to a real consumer through reviewed code changes.
+- **Customer:** no direct settings API access.
 
 ## Setting contract
 
-Each `system_settings` row should have a stable key, category, data type, current value, default value, description, lock flag and public flag. Keys are configuration, not business records.
+Each setting must have a stable key, category, data type, current value, default value, description, lock semantics, and public/private visibility as defined by the database contract. Values are validated before persistence and consumers must use the typed value expected by the owning domain.
 
-Recommended operational keys:
+Representative operational controls include maintenance mode, checkout/payment feature flags, pricing/shipping configuration, cart limits, notification enablement, and other explicitly registered runtime controls. The code and database migration are authoritative for the exact key set and defaults.
 
-| Key | Type | Default | Consumer |
-|---|---|---:|---|
-| `maintenance_mode` | boolean | `false` | `app/core/maintenance.py` |
-| `enable_cod` | boolean | `true` | checkout/payment service |
-| `enable_online_payment` | boolean | `true` | payment service |
-| `tax_percentage` | number | `0` | order pricing service |
-| `shipping_charge` | number | `0` | order pricing service |
-| `minimum_order_value` | number | `0` | cart/order validation |
-| `max_cart_items` | integer | `50` | cart validation |
-| `enable_push_notifications` | boolean | `false` | push service |
+## API
 
-## API usage
-
-All settings endpoints require the existing admin authorization dependency. The exact response envelope remains the one defined by the router.
+All settings endpoints require the existing server-side authorization policy:
 
 ```http
 GET /api/v1/settings/
@@ -35,7 +28,7 @@ PATCH /api/v1/settings/{key}
 POST /api/v1/settings/{key}/reset
 ```
 
-Update payload example:
+Example update payload:
 
 ```json
 {"value": true, "reason": "Planned maintenance"}
@@ -43,15 +36,16 @@ Update payload example:
 
 ## What not to store here
 
-Do not store passwords, API keys, payment credentials, user preferences, permissions, product data or rapidly changing counters. Use environment secrets, user tables, RBAC policy, product tables or a purpose-built counter respectively.
+Do not store passwords, API keys, Stripe credentials, service-role keys, VAPID private keys, user preferences, permissions, product data, or rapidly changing counters. Use deployment secret management, user/domain tables, RBAC policy, product tables, or purpose-built counters respectively.
 
 ## Safe rollout
 
-1. Add the key and default.
-2. Add validation and a single named consumer.
-3. Add tests for default, enabled and malformed values.
-4. Release with the default behavior unchanged.
-5. Change the value through an authorized admin request.
-6. Monitor logs and revert using the reset endpoint if needed.
+1. Add the key, type, validation, and default through a reviewed change.
+2. Connect it to one clearly owned consumer.
+3. Add tests for default, valid update, reset, authorization, and malformed values.
+4. Deploy with the existing default behavior preserved.
+5. Change the value through an authorized admin operation.
+6. Monitor structured logs and application behavior.
+7. Reset or roll back through the appropriate operational mechanism if the setting causes unsafe behavior.
 
-`maintenance_mode=true` blocks business APIs with `503`; health, auth, settings and docs remain available. Never use maintenance mode as a replacement for deployment rollback, access control or incident response.
+`maintenance_mode=true` blocks business APIs with `503` while the explicitly exempt operational endpoints remain available according to middleware policy. Maintenance mode is not a replacement for deployment rollback, access control, or incident response.
