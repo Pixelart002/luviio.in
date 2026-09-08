@@ -5,9 +5,11 @@ Path: app/domains/notifications/repository.py
 """
 import logging
 from typing import List
+
 from fastapi import HTTPException, status
-from app.core.supabase import get_async_admin_supabase
+
 from app.constants.push_messages import PushSecurityMessages
+from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 

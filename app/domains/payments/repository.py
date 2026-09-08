@@ -7,6 +7,7 @@ and webhook-ledger reads fail closed: database failures must never be treated as
 """
 import logging
 from typing import Any, Dict, List, Optional
+
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)

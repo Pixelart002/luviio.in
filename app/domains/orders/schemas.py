@@ -3,10 +3,13 @@ Order Schemas (DTOs)
 ====================
 Path: app/api/schemas/order_dto.py
 """
-from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from app.enums.order_status import OrderStatus
+
 
 class OrderCreateFromCartRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)

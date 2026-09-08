@@ -7,15 +7,16 @@ from fastapi import FastAPI
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.core.rate_limit import limiter
-from app.api.middlewares.security import (
-    RequestIDMiddleware, MaxBodySizeMiddleware, GZipMiddleware,
-    HideServerHeaderMiddleware, SecurityHeadersMiddleware,
-)
 from app.api.middlewares.cors import cors_middleware
-from app.api.middlewares.logger import PureWindowLoggerMiddleware 
-
-
+from app.api.middlewares.logger import PureWindowLoggerMiddleware
+from app.api.middlewares.security import (
+    GZipMiddleware,
+    HideServerHeaderMiddleware,
+    MaxBodySizeMiddleware,
+    RequestIDMiddleware,
+    SecurityHeadersMiddleware,
+)
+from app.core.rate_limit import limiter
 
 
 def apply_middlewares(app: FastAPI) -> None:

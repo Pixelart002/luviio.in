@@ -5,13 +5,20 @@ Path: app/domains/auth/router.py
 """
 import logging
 from typing import Any
-from fastapi import APIRouter, Cookie, Depends, Request, Response, status, HTTPException
+
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from app.domains.auth.schemas import RegisterRequest, LoginRequest, ForgotPasswordRequest, ResetPasswordRequest
-from app.core.dependencies import get_current_user
-from app.domains.auth.service import AuthService
+
 from app.constants.auth_messages import AuthMessages, AuthSecurityMessages
+from app.core.dependencies import get_current_user
+from app.domains.auth.schemas import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+)
+from app.domains.auth.service import AuthService
 from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)

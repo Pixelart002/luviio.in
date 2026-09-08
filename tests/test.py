@@ -30,6 +30,7 @@ Notes:
 
 import os
 import sys
+
 import httpx
 
 BASE_URL = os.getenv("LUVIIO_BASE_URL", "https://apparent-jordanna-pixelart002-42e39ac6.koyeb.app")

@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.constants.admin_messages import AdminMessages
 from app.core.dependencies import get_user_id_strict, require_permission
 from app.domains.admin.service import AdminService
 from app.permissions.admin import AdminPermissions
-from app.constants.admin_messages import AdminMessages
 from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)

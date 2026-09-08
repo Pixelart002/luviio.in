@@ -5,7 +5,9 @@ Path: app/core/rate_limit.py
 """
 from fastapi import Request
 from slowapi import Limiter
+
 from app.core.config import settings
+
 
 def _get_client_ip(request: Request) -> str:
     forwarded = request.headers.get("X-Forwarded-For")

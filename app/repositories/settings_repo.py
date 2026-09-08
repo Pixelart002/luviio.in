@@ -5,9 +5,11 @@ Path: app/repositories/settings_repo.py
 """
 import logging
 from typing import Any, Dict, List, Optional
+
 from fastapi import HTTPException, status
-from app.core.supabase import get_async_admin_supabase
+
 from app.constants.settings_messages import SettingsSecurityMessages
+from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 

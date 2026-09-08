@@ -3,16 +3,17 @@ Push Service — Enterprise Orchestration & Concurrent Dispatch
 =============================================================
 Path: app/domains/notifications/service.py
 """
-import json
 import asyncio
+import json
 import logging
 from typing import Any, Dict, List
+
 from fastapi import HTTPException, status
 
+from app.constants.push_messages import PushMessages, PushRules
 from app.domains.notifications.repository import AsyncPushRepository
 from app.integrations.push.webpush_impl import send_push_to_user
-from app.permissions.policies.push_policies import PushPolicy, VAPID_PUBLIC_KEY
-from app.constants.push_messages import PushMessages, PushRules
+from app.permissions.policies.push_policies import VAPID_PUBLIC_KEY, PushPolicy
 
 logger = logging.getLogger(__name__)
 

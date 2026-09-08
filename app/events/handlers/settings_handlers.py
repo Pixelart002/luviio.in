@@ -8,10 +8,9 @@ The events are published by app/services/settings/core_engine.py.
 These handlers persist audit log entries for settings changes.
 """
 import logging
-from typing import Any
 
-from app.events.settings_events import SettingUpdatedEvent, SettingResetEvent
 from app.core.supabase import get_async_admin_supabase
+from app.events.settings_events import SettingResetEvent, SettingUpdatedEvent
 
 logger = logging.getLogger(__name__)
 

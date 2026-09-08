@@ -5,9 +5,11 @@ Path: app/repositories/auth_repo.py
 """
 import logging
 from typing import Any, Dict, Optional
+
 import httpx
-from app.core.supabase import get_async_supabase
+
 from app.core.config import settings
+from app.core.supabase import get_async_supabase
 
 logger = logging.getLogger(__name__)
 

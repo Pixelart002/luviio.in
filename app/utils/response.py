@@ -4,7 +4,9 @@ API Standard Response Wrapper
 Path: app/utils/response.py
 """
 from typing import Any, Optional
+
 from pydantic import BaseModel
+
 
 class PaginationMeta(BaseModel):
     page: int

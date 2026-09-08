@@ -3,7 +3,6 @@ from fastapi import HTTPException
 
 from app.permissions.policies.payment_policies import PaymentPolicy
 
-
 VALID_PRODUCT = {
     "name": "Test Product",
     "is_active": True,

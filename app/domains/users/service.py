@@ -4,12 +4,12 @@ User Service — Enterprise Orchestration & Policy Enforcement
 Path: app/domains/users/service.py
 """
 import logging
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from app.domains.users.repository import AsyncUserRepository
-from app.permissions.policies.user_policies import UserPolicy
 from app.constants.user_messages import UserRules, UserSecurityMessages
 from app.core.exceptions import LuviioException, ResourceNotFound
+from app.domains.users.repository import AsyncUserRepository
+from app.permissions.policies.user_policies import UserPolicy
 
 logger = logging.getLogger(__name__)
 

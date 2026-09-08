@@ -7,7 +7,9 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants.shipping_messages import SHIPPING_FLAT, SHIPPING_FREE_THRESHOLD, SHIPPING_PER_ITEM, SHIPPING_WEIGHT
+from app.constants.shipping_messages import (
+    SHIPPING_FLAT,
+)
 
 
 class ShippingMethodCreate(BaseModel):

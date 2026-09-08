@@ -4,7 +4,9 @@ Auth Schemas (DTOs)
 Path: app/api/schemas/auth_dto.py
 """
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
-from app.constants.auth_messages import AuthSecurityMessages, AuthRules
+
+from app.constants.auth_messages import AuthRules, AuthSecurityMessages
+
 
 class RegisterRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)

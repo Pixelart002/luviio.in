@@ -7,16 +7,18 @@ Business logic for stock management: reservations, availability, and low-stock a
 """
 import logging
 from typing import Any, Dict, List, Optional, Tuple
+
+from app.domains.inventory.exceptions import (
+    ReservationFailedError,
+)
 from app.domains.inventory.repository import InventoryRepository
 from app.domains.inventory.schemas import (
-    StockLevel, ReservationItem, ReservationResult,
-    AvailabilityCheck, StockAdjustment
+    AvailabilityCheck,
+    ReservationItem,
+    ReservationResult,
+    StockLevel,
 )
-from app.domains.inventory.enums import StockStatus
-from app.domains.inventory.exceptions import (
-    InsufficientStockError, ProductNotFoundError, ReservationFailedError
-)
-from app.events.bus import get_event_bus, LowStockEvent
+from app.events.bus import LowStockEvent, get_event_bus
 
 logger = logging.getLogger(__name__)
 

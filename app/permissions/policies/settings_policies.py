@@ -5,7 +5,9 @@ Path: app/permissions/policies/settings_policies.py
 """
 import logging
 from typing import Any, Dict, Optional
+
 from fastapi import HTTPException, status
+
 from app.constants.settings_messages import SettingsSecurityMessages
 from app.enums.roles import UserRole
 from app.enums.settings import SettingDataType

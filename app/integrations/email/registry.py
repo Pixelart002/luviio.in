@@ -3,12 +3,13 @@ Email Registry (Factory Pattern)
 Path: app/integrations/email/registry.py
 """
 import logging
+
 from .resend_impl import (
-    send_welcome_email, 
-    send_order_confirmation, 
-    send_order_shipped, 
-    send_cart_reminder_email, 
-    send_payment_success
+    send_cart_reminder_email,
+    send_order_confirmation,
+    send_order_shipped,
+    send_payment_success,
+    send_welcome_email,
 )
 
 logger = logging.getLogger(__name__)

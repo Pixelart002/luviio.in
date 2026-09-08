@@ -3,10 +3,13 @@ Cart Schemas (DTOs) — Enterprise Grade & GST Ready
 ====================================================
 Path: app/api/schemas/cart_dto.py
 """
-from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from app.constants.cart_messages import CartRules
+
 
 class AddItemRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)

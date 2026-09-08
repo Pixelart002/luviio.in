@@ -11,8 +11,10 @@ Architecture & Fixes:
 """
 import logging
 from typing import Optional
-from supabase import create_client, create_async_client, Client, AsyncClient, ClientOptions
+
 from gotrue import AsyncMemoryStorage
+from supabase import AsyncClient, Client, ClientOptions, create_async_client, create_client
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)

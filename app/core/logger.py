@@ -8,12 +8,12 @@ attributes (`user_id`, `user_name`) to `RequestIDFilter` without breaking
 a single existing `request_id_ctx` import in your app.
 """
 import logging
-from typing import Any, Optional
 from contextvars import ContextVar
-from app.core.config import settings
+from typing import Any, Optional
 
-# 1. Existing Request ID context (Preserved 100%)
-request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
+from app.core.logging_config import configure_logging, request_id_ctx
+
+# Active Starlette Request context bridge for middleware.
 
 # 2. 🔥 NEW: Active Starlette Request context bridge for Middleware
 current_request_ctx: ContextVar[Optional[Any]] = ContextVar("current_request", default=None)
@@ -38,16 +38,6 @@ class RequestIDFilter(logging.Filter):
         return True
 
 
-def setup_logging():
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+def setup_logging() -> None:
+    configure_logging()
     logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
-
-    logging.basicConfig(
-        level=logging.DEBUG if settings.APP_ENV == "development" else logging.INFO,
-        # 🔥 FORMAT STRING UPGRADED: Added [%(user_id)s : %(user_name)s]
-        format="%(asctime)s | %(levelname)s | [%(request_id)s] | [%(user_id)s : %(user_name)s] | %(name)s | %(message)s",
-    )
-
-    req_filter = RequestIDFilter()
-    for handler in logging.root.handlers:
-        handler.addFilter(req_filter)

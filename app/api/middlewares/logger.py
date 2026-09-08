@@ -7,8 +7,10 @@ requests are emitted at INFO/WARNING level.
 import logging
 import time
 from typing import Any
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
+
 from app.core.logger import current_request_ctx
 
 logger = logging.getLogger("uvicorn.error")

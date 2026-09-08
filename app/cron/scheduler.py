@@ -1,9 +1,9 @@
 import logging
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from app.cron.registry import CRON_JOBS
 
 # Importing tasks is zaroori taaki decorators run ho aur registry bhar jaye
-import app.cron.tasks.order_tasks 
+from app.cron.registry import CRON_JOBS
 
 logger = logging.getLogger(__name__)
 

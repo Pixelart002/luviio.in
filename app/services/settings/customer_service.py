@@ -1,8 +1,10 @@
 from typing import Any, Dict, List
+
 from fastapi import HTTPException, status
 
-from app.services.settings.core_engine import SettingsCoreEngine
 from app.constants.settings_messages import SettingsSecurityMessages
+from app.services.settings.core_engine import SettingsCoreEngine
+
 
 class CustomerSettingsService:
     """Strictly READ-ONLY service for Guests and Customers. 100% Secure."""

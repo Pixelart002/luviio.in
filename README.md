@@ -11,6 +11,16 @@ uv sync
 uv run uvicorn app.main:app --reload
 ```
 
+Containerized startup:
+
+```bash
+cp .env.example .env
+# Fill required deployment values in .env
+docker compose up --build
+```
+
+Production logs are structured JSON; local development logs are readable key/value lines. Every response includes sanitized `X-Request-ID` and `X-Correlation-ID` headers for tracing a request across services. Configure `SENTRY_DSN` only in non-local deployments when error tracking is desired.
+
 Useful checks:
 
 ```bash

@@ -59,6 +59,10 @@ Admin routing, business logic, and persistence now have canonical ownership unde
 
 Push notification routing, orchestration, and persistence now have canonical ownership under `app/domains/notifications/`. The router imports `PushService` from the domain service, and the domain service imports `AsyncPushRepository` from the domain repository. The duplicate legacy `app/services/notifications/push.py` and `app/repositories/push_repo.py` modules have been removed.
 
+## Observability and correlation
+
+Every HTTP request receives a sanitized `X-Request-ID` and `X-Correlation-ID`. Both are returned in the response and included in structured logs; `trace_id` and `span_id` are reserved for distributed tracing providers. Production logs are JSON and local logs are readable key/value lines. Secrets, cookies, authorization headers, payment data, and sensitive payloads are redacted. Sentry is opt-in through `SENTRY_DSN` and disabled in local/test environments.
+
 ## Middleware and horizontal scaling
 
 Middleware remains outside domains because it applies uniformly to every worker/instance. Request IDs are server-generated, body limits are enforced before oversized payloads reach business logic, security headers are added centrally, and compression avoids already-compressed/streaming responses. Middleware must remain stateless and must never be a correctness source of truth; shared correctness state belongs in database/cache infrastructure.

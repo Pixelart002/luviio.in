@@ -1,14 +1,16 @@
 """Push notification router — canonical Notifications HTTP boundary."""
 import logging
 from typing import Any, Dict
+
 from fastapi import APIRouter, Depends, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
-from app.permissions.admin import AdminPermissions
-from app.domains.notifications.service import PushService
-from app.domains.notifications.schemas import PushSubscription, BatchNotificationRequest
+
 from app.constants.push_messages import PushMessages
+from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
+from app.domains.notifications.schemas import BatchNotificationRequest, PushSubscription
+from app.domains.notifications.service import PushService
+from app.permissions.admin import AdminPermissions
 from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)

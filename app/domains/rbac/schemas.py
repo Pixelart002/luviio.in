@@ -3,7 +3,6 @@ RBAC Domain — Schemas (DTOs)
 ============================
 Path: app/domains/rbac/schemas.py
 """
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 

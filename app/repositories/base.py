@@ -9,7 +9,13 @@ Architecture & Fixes:
   ✅ Resolves Coroutine Crash — Removes synchronous execution assignments from constructor.
 """
 import logging
-from app.core.supabase import get_supabase, get_admin_supabase, get_async_supabase, get_async_admin_supabase
+
+from app.core.supabase import (
+    get_admin_supabase,
+    get_async_admin_supabase,
+    get_async_supabase,
+    get_supabase,
+)
 
 logger = logging.getLogger(__name__)
 

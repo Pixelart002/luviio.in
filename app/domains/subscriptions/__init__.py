@@ -15,8 +15,14 @@ OTHER DOMAINS consume the tier via `SubscriptionService.get_tier_for_user`
 (or directly `get_tier_perks` / `get_pricing_for_user` in pricing+orders).
 """
 from app.domains.subscriptions.tier_registry import (
-    TIERS, TIER_ORDER, TierPerks, get_tier_perks, is_tier_at_least,
-    normalize_tier, render_tier, tier_rank,
+    TIER_ORDER,
+    TIERS,
+    TierPerks,
+    get_tier_perks,
+    is_tier_at_least,
+    normalize_tier,
+    render_tier,
+    tier_rank,
 )
 
 __all__ = [

@@ -3,10 +3,13 @@ User Schemas (DTOs)
 ===================
 Path: app/api/schemas/user_dto.py
 """
-from pydantic import BaseModel, ConfigDict, Field, field_validator, EmailStr
 from typing import Any, List, Optional
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
 from app.constants.user_messages import UserSecurityMessages
 from app.enums.roles import UserRole
+
 
 class ProfileUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)

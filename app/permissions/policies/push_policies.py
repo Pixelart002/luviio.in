@@ -3,11 +3,13 @@ Push Notification Policy Guards
 ===============================
 Path: app/permissions/policies/push_policies.py
 """
-import os
 import logging
+import os
 from typing import List
+
 from fastapi import HTTPException, status
-from app.constants.push_messages import PushSecurityMessages, PushRules
+
+from app.constants.push_messages import PushRules, PushSecurityMessages
 
 logger = logging.getLogger(__name__)
 

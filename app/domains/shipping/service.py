@@ -10,12 +10,15 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
 
-from app.domains.shipping.repository import AsyncShippingRepository
-from app.domains.shipping.policy import ShippingPolicy
-from app.domains.settings.core_engine import SettingsCoreEngine
 from app.constants.shipping_messages import (
-    SHIPPING_FLAT, SHIPPING_FREE_THRESHOLD, SHIPPING_PER_ITEM, SHIPPING_WEIGHT,
+    SHIPPING_FLAT,
+    SHIPPING_FREE_THRESHOLD,
+    SHIPPING_PER_ITEM,
+    SHIPPING_WEIGHT,
 )
+from app.domains.settings.core_engine import SettingsCoreEngine
+from app.domains.shipping.policy import ShippingPolicy
+from app.domains.shipping.repository import AsyncShippingRepository
 
 logger = logging.getLogger(__name__)
 

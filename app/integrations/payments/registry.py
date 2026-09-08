@@ -4,6 +4,7 @@ Payment Registry
 Path: app/integrations/payments/registry.py
 """
 from typing import Dict, Type
+
 from app.integrations.payments.base import PaymentProvider
 from app.integrations.payments.stripe_impl import StripeProvider
 

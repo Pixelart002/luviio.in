@@ -5,6 +5,7 @@ Path: app/enums/settings.py
 """
 from enum import Enum
 
+
 class SettingCategory(str, Enum):
     GENERAL = "general"
     FINANCIAL = "financial"

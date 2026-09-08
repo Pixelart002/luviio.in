@@ -1,10 +1,12 @@
 import logging
 from typing import Any, Dict, Optional
+
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from postgrest.exceptions import APIError as PostgrestError
-from app.utils.response import error_response
+
 from app.constants.messages import ErrorMessages
+from app.utils.response import error_response
 
 logger = logging.getLogger(__name__)
 

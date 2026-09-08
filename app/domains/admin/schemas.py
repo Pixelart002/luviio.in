@@ -3,8 +3,10 @@ Admin Verification Schemas (DTOs)
 =================================
 Path: app/api/schemas/admin_dto.py
 """
-from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class AdminProfile(BaseModel):
     model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)

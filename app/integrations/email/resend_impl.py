@@ -4,10 +4,10 @@ Email Service — Resend Integration (Async Threadpool Fixed)
 Architecture Layer: External Integrations
 Path: app/integrations/email/resend_impl.py
 """
-import os
-import logging
 import base64
-from typing import Any
+import logging
+import os
+
 import resend
 from starlette.concurrency import run_in_threadpool
 

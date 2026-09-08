@@ -3,11 +3,13 @@ Auth Policies & Brute Force Guard
 =================================
 Path: app/permissions/policies/auth_policies.py
 """
-import time
 import logging
+import time
 from typing import Dict, List
+
 from fastapi import HTTPException, status
-from app.constants.auth_messages import AuthSecurityMessages, AuthRules
+
+from app.constants.auth_messages import AuthRules, AuthSecurityMessages
 
 logger = logging.getLogger(__name__)
 
