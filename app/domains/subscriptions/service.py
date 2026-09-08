@@ -40,8 +40,9 @@ class SubscriptionService:
     async def public_tiers(self) -> List[dict[str, Any]]:
         return all_tiers_public()
 
-    async def list_plans(self, include_inactive: bool = False) -> List[dict[str, Any]]:
-        return await self.repo.list_plans(active_only=not include_inactive)
+    async def list_plans(self, active_only: bool = True) -> List[dict[str, Any]]:
+        """List subscription plans, optionally including inactive plans."""
+        return await self.repo.list_plans(active_only=active_only)
 
     # ── Effective tier for a user (SSOT consumers call this) ───────────────────
     async def get_tier_for_user(
