@@ -8,13 +8,13 @@ Path: app/domains/coupons/router.py
 """
 import logging
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query
 
-from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
-from app.domains.coupons.service import CouponService
-from app.domains.coupons.schemas import CouponCreate, CouponUpdate, CouponApplyRequest
-from app.permissions.coupons import CouponPermissions
 from app.constants.coupon_messages import CouponMessages
+from app.core.dependencies import get_user_id_strict, require_permission
+from app.domains.coupons.schemas import CouponApplyRequest, CouponCreate, CouponUpdate
+from app.domains.coupons.service import CouponService
+from app.permissions.coupons import CouponPermissions
 from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)

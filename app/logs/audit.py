@@ -13,6 +13,7 @@ Standard row shape (shared with security.py):
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
+
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)

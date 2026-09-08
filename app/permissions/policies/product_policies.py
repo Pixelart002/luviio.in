@@ -11,11 +11,12 @@ Architecture & Features:
 """
 import logging
 from typing import List, Optional
+
 from fastapi import HTTPException, status
 
-from app.enums.roles import UserRole
-from app.constants.product_messages import ProductSecurityMessages, ProductRules
+from app.constants.product_messages import ProductRules, ProductSecurityMessages
 from app.core.exceptions import UnauthorizedAction
+from app.enums.roles import UserRole
 
 logger = logging.getLogger(__name__)
 

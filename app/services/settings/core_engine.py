@@ -1,12 +1,13 @@
-import time
 import logging
+import time
 from typing import Any, Dict, List, Optional
+
 from fastapi import HTTPException, status
 
-from app.repositories.settings_repo import AsyncSettingsRepository
-from app.events.bus import get_event_bus
-from app.events.settings_events import SettingUpdatedEvent, SettingResetEvent
 from app.constants.settings_messages import SettingsRules, SettingsSecurityMessages
+from app.events.bus import get_event_bus
+from app.events.settings_events import SettingResetEvent, SettingUpdatedEvent
+from app.repositories.settings_repo import AsyncSettingsRepository
 
 logger = logging.getLogger(__name__)
 

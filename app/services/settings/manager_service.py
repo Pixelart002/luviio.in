@@ -1,10 +1,12 @@
 from typing import Any, Dict
+
 from fastapi import HTTPException, status
 
-from app.services.settings.core_engine import SettingsCoreEngine
-from app.permissions.policies.settings_policies import SettingsPolicy
 from app.enums.roles import UserRole
 from app.enums.settings import SettingCategory
+from app.permissions.policies.settings_policies import SettingsPolicy
+from app.services.settings.core_engine import SettingsCoreEngine
+
 
 class ManagerSettingsService:
     """Restricted Write Access for Store Operations (Managers)."""

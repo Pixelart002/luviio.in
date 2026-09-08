@@ -12,23 +12,24 @@ Architecture & Fixes:
   * Null Intent Guard: Prevents 502 Bad Gateway crashes when Stripe ID is None or Empty in DB.
   * Payment Method Tracking: Extracts 'card', 'upi', etc. from Stripe Intents & Webhooks.
 """
-import time
 import logging
-from uuid import UUID
-from decimal import Decimal, ROUND_HALF_UP
+import time
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Dict, List, Optional
-from fastapi import HTTPException, status
-from starlette.concurrency import run_in_threadpool
-from nanoid import generate
-from email_validator import validate_email, EmailNotValidError
+from uuid import UUID
 
-from app.repositories.payment_repo import AsyncPaymentRepository
-from app.services.pricing.service import get_pricing_from_config
-from app.events.bus import get_event_bus, OrderPaidEvent, OrderCreatedEvent, OrderFailedEvent
+from email_validator import EmailNotValidError, validate_email
+from fastapi import HTTPException, status
+from nanoid import generate
+from starlette.concurrency import run_in_threadpool
+
+from app.constants.payment_messages import PaymentMessages, PaymentRules, PaymentSecurityMessages
+from app.enums.order_status import OrderStatus
+from app.events.bus import OrderCreatedEvent, OrderFailedEvent, OrderPaidEvent, get_event_bus
 from app.integrations.payments.registry import get_payment_provider
 from app.permissions.policies.payment_policies import PaymentPolicy
-from app.constants.payment_messages import PaymentMessages, PaymentSecurityMessages, PaymentRules
-from app.enums.order_status import OrderStatus
+from app.repositories.payment_repo import AsyncPaymentRepository
+from app.services.pricing.service import get_pricing_from_config
 
 logger = logging.getLogger(__name__)
 

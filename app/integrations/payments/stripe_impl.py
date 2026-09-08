@@ -4,8 +4,10 @@ Stripe Implementation
 Path: app/integrations/payments/stripe_impl.py
 """
 import logging
-import stripe
 from typing import Any, Dict
+
+import stripe
+
 from app.core.config import settings
 from app.integrations.payments.base import PaymentProvider
 

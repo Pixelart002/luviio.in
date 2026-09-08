@@ -7,18 +7,19 @@ Compatibility implementation retained while the Cart domain migration is
 completed. Pricing ownership is canonicalized under app.domains.pricing.
 """
 import asyncio
-import logging
 import datetime
+import logging
 from decimal import Decimal
 from typing import Any, Dict
+
 from fastapi import HTTPException, status
 
-from app.repositories.cart_repo import AsyncCartRepository
+from app.constants.cart_messages import CartMessages, CartSecurityMessages
 from app.domains.pricing.service import get_pricing_from_config
-from app.permissions.policies.cart_policies import CartPolicy
-from app.constants.cart_messages import CartSecurityMessages, CartMessages
-from app.integrations.push.webpush_impl import send_push_to_user
 from app.integrations.email.registry import get_email_provider
+from app.integrations.push.webpush_impl import send_push_to_user
+from app.permissions.policies.cart_policies import CartPolicy
+from app.repositories.cart_repo import AsyncCartRepository
 
 logger = logging.getLogger(__name__)
 

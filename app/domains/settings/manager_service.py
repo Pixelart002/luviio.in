@@ -1,11 +1,12 @@
 """Manager-scoped settings service."""
 from typing import Any, Dict
+
 from fastapi import HTTPException, status
 
 from app.domains.settings.core_engine import SettingsCoreEngine
-from app.permissions.policies.settings_policies import SettingsPolicy
 from app.enums.roles import UserRole
 from app.enums.settings import SettingCategory
+from app.permissions.policies.settings_policies import SettingsPolicy
 
 
 class ManagerSettingsService:

@@ -1,17 +1,18 @@
 """Settings HTTP router owned by the Settings domain."""
 import logging
 from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, Depends, Query, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.constants.settings_messages import SettingsMessages
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
-from app.permissions.settings import SettingsPermissions
+from app.core.maintenance import invalidate_maintenance_cache
 from app.domains.settings.admin_service import AdminSettingsService
 from app.domains.settings.schemas import SettingUpdate
-from app.constants.settings_messages import SettingsMessages
+from app.permissions.settings import SettingsPermissions
 from app.utils.response import success_response
-from app.core.maintenance import invalidate_maintenance_cache
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)

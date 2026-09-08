@@ -4,9 +4,11 @@ User Profile Attribute-Based Access Control (ABAC) Policies
 Path: app/permissions/policies/user_policies.py
 """
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
+
 from fastapi import HTTPException, status
-from app.constants.user_messages import UserSecurityMessages, UserRules
+
+from app.constants.user_messages import UserRules, UserSecurityMessages
 from app.enums.roles import UserRole
 
 logger = logging.getLogger(__name__)

@@ -2,18 +2,19 @@
 Order Domain Service — Enterprise Business Logic & State Machine.
 """
 import logging
-from typing import Any, Dict, Tuple, List
+from typing import Any, Dict, List, Tuple
+
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 
+from app.constants.order_messages import OrderMessages, OrderSecurityMessages
 from app.domains.orders.repository import AsyncOrderRepository
 from app.domains.users.repository import AsyncUserRepository
-from app.permissions.policies.order_policies import OrderPolicy
-from app.events.bus import get_event_bus, OrderShippedEvent, OrderStatusChangedEvent
-from app.integrations.payments.registry import get_payment_provider
-from app.utils.documents.pdf_invoice import build_invoice_pdf
 from app.enums.order_status import OrderStatus
-from app.constants.order_messages import OrderMessages, OrderSecurityMessages
+from app.events.bus import OrderShippedEvent, OrderStatusChangedEvent, get_event_bus
+from app.integrations.payments.registry import get_payment_provider
+from app.permissions.policies.order_policies import OrderPolicy
+from app.utils.documents.pdf_invoice import build_invoice_pdf
 
 logger = logging.getLogger(__name__)
 

@@ -8,8 +8,9 @@ server-header hardening, and security response headers.
 """
 import gzip
 import io
-import uuid
 import logging
+
+from app.core.logging_config import correlation_id_ctx, request_id_ctx, safe_id
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,12 @@ class RequestIDMiddleware:
             await self.app(scope, receive, send)
             return
 
-        request_id = str(uuid.uuid4())
+        incoming_request_id = next((value.decode("latin-1") for key, value in scope.get("headers", []) if key.lower() == b"x-request-id"), None)
+        incoming_correlation_id = next((value.decode("latin-1") for key, value in scope.get("headers", []) if key.lower() == b"x-correlation-id"), None)
+        request_id = safe_id(incoming_request_id)
+        correlation_id = safe_id(incoming_correlation_id) if incoming_correlation_id else request_id
+        request_token = request_id_ctx.set(request_id)
+        correlation_token = correlation_id_ctx.set(correlation_id)
         headers = [
             (k, v) for k, v in scope.get("headers", [])
             if k.lower() != b"x-request-id"
@@ -40,10 +46,15 @@ class RequestIDMiddleware:
                     if k.lower() != b"x-request-id"
                 ]
                 response_headers.append((b"x-request-id", request_id.encode()))
+                response_headers.append((b"x-correlation-id", correlation_id.encode()))
                 message = {**message, "headers": response_headers}
             await send(message)
 
-        await self.app(scope, receive, send_with_id)
+        try:
+            await self.app(scope, receive, send_with_id)
+        finally:
+            request_id_ctx.reset(request_token)
+            correlation_id_ctx.reset(correlation_token)
 
 
 class MaxBodySizeMiddleware:

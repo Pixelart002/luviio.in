@@ -5,7 +5,8 @@ Path: app/domains/inventory/schemas.py
 
 Pydantic models for inventory DTOs.
 """
-from typing import Optional, List
+from typing import List, Optional
+
 from pydantic import BaseModel, Field
 
 

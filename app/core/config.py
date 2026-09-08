@@ -6,7 +6,8 @@ Production defaults are deliberately restrictive; deployment-specific origins
 must be supplied explicitly through ALLOWED_ORIGINS.
 """
 from typing import List
-from pydantic import field_validator, ValidationInfo
+
+from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,6 +36,8 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in"
 
     RATE_LIMIT_PER_MINUTE: int = 60
+    SENTRY_DSN: str = ""
+    APP_VERSION: str = "unknown"
 
     @field_validator(
         "SB_URL", "SB_KEY", "SB_SERVICE_ROLE_KEY",

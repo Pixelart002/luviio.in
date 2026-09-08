@@ -1,10 +1,10 @@
 from app.domains.subscriptions.tier_registry import (
-    normalize_tier,
-    get_tier_perks,
-    tier_rank,
-    is_tier_at_least,
     all_tiers_public,
+    get_tier_perks,
+    is_tier_at_least,
+    normalize_tier,
     render_tier,
+    tier_rank,
 )
 
 

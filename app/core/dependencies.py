@@ -3,22 +3,22 @@ Dependencies — Async Hardened Production Grade (Luviio SSOT)
 ============================================================
 Path: app/core/dependencies.py
 """
-import json
 import base64
+import json
 import logging
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Callable, Dict, Optional
 
 from cachetools import TTLCache
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from gotrue.errors import AuthApiError
 
+from app.core.exceptions import UnauthenticatedUser, UnauthorizedAction
 from app.core.supabase import get_async_admin_supabase
 from app.domains.users.repository import AsyncUserRepository
-from app.core.exceptions import UnauthorizedAction, UnauthenticatedUser
+from app.enums.roles import UserRole
 from app.permissions.base import get_static_role_permissions
 from app.permissions.overrides import get_effective_permissions
-from app.enums.roles import UserRole
 from app.utils.timestamp import ts_to_iso
 
 logger = logging.getLogger(__name__)

@@ -5,6 +5,7 @@ Path: app/integrations/email/base.py
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
+
 class EmailProvider(ABC):
     """Blueprint for any email provider (Resend, SES, Mailgun)"""
     

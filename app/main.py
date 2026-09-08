@@ -9,20 +9,21 @@ To run:
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
+
 from fastapi import FastAPI
 
+from app.api.v1.api import api_router
 from app.core.config import settings
-from app.core.logger import setup_logging
+from app.core.exceptions import register_exception_handlers
+from app.core.logging_config import configure_logging
+from app.core.maintenance import maintenance_middleware
 from app.core.monitoring import init_sentry
 from app.core.setup_middlewares import apply_middlewares
-from app.core.exceptions import register_exception_handlers
-from app.core.maintenance import maintenance_middleware
-from app.events.registry import register_all_event_handlers
 from app.cron.scheduler import start_cron_jobs
+from app.events.registry import register_all_event_handlers
 from app.infrastructure.health.router import router as health_router
-from app.api.v1.api import api_router
 
-setup_logging()
+configure_logging()
 init_sentry()
 logger = logging.getLogger(__name__)
 

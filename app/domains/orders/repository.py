@@ -11,7 +11,8 @@ Upgrades:
   3. Optimized for Frontend Order History (`orders.html`) and Admin Dashboard.
 """
 import logging
-from typing import Any, Optional, Tuple, List
+from typing import Any, List, Optional, Tuple
+
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
@@ -140,5 +141,5 @@ class AsyncOrderRepository:
         try:
             res = await admin_sb.table("users").select("email").eq("id", user_id).maybe_single().execute()
             return res.data["email"] if res and res.data else None
-        except Exception as e:
+        except Exception:
             return None

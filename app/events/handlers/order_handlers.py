@@ -5,16 +5,20 @@ Path: app/events/handlers/order_handlers.py
 
 Contains all application reactions to order-related events.
 """
-import os
 import logging
+import os
 from typing import Any
 
 from app.events.bus import (
-    OrderCreatedEvent, OrderPaidEvent, OrderFailedEvent, 
-    OrderShippedEvent, OrderStatusChangedEvent, LowStockEvent
+    LowStockEvent,
+    OrderCreatedEvent,
+    OrderFailedEvent,
+    OrderPaidEvent,
+    OrderShippedEvent,
+    OrderStatusChangedEvent,
 )
 from app.integrations.email.registry import get_email_provider
-from app.integrations.push.webpush_impl import send_push_to_user, broadcast_push_to_admins
+from app.integrations.push.webpush_impl import broadcast_push_to_admins, send_push_to_user
 
 logger = logging.getLogger(__name__)
 

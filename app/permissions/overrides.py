@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,17 @@ async def get_effective_permissions(role: str, static_base: set[str]) -> set[str
 def static_descriptions() -> dict[str, Any]:
     """Human-readable catalogue of every permission in the system (for the admin UI)."""
     from app.enums.roles import UserRole
-    from app.permissions import coupons, shipping, subscriptions, settings, products, orders, users, payments, admin
+    from app.permissions import (
+        admin,
+        coupons,
+        orders,
+        payments,
+        products,
+        settings,
+        shipping,
+        subscriptions,
+        users,
+    )
     groups = [
         ("products", products.ProductPermissions, "Product catalogue"),
         ("orders", orders.OrderPermissions, "Orders lifecycle"),

@@ -7,7 +7,7 @@ Path: app/utils/image.py
 import io
 import logging
 import uuid
-from typing import Optional
+
 from PIL import Image, UnidentifiedImageError
 
 # 🔥 ARCHITECTURE CHANGE: Corrected Import
@@ -47,7 +47,7 @@ def _process_image(file_bytes: bytes, size: tuple[int, int] = THUMB_SIZE, qualit
         elif img.mode != "RGB":
             img = img.convert("RGB")
         
-        if img.width * img.height > Image.MAX_IMAGE_PIXELS: raise ValueError(f"Image dimensions too large")
+        if img.width * img.height > Image.MAX_IMAGE_PIXELS: raise ValueError("Image dimensions too large")
         img.thumbnail(size, _LANCZOS)
         
         buffer = io.BytesIO()
@@ -67,7 +67,7 @@ def _upload_to_storage(file_bytes: bytes, path: str, content_type: str = "image/
         )
         url = sb.storage.from_(STORAGE_BUCKET).get_public_url(path)
         return url.split("?")[0].rstrip("?")
-    except Exception as exc:
+    except Exception:
         raise RuntimeError("Failed to upload image to cloud storage. Please try again.")
 
 def _delete_from_storage(path: str) -> None:

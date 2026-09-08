@@ -8,7 +8,8 @@ Infrastructure health endpoint used by load balancers and monitoring.
 import asyncio
 import logging
 import time
-from fastapi import APIRouter, status, HTTPException
+
+from fastapi import APIRouter, HTTPException, status
 
 from app.core.config import settings
 from app.core.supabase import get_async_admin_supabase

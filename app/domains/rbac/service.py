@@ -10,9 +10,13 @@ from typing import Any, Dict, List
 
 from app.domains.rbac.repository import AsyncRbacRepository
 from app.enums.roles import UserRole
-from app.permissions.base import ROLE_PERMISSIONS
-from app.permissions.overrides import get_effective_permissions, invalidate_overrides_cache, static_descriptions
 from app.permissions.action_control import invalidate_action_control_cache
+from app.permissions.base import ROLE_PERMISSIONS
+from app.permissions.overrides import (
+    get_effective_permissions,
+    invalidate_overrides_cache,
+    static_descriptions,
+)
 
 logger = logging.getLogger(__name__)
 

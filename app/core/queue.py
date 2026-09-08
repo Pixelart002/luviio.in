@@ -8,8 +8,8 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Callable
 from functools import partial
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 

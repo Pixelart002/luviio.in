@@ -1,13 +1,13 @@
 from app.enums.roles import UserRole
-from app.permissions.products import ProductPermissions as PP
-from app.permissions.orders import OrderPermissions as OP
-from app.permissions.users import UserPermissions as UP
-from app.permissions.payments import PaymentPermissions as PayP
 from app.permissions.admin import AdminPermissions as AP
-from app.permissions.settings import SettingsPermissions as SP
 from app.permissions.coupons import CouponPermissions as CP
+from app.permissions.orders import OrderPermissions as OP
+from app.permissions.payments import PaymentPermissions as PayP
+from app.permissions.products import ProductPermissions as PP
+from app.permissions.settings import SettingsPermissions as SP
 from app.permissions.shipping import ShippingPermissions as ShipP
 from app.permissions.subscriptions import SubscriptionPermissions as SubP
+from app.permissions.users import UserPermissions as UP
 
 # Master Role-to-Permission Mapping
 # ==================================

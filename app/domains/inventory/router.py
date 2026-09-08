@@ -8,11 +8,10 @@ Thin layer — delegates all logic to InventoryService.
 """
 import logging
 from typing import Any, Dict
-from fastapi import APIRouter, Depends, Request, status
 
-from app.core.dependencies import require_permission
+from fastapi import APIRouter, Request, status
+
 from app.domains.inventory.service import InventoryService
-from app.domains.inventory.policy import InventoryPolicy
 from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)

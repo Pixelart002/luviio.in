@@ -1,9 +1,10 @@
 """Customer/public settings service."""
 from typing import Any, Dict, List
+
 from fastapi import HTTPException, status
 
-from app.domains.settings.core_engine import SettingsCoreEngine
 from app.constants.settings_messages import SettingsSecurityMessages
+from app.domains.settings.core_engine import SettingsCoreEngine
 
 
 class CustomerSettingsService:

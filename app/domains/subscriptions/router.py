@@ -21,11 +21,13 @@ from fastapi import APIRouter, Depends
 
 from app.core.dependencies import get_user_id_strict, require_permission
 from app.domains.subscriptions.schemas import (
-    SubscriptionPlanCreate, SubscriptionPlanUpdate, SubscribeRequest, TierPublic,
+    SubscribeRequest,
+    SubscriptionPlanCreate,
+    SubscriptionPlanUpdate,
+    TierPublic,
 )
 from app.domains.subscriptions.service import SubscriptionService
 from app.permissions.subscriptions import SubscriptionPermissions
-
 
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 

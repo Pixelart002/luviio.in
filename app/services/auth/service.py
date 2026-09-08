@@ -5,15 +5,16 @@ Path: app/services/auth/service.py
 """
 import logging
 from typing import Any, Dict
-from fastapi import HTTPException, status
-from supabase import AuthApiError
-from starlette.concurrency import run_in_threadpool
 
-from app.repositories.user_repo import AsyncUserRepository
-from app.repositories.auth_repo import AsyncAuthRepository
-from app.permissions.policies.auth_policies import AuthPolicy
-from app.integrations.email.registry import get_email_provider
+from fastapi import HTTPException, status
+from starlette.concurrency import run_in_threadpool
+from supabase import AuthApiError
+
 from app.constants.auth_messages import AuthSecurityMessages
+from app.integrations.email.registry import get_email_provider
+from app.permissions.policies.auth_policies import AuthPolicy
+from app.repositories.auth_repo import AsyncAuthRepository
+from app.repositories.user_repo import AsyncUserRepository
 
 logger = logging.getLogger(__name__)
 

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 
 from app.constants.subscription_messages import SubscriptionSecurityMessages
 from app.domains.subscriptions.tier_registry import TIER_ORDER, normalize_tier

@@ -5,7 +5,9 @@ Path: app/utils/pagination.py
 """
 import math
 from typing import Any, List
-from app.utils.response import success_response, PaginationMeta
+
+from app.utils.response import PaginationMeta, success_response
+
 
 def paginate(items: List[Any], total: int, page: int, page_size: int) -> dict:
     """Calculates pagination metadata and returns a standardized response."""

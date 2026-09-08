@@ -6,22 +6,29 @@ Path: app/events/registry.py
 Registers all background task handlers to their respective events on the EventBus.
 """
 import logging
-from app.events.bus  import (
-    get_event_bus, 
-    OrderCreatedEvent, OrderPaidEvent, OrderFailedEvent, 
-    OrderShippedEvent, OrderStatusChangedEvent, LowStockEvent
+
+from app.events.bus import (
+    LowStockEvent,
+    OrderCreatedEvent,
+    OrderFailedEvent,
+    OrderPaidEvent,
+    OrderShippedEvent,
+    OrderStatusChangedEvent,
+    get_event_bus,
 )
+
 # 🔥 FIX: Path updated from hooks to events
 from app.events.handlers.order_handlers import (
-    handle_new_order_admin_push, handle_paid_email,
-    handle_paid_push, handle_failed_push,
-    handle_shipped_push, handle_status_push,
-    handle_low_stock_push
+    handle_failed_push,
+    handle_low_stock_push,
+    handle_new_order_admin_push,
+    handle_paid_email,
+    handle_paid_push,
+    handle_shipped_push,
+    handle_status_push,
 )
-from app.events.handlers.settings_handlers import (
-    handle_setting_updated, handle_setting_reset
-)
-from app.events.settings_events import SettingUpdatedEvent, SettingResetEvent
+from app.events.handlers.settings_handlers import handle_setting_reset, handle_setting_updated
+from app.events.settings_events import SettingResetEvent, SettingUpdatedEvent
 
 logger = logging.getLogger(__name__)
 _registered: bool = False

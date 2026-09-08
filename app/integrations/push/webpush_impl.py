@@ -4,14 +4,15 @@ Push Notification Utility — Web Push API (VAPID)
 Architecture Layer: External Integrations
 Path: app/integrations/push/webpush_impl.py
 """
-import os
+import asyncio
 import json
 import logging
-import time
+import os
 import threading
-import asyncio
+import time
 from collections import defaultdict
 from typing import Any
+
 import requests
 from starlette.concurrency import run_in_threadpool
 
@@ -82,7 +83,7 @@ def send_push(subscription: dict[str, Any], title: str, body: str, icon: str = "
     """Synchronous push sender (now strictly runs via Starlette's run_in_threadpool)."""
     if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY: return False
     try: 
-        from pywebpush import webpush, WebPushException
+        from pywebpush import webpush
     except ImportError: 
         return False
     

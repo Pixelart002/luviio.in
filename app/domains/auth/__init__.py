@@ -11,8 +11,8 @@ Public entry point for the auth domain. The domain owns:
 Canonical home for: AuthService, AuthPolicy, AsyncAuthRepository,
 auth DTOs and the /api/v1/auth router.
 """
-from app.domains.auth.service import AuthService
 from app.domains.auth.policy import AuthPolicy
 from app.domains.auth.repository import AsyncAuthRepository
+from app.domains.auth.service import AuthService
 
 __all__ = ["AuthService", "AuthPolicy", "AsyncAuthRepository"]

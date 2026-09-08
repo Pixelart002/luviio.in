@@ -6,14 +6,13 @@ Path: app/domains/coupons/service.py
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 
-from app.domains.coupons.repository import AsyncCouponRepository
-from app.domains.coupons.policy import CouponPolicy
 from app.constants.coupon_messages import COUPON_TYPE_PERCENT, CouponSecurityMessages
+from app.domains.coupons.policy import CouponPolicy
+from app.domains.coupons.repository import AsyncCouponRepository
 from app.permissions.action_control import assert_action_enabled
 
 logger = logging.getLogger(__name__)

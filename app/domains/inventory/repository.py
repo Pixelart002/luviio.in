@@ -10,6 +10,7 @@ Consolidated stock operations extracted from:
 """
 import logging
 from typing import Any, Dict, List, Optional
+
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)

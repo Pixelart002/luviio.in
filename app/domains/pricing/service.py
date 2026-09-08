@@ -348,7 +348,7 @@ def get_pricing_for_user(
     normalized through the registry, so legacy strings (vip/prime/normal)
     resolve to the 3-tier system: free -> premium -> platinum.
     """
-    from app.domains.subscriptions.tier_registry import normalize_tier, get_tier_perks
+    from app.domains.subscriptions.tier_registry import get_tier_perks
 
     base_strategy = get_pricing_from_config(config)
 

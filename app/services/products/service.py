@@ -5,13 +5,14 @@ Path: app/services/products/service.py
 """
 import logging
 from typing import Any, Dict, List, Tuple
+
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 
-from app.repositories.product_repo import AsyncProductRepository
-from app.permissions.policies.product_policies import ProductPolicy
 from app.constants.product_messages import ProductSecurityMessages
-from app.utils.image import upload_product_image, delete_product_image
+from app.permissions.policies.product_policies import ProductPolicy
+from app.repositories.product_repo import AsyncProductRepository
+from app.utils.image import delete_product_image, upload_product_image
 
 logger = logging.getLogger(__name__)
 

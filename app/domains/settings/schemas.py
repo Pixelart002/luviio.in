@@ -3,10 +3,13 @@ Settings Schemas (DTOs)
 =======================
 Path: app/api/schemas/settings_dto.py
 """
-from pydantic import BaseModel, ConfigDict, Field
-from typing import Any, List, Optional
 from datetime import datetime
+from typing import Any, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from app.enums.settings import SettingCategory, SettingDataType
+
 
 class SettingUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)

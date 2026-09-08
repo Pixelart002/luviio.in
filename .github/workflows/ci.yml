@@ -30,5 +30,21 @@ jobs:
       - name: Compile application
         run: uv run python -m compileall -q app
 
-      - name: Run tests
+      - name: Ruff
+        run: uv run ruff check app tests
+
+      - name: Mypy
+        run: uv run mypy app --config-file mypy.ini
+
+      - name: Dependency audit
+        run: uv run pip-audit --strict
+
+      - name: Run tests with coverage
         run: uv run pytest -q
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml

@@ -4,19 +4,20 @@ User Router — Async Hardened Production Grade
 Path: app/domains/users/router.py
 """
 import logging
-from uuid import UUID
 from typing import Any, Dict, Optional
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Query, Request, status
 from slowapi import Limiter
 
-from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
-from app.permissions.users import UserPermissions
-from app.domains.users.service import UserService
-from app.domains.users.schemas import ProfileUpdate, AddressCreate, AdminUserUpdate
-from app.utils.response import success_response
-from app.utils.pagination import paginate
 from app.constants.user_messages import UserMessages
+from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
+from app.domains.users.schemas import AddressCreate, AdminUserUpdate, ProfileUpdate
+from app.domains.users.service import UserService
 from app.enums.roles import UserRole
+from app.permissions.users import UserPermissions
+from app.utils.pagination import paginate
+from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])

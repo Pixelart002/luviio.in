@@ -6,6 +6,7 @@ Path: app/events/settings_events.py
 from dataclasses import dataclass
 from typing import Any
 
+
 @dataclass
 class SettingUpdatedEvent:
     key: str

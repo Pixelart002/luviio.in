@@ -1,5 +1,6 @@
 """Push notification HTTP schemas owned by the Notifications domain."""
 from typing import List
+
 from pydantic import BaseModel, ConfigDict, Field
 
 

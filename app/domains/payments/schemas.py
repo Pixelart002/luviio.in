@@ -3,9 +3,11 @@ Payment Schemas (DTOs)
 ======================
 Path: app/api/schemas/payment_dto.py
 """
-from pydantic import BaseModel, ConfigDict, Field
-from uuid import UUID
 from typing import Optional
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class PaymentIntentRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)

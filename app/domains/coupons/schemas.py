@@ -8,7 +8,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.constants.coupon_messages import COUPON_TYPE_PERCENT, COUPON_TYPE_FIXED
+from app.constants.coupon_messages import COUPON_TYPE_FIXED, COUPON_TYPE_PERCENT
 
 
 class CouponCreate(BaseModel):
