@@ -22,7 +22,6 @@ HTTP request
 - `app/api/middlewares`: stateless HTTP/ASGI transport concerns only.
 - `app/domains/<domain>`: vertical feature slice containing router, business service, repository, and domain-specific contracts/policy.
 - `app/infrastructure`: cross-cutting infrastructure adapters/endpoints. Health monitoring lives under `app/infrastructure/health`.
-- `app/services` and `app/repositories`: legacy compatibility area being migrated; new feature code must use canonical domain modules.
 - `app/permissions`: authorization policy decisions.
 - `app/core`: configuration, authentication dependencies, clients, shared middleware composition, logging, and errors.
 - `app/integrations`: isolated third-party adapters.
@@ -31,33 +30,33 @@ HTTP request
 - `tests`: behavior and security regression coverage.
 - `docs`: human-maintained system documentation.
 
+The retired top-level `app/services` and `app/repositories` feature layers are no longer application boundaries. New feature code must use canonical domain modules.
+
 ## API transport migration
 
 The old feature-router copies under `app/api/v1/routers/` have been removed. Invoice routing is owned by Orders, while health routing is owned by infrastructure.
 
-The old shared `app/api/schemas` DTO package has now been retired. Domain request/response contracts live with their owning bounded context, preventing the API layer from becoming a second business-model layer.
+The old shared `app/api/schemas` DTO package is being retired after remaining imports are migrated. Domain request/response contracts live with their owning bounded context, preventing the API layer from becoming a second business-model layer.
 
 The API layer is intentionally thin: `app/main.py` owns application assembly, `app/api/v1/api.py` composes the versioned route table, and domain/infrastructure modules own endpoint behavior.
 
-## Payment domain migration
+## Domain migration status
 
-Payments have a single canonical repository under `app/domains/payments/repository.py`. The abandoned-order cron imports that repository directly, and payment tests target `app/domains/payments/service.py` ownership. The duplicate legacy payment service has been removed.
+Feature ownership is now canonical under `app/domains/<domain>/`. The migrated Auth, Cart, Orders, Products, Users, Settings, Payments, and other feature implementations no longer require the retired top-level service/repository implementations.
 
-`app/repositories/payment_repo.py` remains only as a temporary compatibility shim; it contains no independent persistence implementation and has an explicit removal condition after remaining legacy imports are migrated.
+Payments have a single canonical repository under `app/domains/payments/repository.py`. Payment orchestration imports that repository directly, and pricing is consumed from `app/domains/pricing/service.py`. The temporary compatibility modules for the payment repository and pricing service have been removed.
 
-The canonical payment repository implementation was preserved during the path/documentation cleanup. Its module path is now documented as `app/domains/payments/repository.py`.
+The canonical payment service is `app/domains/payments/service.py`; it owns checkout/payment orchestration and uses domain repositories plus external payment integrations. The abandoned-order cron also imports the canonical payment repository directly.
 
-## Pricing domain migration
+New application code must not import from `app.services.*` or `app.repositories.*`.
 
-Pricing ownership is canonical under `app/domains/pricing/service.py`. Pricing tests now import the canonical domain service, and the legacy Cart Service consumes the canonical pricing implementation. The legacy pricing module remains temporarily while Payment/Cart legacy compatibility imports are completed; it must not contain divergent business logic.
+## Admin domain
 
-## Admin domain migration
+Admin routing, business logic, and persistence have canonical ownership under `app/domains/admin/`. The admin router imports `AdminService` from the domain, and the domain service imports `AsyncAdminRepository` from the domain repository.
 
-Admin routing, business logic, and persistence now have canonical ownership under `app/domains/admin/`. The admin router imports `AdminService` from the domain, and the domain service imports `AsyncAdminRepository` from the domain repository. The duplicate legacy `app/services/admin/service.py` and `app/repositories/admin_repo.py` implementations have been removed.
+## Notifications domain
 
-## Notifications domain migration
-
-Push notification routing, orchestration, and persistence now have canonical ownership under `app/domains/notifications/`. The router imports `PushService` from the domain service, and the domain service imports `AsyncPushRepository` from the domain repository. The duplicate legacy `app/services/notifications/push.py` and `app/repositories/push_repo.py` modules have been removed.
+Push notification routing, orchestration, and persistence have canonical ownership under `app/domains/notifications/`. The router imports `PushService` from the domain service, and the domain service imports `AsyncPushRepository` from the domain repository.
 
 ## Observability and correlation
 
@@ -69,7 +68,7 @@ Middleware remains outside domains because it applies uniformly to every worker/
 
 ## Settings boundary
 
-The Settings domain owns `SettingsCoreEngine`, role-scoped settings services, and its repository. New feature code must not depend on the legacy settings service package.
+The Settings domain owns `SettingsCoreEngine`, role-scoped settings services, and its repository. New feature code must not depend on a legacy settings service package.
 
 ## Scaling rules
 
@@ -86,4 +85,8 @@ The Settings domain owns `SettingsCoreEngine`, role-scoped settings services, an
 
 ## Safe migration rule
 
-Never remove a legacy module because its name looks old. First add the canonical replacement, migrate every import, run syntax/tests, perform a repository-wide reference scan, then remove the stale module. Temporary compatibility shims are acceptable only when they contain no duplicate business logic and have an explicit removal condition.
+Never remove a legacy module because its name looks old. First add the canonical replacement, migrate every import, run syntax/tests, perform a repository-wide reference scan, then remove the stale module. Compatibility shims are not part of the current canonical architecture and must not be recreated.
+
+## Verification status
+
+Architecture documentation is updated to reflect the current domain ownership. CI remains the authoritative syntax/lint/type/test verification path; a change is not considered final until the CI workflow is green.
