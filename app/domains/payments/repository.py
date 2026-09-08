@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from app.core.supabase import get_async_admin_supabase
+from app.integrations.payments.registry import get_payment_provider
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +102,17 @@ class AsyncPaymentRepository:
             raise RuntimeError("RPC returned no data for pending order reservation.")
         return data
 
-    async def settle_order_transaction(self, order_id: str, pi_id: str, amount: float, user_id: str, payment_method: Optional[str] = None) -> str:
+    async def settle_order_transaction(self, order_id: str, pi_id: str, amount: float, user_id: str, payment_method: Optional[str] = None, stripe_currency: Optional[str] = None) -> str:
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.rpc("settle_order_transaction", {"p_order_id": order_id, "p_pi_id": pi_id, "p_amount": amount, "p_user_id": user_id, "p_payment_method": payment_method}).execute()
+        if stripe_currency is None:
+            provider = get_payment_provider("stripe")
+            try:
+                intent = await __import__("starlette.concurrency", fromlist=["run_in_threadpool"]).run_in_threadpool(provider.retrieve_intent, pi_id)
+                stripe_currency = intent.get("currency")
+            except Exception as exc:
+                logger.error("Unable to verify Stripe currency for PI %s: %s", pi_id, exc, exc_info=True)
+                raise RuntimeError("Unable to verify Stripe payment currency") from exc
+        res = await admin_sb.rpc("settle_order_transaction", {"p_order_id": order_id, "p_pi_id": pi_id, "p_amount": amount, "p_user_id": user_id, "p_payment_method": payment_method, "p_stripe_currency": stripe_currency}).execute()
         data = getattr(res, "data", None)
         return str(data) if data else "FAILED"
 
