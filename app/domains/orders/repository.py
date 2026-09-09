@@ -12,8 +12,8 @@ from app.core.supabase import get_async_admin_supabase
 logger = logging.getLogger(__name__)
 
 ORDER_ITEMS_SELECT = "*, order_items(*, products(name, image_url, slug, price, hsn_code, gst_percentage, compare_price))"
-# Keep this projection limited to columns known to exist on the orders table.
-USER_ORDER_SELECT = "id, order_number, status, total_amount, grand_total, created_at"
+# These are verified columns on the live public.orders table.
+USER_ORDER_SELECT = "id, order_number, status, total_amount, created_at"
 
 
 class AsyncOrderRepository:
