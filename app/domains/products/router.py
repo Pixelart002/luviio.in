@@ -3,7 +3,8 @@ import json
 import uuid
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import UploadFile
 from pydantic import ValidationError
 
 from app.constants.product_messages import ProductMessages
@@ -50,23 +51,29 @@ async def get_product(request: Request, slug: str) -> Dict[str, Any]:
     return success_response(data=await ProductService().get_product(slug))
 
 @router.post("/products", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(ProductPermissions.CREATE))])
-async def create_product(request: Request, product: str = Form(None), files: List[UploadFile] = File(None)) -> Dict[str, Any]:
+async def create_product(request: Request) -> Dict[str, Any]:
     """Create a product from JSON or multipart/form-data with optional image files."""
     content_type = request.headers.get("content-type", "").lower()
+
     if content_type.startswith("multipart/form-data"):
-        if not product:
+        form = await request.form()
+        raw_product = form.get("product")
+        if not raw_product:
             raise ValueError("Missing product payload")
         try:
-            payload = ProductCreate.model_validate(json.loads(product))
+            raw_data = json.loads(str(raw_product))
+            payload = ProductCreate.model_validate(raw_data)
         except (json.JSONDecodeError, ValidationError) as exc:
             raise ValueError("Invalid product payload") from exc
-        image_files = []
-        for file in files or []:
-            image_files.append((await file.read(), file.filename or "unknown"))
+
+        image_files: List[tuple[bytes, str]] = []
+        for value in form.getlist("files"):
+            if isinstance(value, UploadFile):
+                image_files.append((await value.read(), value.filename or "unknown"))
         result = await ProductService().create_product_with_images(payload.model_dump(), image_files)
     else:
-        raw = await request.json()
-        payload = ProductCreate.model_validate(raw)
+        raw_data = await request.json()
+        payload = ProductCreate.model_validate(raw_data)
         result = await ProductService().create_product(payload.model_dump())
 
     if hasattr(request.state, "actions"):
@@ -88,13 +95,15 @@ async def delete_product(request: Request, product_id: uuid.UUID) -> Dict[str, A
     return success_response(message=ProductMessages.PRODUCT_DELETED)
 
 @router.post("/products/{product_id}/images", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
-async def upload_image_endpoint(request: Request, product_id: uuid.UUID, files: List[UploadFile] = File(...)) -> Dict[str, Any]:
+async def upload_image_endpoint(request: Request, product_id: uuid.UUID) -> Dict[str, Any]:
+    form = await request.form()
+    image_files: List[tuple[bytes, str]] = []
+    for value in form.getlist("files"):
+        if isinstance(value, UploadFile):
+            image_files.append((await value.read(), value.filename or "unknown"))
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Receiving {len(files)} asset upload(s) for Product: {str(product_id)[:8]}...")
-    payload = []
-    for file in files:
-        payload.append((await file.read(), file.filename or "unknown"))
-    result = await ProductService().upload_images(str(product_id), payload)
+        request.state.actions.append(f"Receiving {len(image_files)} asset upload(s) for Product: {str(product_id)[:8]}...")
+    result = await ProductService().upload_images(str(product_id), image_files)
     return success_response(data=result, message=ProductMessages.IMAGE_UPLOADED)
 
 @router.delete("/products/{product_id}/images/{index}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
