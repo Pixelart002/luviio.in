@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from app.constants.product_messages import ProductRules, ProductSecurityMessages
 from app.domains.products.repository import AsyncProductRepository
 from app.permissions.policies.product_policies import ProductPolicy
-from app.utils.image import delete_product_image, upload_product_image
+from app.utils.image import delete_product_image, upload_multiple_images
 
 logger = logging.getLogger(__name__)
 
@@ -126,19 +126,10 @@ class ProductService:
                 detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT),
             )
 
-        uploaded: List[str] = []
         try:
-            for contents, filename in files:
-                url = await run_in_threadpool(
-                    upload_product_image,
-                    file_bytes=contents,
-                    product_id=product_id,
-                    filename=filename,
-                    generate_thumbnail=False,
-                )
-                uploaded.append(url)
+            uploaded = await run_in_threadpool(upload_multiple_images, files, product_id, max_images=ProductRules.MAX_IMAGES_PER_PRODUCT - len(existing))
         except Exception as exc:
-            logger.error("Product image upload failed after %d image(s): %s", len(uploaded), exc)
+            logger.error("Product image upload failed: %s", exc)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=ProductSecurityMessages.UPLOAD_FAILED) from exc
 
         all_images = existing + uploaded
