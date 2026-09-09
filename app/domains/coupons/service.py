@@ -80,7 +80,12 @@ class CouponService:
             raise HTTPException(status_code=400, detail="This coupon yields no discount on the current cart.")
 
         if order_id:
-            await self.repo.record_redemption(coupon["id"], user_id, order_id, discount)
+            recorded = await self.repo.record_redemption(coupon["id"], user_id, order_id, discount)
+            if not recorded:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This coupon could not be reserved for the order. Please try again.",
+                )
 
         return {
             "code": coupon["code"],
@@ -101,7 +106,7 @@ class CouponService:
             discount = min(discount, float(coupon["max_discount"]))
         return min(discount, subtotal)
 
-    # ── Public helper for the orders/payment pipeline ───────────────────────
+    # ── Public helper for the orders/payment pipeline ────────────────────────
     async def resolve_discount_for_checkout(self, code: Optional[str], cart_subtotal: float,
                                             user_id: str) -> Dict[str, Any]:
         """Returns {discount, coupon_id, code} without recording (recording happens on payment)."""
@@ -113,4 +118,6 @@ class CouponService:
         used = await self.repo.redemptions_for_user(coupon["id"], user_id)
         CouponPolicy.assert_limits(coupon, used)
         discount = self._compute_discount(coupon, cart_subtotal)
+        if discount <= 0:
+            raise HTTPException(status_code=400, detail="This coupon yields no discount on the current cart.")
         return {"discount": round(discount, 2), "coupon_id": coupon["id"], "code": coupon["code"]}
