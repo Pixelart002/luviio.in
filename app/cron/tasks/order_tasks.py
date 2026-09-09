@@ -39,45 +39,51 @@ async def cleanup_abandoned_orders() -> None:
         customer_id = order.get("customer_id")
 
         try:
-            if pi_id:
-                intent = await run_in_threadpool(provider.retrieve_intent, pi_id)
+            # COD orders are intentionally pending until fulfillment/payment at
+            # delivery. They have no Stripe PaymentIntent and must never be
+            # treated as abandoned card checkouts or have stock released here.
+            if not pi_id:
+                logger.info("[CRON] Skipping COD/non-Stripe pending order %s.", order_id[:8])
+                continue
 
-                # Self-heal: the success webhook may have been the thing
-                # that got lost, not the payment itself.
-                if intent.get("status") == "succeeded":
-                    result = await repo.settle_order_transaction(
-                        order_id,
-                        pi_id,
-                        intent.get("amount", 0) / 100,
-                        customer_id,
-                        stripe_currency=intent.get("currency"),
+            intent = await run_in_threadpool(provider.retrieve_intent, pi_id)
+
+            # Self-heal: the success webhook may have been the thing
+            # that got lost, not the payment itself.
+            if intent.get("status") == "succeeded":
+                result = await repo.settle_order_transaction(
+                    order_id,
+                    pi_id,
+                    intent.get("amount", 0) / 100,
+                    customer_id,
+                    stripe_currency=intent.get("currency"),
+                )
+                logger.info("[CRON] Order %s recovered to PAID (missed webhook). Result: %s", order_id[:8], result)
+                continue
+
+            # Explicitly cancel on Stripe's side FIRST -- this prevents a
+            # stale checkout tab from completing payment after stock release.
+            if intent.get("status") != "canceled":
+                try:
+                    await run_in_threadpool(provider.cancel_intent, pi_id)
+                except Exception as cancel_exc:
+                    logger.warning(
+                        "[CRON] Could not cancel Stripe intent %s (may already be closed/succeeded): %s",
+                        pi_id, cancel_exc
                     )
-                    logger.info("[CRON] Order %s recovered to PAID (missed webhook). Result: %s", order_id[:8], result)
-                    continue
-
-                # Explicitly cancel on Stripe's side FIRST -- this prevents a
-                # stale checkout tab from completing payment after stock release.
-                if intent.get("status") != "canceled":
-                    try:
-                        await run_in_threadpool(provider.cancel_intent, pi_id)
-                    except Exception as cancel_exc:
-                        logger.warning(
-                            "[CRON] Could not cancel Stripe intent %s (may already be closed/succeeded): %s",
-                            pi_id, cancel_exc
+                    # If Stripe refuses the cancel because it just
+                    # succeeded, re-check instead of racing cancellation.
+                    refreshed = await run_in_threadpool(provider.retrieve_intent, pi_id)
+                    if refreshed.get("status") == "succeeded":
+                        result = await repo.settle_order_transaction(
+                            order_id,
+                            pi_id,
+                            refreshed.get("amount", 0) / 100,
+                            customer_id,
+                            stripe_currency=refreshed.get("currency"),
                         )
-                        # If Stripe refuses the cancel because it just
-                        # succeeded, re-check instead of racing cancellation.
-                        refreshed = await run_in_threadpool(provider.retrieve_intent, pi_id)
-                        if refreshed.get("status") == "succeeded":
-                            result = await repo.settle_order_transaction(
-                                order_id,
-                                pi_id,
-                                refreshed.get("amount", 0) / 100,
-                                customer_id,
-                                stripe_currency=refreshed.get("currency"),
-                            )
-                            logger.info("[CRON] Order %s recovered to PAID on retry check. Result: %s", order_id[:8], result)
-                            continue
+                        logger.info("[CRON] Order %s recovered to PAID on retry check. Result: %s", order_id[:8], result)
+                        continue
 
             result = await repo.release_abandoned_order(order_id, reason="abandoned_checkout_timeout")
             logger.info("[CRON] Order %s cancelled + stock released. Result: %s", order_id[:8], result)
