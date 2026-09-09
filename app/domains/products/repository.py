@@ -16,7 +16,14 @@ class AsyncProductRepository:
         if "product_images" in product:
             imgs = product.pop("product_images") or []
             imgs.sort(key=lambda x: x.get("position", 0) if x.get("position") is not None else 0)
-            product["images"] = [img["url"] for img in imgs if "url" in img]
+            relational_urls = [img["url"] for img in imgs if "url" in img]
+            # Relational rows are the canonical ordered gallery when present.
+            if relational_urls:
+                product["images"] = relational_urls
+            else:
+                product["images"] = product.get("images") or []
+        else:
+            product["images"] = product.get("images") or []
         return product
 
     async def get_active_categories(self) -> List[Dict[str, Any]]:
@@ -42,7 +49,7 @@ class AsyncProductRepository:
 
     async def get_products(self, page: int, page_size: int, category_slug: Optional[str], search: Optional[str], min_price: Optional[float], max_price: Optional[float], in_stock: Optional[bool]) -> Tuple[List[Dict[str, Any]], int]:
         admin_sb = await get_async_admin_supabase()
-        q = admin_sb.table("products").select("id, name, slug, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, attributes, is_active, created_at, hsn_code, gst_percentage, discount_amount, discount_percentage, categories(name, slug), product_images(id, url, alt, position)", count="exact").eq("is_active", True)
+        q = admin_sb.table("products").select("id, name, slug, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, images, attributes, is_active, created_at, hsn_code, gst_percentage, discount_amount, discount_percentage, categories(name, slug), product_images(id, url, alt, position)", count="exact").eq("is_active", True)
         if category_slug:
             cat = await admin_sb.table("categories").select("id").eq("slug", category_slug).limit(1).execute()
             if cat and getattr(cat, "data", None):
@@ -70,7 +77,7 @@ class AsyncProductRepository:
 
     async def get_product_by_id(self, product_id: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.table("products").select("id, name, slug, sku, price, compare_price, stock, hsn_code, gst_percentage, image_url, attributes, is_active, product_images(id, url, alt, position)").eq("id", product_id).limit(1).execute()
+        res = await admin_sb.table("products").select("id, name, slug, sku, price, compare_price, stock, hsn_code, gst_percentage, image_url, images, attributes, is_active, product_images(id, url, alt, position)").eq("id", product_id).limit(1).execute()
         data_list = getattr(res, "data", None)
         return self._format_product_images(data_list[0]) if data_list else None
 
@@ -97,17 +104,13 @@ class AsyncProductRepository:
 
     async def create_product(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
-        safe_data = dict(data)
-        safe_data.pop("images", None)
-        res = await admin_sb.table("products").insert(safe_data).execute()
+        res = await admin_sb.table("products").insert(dict(data)).execute()
         data_list = getattr(res, "data", None)
         return data_list[0] if data_list else None
 
     async def update_product(self, product_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
-        safe_data = dict(data)
-        safe_data.pop("images", None)
-        res = await admin_sb.table("products").update(safe_data).eq("id", product_id).execute()
+        res = await admin_sb.table("products").update(dict(data)).eq("id", product_id).execute()
         data_list = getattr(res, "data", None)
         return data_list[0] if data_list else None
 
