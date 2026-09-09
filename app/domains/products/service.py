@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Tuple
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 
-from app.constants.product_messages import ProductSecurityMessages
+from app.constants.product_messages import ProductRules, ProductSecurityMessages
 from app.domains.products.repository import AsyncProductRepository
 from app.permissions.policies.product_policies import ProductPolicy
 from app.utils.image import delete_product_image, upload_product_image
@@ -120,7 +120,6 @@ class ProductService:
         if not files:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one image is required.")
         ProductPolicy.assert_can_upload_image(len(existing))
-        from app.constants.product_messages import ProductRules
         if len(existing) + len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
