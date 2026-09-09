@@ -1,14 +1,8 @@
 """
-Order Repository — Async Enterprise Grade (CLEANED & OPTIMIZED)
-===============================================================
-Path: app/repositories/order_repo.py
+Order Repository — Async Enterprise Grade.
 
-Upgrades:
-  1. Removed `create_order_with_items` (Dead code). Order creation now happens 
-     atomically via `payment_repo.py` using `create_pending_order_with_reservation` RPC.
-  2. `cancel_order_and_restore_stock` correctly delegates to the single source 
-     of truth RPC (`cancel_order_and_release_stock`) for safe cancellations.
-  3. Optimized for Frontend Order History (`orders.html`) and Admin Dashboard.
+Customer order history uses a lightweight summary projection; full order items
+remain available through get_order_by_id for the order-detail view.
 """
 import logging
 from typing import Any, List, Optional, Tuple
@@ -17,9 +11,9 @@ from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 
-# order_items(*) contains the immutable unit_price/subtotal. Product price is
-# also exposed as a fallback for older/incomplete order-item records.
 ORDER_ITEMS_SELECT = "*, order_items(*, products(name, image_url, slug, price, hsn_code, gst_percentage, compare_price))"
+USER_ORDER_SELECT = "id, order_number, status, total_amount, grand_total, created_at, payment_method"
+
 
 class AsyncOrderRepository:
     def __init__(self):
@@ -52,10 +46,7 @@ class AsyncOrderRepository:
             if not check or not check.data:
                 logger.warning(f"[REPO:ORDERS] Cancel failed. Order {order_id} invalid state or access denied.")
                 return None
-            result = await admin_sb.rpc("cancel_order_and_release_stock", {
-                "p_order_id": order_id,
-                "p_reason": "customer_requested" if user_id else "admin_requested"
-            }).execute()
+            result = await admin_sb.rpc("cancel_order_and_release_stock", {"p_order_id": order_id, "p_reason": "customer_requested" if user_id else "admin_requested"}).execute()
             outcome = getattr(result, "data", None)
             if outcome == "ORDER_ALREADY_FULFILLED":
                 logger.info(f"[REPO:ORDERS] Cancel refused for {order_id} — already shipped/delivered.")
@@ -74,12 +65,7 @@ class AsyncOrderRepository:
             check = await admin_sb.table("orders").select("id").eq("id", order_id).eq("status", expected_status).execute()
             if not check or not check.data:
                 return None
-            res = await admin_sb.rpc("rpc_admin_update_order_status", {
-                "p_order_id": order_id,
-                "p_new_status": updates.get("status"),
-                "p_tracking_number": updates.get("tracking_number"),
-                "p_notes": updates.get("notes")
-            }).execute()
+            res = await admin_sb.rpc("rpc_admin_update_order_status", {"p_order_id": order_id, "p_new_status": updates.get("status"), "p_tracking_number": updates.get("tracking_number"), "p_notes": updates.get("notes")}).execute()
             return res.data if res and res.data else None
         except Exception as e:
             logger.error(f"[REPO:ORDERS] Error updating order {order_id}: {e}", exc_info=True)
@@ -89,7 +75,7 @@ class AsyncOrderRepository:
         admin_sb = await get_async_admin_supabase()
         offset = (page - 1) * page_size
         try:
-            q = admin_sb.table("orders").select(ORDER_ITEMS_SELECT, count="exact").eq("customer_id", user_id).order("created_at", desc=True)
+            q = admin_sb.table("orders").select(USER_ORDER_SELECT, count="exact").eq("customer_id", user_id).order("created_at", desc=True)
             if status_filter:
                 q = q.eq("status", status_filter)
             res = await q.range(offset, offset + page_size - 1).execute()
