@@ -1,8 +1,10 @@
 """Product Domain Router — canonical HTTP boundary."""
+import json
 import uuid
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
+from pydantic import ValidationError
 
 from app.constants.product_messages import ProductMessages
 from app.core.dependencies import require_permission
@@ -48,10 +50,27 @@ async def get_product(request: Request, slug: str) -> Dict[str, Any]:
     return success_response(data=await ProductService().get_product(slug))
 
 @router.post("/products", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(ProductPermissions.CREATE))])
-async def create_product(request: Request, payload: ProductCreate) -> Dict[str, Any]:
+async def create_product(request: Request, product: str = Form(None), files: List[UploadFile] = File(None)) -> Dict[str, Any]:
+    """Create a product from JSON or multipart/form-data with optional image files."""
+    content_type = request.headers.get("content-type", "").lower()
+    if content_type.startswith("multipart/form-data"):
+        if not product:
+            raise ValueError("Missing product payload")
+        try:
+            payload = ProductCreate.model_validate(json.loads(product))
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise ValueError("Invalid product payload") from exc
+        image_files = []
+        for file in files or []:
+            image_files.append((await file.read(), file.filename or "unknown"))
+        result = await ProductService().create_product_with_images(payload.model_dump(), image_files)
+    else:
+        raw = await request.json()
+        payload = ProductCreate.model_validate(raw)
+        result = await ProductService().create_product(payload.model_dump())
+
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin inserting new product -> SKU: {payload.sku or 'Auto'}")
-    result = await ProductService().create_product(payload.model_dump())
     return success_response(data=result, message=ProductMessages.PRODUCT_CREATED)
 
 @router.patch("/products/{product_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
