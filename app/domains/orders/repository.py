@@ -7,12 +7,12 @@ remain available through get_order_by_id for the order-detail view.
 import logging
 from typing import Any, List, Optional, Tuple
 
+from fastapi import HTTPException, status
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 
 ORDER_ITEMS_SELECT = "*, order_items(*, products(name, image_url, slug, price, hsn_code, gst_percentage, compare_price))"
-# These are verified columns on the live public.orders table.
 USER_ORDER_SELECT = "id, order_number, status, total_amount, created_at"
 
 
@@ -83,7 +83,7 @@ class AsyncOrderRepository:
             return res.data or [], res.count or 0
         except Exception as e:
             logger.error(f"[REPO:ORDERS] Failed fetching user orders: {e}", exc_info=True)
-            return [], 0
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Unable to load order history right now.") from e
 
     async def get_all_orders(self, status_filter: Optional[str], page: int, page_size: int) -> Tuple[List[dict], int]:
         admin_sb = await get_async_admin_supabase()
@@ -96,7 +96,7 @@ class AsyncOrderRepository:
             return res.data or [], res.count or 0
         except Exception as e:
             logger.error(f"[REPO:ORDERS] Failed fetching all orders: {e}", exc_info=True)
-            return [], 0
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Unable to load orders right now.") from e
 
     async def get_order_for_admin_update(self, order_id: str) -> Optional[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
