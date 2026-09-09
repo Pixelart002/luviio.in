@@ -4,8 +4,8 @@ import uuid
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, Query, Request, status
-from fastapi import UploadFile
 from pydantic import ValidationError
+from starlette.datastructures import UploadFile
 
 from app.constants.product_messages import ProductMessages
 from app.core.dependencies import require_permission
@@ -61,8 +61,7 @@ async def create_product(request: Request) -> Dict[str, Any]:
         if not raw_product:
             raise ValueError("Missing product payload")
         try:
-            raw_data = json.loads(str(raw_product))
-            payload = ProductCreate.model_validate(raw_data)
+            payload = ProductCreate.model_validate(json.loads(str(raw_product)))
         except (json.JSONDecodeError, ValidationError) as exc:
             raise ValueError("Invalid product payload") from exc
 
@@ -72,8 +71,7 @@ async def create_product(request: Request) -> Dict[str, Any]:
                 image_files.append((await value.read(), value.filename or "unknown"))
         result = await ProductService().create_product_with_images(payload.model_dump(), image_files)
     else:
-        raw_data = await request.json()
-        payload = ProductCreate.model_validate(raw_data)
+        payload = ProductCreate.model_validate(await request.json())
         result = await ProductService().create_product(payload.model_dump())
 
     if hasattr(request.state, "actions"):
