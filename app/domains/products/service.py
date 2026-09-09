@@ -111,21 +111,44 @@ class ProductService:
         if not await self.repo.soft_delete_product(product_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
 
-    async def upload_image(self, product_id: str, contents: bytes, filename: str) -> Dict[str, Any]:
+    async def upload_images(self, product_id: str, files: List[tuple[bytes, str]]) -> Dict[str, Any]:
         prod = await self.repo.get_product_by_id(product_id)
         if not prod:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
+
         existing = prod.get("images") or []
+        if not files:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one image is required.")
         ProductPolicy.assert_can_upload_image(len(existing))
+        from app.constants.product_messages import ProductRules
+        if len(existing) + len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT),
+            )
+
+        uploaded: List[str] = []
         try:
-            url = await run_in_threadpool(upload_product_image, file_bytes=contents, product_id=product_id, filename=filename, generate_thumbnail=False)
+            for contents, filename in files:
+                url = await run_in_threadpool(
+                    upload_product_image,
+                    file_bytes=contents,
+                    product_id=product_id,
+                    filename=filename,
+                    generate_thumbnail=False,
+                )
+                uploaded.append(url)
         except Exception as exc:
-            logger.error("Image upload failed: %s", exc)
+            logger.error("Product image upload failed after %d image(s): %s", len(uploaded), exc)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=ProductSecurityMessages.UPLOAD_FAILED) from exc
-        all_images = existing + [url]
+
+        all_images = existing + uploaded
         await self.repo.update_product(product_id, {"images": all_images, "image_url": all_images[0]})
         await self.repo.sync_product_images_table(product_id, all_images)
-        return {"images": all_images, "image_url": all_images[0], "uploaded_url": url}
+        return {"images": all_images, "image_url": all_images[0], "uploaded_urls": uploaded}
+
+    async def upload_image(self, product_id: str, contents: bytes, filename: str) -> Dict[str, Any]:
+        return await self.upload_images(product_id, [(contents, filename)])
 
     async def delete_image(self, product_id: str, index: int) -> Dict[str, Any]:
         prod = await self.repo.get_product_by_id(product_id)
