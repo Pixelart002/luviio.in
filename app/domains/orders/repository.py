@@ -17,7 +17,9 @@ from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 
-ORDER_ITEMS_SELECT = "*, order_items(*, products(name, image_url, slug, hsn_code, gst_percentage, compare_price))"
+# order_items(*) contains the immutable unit_price/subtotal. Product price is
+# also exposed as a fallback for older/incomplete order-item records.
+ORDER_ITEMS_SELECT = "*, order_items(*, products(name, image_url, slug, price, hsn_code, gst_percentage, compare_price))"
 
 class AsyncOrderRepository:
     def __init__(self):
@@ -31,8 +33,7 @@ class AsyncOrderRepository:
                 q = q.eq("id", order_id)
             else:
                 q = q.eq("order_number", order_id)
-
-            if user_id: 
+            if user_id:
                 q = q.eq("customer_id", user_id)
             res = await q.maybe_single().execute()
             return res.data if res else None
@@ -41,40 +42,27 @@ class AsyncOrderRepository:
             return None
 
     async def cancel_order_and_restore_stock(self, order_id: str, user_id: Optional[str] = None) -> Optional[dict[str, Any]]:
-        """
-        Customer- or admin-initiated cancellation. Delegates entirely to the
-        `cancel_order_and_release_stock` RPC -- the SAME one the payment
-        webhook and the abandoned-checkout cron use.
-        """
         admin_sb = await get_async_admin_supabase()
         logger.info(f"[REPO:ORDERS] Cancelling order {order_id} and restoring stock.")
         try:
-            # 1. Permission and State check first
             q = admin_sb.table("orders").select("id").eq("id", order_id).in_("status", ["pending", "paid", "processing"])
-            if user_id: 
+            if user_id:
                 q = q.eq("customer_id", user_id)
-            
             check = await q.execute()
             if not check or not check.data:
                 logger.warning(f"[REPO:ORDERS] Cancel failed. Order {order_id} invalid state or access denied.")
                 return None
-            
-            # 2. 🔥 Single atomic RPC -- no more separate status-flip + unlocked loop.
             result = await admin_sb.rpc("cancel_order_and_release_stock", {
                 "p_order_id": order_id,
                 "p_reason": "customer_requested" if user_id else "admin_requested"
             }).execute()
-
             outcome = getattr(result, "data", None)
             if outcome == "ORDER_ALREADY_FULFILLED":
-                # Expected rejection, not an error — order already shipped/delivered,
-                # cancelling it (and adding stock back) would be factually wrong.
                 logger.info(f"[REPO:ORDERS] Cancel refused for {order_id} — already shipped/delivered.")
                 return None
             if outcome not in ("CANCELLED", "ALREADY_CANCELLED"):
                 logger.warning(f"[REPO:ORDERS] Unexpected outcome cancelling order {order_id}: {outcome}")
                 return None
-
             return await self.get_order_by_id(order_id)
         except Exception as e:
             logger.error(f"[REPO:ORDERS] Error during cancel & restore for {order_id}: {e}", exc_info=True)
@@ -83,19 +71,15 @@ class AsyncOrderRepository:
     async def update_order_status_safe(self, order_id: str, updates: dict, expected_status: str) -> Optional[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         try:
-            # 1. Strict concurrency check
             check = await admin_sb.table("orders").select("id").eq("id", order_id).eq("status", expected_status).execute()
             if not check or not check.data:
                 return None
-                
-            # 2. 🔥 EXECUTING THE NEW CASCADE RPC FOR STATE TRANSITIONS
             res = await admin_sb.rpc("rpc_admin_update_order_status", {
                 "p_order_id": order_id,
                 "p_new_status": updates.get("status"),
                 "p_tracking_number": updates.get("tracking_number"),
                 "p_notes": updates.get("notes")
             }).execute()
-            
             return res.data if res and res.data else None
         except Exception as e:
             logger.error(f"[REPO:ORDERS] Error updating order {order_id}: {e}", exc_info=True)
@@ -106,7 +90,7 @@ class AsyncOrderRepository:
         offset = (page - 1) * page_size
         try:
             q = admin_sb.table("orders").select(ORDER_ITEMS_SELECT, count="exact").eq("customer_id", user_id).order("created_at", desc=True)
-            if status_filter: 
+            if status_filter:
                 q = q.eq("status", status_filter)
             res = await q.range(offset, offset + page_size - 1).execute()
             return res.data or [], res.count or 0
@@ -119,7 +103,7 @@ class AsyncOrderRepository:
         offset = (page - 1) * page_size
         try:
             q = admin_sb.table("orders").select(f"{ORDER_ITEMS_SELECT}, users(email, full_name)", count="exact").order("created_at", desc=True)
-            if status_filter: 
+            if status_filter:
                 q = q.eq("status", status_filter)
             res = await q.range(offset, offset + page_size - 1).execute()
             return res.data or [], res.count or 0
