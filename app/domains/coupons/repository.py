@@ -18,7 +18,7 @@ class AsyncCouponRepository:
             res = await sb.table("coupons").select("*").eq("code", code).maybe_single().execute()
             return res.data if res else None
         except Exception as exc:
-            logger.error("[REPO:COUPONS] get_by_code failed: %s", exc)
+            logger.exception("[REPO:COUPONS] get_by_code failed")
             raise RuntimeError("Coupon lookup failed") from exc
 
     async def get_by_id(self, coupon_id: str) -> Optional[dict[str, Any]]:
@@ -27,7 +27,7 @@ class AsyncCouponRepository:
             res = await sb.table("coupons").select("*").eq("id", coupon_id).maybe_single().execute()
             return res.data if res else None
         except Exception as exc:
-            logger.error("[REPO:COUPONS] get_by_id failed: %s", exc)
+            logger.exception("[REPO:COUPONS] get_by_id failed")
             raise RuntimeError("Coupon lookup failed") from exc
 
     async def list_all(self, page: int = 1, page_size: int = 50) -> tuple[List[dict[str, Any]], int]:
@@ -40,29 +40,30 @@ class AsyncCouponRepository:
             )
             return res.data or [], res.count or 0
         except Exception as exc:
-            logger.error("[REPO:COUPONS] list_all failed: %s", exc)
+            logger.exception("[REPO:COUPONS] list_all failed")
             raise RuntimeError("Coupon list failed") from exc
 
     async def create(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            # In supabase-py async, maybe_single() is a response modifier and
-            # must follow select(). Insert itself does not expose maybe_single().
-            res = await sb.table("coupons").insert(data).select("*").maybe_single().execute()
-            return res.data if res else None
+            # Perform the write without a response modifier. Then read the
+            # created row through the normal select/maybe_single query path.
+            await sb.table("coupons").insert(data).execute()
+            code = data.get("code")
+            if not code:
+                return None
+            return await self.get_by_code(str(code))
         except Exception as exc:
-            logger.error("[REPO:COUPONS] create failed: %s", exc)
+            logger.exception("[REPO:COUPONS] create failed")
             raise RuntimeError("Coupon creation failed") from exc
 
     async def update(self, coupon_id: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await (
-                sb.table("coupons").update(data).eq("id", coupon_id).select("*").maybe_single().execute()
-            )
-            return res.data if res else None
+            await sb.table("coupons").update(data).eq("id", coupon_id).execute()
+            return await self.get_by_id(coupon_id)
         except Exception as exc:
-            logger.error("[REPO:COUPONS] update failed: %s", exc)
+            logger.exception("[REPO:COUPONS] update failed")
             raise RuntimeError("Coupon update failed") from exc
 
     async def delete(self, coupon_id: str) -> bool:
@@ -71,7 +72,7 @@ class AsyncCouponRepository:
             await sb.table("coupons").delete().eq("id", coupon_id).execute()
             return True
         except Exception as exc:
-            logger.error("[REPO:COUPONS] delete failed: %s", exc)
+            logger.exception("[REPO:COUPONS] delete failed")
             raise RuntimeError("Coupon deletion failed") from exc
 
     async def redemptions_for_user(self, coupon_id: str, user_id: str) -> int:
@@ -83,7 +84,7 @@ class AsyncCouponRepository:
             )
             return res.count or 0
         except Exception as exc:
-            logger.error("[REPO:COUPONS] redemptions_for_user failed: %s", exc)
+            logger.exception("[REPO:COUPONS] redemptions_for_user failed")
             raise RuntimeError("Coupon redemption lookup failed") from exc
 
     async def users_used_coupon(self, coupon_id: str) -> int:
@@ -95,7 +96,7 @@ class AsyncCouponRepository:
             )
             return res.count or 0
         except Exception as exc:
-            logger.error("[REPO:COUPONS] users_used_coupon failed: %s", exc)
+            logger.exception("[REPO:COUPONS] users_used_coupon failed")
             raise RuntimeError("Coupon redemption lookup failed") from exc
 
     async def record_redemption(self, coupon_id: str, user_id: str, order_id: str, discount: float) -> bool:
@@ -110,5 +111,5 @@ class AsyncCouponRepository:
             }).execute()
             return bool(res.data)
         except Exception as exc:
-            logger.error("[REPO:COUPONS] record_redemption failed: %s", exc)
+            logger.exception("[REPO:COUPONS] record_redemption failed")
             raise RuntimeError("Coupon redemption failed") from exc
