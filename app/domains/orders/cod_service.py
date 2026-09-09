@@ -6,6 +6,7 @@ reservation path as card checkout.
 """
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
+import logging
 
 from email_validator import EmailNotValidError, validate_email
 from fastapi import HTTPException, status
@@ -18,6 +19,8 @@ from app.domains.pricing.service import get_pricing_from_config
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderCreatedEvent, get_event_bus
 from app.permissions.policies.payment_policies import PaymentPolicy
+
+logger = logging.getLogger(__name__)
 
 
 class CodOrderService:
@@ -69,7 +72,8 @@ class CodOrderService:
         for item in cart_items:
             product = item.get("products") or {}
             PaymentPolicy.assert_stock_availability(item["quantity"], product)
-            locked_price = Decimal(str(item.get("price_snapshot") or product.get("price", 0)))
+            snapshot = item.get("price_snapshot")
+            locked_price = Decimal(str(snapshot if snapshot is not None else product.get("price", 0)))
             line_total = locked_price * item["quantity"]
             subtotal += line_total
             items_to_deduct.append({
@@ -101,34 +105,50 @@ class CodOrderService:
             coupon_resolved = resolved.get("code")
 
         total = max(breakdown.total - coupon_discount, Decimal("0"))
+        PaymentPolicy.assert_minimum_amount(int((total * 100).to_integral_value()))
+
         addr = await self.repo.get_shipping_address(address_id, user_id)
         if not addr:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND,
             )
-        try:
-            validate_email(addr.get("email") or "", check_deliverability=False)
-        except EmailNotValidError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING,
-            ) from exc
+
+        # Address email is optional for checkout. Fall back to the authenticated
+        # account email because the order schema already stores shipping_email.
+        customer_email = await self.repo.get_customer_email(user_id)
+        shipping_email = addr.get("email") or customer_email
+        if shipping_email:
+            try:
+                validate_email(shipping_email, check_deliverability=False)
+            except EmailNotValidError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING,
+                ) from exc
 
         billing = addr
         same_billing = True
         if billing_address_id and billing_address_id != address_id:
             fetched = await self.repo.get_shipping_address(billing_address_id, user_id)
-            if fetched:
-                billing = fetched
-                same_billing = False
+            if not fetched:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND,
+                )
+            billing = fetched
+            same_billing = False
+            billing_email = billing.get("email") or customer_email
+            if billing_email:
                 try:
-                    validate_email(billing.get("email") or "", check_deliverability=False)
+                    validate_email(billing_email, check_deliverability=False)
                 except EmailNotValidError as exc:
                     raise HTTPException(
                         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                         detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING,
                     ) from exc
+        else:
+            billing_email = shipping_email
 
         order_number = self._order_number()
         order_data = {
@@ -145,7 +165,7 @@ class CodOrderService:
             "shipping_address_id": address_id,
             "shipping_name": addr.get("full_name"),
             "shipping_phone": addr.get("phone"),
-            "shipping_email": addr.get("email"),
+            "shipping_email": shipping_email,
             "shipping_line1": addr.get("line1"),
             "shipping_line2": addr.get("line2"),
             "shipping_landmark": addr.get("landmark"),
@@ -159,7 +179,7 @@ class CodOrderService:
             "billing_address_id": billing.get("id"),
             "billing_name": billing.get("full_name"),
             "billing_phone": billing.get("phone"),
-            "billing_email": billing.get("email"),
+            "billing_email": billing_email,
             "billing_line1": billing.get("line1"),
             "billing_line2": billing.get("line2"),
             "billing_landmark": billing.get("landmark"),
@@ -175,10 +195,13 @@ class CodOrderService:
             order = await self.repo.create_pending_order_with_reservation(
                 order_data, items_to_deduct
             )
+        except HTTPException:
+            raise
         except Exception as exc:
+            logger.exception("COD order creation failed for user %s", user_id[:8])
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=PaymentSecurityMessages.RACE_CONDITION,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to create COD order. Please try again.",
             ) from exc
 
         try:
@@ -190,7 +213,6 @@ class CodOrderService:
             pass
 
         try:
-            customer_email = await self.repo.get_customer_email(user_id)
             get_event_bus().publish(
                 OrderCreatedEvent(order=order, customer_email=customer_email, customer_id=user_id)
             )
