@@ -4,11 +4,10 @@ Cart Repository — Async Enterprise Grade (GST & HSN Ready)
 Path: app/repositories/cart_repo.py
 
 Architecture & Fixes:
-  ✅ Defensive Null Guards — Resolves IndexError risks during upserts and selects.
-  ✅ Proper DB Error Handling — Logs exceptions cleanly without leaking internal traces or silent crashes.
-  ✅ GST & HSN Ready — Explicitly fetches hsn_code and gst_percentage for downstream SSOT checkout.
-  ✅ Automatic Cart Touching — Bumps carts.updated_at timestamp on line item mutations.
-  ✅ Async ORM Compatible — Splitting upsert and read operations prevents query builder chaining errors.
+  - Defensive null guards for cart reads and mutations.
+  - Explicit product fields for predictable payloads.
+  - Cart timestamp updates on line-item mutations.
+  - Read path avoids an unnecessary cart upsert/write.
 """
 import logging
 from datetime import datetime, timezone
@@ -21,12 +20,12 @@ from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 
+
 class AsyncCartRepository:
     def __init__(self):
         pass
 
     async def _touch_cart_timestamp(self, cart_id: str) -> None:
-        """Bumps parent cart updated_at timestamp on every line item mutation."""
         try:
             admin_sb = await get_async_admin_supabase()
             now_iso = datetime.now(timezone.utc).isoformat()
@@ -44,30 +43,25 @@ class AsyncCartRepository:
             return {}
 
     async def get_or_create_cart(self, user_id: str) -> dict[str, Any]:
-        """
-        Safely fetches or creates a user cart. Splitting upsert and select prevents 
-        async query builder chaining exceptions.
-        """
+        """Read the cart first; create it only when the user has no cart yet."""
         admin_sb = await get_async_admin_supabase()
         try:
-            # Step 1: Perform the atomic upsert without chaining .select()
-            await admin_sb.table("carts").upsert(
-                {"user_id": user_id}, on_conflict="user_id"
-            ).execute()
-            
-            # Step 2: Explicitly query for the record to ensure clean retrieval
-            res = await admin_sb.table("carts").select("*").eq("user_id", user_id).limit(1).execute()
-            
-            data = getattr(res, "data", None)
-            if data and len(data) > 0:
+            res = await admin_sb.table("carts").select("id, user_id, created_at, updated_at").eq("user_id", user_id).limit(1).execute()
+            data = getattr(res, "data", None) or []
+            if data:
                 return data[0]
-                
-            raise RuntimeError("Upsert succeeded but cart retrieval returned empty data.")
+
+            await admin_sb.table("carts").insert({"user_id": user_id}).execute()
+            created = await admin_sb.table("carts").select("id, user_id, created_at, updated_at").eq("user_id", user_id).limit(1).execute()
+            created_data = getattr(created, "data", None) or []
+            if created_data:
+                return created_data[0]
+            raise RuntimeError("Cart creation succeeded but cart retrieval returned empty data.")
         except Exception as exc:
             logger.error("Critical DB failure in get_or_create_cart for UID %s: %s", user_id, exc, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=CartSecurityMessages.DB_OPERATION_FAILED
+                detail=CartSecurityMessages.DB_OPERATION_FAILED,
             ) from exc
 
     async def get_cart_items_with_products(self, cart_id: str) -> list[dict[str, Any]]:
@@ -80,10 +74,7 @@ class AsyncCartRepository:
             return getattr(res, "data", None) or []
         except Exception as exc:
             logger.error("DB Error fetching cart items for cart %s: %s", cart_id, exc, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=CartSecurityMessages.DB_OPERATION_FAILED
-            ) from exc
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=CartSecurityMessages.DB_OPERATION_FAILED) from exc
 
     async def get_product_stock_status(self, product_id: str) -> Optional[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
@@ -95,10 +86,7 @@ class AsyncCartRepository:
             return data[0] if data and len(data) > 0 else None
         except Exception as exc:
             logger.error("DB Error checking stock for product %s: %s", product_id, exc, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=CartSecurityMessages.DB_OPERATION_FAILED
-            ) from exc
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=CartSecurityMessages.DB_OPERATION_FAILED) from exc
 
     async def get_cart_item(self, cart_id: str, product_id: str) -> Optional[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
@@ -109,10 +97,7 @@ class AsyncCartRepository:
     async def add_item_to_cart(self, cart_id: str, product_id: str, quantity: int, price_snapshot: float) -> None:
         admin_sb = await get_async_admin_supabase()
         try:
-            await admin_sb.table("cart_items").insert({
-                "cart_id": cart_id, "product_id": product_id,
-                "quantity": quantity, "price_snapshot": price_snapshot,
-            }).execute()
+            await admin_sb.table("cart_items").insert({"cart_id": cart_id, "product_id": product_id, "quantity": quantity, "price_snapshot": price_snapshot}).execute()
             await self._touch_cart_timestamp(cart_id)
         except Exception as exc:
             logger.error("DB Error adding item to cart %s: %s", cart_id, exc, exc_info=True)
@@ -160,10 +145,7 @@ class AsyncCartRepository:
     async def get_abandoned_carts(self, cutoff_iso: str, offset: int, page_size: int) -> Tuple[List[dict], int]:
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.table("carts").select(
-                "id, user_id, updated_at, created_at, cart_items(id, quantity, price_snapshot, product_id), users(email, full_name)", count="exact"
-            ).lt("updated_at", cutoff_iso).order("updated_at", desc=False).range(offset, offset + page_size - 1).execute()
-            
+            res = await admin_sb.table("carts").select("id, user_id, updated_at, created_at, cart_items(id, quantity, price_snapshot, product_id), users(email, full_name)", count="exact").lt("updated_at", cutoff_iso).order("updated_at", desc=False).range(offset, offset + page_size - 1).execute()
             all_rows = getattr(res, "data", None) or []
             rows = [r for r in all_rows if r.get("cart_items") and len(r.get("cart_items")) > 0]
             return rows, res.count or 0
@@ -174,9 +156,7 @@ class AsyncCartRepository:
     async def get_cart_for_reminder(self, cart_id: str) -> Optional[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.table("carts").select(
-                "id, user_id, cart_items(quantity, price_snapshot, products(name, image_url, slug)), users(email, full_name)"
-            ).eq("id", cart_id).limit(1).execute()
+            res = await admin_sb.table("carts").select("id, user_id, cart_items(quantity, price_snapshot, products(name, image_url, slug)), users(email, full_name)").eq("id", cart_id).limit(1).execute()
             data = getattr(res, "data", None)
             return data[0] if data and len(data) > 0 else None
         except Exception as exc:
