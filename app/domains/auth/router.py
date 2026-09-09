@@ -24,7 +24,11 @@ from app.utils.response import success_response
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["Auth"])
-_COOKIE_KWARGS = dict(key="refresh_token", httponly=True, secure=True, samesite="none", path="/api/v1/auth")
+
+_REFRESH_COOKIE_KWARGS = dict(key="refresh_token", httponly=True, secure=True, samesite="none", path="/api/v1/auth")
+_ACCESS_COOKIE_KWARGS = dict(key="access_token", httponly=True, secure=True, samesite="none", path="/api/v1")
+_ACCESS_COOKIE_MAX_AGE = 60 * 60
+_REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
@@ -45,8 +49,9 @@ async def login(request: Request, response: Response, payload: LoginRequest):
     client_ip = get_remote_address(request) or "0.0.0.0"
     session_data = await AuthService().login_user(payload.email, payload.password, client_ip)
     if hasattr(request.state, "actions"):
-        request.state.actions.extend([f"Identity verified -> UID: {session_data['user_id'][:8]}...", "Issued secure HttpOnly Refresh Cookie"])
-    response.set_cookie(**_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=7 * 24 * 60 * 60)
+        request.state.actions.extend([f"Identity verified -> UID: {session_data['user_id'][:8]}...", "Issued secure HttpOnly auth cookies"])
+    response.set_cookie(**_REFRESH_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=_REFRESH_COOKIE_MAX_AGE)
+    response.set_cookie(**_ACCESS_COOKIE_KWARGS, value=session_data["access_token"], max_age=_ACCESS_COOKIE_MAX_AGE)
     data = {"access_token": session_data["access_token"], "token_type": "bearer", "expires_in": session_data["expires_in"], "user": {"id": session_data["user_id"], "email": session_data["email"]}}
     return success_response(data=data)
 
@@ -56,11 +61,20 @@ async def refresh(request: Request, response: Response, refresh_token: str | Non
     if hasattr(request.state, "actions"):
         request.state.actions.append("Intercepted session refresh cookie")
     if not refresh_token:
+        response.delete_cookie(**_REFRESH_COOKIE_KWARGS)
+        response.delete_cookie(**_ACCESS_COOKIE_KWARGS)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.INVALID_REFRESH_TOKEN)
-    session_data = await AuthService().refresh_user_session(refresh_token)
+    try:
+        session_data = await AuthService().refresh_user_session(refresh_token)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            response.delete_cookie(**_REFRESH_COOKIE_KWARGS)
+            response.delete_cookie(**_ACCESS_COOKIE_KWARGS)
+        raise
     if hasattr(request.state, "actions"):
         request.state.actions.append("Session successfully refreshed & prolonged")
-    response.set_cookie(**_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=7 * 24 * 60 * 60)
+    response.set_cookie(**_REFRESH_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=_REFRESH_COOKIE_MAX_AGE)
+    response.set_cookie(**_ACCESS_COOKIE_KWARGS, value=session_data["access_token"], max_age=_ACCESS_COOKIE_MAX_AGE)
     return success_response(data={"access_token": session_data["access_token"], "token_type": "bearer", "expires_in": session_data["expires_in"]})
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
@@ -68,7 +82,8 @@ async def logout(request: Request, response: Response, refresh_token: str | None
     if hasattr(request.state, "actions"):
         request.state.actions.append("Executing user sign-out sequence")
     await AuthService().logout_user(refresh_token)
-    response.delete_cookie(**_COOKIE_KWARGS)
+    response.delete_cookie(**_REFRESH_COOKIE_KWARGS)
+    response.delete_cookie(**_ACCESS_COOKIE_KWARGS)
     if hasattr(request.state, "actions"):
         request.state.actions.extend(["Revoked active token in Supabase Vault", "Destroyed local HttpOnly auth cookies"])
     return success_response(message=AuthMessages.LOGOUT_SUCCESS)
