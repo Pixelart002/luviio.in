@@ -4,7 +4,7 @@ COD intentionally does not create or confirm a Stripe PaymentIntent. It uses the
 same server-side cart pricing, stock validation, address ownership and atomic
 reservation path as card checkout.
 """
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional
 import logging
 
@@ -55,12 +55,16 @@ class CodOrderService:
                     "order_id": existing["id"],
                     "order_number": existing.get("order_number", ""),
                     "payment_method": "cod",
+                    "status": OrderStatus.PENDING.value,
+                    "total_amount": float(existing.get("total_amount") or 0),
                 }
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=PaymentSecurityMessages.DUPLICATE_ORDER,
             )
 
+        # Multiple legitimate pending orders are allowed. The DB idempotency
+        # constraint, not a per-user pending-order blocker, prevents duplicates.
         PaymentPolicy.assert_no_active_pending_order(
             await self.repo.has_active_pending_order(user_id)
         )
@@ -73,18 +77,30 @@ class CodOrderService:
             product = item.get("products") or {}
             PaymentPolicy.assert_stock_availability(item["quantity"], product)
             snapshot = item.get("price_snapshot")
-            locked_price = Decimal(str(snapshot if snapshot is not None else product.get("price", 0)))
+            if snapshot is None:
+                logger.error("[COD] Missing price_snapshot for product %s", item.get("product_id"))
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION)
+            locked_price = Decimal(str(snapshot))
+            if locked_price < 0:
+                logger.error("[COD] Negative price_snapshot for product %s", item.get("product_id"))
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION)
             line_total = locked_price * item["quantity"]
             subtotal += line_total
+
+            hsn_code = str(product.get("hsn_code") or item.get("hsn_code") or "").strip()
+            if not hsn_code:
+                logger.error("[COD] Missing HSN snapshot for product %s", item.get("product_id"))
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION)
+            gst_raw = product.get("gst_percentage") if product.get("gst_percentage") is not None else item.get("gst_percentage")
+            if gst_raw is None:
+                logger.error("[COD] Missing GST snapshot for product %s", item.get("product_id"))
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION)
+
             items_to_deduct.append({
                 "product_id": item["product_id"],
                 "product_name": product.get("name", "Item"),
-                "hsn_code": str(product.get("hsn_code") or item.get("hsn_code") or "9988").strip(),
-                "gst_percentage": int(
-                    product.get("gst_percentage")
-                    if product.get("gst_percentage") is not None
-                    else (item.get("gst_percentage") if item.get("gst_percentage") is not None else 18)
-                ),
+                "hsn_code": hsn_code,
+                "gst_percentage": int(gst_raw),
                 "unit_price": float(locked_price),
                 "compare_price": float(product.get("compare_price") or 0.0),
                 "quantity": item["quantity"],
@@ -105,7 +121,8 @@ class CodOrderService:
             coupon_resolved = resolved.get("code")
 
         total = max(breakdown.total - coupon_discount, Decimal("0"))
-        PaymentPolicy.assert_minimum_amount(int((total * 100).to_integral_value()))
+        amount_paise = int((total * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        PaymentPolicy.assert_minimum_amount(amount_paise)
 
         addr = await self.repo.get_shipping_address(address_id, user_id)
         if not addr:
@@ -114,41 +131,35 @@ class CodOrderService:
                 detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND,
             )
 
-        # Address email is optional for checkout. Fall back to the authenticated
-        # account email because the order schema already stores shipping_email.
         customer_email = await self.repo.get_customer_email(user_id)
         shipping_email = addr.get("email") or customer_email
-        if shipping_email:
-            try:
-                validate_email(shipping_email, check_deliverability=False)
-            except EmailNotValidError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING,
-                ) from exc
+        try:
+            validate_email(shipping_email or "", check_deliverability=False)
+        except EmailNotValidError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING,
+            ) from exc
 
         billing = addr
         same_billing = True
         if billing_address_id and billing_address_id != address_id:
-            fetched = await self.repo.get_shipping_address(billing_address_id, user_id)
-            if not fetched:
+            billing = await self.repo.get_shipping_address(billing_address_id, user_id)
+            if not billing:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND,
                 )
-            billing = fetched
             same_billing = False
-            billing_email = billing.get("email") or customer_email
-            if billing_email:
-                try:
-                    validate_email(billing_email, check_deliverability=False)
-                except EmailNotValidError as exc:
-                    raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING,
-                    ) from exc
-        else:
-            billing_email = shipping_email
+
+        billing_email = billing.get("email") or customer_email
+        try:
+            validate_email(billing_email or "", check_deliverability=False)
+        except EmailNotValidError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING,
+            ) from exc
 
         order_number = self._order_number()
         order_data = {
@@ -198,6 +209,18 @@ class CodOrderService:
         except HTTPException:
             raise
         except Exception as exc:
+            # A concurrent request with the same customer/key may have won the
+            # unique idempotency constraint. Converge to that order if present.
+            raced = await self.repo.get_order_by_idempotency_key(user_id, idempotency_key)
+            if raced and raced.get("status") == OrderStatus.PENDING.value:
+                logger.info("[COD] Idempotency race converged to order %s", raced["id"])
+                return {
+                    "order_id": raced["id"],
+                    "order_number": raced.get("order_number", ""),
+                    "payment_method": "cod",
+                    "status": OrderStatus.PENDING.value,
+                    "total_amount": float(raced.get("total_amount") or 0),
+                }
             logger.exception("COD order creation failed for user %s", user_id[:8])
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -208,16 +231,14 @@ class CodOrderService:
             from app.domains.cart.service import CartService
             await CartService().clear_cart(user_id)
         except Exception:
-            # The order and stock reservation are already committed; cart cleanup
-            # must not turn a successful COD order into a client-visible failure.
             pass
 
         try:
             get_event_bus().publish(
-                OrderCreatedEvent(order=order, customer_email=customer_email, customer_id=user_id)
+                OrderCreatedEvent(order=order, customer_email=shipping_email, customer_id=user_id)
             )
         except Exception:
-            pass
+            logger.error("[COD] OrderCreatedEvent publish failed", exc_info=True)
 
         return {
             "order_id": order["id"],
