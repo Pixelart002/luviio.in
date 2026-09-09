@@ -6,6 +6,8 @@ Path: app/domains/coupons/repository.py
 import logging
 from typing import Any, List, Optional
 
+from fastapi.encoders import jsonable_encoder
+
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
@@ -15,8 +17,14 @@ class AsyncCouponRepository:
     async def get_by_code(self, code: str) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await sb.table("coupons").select("*").eq("code", code).maybe_single().execute()
-            return res.data if res else None
+            res = await (
+                sb.table("coupons")
+                .select("*")
+                .eq("code", code)
+                .limit(1)
+                .execute()
+            )
+            return (res.data or [None])[0]
         except Exception as exc:
             logger.exception("[REPO:COUPONS] get_by_code failed")
             raise RuntimeError("Coupon lookup failed") from exc
@@ -24,8 +32,14 @@ class AsyncCouponRepository:
     async def get_by_id(self, coupon_id: str) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await sb.table("coupons").select("*").eq("id", coupon_id).maybe_single().execute()
-            return res.data if res else None
+            res = await (
+                sb.table("coupons")
+                .select("*")
+                .eq("id", coupon_id)
+                .limit(1)
+                .execute()
+            )
+            return (res.data or [None])[0]
         except Exception as exc:
             logger.exception("[REPO:COUPONS] get_by_id failed")
             raise RuntimeError("Coupon lookup failed") from exc
@@ -46,9 +60,11 @@ class AsyncCouponRepository:
     async def create(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            # Perform the write without a response modifier. Then read the
-            # created row through the normal select/maybe_single query path.
-            await sb.table("coupons").insert(data).execute()
+            # Supabase/PostgREST's async request builder expects JSON-native values.
+            # Pydantic keeps valid_from/valid_until as datetime objects, so encode
+            # them before sending the request.
+            encoded_data = jsonable_encoder(data)
+            await sb.table("coupons").insert(encoded_data).execute()
             code = data.get("code")
             if not code:
                 return None
@@ -60,7 +76,8 @@ class AsyncCouponRepository:
     async def update(self, coupon_id: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            await sb.table("coupons").update(data).eq("id", coupon_id).execute()
+            encoded_data = jsonable_encoder(data)
+            await sb.table("coupons").update(encoded_data).eq("id", coupon_id).execute()
             return await self.get_by_id(coupon_id)
         except Exception as exc:
             logger.exception("[REPO:COUPONS] update failed")
