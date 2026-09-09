@@ -73,8 +73,11 @@ class ProductService:
         data["price"] = float(data["price"])
         if data.get("compare_price"):
             data["compare_price"] = float(data["compare_price"])
-        data["images"] = data.get("images") or []
-        data["image_url"] = data["images"][0] if data["images"] else None
+        images = data.get("images") or []
+        if not images and data.get("image_url"):
+            images = [data["image_url"]]
+        data["images"] = images
+        data["image_url"] = images[0] if images else None
         data["hsn_code"] = str(data.get("hsn_code") or "9988").strip()
         data["gst_percentage"] = int(data.get("gst_percentage") if data.get("gst_percentage") is not None else 18)
         data["attributes"] = data.get("attributes") or {}
@@ -100,6 +103,8 @@ class ProductService:
         if "images" in data:
             imgs = data["images"] or []
             data["images"], data["image_url"] = imgs, imgs[0] if imgs else None
+        elif data.get("image_url"):
+            data["images"] = [data["image_url"]]
         res = await self.repo.update_product(product_id, data)
         if not res:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
