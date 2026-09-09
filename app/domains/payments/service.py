@@ -2,15 +2,6 @@
 Payment Service -- Enterprise Orchestration (With Atomic GST & HSN Snapshots)
 =============================================================================
 Path: app/domains/payments/service.py
-
-Architecture & Fixes:
-  * Cart Lifecycle: Cart is cleared immediately upon successful atomic order creation & stock reservation.
-  * Self-Healing Retry Logic: Auto-generates fresh Stripe intents for unlinked/canceled orders.
-  * Atomic GST & HSN Snapshots: Locks exact legal inventory prices & tax rates at checkout.
-  * Enterprise Snapshots: Captures full B2B/B2C Shipping & Billing address telemetry natively.
-  * Idempotent Checkout: Prevents double-charging via UUID-based idempotency keys.
-  * Null Intent Guard: Prevents 502 Bad Gateway crashes when Stripe ID is None or Empty in DB.
-  * Payment Method Tracking: Extracts 'card', 'upi', etc. from Stripe Intents & Webhooks.
 """
 import logging
 import time
@@ -33,6 +24,7 @@ from app.permissions.policies.payment_policies import PaymentPolicy
 
 logger = logging.getLogger(__name__)
 
+
 class PaymentService:
     def __init__(self) -> None:
         self.repo = AsyncPaymentRepository()
@@ -45,10 +37,6 @@ class PaymentService:
         short_id = generate('23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 8)
         return f"ORD-{short_id[:4]}-{short_id[4:]}"
 
-    # --------------------------------------------------------------------------
-    # INTENT CREATION (Checkout Step 1)
-    # --------------------------------------------------------------------------
-
     async def create_intent(
         self,
         user_id: str,
@@ -59,7 +47,6 @@ class PaymentService:
         user_agent: Optional[str] = None,
         coupon_code: Optional[str] = None,
     ) -> Dict[str, Any]:
-        
         try:
             clean_idem_key = str(UUID(idempotency_key))
         except ValueError:
@@ -69,7 +56,7 @@ class PaymentService:
         if existing:
             if existing.get("status") == OrderStatus.PENDING.value:
                 existing_pi = existing.get("stripe_payment_intent")
-                if existing_pi and isinstance(existing_pi, str) and len(existing_pi.strip()) > 0:
+                if existing_pi and isinstance(existing_pi, str) and existing_pi.strip():
                     try:
                         intent = await run_in_threadpool(self.provider.retrieve_intent, existing_pi)
                         if intent.get("status") in {"requires_payment_method", "requires_confirmation", "requires_action"}:
@@ -78,23 +65,19 @@ class PaymentService:
                     except HTTPException:
                         raise
                     except Exception as exc:
-                        logger.error("[PAYMENT ERROR] Stripe retrieval failed for existing order: %s", exc)
-                logger.warning("[PAYMENT RECOVERY] Existing order %s lacks valid intent. Replacing...", existing['id'])
+                        logger.error("[PAYMENT ERROR] Stripe retrieval failed for existing order: %s", exc, exc_info=True)
                 amount_paise = self._paise(existing.get("total_amount", 0))
                 if amount_paise < PaymentRules.MIN_ORDER_AMOUNT_PAISE:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PaymentSecurityMessages.ZERO_AMOUNT_RETRY)
                 result = await self._create_and_link_replacement_intent(user_id, existing["id"], amount_paise, ip_address=client_ip, user_agent=user_agent)
                 result["order_number"] = existing.get("order_number", "")
                 return result
-            elif existing.get("status") == OrderStatus.PAID.value:
+            if existing.get("status") == OrderStatus.PAID.value:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ALREADY_PAID)
-            else:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.DUPLICATE_ORDER)
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.DUPLICATE_ORDER)
 
         from app.permissions.action_control import assert_action_enabled
         await assert_action_enabled(user_id, "checkout", "Checkout is currently disabled for your account.")
-        has_pending = await self.repo.has_active_pending_order(user_id)
-        PaymentPolicy.assert_no_active_pending_order(has_pending)
         cart_items = await self.repo.get_cart_items_for_checkout(user_id)
         PaymentPolicy.assert_valid_cart(cart_items)
         subtotal = Decimal("0")
@@ -102,12 +85,27 @@ class PaymentService:
         for item in cart_items:
             prod = item.get("products") or {}
             PaymentPolicy.assert_stock_availability(item["quantity"], prod)
-            locked_price = Decimal(str(item.get("price_snapshot") or prod.get("price", 0)))
+            snapshot = item.get("price_snapshot")
+            if snapshot is None:
+                logger.error("[PAYMENT] Missing price_snapshot for product %s", item.get("product_id"))
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION)
+            locked_price = Decimal(str(snapshot))
+            if locked_price < 0:
+                logger.error("[PAYMENT] Negative price_snapshot for product %s", item.get("product_id"))
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION)
             lt = locked_price * item["quantity"]
             subtotal += lt
-            hsn_code = str(prod.get("hsn_code") or item.get("hsn_code") or "9988").strip()
-            gst_percentage = int(prod.get("gst_percentage") if prod.get("gst_percentage") is not None else (item.get("gst_percentage") if item.get("gst_percentage") is not None else 18))
+            hsn_code = str(prod.get("hsn_code") or item.get("hsn_code") or "").strip()
+            if not hsn_code:
+                logger.error("[PAYMENT] Missing HSN snapshot for product %s", item.get("product_id"))
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION)
+            gst_raw = prod.get("gst_percentage") if prod.get("gst_percentage") is not None else item.get("gst_percentage")
+            if gst_raw is None:
+                logger.error("[PAYMENT] Missing GST snapshot for product %s", item.get("product_id"))
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION)
+            gst_percentage = int(gst_raw)
             items_to_deduct.append({"product_id": item["product_id"], "product_name": prod.get("name", "Item"), "hsn_code": hsn_code, "gst_percentage": gst_percentage, "unit_price": float(locked_price), "compare_price": float(prod.get("compare_price") or 0.0), "quantity": item["quantity"], "subtotal": float(lt)})
+
         config = await self.repo.get_pricing_config()
         breakdown = get_pricing_from_config(config).calculate(items=items_to_deduct)
         amount_paise = self._paise(breakdown.total)
@@ -124,6 +122,7 @@ class PaymentService:
             if coupon_discount > 0:
                 amount_paise = self._paise(max(breakdown.total - coupon_discount, Decimal("0")))
                 PaymentPolicy.assert_minimum_amount(amount_paise)
+
         addr = await self.repo.get_shipping_address(address_id, user_id)
         if not addr:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
@@ -131,45 +130,58 @@ class PaymentService:
             validate_email(addr.get("email") or "", check_deliverability=False)
         except EmailNotValidError:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
+
         billing_addr = addr
         is_same_as_shipping = True
         if billing_address_id and billing_address_id != address_id:
-            fetched_billing = await self.repo.get_shipping_address(billing_address_id, user_id)
-            if fetched_billing:
-                billing_addr = fetched_billing
-                is_same_as_shipping = False
-                try:
-                    validate_email(billing_addr.get("email") or "", check_deliverability=False)
-                except EmailNotValidError:
-                    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
+            billing_addr = await self.repo.get_shipping_address(billing_address_id, user_id)
+            if not billing_addr:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
+            is_same_as_shipping = False
+            try:
+                validate_email(billing_addr.get("email") or "", check_deliverability=False)
+            except EmailNotValidError:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
+
         try:
             intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_PENDING", user_id, f"aot_pi_{clean_idem_key}")
         except Exception as exc:
-            logger.error("[PAYMENT ERROR] Initial Stripe Intent creation failed: %s", exc)
+            logger.error("[PAYMENT ERROR] Initial Stripe Intent creation failed: %s", exc, exc_info=True)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
+
         order_number = self._generate_clean_order_number()
         order_data = {"customer_id": user_id, "status": OrderStatus.PENDING.value, "order_number": order_number, "idempotency_key": clean_idem_key, "stripe_payment_intent": intent["id"], "coupon_id": coupon_id, "coupon_code": coupon_code_resolved, "discount_amount": float(coupon_discount), **breakdown.as_dict(), "total_amount": float(max(breakdown.total - coupon_discount, Decimal("0"))), "shipping_address_id": address_id, "shipping_name": addr.get("full_name"), "shipping_phone": addr.get("phone"), "shipping_email": addr.get("email"), "shipping_line1": addr.get("line1"), "shipping_line2": addr.get("line2"), "shipping_landmark": addr.get("landmark"), "shipping_city": addr.get("city"), "shipping_state": addr.get("state"), "shipping_postal_code": addr.get("postal_code"), "shipping_country": addr.get("country", "IN"), "shipping_company_name": addr.get("company_name"), "shipping_gstin": addr.get("gstin"), "billing_same_as_shipping": is_same_as_shipping, "billing_address_id": billing_addr.get("id"), "billing_name": billing_addr.get("full_name"), "billing_phone": billing_addr.get("phone"), "billing_email": billing_addr.get("email"), "billing_line1": billing_addr.get("line1"), "billing_line2": billing_addr.get("line2"), "billing_landmark": billing_addr.get("landmark"), "billing_city": billing_addr.get("city"), "billing_state": billing_addr.get("state"), "billing_postal_code": billing_addr.get("postal_code"), "billing_country": billing_addr.get("country", "IN"), "billing_company_name": billing_addr.get("company_name"), "billing_gstin": billing_addr.get("gstin")}
         try:
             pending_order = await self.repo.create_pending_order_with_reservation(order_data, items_to_deduct)
-            await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
-            await self.repo.record_payment_attempt(pending_order["id"], user_id, intent["id"], amount_paise / 100, status="requires_payment_method", ip_address=client_ip, user_agent=user_agent)
-            try:
-                from app.domains.cart.service import CartService
-                await CartService().clear_cart(user_id)
-            except Exception as cart_exc:
-                logger.error("Failed to clear cart after successful order reservation: %s", cart_exc)
-            try:
-                customer_email = await self.repo.get_customer_email(user_id)
-                get_event_bus().publish(OrderCreatedEvent(order=pending_order, customer_email=customer_email, customer_id=user_id))
-            except Exception as event_exc:
-                logger.error("Failed to publish OrderCreatedEvent: %s", event_exc)
-        except Exception as e:
-            logger.error("[CRITICAL DB ERROR] Atomic Reservation Failed: %s", e)
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION) from e
+        except Exception as exc:
+            raced = await self.repo.get_order_by_idempotency_key(user_id, clean_idem_key)
+            if raced and raced.get("status") == OrderStatus.PENDING.value and raced.get("stripe_payment_intent"):
+                logger.info("[PAYMENT] Idempotency race converged to existing order %s", raced["id"])
+                existing_pi = raced["stripe_payment_intent"]
+                try:
+                    existing_intent = await run_in_threadpool(self.provider.retrieve_intent, existing_pi)
+                    return {"client_secret": existing_intent.get("client_secret"), "payment_intent_id": existing_pi, "order_id": raced["id"], "order_number": raced.get("order_number", "")}
+                except Exception:
+                    logger.error("[PAYMENT] Existing idempotent order found but Stripe retrieval failed", exc_info=True)
+            logger.error("[CRITICAL DB ERROR] Atomic Reservation Failed: %s", exc, exc_info=True)
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION) from exc
+
+        await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
+        await self.repo.record_payment_attempt(pending_order["id"], user_id, intent["id"], amount_paise / 100, status="requires_payment_method", ip_address=client_ip, user_agent=user_agent)
+        try:
+            from app.domains.cart.service import CartService
+            await CartService().clear_cart(user_id)
+        except Exception as cart_exc:
+            logger.error("Failed to clear cart after successful order reservation: %s", cart_exc)
+        try:
+            customer_email = await self.repo.get_customer_email(user_id)
+            get_event_bus().publish(OrderCreatedEvent(order=pending_order, customer_email=customer_email, customer_id=user_id))
+        except Exception as event_exc:
+            logger.error("Failed to publish OrderCreatedEvent: %s", event_exc)
         return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": pending_order["id"], "order_number": order_number}
 
     async def confirm_payment(self, user_id: str, client_ip: str, pi_id: str, email: str) -> Dict[str, Any]:
-        if not pi_id or not isinstance(pi_id, str) or len(pi_id.strip()) == 0:
+        if not pi_id or not isinstance(pi_id, str) or not pi_id.strip():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Payment Intent ID provided.")
         try:
             intent = await run_in_threadpool(self.provider.retrieve_intent, pi_id)
@@ -183,7 +195,9 @@ class PaymentService:
         except HTTPException:
             raise
         except Exception as exc:
+            logger.error("[PAYMENT] Stripe confirmation retrieval failed", exc_info=True)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
+
         order_id = intent.get("metadata", {}).get("order_id", "")
         if not order_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PaymentSecurityMessages.INVALID_METADATA)
@@ -194,6 +208,7 @@ class PaymentService:
             pm_type = pm_types[0] if pm_types else "card"
             result = await self.repo.settle_order_transaction(order_id, intent["id"], intent.get("amount", 0) / 100, user_id, payment_method=pm_type)
         except Exception as exc:
+            logger.error("[PAYMENT] Settlement failed for order %s", order_id[:8], exc_info=True)
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=PaymentSecurityMessages.RACE_CONDITION) from exc
         if result == "ALREADY_PAID":
             return {"status": OrderStatus.PAID.value, "order_id": order_id, "message": PaymentMessages.ALREADY_SETTLED}
@@ -201,8 +216,11 @@ class PaymentService:
             try:
                 await run_in_threadpool(self.provider.process_refund, pi_id)
             except Exception as refund_exc:
-                logger.error("[PAYMENT] Auto-refund FAILED for orphaned success %s: %s -- needs manual refund.", pi_id, refund_exc)
+                logger.error("[PAYMENT] Auto-refund FAILED for orphaned success %s: %s", pi_id, refund_exc, exc_info=True)
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)
+        if result != "SETTLED":
+            logger.error("[PAYMENT SECURITY] Unexpected settlement result %r for order %s", result, order_id[:8])
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION)
         if existing_order:
             existing_order["status"] = OrderStatus.PAID.value
         coupon_id_order = (existing_order or {}).get("coupon_id")
@@ -213,9 +231,9 @@ class PaymentService:
             except Exception as coupon_exc:
                 logger.error("[PAYMENT] Coupon redemption failed for order %s: %s", order_id, coupon_exc)
         try:
-            get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
+            get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=(existing_order or {}).get("shipping_email") or (existing_order or {}).get("billing_email") or email, customer_id=user_id))
         except Exception as e:
-            logger.error("Event bus failed: %s", e)
+            logger.error("Event bus failed: %s", e, exc_info=True)
         return {"status": OrderStatus.PAID.value, "order_id": order_id, "message": PaymentMessages.CONFIRMED}
 
     async def retry_payment(self, user_id: str, order_id: str, client_ip: Optional[str] = None, user_agent: Optional[str] = None) -> Dict[str, Any]:
@@ -230,7 +248,7 @@ class PaymentService:
         if amount_paise < PaymentRules.MIN_ORDER_AMOUNT_PAISE:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PaymentSecurityMessages.ZERO_AMOUNT_RETRY)
         pi_id = existing_order.get("stripe_payment_intent") if existing_order else None
-        if not pi_id or not isinstance(pi_id, str) or len(pi_id.strip()) == 0:
+        if not pi_id or not isinstance(pi_id, str) or not pi_id.strip():
             return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise, ip_address=client_ip, user_agent=user_agent)
         try:
             intent = await run_in_threadpool(self.provider.retrieve_intent, pi_id)
@@ -242,8 +260,11 @@ class PaymentService:
                     try:
                         await run_in_threadpool(self.provider.process_refund, pi_id)
                     except Exception as refund_error:
-                        logger.error("[PAYMENT RETRY] Refund failed for cancelled order %s: %s", order_id[:8], refund_error, exc_info=True)
+                        logger.error("[PAYMENT RETRY] Refund failed for cancelled order %s", order_id[:8], exc_info=True)
                     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)
+                if result not in {"SETTLED", "ALREADY_PAID"}:
+                    logger.error("[PAYMENT SECURITY] Unexpected retry settlement result %r for order %s", result, order_id[:8])
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION)
                 coupon_id_order = (existing_order or {}).get("coupon_id")
                 if coupon_id_order:
                     try:
@@ -272,8 +293,8 @@ class PaymentService:
             if not linked:
                 try:
                     await run_in_threadpool(self.provider.cancel_intent, new_intent["id"])
-                except Exception as cancel_error:
-                    logger.error("[PAYMENT RETRY] Replacement intent cancellation failed for order %s: %s", order_id[:8], cancel_error, exc_info=True)
+                except Exception:
+                    logger.error("[PAYMENT RETRY] Replacement intent cancellation failed for order %s", order_id[:8], exc_info=True)
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
             await run_in_threadpool(self.provider.update_intent_metadata, new_intent["id"], {"order_id": order_id, "user_id": user_id})
             await self.repo.record_payment_attempt(order_id, user_id, new_intent["id"], amount_paise / 100, status="requires_payment_method", ip_address=ip_address, user_agent=user_agent)
@@ -327,13 +348,17 @@ class PaymentService:
                     if result == "ORDER_ALREADY_CANCELLED":
                         try:
                             await run_in_threadpool(self.provider.process_refund, pi_id)
-                        except Exception as refund_exc:
-                            logger.error("[WEBHOOK] Auto-refund FAILED for orphaned success %s: %s -- needs manual refund.", pi_id, refund_exc)
+                        except Exception:
+                            logger.error("[WEBHOOK] Auto-refund FAILED for orphaned success %s", pi_id, exc_info=True)
                     elif result == "SETTLED":
                         try:
                             get_event_bus().publish(OrderPaidEvent(order=order, customer_email=order.get("shipping_email") or order.get("billing_email") or "", customer_id=customer_id))
-                        except Exception as e:
-                            logger.error("[WEBHOOK] OrderPaidEvent publish FAILED for Order %s: %s", order_id[:8], e, exc_info=True)
+                        except Exception:
+                            logger.error("[WEBHOOK] OrderPaidEvent publish FAILED for Order %s", order_id[:8], exc_info=True)
+                    elif result == "ALREADY_PAID":
+                        logger.info("[WEBHOOK] Order %s already settled", order_id[:8])
+                    else:
+                        raise RuntimeError(f"Unexpected settlement result: {result!r}")
             elif event_type == "payment_intent.payment_failed":
                 if current_status == OrderStatus.PENDING.value:
                     reason = (obj.get("last_payment_error") or {}).get("message", "Payment failed")
@@ -344,8 +369,8 @@ class PaymentService:
                     await self.repo.record_payment_attempt(order_id, customer_id, pi_id, amount, status="failed", payment_method=pm_type, error_code=error_code, error_message=reason)
                     try:
                         get_event_bus().publish(OrderFailedEvent(order=order, customer_email=order.get("shipping_email") or order.get("billing_email") or "", customer_id=customer_id, reason="payment_failed"))
-                    except Exception as event_exc:
-                        logger.error("[WEBHOOK] Failed to publish OrderFailedEvent: %s", event_exc)
+                    except Exception:
+                        logger.error("[WEBHOOK] Failed to publish OrderFailedEvent", exc_info=True)
             elif event_type == "payment_intent.canceled":
                 if current_status == OrderStatus.PENDING.value:
                     await self.repo.release_abandoned_order(order_id, reason=f"stripe_event:{event_type}")
