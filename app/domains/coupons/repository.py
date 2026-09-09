@@ -46,7 +46,9 @@ class AsyncCouponRepository:
     async def create(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await sb.table("coupons").insert(data).maybe_single().execute()
+            # In supabase-py async, maybe_single() is a response modifier and
+            # must follow select(). Insert itself does not expose maybe_single().
+            res = await sb.table("coupons").insert(data).select("*").maybe_single().execute()
             return res.data if res else None
         except Exception as exc:
             logger.error("[REPO:COUPONS] create failed: %s", exc)
@@ -56,7 +58,7 @@ class AsyncCouponRepository:
         sb = await get_async_admin_supabase()
         try:
             res = await (
-                sb.table("coupons").update(data).eq("id", coupon_id).maybe_single().execute()
+                sb.table("coupons").update(data).eq("id", coupon_id).select("*").maybe_single().execute()
             )
             return res.data if res else None
         except Exception as exc:
