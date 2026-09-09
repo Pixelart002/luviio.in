@@ -69,11 +69,13 @@ async def delete_product(request: Request, product_id: uuid.UUID) -> Dict[str, A
     return success_response(message=ProductMessages.PRODUCT_DELETED)
 
 @router.post("/products/{product_id}/images", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
-async def upload_image_endpoint(request: Request, product_id: uuid.UUID, file: UploadFile = File(...)) -> Dict[str, Any]:
+async def upload_image_endpoint(request: Request, product_id: uuid.UUID, files: List[UploadFile] = File(...)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Receiving asset upload for Product: {str(product_id)[:8]}...")
-    contents = await file.read()
-    result = await ProductService().upload_image(str(product_id), contents, file.filename or "unknown")
+        request.state.actions.append(f"Receiving {len(files)} asset upload(s) for Product: {str(product_id)[:8]}...")
+    payload = []
+    for file in files:
+        payload.append((await file.read(), file.filename or "unknown"))
+    result = await ProductService().upload_images(str(product_id), payload)
     return success_response(data=result, message=ProductMessages.IMAGE_UPLOADED)
 
 @router.delete("/products/{product_id}/images/{index}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
