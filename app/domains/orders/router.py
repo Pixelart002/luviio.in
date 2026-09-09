@@ -19,6 +19,7 @@ from app.domains.orders.schemas import (
     OrderCreateFromCartRequest,
 )
 from app.domains.orders.service import OrderService
+from app.domains.orders.cod_service import CodOrderService
 from app.domains.payments.service import PaymentService
 from app.enums.roles import UserRole
 from app.permissions.orders import OrderPermissions
@@ -52,6 +53,22 @@ async def create_order_from_cart(request: Request, payload: OrderCreateFromCartR
         coupon_code=payload.coupon_code,
     )
     return success_response(data=data, message="Order placed successfully.")
+
+
+@router.post("/cod", status_code=status.HTTP_201_CREATED)
+async def create_cod_order(request: Request, payload: OrderCreateFromCartRequest, user_id: str = Depends(get_user_id_strict)):
+    """Create a COD order without creating a Stripe PaymentIntent."""
+    if not payload.idempotency_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="idempotency_key is required for checkout.")
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"COD checkout initiated by UID: {user_id[:8]}...")
+    data = await CodOrderService().create_order(
+        user_id=user_id,
+        address_id=str(payload.shipping_address_id),
+        idempotency_key=payload.idempotency_key,
+        coupon_code=payload.coupon_code,
+    )
+    return success_response(data=data, message="COD order placed successfully.")
 
 
 @router.get("/my", status_code=status.HTTP_200_OK)
