@@ -66,7 +66,7 @@ class ProductService:
         product["images"] = product.get("images") or []
         return self._enrich_discount(product)
 
-    async def create_product(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _prepare_product_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         if data.get("sku") and await self.repo.check_sku_exists(data["sku"]):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ProductSecurityMessages.SKU_COLLISION)
         data["slug"] = await self.repo.generate_unique_slug(data["slug"])
@@ -81,11 +81,55 @@ class ProductService:
         data["hsn_code"] = str(data.get("hsn_code") or "9988").strip()
         data["gst_percentage"] = int(data.get("gst_percentage") if data.get("gst_percentage") is not None else 18)
         data["attributes"] = data.get("attributes") or {}
+        return data
+
+    async def create_product(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        data = await self._prepare_product_data(data)
         res = await self.repo.create_product(data)
         if not res:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
         await self.repo.sync_product_images_table(res["id"], res.get("images") or [])
         return self._enrich_discount(res)
+
+    async def create_product_with_images(self, data: Dict[str, Any], files: List[tuple[bytes, str]]) -> Dict[str, Any]:
+        data = await self._prepare_product_data(data)
+        if len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
+
+        # Image URLs supplied in the product payload count toward the same limit.
+        if len(data.get("images") or []) + len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
+
+        res = await self.repo.create_product(data)
+        if not res:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
+
+        try:
+            existing = list(res.get("images") or [])
+            uploaded: List[str] = []
+            if files:
+                uploaded = await run_in_threadpool(
+                    upload_multiple_images,
+                    files,
+                    res["id"],
+                    max_images=ProductRules.MAX_IMAGES_PER_PRODUCT - len(existing),
+                )
+            all_images = existing + uploaded
+            await self.repo.update_product(res["id"], {"images": all_images, "image_url": all_images[0] if all_images else None})
+            await self.repo.sync_product_images_table(res["id"], all_images)
+            res["images"] = all_images
+            res["image_url"] = all_images[0] if all_images else None
+            return self._enrich_discount(res)
+        except Exception as exc:
+            logger.error("Product creation image upload failed for %s: %s", res.get("id"), exc, exc_info=True)
+            # The product must not remain visible as a partially-created item.
+            try:
+                await self.repo.soft_delete_product(res["id"])
+            except Exception as cleanup_exc:
+                logger.warning("Failed to soft-delete partial product %s: %s", res.get("id"), cleanup_exc)
+            if isinstance(exc, HTTPException):
+                raise
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=ProductSecurityMessages.UPLOAD_FAILED) from exc
 
     async def update_product(self, product_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         if "sku" in data and data["sku"] and await self.repo.check_sku_exists(data["sku"], exclude_product_id=product_id):
@@ -126,10 +170,7 @@ class ProductService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one image is required.")
         ProductPolicy.assert_can_upload_image(len(existing))
         if len(existing) + len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT),
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
 
         try:
             uploaded = await run_in_threadpool(upload_multiple_images, files, product_id, max_images=ProductRules.MAX_IMAGES_PER_PRODUCT - len(existing))
