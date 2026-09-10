@@ -33,73 +33,43 @@ class AsyncAdminRepository:
                 exc,
                 exc_info=True,
             )
-            return None
+            raise RuntimeError("Unable to verify administrator profile") from exc
 
     async def get_dashboard_stats(self) -> Dict[str, Any]:
-        """Fetch independent dashboard counters concurrently."""
-        stats = {
-            "products": 0,
-            "orders": 0,
-            "pending_orders": 0,
-            "users": 0,
-            "revenue": 0.0,
-        }
+        """Fetch independent dashboard counters concurrently.
+
+        This method intentionally fails closed. A database error must never be
+        rendered as a legitimate zero in the admin console.
+        """
+        stats: Dict[str, Any] = {}
 
         async def fetch_products() -> None:
-            try:
-                sb = await get_async_admin_supabase()
-                res = await sb.table("products").select(
-                    "id", count="exact"
-                ).eq("is_active", True).limit(1).execute()
-                stats["products"] = res.count or 0
-            except Exception as exc:
-                logger.error("Stats product query failed: %s", exc, exc_info=True)
+            sb = await get_async_admin_supabase()
+            res = await sb.table("products").select("id", count="exact").eq("is_active", True).limit(1).execute()
+            stats["products"] = res.count or 0
 
         async def fetch_orders() -> None:
-            try:
-                sb = await get_async_admin_supabase()
-                res = await sb.table("orders").select(
-                    "id", count="exact"
-                ).limit(1).execute()
-                stats["orders"] = res.count or 0
-            except Exception as exc:
-                logger.error("Stats order query failed: %s", exc, exc_info=True)
+            sb = await get_async_admin_supabase()
+            res = await sb.table("orders").select("id", count="exact").limit(1).execute()
+            stats["orders"] = res.count or 0
 
         async def fetch_pending() -> None:
-            try:
-                sb = await get_async_admin_supabase()
-                res = await sb.table("orders").select(
-                    "id", count="exact"
-                ).eq("status", "pending").limit(1).execute()
-                stats["pending_orders"] = res.count or 0
-            except Exception as exc:
-                logger.error("Stats pending-order query failed: %s", exc, exc_info=True)
+            sb = await get_async_admin_supabase()
+            res = await sb.table("orders").select("id", count="exact").eq("status", "pending").limit(1).execute()
+            stats["pending_orders"] = res.count or 0
 
         async def fetch_users() -> None:
-            try:
-                sb = await get_async_admin_supabase()
-                res = await sb.table("users").select(
-                    "id", count="exact"
-                ).limit(1).execute()
-                stats["users"] = res.count or 0
-            except Exception as exc:
-                logger.error("Stats user query failed: %s", exc, exc_info=True)
+            sb = await get_async_admin_supabase()
+            res = await sb.table("users").select("id", count="exact").limit(1).execute()
+            stats["users"] = res.count or 0
 
         async def fetch_revenue() -> None:
-            try:
-                sb = await get_async_admin_supabase()
-                res = await sb.table("orders").select(
-                    "total_amount"
-                ).in_("status", ["paid", "shipped", "delivered"]).execute()
-                data = getattr(res, "data", None) or []
-                stats["revenue"] = round(
-                    sum(float(order.get("total_amount") or 0) for order in data),
-                    2,
-                )
-            except Exception as exc:
-                logger.error("Stats revenue query failed: %s", exc, exc_info=True)
+            sb = await get_async_admin_supabase()
+            res = await sb.table("orders").select("total_amount").in_("status", ["paid", "shipped", "delivered"]).execute()
+            data = getattr(res, "data", None) or []
+            stats["revenue"] = round(sum(float(order.get("total_amount") or 0) for order in data), 2)
 
-        await asyncio.gather(
+        results = await asyncio.gather(
             fetch_products(),
             fetch_orders(),
             fetch_pending(),
@@ -107,4 +77,10 @@ class AsyncAdminRepository:
             fetch_revenue(),
             return_exceptions=True,
         )
+        failures = [result for result in results if isinstance(result, Exception)]
+        if failures:
+            for failure in failures:
+                logger.error("Admin dashboard query failed: %s", failure, exc_info=failure)
+            raise RuntimeError("Unable to load complete dashboard telemetry") from failures[0]
+
         return stats
