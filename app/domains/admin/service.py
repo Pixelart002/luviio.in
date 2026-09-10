@@ -32,9 +32,9 @@ class AdminService:
         AdminPolicy.assert_is_active_admin(await self.repo.get_live_admin_profile(user_id))
         return await self.repo.get_report_summary()
 
-    async def get_payments(self, user_id: str) -> list[dict[str, Any]]:
+    async def get_payments(self, user_id: str, limit: int = 10, offset: int = 0) -> dict[str, Any]:
         AdminPolicy.assert_is_active_admin(await self.repo.get_live_admin_profile(user_id))
-        return await self.repo.get_payment_report()
+        return await self.repo.get_payment_report(limit=limit, offset=offset)
 
     async def get_audit_logs(self, user_id: str, limit: int = 200) -> list[dict[str, Any]]:
         AdminPolicy.assert_is_active_admin(await self.repo.get_live_admin_profile(user_id))
