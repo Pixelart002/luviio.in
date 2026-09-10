@@ -8,6 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from slowapi import Limiter
+from starlette.concurrency import run_in_threadpool
 
 from app.core.dependencies import get_current_user, get_user_id_strict
 from app.domains.orders.repository import AsyncOrderRepository
@@ -17,6 +18,7 @@ from app.domains.payments.schemas import (
     PaymentIntentRequest,
 )
 from app.domains.payments.service import PaymentService
+from app.integrations.payments.registry import get_payment_provider
 from app.utils.response import success_response
 
 
@@ -107,6 +109,54 @@ async def retry_payment(
     user_agent = request.headers.get("user-agent", "")
     data = await PaymentService().retry_payment(user_id, order_number, client_ip=client_ip, user_agent=user_agent)
     return success_response(data=await _public_payment_data(data))
+
+
+@router.post("/cancel/{order_number}")
+@limiter.limit("10/minute")
+async def cancel_checkout_payment(
+    request: Request,
+    order_number: str,
+    user_id: str = Depends(get_user_id_strict),
+) -> Dict[str, Any]:
+    """Cancel an active customer checkout safely before releasing inventory.
+
+    Stripe is checked first. A successful PaymentIntent is never silently
+    converted into a cancelled order; non-terminal intents are cancelled at
+    Stripe before the local order/stock transaction runs.
+    """
+    order_number = _require_public_order_number(order_number)
+    repo = AsyncOrderRepository()
+    order = await repo.get_order_by_id(order_number)
+    if not order or str(order.get("customer_id")) != str(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
+    if order.get("status") != "pending":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This checkout is no longer cancellable.")
+
+    pi_id = str(order.get("stripe_payment_intent") or "").strip()
+    provider = get_payment_provider("stripe")
+    if pi_id:
+        try:
+            intent = await run_in_threadpool(provider.retrieve_intent, pi_id)
+            stripe_status = intent.get("status")
+            if stripe_status == "succeeded":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Payment has already completed. This order cannot be cancelled from checkout.",
+                )
+            if stripe_status not in {"canceled", "succeeded"}:
+                await run_in_threadpool(provider.cancel_intent, pi_id)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="We could not safely cancel the payment session. Please try again.",
+            ) from exc
+
+    result = await repo.cancel_order_and_restore_stock(str(order["id"]), user_id)
+    if not result or result.get("status") != "cancelled":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Checkout changed while cancelling. Please retry.")
+    return success_response(data={"status": "cancelled", "order_number": order_number})
 
 
 @router.post("/notify-failed")
