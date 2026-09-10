@@ -110,16 +110,23 @@ class AsyncAdminRepository:
             "generated_at": ts_to_iso(time.time()),
         }
 
-    async def get_payment_report(self) -> list[dict[str, Any]]:
+    async def get_payment_report(self, limit: int = 10, offset: int = 0) -> dict[str, Any]:
         sb = await get_async_admin_supabase()
         res = await (
             sb.table("payments")
             .select("id,order_id,amount,amount_paise,currency,status,payment_method,error_code,error_message,attempt_number,total_attempts,latest_payment_intent_id,created_at,updated_at,orders(order_number,status,total_amount)")
             .order("created_at", desc=True)
-            .limit(200)
+            .range(offset, offset + limit)
             .execute()
         )
-        return getattr(res, "data", None) or []
+        data = getattr(res, "data", None) or []
+        has_more = len(data) > limit
+        items = data[:limit]
+        return {
+            "items": items,
+            "has_more": has_more,
+            "next_offset": offset + len(items),
+        }
 
     async def get_audit_logs(self, limit: int = 200) -> list[dict[str, Any]]:
         sb = await get_async_admin_supabase()
