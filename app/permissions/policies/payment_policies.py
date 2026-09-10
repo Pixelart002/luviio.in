@@ -73,4 +73,12 @@ class PaymentPolicy:
     def assert_can_retry(order: Optional[Dict[str, Any]], user_id: str) -> Dict[str, Any]:
         if not order or str(order.get("customer_id", "")) != str(user_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ORDER_NOT_FOUND)
+        if order.get("status") not in ("pending", "paid"):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
+        # A COD order has no Stripe PaymentIntent. Fail closed here so a client
+        # cannot turn a COD order into an online payment merely by calling the
+        # retry endpoint directly. Stripe orders retain their PI and may use the
+        # replacement-intent path when Stripe reports the PI as canceled.
+        if not order.get("stripe_payment_intent"):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
         return order
