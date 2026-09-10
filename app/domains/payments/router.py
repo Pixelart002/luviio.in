@@ -4,8 +4,9 @@ Payments Router
 Path: app/domains/payments/router.py
 """
 from typing import Any, Dict
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from slowapi import Limiter
 
 from app.core.dependencies import get_current_user, get_user_id_strict
@@ -24,6 +25,17 @@ def get_real_ip(request: Request) -> str:
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "127.0.0.1"
+
+
+def _require_public_order_number(value: str) -> str:
+    reference = str(value or "").strip()
+    if not reference:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
+    try:
+        UUID(reference)
+    except (ValueError, TypeError):
+        return reference
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
 
 
 async def _public_payment_data(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -81,6 +93,7 @@ async def retry_payment(
     order_number: str,
     user_id: str = Depends(get_user_id_strict)
 ) -> Dict[str, Any]:
+    order_number = _require_public_order_number(order_number)
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Initiating Smart Paywall Retry for order reference: {order_number[:32]}")
     client_ip = get_real_ip(request)
