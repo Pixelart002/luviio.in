@@ -12,8 +12,8 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 
-from app.api.v1.api import api_router
 from app.api.middlewares.audit import AdminAuditMiddleware
+from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging_config import configure_logging
