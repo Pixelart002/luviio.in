@@ -54,7 +54,7 @@ class AsyncAdminRepository:
 
         async def revenue() -> None:
             sb = await get_async_admin_supabase()
-            res = await sb.table("orders").select("total_amount").in_("status", ["paid", "shipped", "delivered"]).execute()
+            res = await sb.table("orders").select("total_amount").in_("status", ["paid", "processing", "shipped", "delivered"]).execute()
             stats["revenue"] = round(sum(float(row.get("total_amount") or 0) for row in (getattr(res, "data", None) or [])), 2)
 
         results = await asyncio.gather(products(), orders(), pending(), users(), revenue(), return_exceptions=True)
