@@ -6,6 +6,7 @@ remain available through get_order_by_id for the order-detail view.
 """
 import logging
 from typing import Any, List, Optional, Tuple
+from uuid import UUID
 
 from fastapi import HTTPException, status
 from app.core.supabase import get_async_admin_supabase
@@ -21,19 +22,21 @@ class AsyncOrderRepository:
         pass
 
     async def get_order_by_id(self, order_id: str, user_id: Optional[str] = None) -> Optional[dict[str, Any]]:
+        """Resolve either an internal UUID (server-side) or the existing order_number."""
         admin_sb = await get_async_admin_supabase()
         try:
             q = admin_sb.table("orders").select(ORDER_ITEMS_SELECT)
-            if len(order_id) == 36 and "-" in order_id:
-                q = q.eq("id", order_id)
-            else:
-                q = q.eq("order_number", order_id)
+            try:
+                UUID(str(order_id))
+                q = q.eq("id", str(order_id))
+            except (ValueError, TypeError):
+                q = q.eq("order_number", str(order_id))
             if user_id:
                 q = q.eq("customer_id", user_id)
             res = await q.maybe_single().execute()
             return res.data if res else None
         except Exception as e:
-            logger.error(f"[REPO:ORDERS] Failed to fetch order {order_id}: {e}", exc_info=True)
+            logger.error(f"[REPO:ORDERS] Failed to resolve order reference: {e}", exc_info=True)
             return None
 
     async def cancel_order_and_restore_stock(self, order_id: str, user_id: Optional[str] = None) -> Optional[dict[str, Any]]:
