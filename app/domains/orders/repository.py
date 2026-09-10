@@ -9,6 +9,7 @@ from typing import Any, List, Optional, Tuple
 from uuid import UUID
 
 from fastapi import HTTPException, status
+
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
