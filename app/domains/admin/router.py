@@ -16,7 +16,7 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
-@router.get("/verify", dependencies=[Depends(require_permission(AdminPermissions.MANAGE_SETTINGS))], status_code=status.HTTP_200_OK)
+@router.get("/verify", dependencies=[Depends(require_permission(AdminPermissions.ACCESS_CONSOLE))], status_code=status.HTTP_200_OK)
 @limiter.limit("30/minute")
 async def verify_admin(request: Request, user_id: str = Depends(get_user_id_strict)):
     data = await AdminService().verify_admin_access(user_id)
