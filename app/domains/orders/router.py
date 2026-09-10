@@ -33,6 +33,14 @@ def _get_real_ip(request: Request) -> str:
     return request.client.host if request.client else "127.0.0.1"
 
 
+def _public_order_result(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Expose only customer-facing identifiers; database UUIDs remain internal."""
+    public = dict(data or {})
+    public.pop("order_id", None)
+    public.pop("id", None)
+    return public
+
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -51,7 +59,7 @@ async def create_order_from_cart(request: Request, payload: OrderCreateFromCartR
         user_agent=request.headers.get("user-agent", ""),
         coupon_code=payload.coupon_code,
     )
-    return success_response(data=data, message="Order placed successfully.")
+    return success_response(data=_public_order_result(data), message="Order placed successfully.")
 
 
 @router.post("/cod", status_code=status.HTTP_201_CREATED)
@@ -67,7 +75,7 @@ async def create_cod_order(request: Request, payload: OrderCreateFromCartRequest
         idempotency_key=payload.idempotency_key,
         coupon_code=payload.coupon_code,
     )
-    return success_response(data=data, message="COD order placed successfully.")
+    return success_response(data=_public_order_result(data), message="COD order placed successfully.")
 
 
 @router.get("/my", status_code=status.HTTP_200_OK)
