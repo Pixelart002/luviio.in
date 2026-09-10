@@ -15,6 +15,7 @@ from app.domains.payments.schemas import (
     PaymentIntentRequest,
 )
 from app.domains.payments.service import PaymentService
+from app.domains.orders.repository import AsyncOrderRepository
 from app.utils.response import success_response
 
 
@@ -23,6 +24,18 @@ def get_real_ip(request: Request) -> str:
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "127.0.0.1"
+
+
+async def _public_payment_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip internal order UUIDs and retain the existing customer-facing order number."""
+    public = dict(data or {})
+    internal_order_id = public.pop("order_id", None)
+    if not public.get("order_number") and internal_order_id:
+        order = await AsyncOrderRepository().get_order_by_id(str(internal_order_id))
+        if order:
+            public["order_number"] = order.get("order_number", "")
+    return public
+
 
 limiter = Limiter(key_func=get_real_ip)
 router = APIRouter(prefix="/payments", tags=["Payments"])
@@ -44,7 +57,7 @@ async def create_payment_intent(
         str(payload.shipping_address_id), billing_id,
         user_agent=user_agent, coupon_code=payload.coupon_code,
     )
-    return success_response(data=data)
+    return success_response(data=await _public_payment_data(data))
 
 @router.post("/confirm")
 @limiter.limit("10/minute")
@@ -59,21 +72,21 @@ async def confirm_payment(
     email = current.get("profile", {}).get("email", "")
     client_ip = get_real_ip(request)
     data = await PaymentService().confirm_payment(user_id, client_ip, payload.payment_intent_id, email)
-    return success_response(data=data)
+    return success_response(data=await _public_payment_data(data))
 
-@router.post("/retry/{order_id}")
+@router.post("/retry/{order_number}")
 @limiter.limit("10/minute")
 async def retry_payment(
     request: Request,
-    order_id: str,
+    order_number: str,
     user_id: str = Depends(get_user_id_strict)
 ) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Initiating Smart Paywall Retry for Order: {order_id[:8]}...")
+        request.state.actions.append(f"Initiating Smart Paywall Retry for order reference: {order_number[:32]}")
     client_ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "")
-    data = await PaymentService().retry_payment(user_id, order_id, client_ip=client_ip, user_agent=user_agent)
-    return success_response(data=data)
+    data = await PaymentService().retry_payment(user_id, order_number, client_ip=client_ip, user_agent=user_agent)
+    return success_response(data=await _public_payment_data(data))
 
 @router.post("/notify-failed")
 async def notify_payment_failed(
