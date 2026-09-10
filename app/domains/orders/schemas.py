@@ -34,5 +34,5 @@ class OrderListResponse(BaseModel):
 
 class OrderCancelResponse(BaseModel):
     status: str
-    order_id: str
+    order_number: str
     message: str
