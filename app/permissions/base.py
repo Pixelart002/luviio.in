@@ -23,18 +23,11 @@ ROLE_PERMISSIONS = {
         OP.READ, OP.UPDATE, OP.CANCEL, OP.REFUND,
         UP.READ, UP.UPDATE, UP.DELETE,
         PayP.READ, PayP.PROCESS, PayP.REFUND,
-        AP.VIEW_ANALYTICS, AP.MANAGE_SETTINGS,
-        # 🔥 FIX: these were never granted to any role except super_admin
-        # (via the "*" wildcard) — every /settings/* endpoint 403'd for
-        # admins too, even though AP.MANAGE_SETTINGS above already signaled
-        # admin was meant to manage settings. MANAGE_LOCKED intentionally
-        # excluded — that stays super_admin-only per SettingsPolicy.
+        AP.VIEW_ANALYTICS, AP.MANAGE_SETTINGS, AP.MANAGE_ROLES,
         SP.READ, SP.UPDATE, SP.RESET,
-        # New commerce domains — full staff control
         CP.CREATE, CP.READ, CP.UPDATE, CP.DELETE, CP.APPLY,
         ShipP.READ, ShipP.UPDATE, ShipP.DELETE,
         SubP.READ_PLANS, SubP.READ_MINE, SubP.MANAGE, SubP.MANAGE_USERS,
-        # NOTE: AP.MANAGE_ROLES stays super_admin-only (role assignment is God-Mode).
     ],
 
     UserRole.MANAGER: [
@@ -43,17 +36,9 @@ ROLE_PERMISSIONS = {
         UP.READ,
         PayP.READ,
         AP.VIEW_ANALYTICS,
-        # Day-to-day commerce operations, no destructive/financial rights
         CP.CREATE, CP.READ, CP.UPDATE,
         ShipP.READ, ShipP.UPDATE,
         SubP.READ_PLANS, SubP.MANAGE_USERS,
-        # NOTE: SettingsPermissions intentionally NOT granted here yet.
-        # ManagerSettingsService exists (operational/ui_ux categories only)
-        # but no router endpoint calls it yet — /settings/ is still wired
-        # to AdminSettingsService only, which returns ALL settings
-        # unfiltered. Granting SP.READ here would let managers see
-        # financial/locked settings via the list endpoint. Add a
-        # manager-scoped router route first, then grant permissions here.
     ],
 
     UserRole.SUPPORT: [
