@@ -4,20 +4,16 @@ from app.permissions.coupons import CouponPermissions as CP
 from app.permissions.orders import OrderPermissions as OP
 from app.permissions.payments import PaymentPermissions as PayP
 from app.permissions.products import ProductPermissions as PP
+from app.permissions.reviews import ReviewPermissions as RP
 from app.permissions.settings import SettingsPermissions as SP
 from app.permissions.shipping import ShippingPermissions as ShipP
 from app.permissions.subscriptions import SubscriptionPermissions as SubP
 from app.permissions.users import UserPermissions as UP
 
-# Master Role-to-Permission Mapping
-# ==================================
-# This is the STATIC default matrix. At runtime, `app.permissions.overrides`
-# layers an optional `role_permissions` table on top of it so admins can
-# enable/disable individual permissions per role without a redeploy.
-# Effective permission = static default, adjusted by DB overrides.
+# Master Role-to-Permission Mapping.
+# DB role_permissions is an override layer over these defaults.
 ROLE_PERMISSIONS = {
-    UserRole.SUPER_ADMIN: ["*"],  # God Mode — absolute, can never be narrowed at runtime.
-
+    UserRole.SUPER_ADMIN: ["*"],
     UserRole.ADMIN: [
         PP.CREATE, PP.READ, PP.UPDATE, PP.DELETE,
         OP.READ, OP.UPDATE, OP.CANCEL, OP.REFUND,
@@ -28,8 +24,8 @@ ROLE_PERMISSIONS = {
         CP.CREATE, CP.READ, CP.UPDATE, CP.DELETE, CP.APPLY,
         ShipP.READ, ShipP.UPDATE, ShipP.DELETE,
         SubP.READ_PLANS, SubP.READ_MINE, SubP.MANAGE, SubP.MANAGE_USERS,
+        RP.MODERATE,
     ],
-
     UserRole.MANAGER: [
         PP.CREATE, PP.READ, PP.UPDATE,
         OP.READ, OP.UPDATE, OP.CANCEL,
@@ -39,8 +35,8 @@ ROLE_PERMISSIONS = {
         CP.CREATE, CP.READ, CP.UPDATE,
         ShipP.READ, ShipP.UPDATE,
         SubP.READ_PLANS, SubP.MANAGE_USERS,
+        RP.MODERATE,
     ],
-
     UserRole.SUPPORT: [
         PP.READ,
         OP.READ, OP.UPDATE,
@@ -50,9 +46,6 @@ ROLE_PERMISSIONS = {
         ShipP.READ,
         SubP.READ_PLANS, SubP.READ_MINE,
     ],
-
-    # Customers use ABAC (Resource Ownership) for their own data, but the
-    # customer-facing commerce endpoints below are guarded by PBAC.
     UserRole.CUSTOMER: [
         CP.APPLY,
         SubP.READ_PLANS, SubP.SUBSCRIBE, SubP.READ_MINE,
@@ -61,10 +54,6 @@ ROLE_PERMISSIONS = {
 
 
 def get_static_role_permissions(role) -> set[str]:
-    """
-    Returns the static default permission set for a role (handles both the
-    UserRole enum and its string value).
-    """
     key = role
     if isinstance(role, str):
         try:
