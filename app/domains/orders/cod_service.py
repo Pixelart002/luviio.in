@@ -11,6 +11,7 @@ import logging
 from email_validator import EmailNotValidError, validate_email
 from fastapi import HTTPException, status
 from nanoid import generate
+from starlette.concurrency import run_in_threadpool
 
 from app.constants.payment_messages import PaymentSecurityMessages
 from app.domains.coupons.service import CouponService
@@ -18,16 +19,18 @@ from app.domains.payments.repository import AsyncPaymentRepository
 from app.domains.pricing.service import get_pricing_from_config
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderCreatedEvent, get_event_bus
+from app.integrations.payments.registry import get_payment_provider
 from app.permissions.policies.payment_policies import PaymentPolicy
 
 logger = logging.getLogger(__name__)
 
 
 class CodOrderService:
-    """Create a COD order without involving Stripe."""
+    """Create a COD order without leaving a Stripe PaymentIntent attached."""
 
     def __init__(self) -> None:
         self.repo = AsyncPaymentRepository()
+        self.provider = get_payment_provider("stripe")
 
     @staticmethod
     def _order_number() -> str:
@@ -50,18 +53,57 @@ class CodOrderService:
 
         existing = await self.repo.get_order_by_idempotency_key(user_id, idempotency_key)
         if existing:
-            if existing.get("status") == OrderStatus.PENDING.value:
-                return {
-                    "order_id": existing["id"],
-                    "order_number": existing.get("order_number", ""),
-                    "payment_method": "cod",
-                    "status": OrderStatus.PENDING.value,
-                    "total_amount": float(existing.get("total_amount") or 0),
-                }
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=PaymentSecurityMessages.DUPLICATE_ORDER,
-            )
+            if existing.get("status") != OrderStatus.PENDING.value:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=PaymentSecurityMessages.DUPLICATE_ORDER,
+                )
+
+            # The checkout may have created a Stripe PI before the customer
+            # switched to COD. Reusing that pending order is valid, but the old
+            # Stripe PI must first be canceled and then detached from the order.
+            # Otherwise Order History/retry logic can incorrectly treat this COD
+            # order as an online-payment order.
+            existing_pi = existing.get("stripe_payment_intent")
+            if existing_pi:
+                try:
+                    intent = await run_in_threadpool(self.provider.retrieve_intent, existing_pi)
+                    stripe_status = intent.get("status")
+                    if stripe_status not in {"canceled", "succeeded"}:
+                        await run_in_threadpool(self.provider.cancel_intent, existing_pi)
+                    elif stripe_status == "succeeded":
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="This payment was already completed. Please use the existing paid order.",
+                        )
+                except HTTPException:
+                    raise
+                except Exception as exc:
+                    logger.error(
+                        "[COD] Failed to safely cancel previous Stripe PI %s for order %s",
+                        existing_pi,
+                        existing.get("id"),
+                        exc_info=True,
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Unable to switch this checkout to COD safely. Please try again.",
+                    ) from exc
+
+                cleared = await self.repo.clear_order_payment_intent(existing["id"], existing_pi)
+                if not cleared:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Checkout changed while switching payment method. Please try again.",
+                    )
+
+            return {
+                "order_id": existing["id"],
+                "order_number": existing.get("order_number", ""),
+                "payment_method": "cod",
+                "status": OrderStatus.PENDING.value,
+                "total_amount": float(existing.get("total_amount") or 0),
+            }
 
         # Multiple legitimate pending orders are allowed. The DB idempotency
         # constraint, not a per-user pending-order blocker, prevents duplicates.
@@ -209,8 +251,6 @@ class CodOrderService:
         except HTTPException:
             raise
         except Exception as exc:
-            # A concurrent request with the same customer/key may have won the
-            # unique idempotency constraint. Converge to that order if present.
             raced = await self.repo.get_order_by_idempotency_key(user_id, idempotency_key)
             if raced and raced.get("status") == OrderStatus.PENDING.value:
                 logger.info("[COD] Idempotency race converged to order %s", raced["id"])
