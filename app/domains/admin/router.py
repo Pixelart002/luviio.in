@@ -37,8 +37,13 @@ async def admin_reports(request: Request, user_id: str = Depends(get_user_id_str
 
 @router.get("/payments", dependencies=[Depends(require_permission(AdminPermissions.VIEW_ANALYTICS))], status_code=status.HTTP_200_OK)
 @limiter.limit("20/minute")
-async def admin_payments(request: Request, user_id: str = Depends(get_user_id_strict)):
-    return success_response(data=await AdminService().get_payments(user_id))
+async def admin_payments(
+    request: Request,
+    limit: int = Query(10, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    user_id: str = Depends(get_user_id_strict),
+):
+    return success_response(data=await AdminService().get_payments(user_id, limit=limit, offset=offset))
 
 
 @router.get("/audit", dependencies=[Depends(require_permission(AdminPermissions.VIEW_ANALYTICS))], status_code=status.HTTP_200_OK)
