@@ -13,6 +13,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 
 from app.api.v1.api import api_router
+from app.api.middlewares.audit import AdminAuditMiddleware
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging_config import configure_logging
@@ -32,15 +33,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("🚀 Starting %s [%s]", settings.APP_NAME, settings.APP_ENV)
-
     register_all_event_handlers()
     logger.info("✅ Application Event Bus ready")
-
     start_cron_jobs()
     logger.info("✅ Cron Scheduler started")
-
     yield
-
     logger.info("👋 Shutting down %s", settings.APP_NAME)
 
 
@@ -54,15 +51,9 @@ app = FastAPI(
 )
 
 apply_middlewares(app)
+app.add_middleware(AdminAuditMiddleware)
 app.middleware("http")(maintenance_middleware)
 register_exception_handlers(app)
-
-# Root-level load-balancer health check.
 app.include_router(health_router)
-
-# Public server-rendered social previews. These routes intentionally sit
-# outside /api/v1 because the resulting URL is suitable for link sharing.
 app.include_router(social_share_router)
-
-# Versioned business API.
 app.include_router(api_router, prefix="/api/v1")
