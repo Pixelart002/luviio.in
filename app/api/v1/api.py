@@ -18,6 +18,7 @@ from app.domains.orders.router import router as orders_router
 from app.domains.payments.router import router as payments_router
 from app.domains.products.router import router as products_router
 from app.domains.rbac.router import router as rbac_router
+from app.domains.reviews.router import router as reviews_router
 from app.domains.settings.router import router as settings_router
 from app.domains.shipping.router import router as shipping_router
 from app.domains.subscriptions.router import router as subscriptions_router
@@ -30,6 +31,7 @@ api_router.include_router(health_router)
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(products_router)
+api_router.include_router(reviews_router)
 api_router.include_router(orders_router)
 api_router.include_router(payments_router)
 api_router.include_router(push_router)
