@@ -10,11 +10,11 @@ from app.permissions.shipping import ShippingPermissions as ShipP
 from app.permissions.subscriptions import SubscriptionPermissions as SubP
 from app.permissions.users import UserPermissions as UP
 
-# Master Role-to-Permission Mapping.
-# DB role_permissions is an override layer over these defaults.
+# Master Role-to-Permission Mapping. DB role_permissions is an override layer.
 ROLE_PERMISSIONS = {
     UserRole.SUPER_ADMIN: ["*"],
     UserRole.ADMIN: [
+        AP.ACCESS_CONSOLE,
         PP.CREATE, PP.READ, PP.UPDATE, PP.DELETE,
         OP.READ, OP.UPDATE, OP.CANCEL, OP.REFUND,
         UP.READ, UP.UPDATE, UP.DELETE,
@@ -27,6 +27,7 @@ ROLE_PERMISSIONS = {
         RP.MODERATE,
     ],
     UserRole.MANAGER: [
+        AP.ACCESS_CONSOLE,
         PP.CREATE, PP.READ, PP.UPDATE,
         OP.READ, OP.UPDATE, OP.CANCEL,
         UP.READ,
@@ -38,6 +39,7 @@ ROLE_PERMISSIONS = {
         RP.MODERATE,
     ],
     UserRole.SUPPORT: [
+        AP.ACCESS_CONSOLE,
         PP.READ,
         OP.READ, OP.UPDATE,
         UP.READ,
