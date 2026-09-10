@@ -4,9 +4,9 @@ COD intentionally does not create or confirm a Stripe PaymentIntent. It uses the
 same server-side cart pricing, stock validation, address ownership and atomic
 reservation path as card checkout.
 """
+import logging
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional
-import logging
 
 from email_validator import EmailNotValidError, validate_email
 from fastapi import HTTPException, status
