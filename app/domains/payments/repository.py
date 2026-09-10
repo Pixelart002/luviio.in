@@ -131,6 +131,28 @@ class AsyncPaymentRepository:
             logger.error("DB Error updating payment intent for order %s: %s", order_id, exc, exc_info=True)
             raise
 
+    async def clear_order_payment_intent(self, order_id: str, expected_pi_id: str) -> bool:
+        """Detach a stale Stripe PI while the order is still pending.
+
+        The expected PI guard prevents a concurrent retry from being detached
+        accidentally. COD conversion must only clear the exact PI that it first
+        observed.
+        """
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await (
+                admin_sb.table("orders")
+                .update({"stripe_payment_intent": None})
+                .eq("id", order_id)
+                .eq("status", "pending")
+                .eq("stripe_payment_intent", expected_pi_id)
+                .execute()
+            )
+            return bool(getattr(res, "data", None))
+        except Exception as exc:
+            logger.error("DB Error clearing Stripe payment intent for order %s: %s", order_id, exc, exc_info=True)
+            raise
+
     async def record_payment_attempt(self, order_id: str, user_id: Optional[str], pi_id: str, amount: float, status: str, payment_method: Optional[str] = None, error_code: Optional[str] = None, error_message: Optional[str] = None, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
         admin_sb = await get_async_admin_supabase()
         try:
@@ -176,7 +198,7 @@ class AsyncPaymentRepository:
         try:
             await admin_sb.rpc("mark_webhook_event_processed", {"p_event_id": event_id}).execute()
         except Exception as exc:
-            logger.error("DB Error marking webhook event %s processed: %s", event_id, exc, exc_info=True)
+            logger.error("DB Error marking webhook event %s: %s", event_id, exc, exc_info=True)
             raise RuntimeError("Unable to mark webhook event processed") from exc
 
     async def update_order_status_via_rpc(self, order_id: str, new_status: str, notes: str) -> None:
