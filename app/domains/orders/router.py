@@ -6,6 +6,7 @@ Path: app/domains/orders/router.py
 import io
 import logging
 from typing import Any, Dict
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
@@ -31,6 +32,19 @@ def _get_real_ip(request: Request) -> str:
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "127.0.0.1"
+
+
+def _require_public_order_number(value: str) -> str:
+    """Public order routes accept only the existing customer-facing order_number."""
+    reference = str(value or "").strip()
+    if not reference:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=OrderMessages.NOT_FOUND if hasattr(OrderMessages, "NOT_FOUND") else "Order not found.")
+    try:
+        UUID(reference)
+    except (ValueError, TypeError):
+        return reference
+    # Do not allow an internal database UUID to be used through a public URL.
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
 
 
 def _public_order_result(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -88,18 +102,19 @@ async def my_orders(request: Request, page: int = Query(1, ge=1), page_size: int
 
 @router.get("/my/{order_number}", status_code=status.HTTP_200_OK)
 async def get_my_order(request: Request, order_number: str, user_id: str = Depends(get_user_id_strict), current_user: Dict[str, Any] = Depends(get_current_user)):
-    """Resolve a customer-facing order_number; database UUID remains server-side."""
+    order_number = _require_public_order_number(order_number)
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Targeting order reference: {str(order_number)[:32]}")
+        request.state.actions.append(f"Targeting order reference: {order_number[:32]}")
     is_admin = current_user.get("profile", {}).get("role") in [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]
-    return success_response(await OrderService().get_order(str(order_number), user_id, is_admin=is_admin))
+    return success_response(await OrderService().get_order(order_number, user_id, is_admin=is_admin))
 
 
 @router.post("/my/{order_number}/cancel", status_code=status.HTTP_200_OK, response_model=OrderCancelResponse)
 async def cancel_order(request: Request, order_number: str, user_id: str = Depends(get_user_id_strict)):
+    order_number = _require_public_order_number(order_number)
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Initiating cancellation for order reference: {str(order_number)[:32]}")
-    return await OrderService().cancel_order(str(order_number), user_id)
+        request.state.actions.append(f"Initiating cancellation for order reference: {order_number[:32]}")
+    return await OrderService().cancel_order(order_number, user_id)
 
 
 @router.get("/", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(OrderPermissions.READ))])
@@ -112,20 +127,22 @@ async def list_all_orders(request: Request, page: int = Query(1, ge=1), page_siz
 
 @router.patch("/{order_number}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(OrderPermissions.UPDATE))])
 async def admin_update_order(request: Request, order_number: str, payload: OrderAdminUpdate):
+    order_number = _require_public_order_number(order_number)
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Admin overriding order reference: {str(order_number)[:32]}")
-    result = await OrderService().admin_update_order(str(order_number), payload.model_dump(exclude_unset=True))
+        request.state.actions.append(f"Admin overriding order reference: {order_number[:32]}")
+    result = await OrderService().admin_update_order(order_number, payload.model_dump(exclude_unset=True))
     return success_response(data=result, message=OrderMessages.UPDATE_SUCCESS)
 
 
 @router.get("/{order_number}/invoice", status_code=status.HTTP_200_OK)
 async def download_invoice(request: Request, order_number: str, current: dict = Depends(get_current_user), user_id: str = Depends(get_user_id_strict)):
+    order_number = _require_public_order_number(order_number)
     """Generate an invoice using order_number; the internal order UUID never leaves the backend."""
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Targeting invoice for order reference: {str(order_number)[:32]}")
+        request.state.actions.append(f"Targeting invoice for order reference: {order_number[:32]}")
     role = current.get("profile", {}).get("role")
     is_admin = role in [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value, UserRole.MANAGER.value]
-    pdf_bytes, invoice_number = await OrderService().generate_invoice_pdf(str(order_number), user_id, is_admin)
+    pdf_bytes, invoice_number = await OrderService().generate_invoice_pdf(order_number, user_id, is_admin)
     filename = f"Luviio-Invoice-{invoice_number}.pdf"
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Prepared customer invoice attachment: '{filename}'")
