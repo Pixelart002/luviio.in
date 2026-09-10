@@ -118,7 +118,12 @@ async def cancel_checkout_payment(
     order_number: str,
     user_id: str = Depends(get_user_id_strict),
 ) -> Dict[str, Any]:
-    """Cancel an active customer checkout safely before releasing inventory."""
+    """Cancel an active customer checkout safely before releasing inventory.
+
+    Stripe is checked first. A successful PaymentIntent is never silently
+    converted into a cancelled order; non-terminal intents are cancelled at
+    Stripe before the local order/stock transaction runs.
+    """
     order_number = _require_public_order_number(order_number)
     repo = AsyncOrderRepository()
     order = await repo.get_order_by_id(order_number)
@@ -134,13 +139,19 @@ async def cancel_checkout_payment(
             intent = await run_in_threadpool(provider.retrieve_intent, pi_id)
             stripe_status = intent.get("status")
             if stripe_status == "succeeded":
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment has already completed. This order cannot be cancelled from checkout.")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Payment has already completed. This order cannot be cancelled from checkout.",
+                )
             if stripe_status not in {"canceled", "succeeded"}:
                 await run_in_threadpool(provider.cancel_intent, pi_id)
         except HTTPException:
             raise
         except Exception as exc:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="We could not safely cancel the payment session. Please try again.") from exc
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="We could not safely cancel the payment session. Please try again.",
+            ) from exc
 
     result = await repo.cancel_order_and_restore_stock(str(order["id"]), user_id)
     if not result or result.get("status") != "cancelled":
