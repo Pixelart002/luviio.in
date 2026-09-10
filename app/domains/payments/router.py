@@ -10,13 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from slowapi import Limiter
 
 from app.core.dependencies import get_current_user, get_user_id_strict
+from app.domains.orders.repository import AsyncOrderRepository
 from app.domains.payments.schemas import (
     ConfirmPaymentRequest,
     NotifyFailedRequest,
     PaymentIntentRequest,
 )
 from app.domains.payments.service import PaymentService
-from app.domains.orders.repository import AsyncOrderRepository
 from app.utils.response import success_response
 
 
@@ -52,12 +52,13 @@ async def _public_payment_data(data: Dict[str, Any]) -> Dict[str, Any]:
 limiter = Limiter(key_func=get_real_ip)
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
+
 @router.post("/create-intent")
 @limiter.limit("10/minute")
 async def create_payment_intent(
     request: Request,
     payload: PaymentIntentRequest,
-    user_id: str = Depends(get_user_id_strict)
+    user_id: str = Depends(get_user_id_strict),
 ) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Initiating Amazon-Style AOT Checkout -> Target UID: {user_id[:8]}...")
@@ -65,11 +66,16 @@ async def create_payment_intent(
     user_agent = request.headers.get("user-agent", "")
     billing_id = str(payload.billing_address_id) if payload.billing_address_id else None
     data = await PaymentService().create_intent(
-        user_id, client_ip, payload.idempotency_key,
-        str(payload.shipping_address_id), billing_id,
-        user_agent=user_agent, coupon_code=payload.coupon_code,
+        user_id,
+        client_ip,
+        payload.idempotency_key,
+        str(payload.shipping_address_id),
+        billing_id,
+        user_agent=user_agent,
+        coupon_code=payload.coupon_code,
     )
     return success_response(data=await _public_payment_data(data))
+
 
 @router.post("/confirm")
 @limiter.limit("10/minute")
@@ -77,7 +83,7 @@ async def confirm_payment(
     request: Request,
     payload: ConfirmPaymentRequest,
     current: Dict[str, Any] = Depends(get_current_user),
-    user_id: str = Depends(get_user_id_strict)
+    user_id: str = Depends(get_user_id_strict),
 ) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Verifying payment success for Intent: {payload.payment_intent_id[:10]}...")
@@ -86,12 +92,13 @@ async def confirm_payment(
     data = await PaymentService().confirm_payment(user_id, client_ip, payload.payment_intent_id, email)
     return success_response(data=await _public_payment_data(data))
 
+
 @router.post("/retry/{order_number}")
 @limiter.limit("10/minute")
 async def retry_payment(
     request: Request,
     order_number: str,
-    user_id: str = Depends(get_user_id_strict)
+    user_id: str = Depends(get_user_id_strict),
 ) -> Dict[str, Any]:
     order_number = _require_public_order_number(order_number)
     if hasattr(request.state, "actions"):
@@ -101,11 +108,12 @@ async def retry_payment(
     data = await PaymentService().retry_payment(user_id, order_number, client_ip=client_ip, user_agent=user_agent)
     return success_response(data=await _public_payment_data(data))
 
+
 @router.post("/notify-failed")
 async def notify_payment_failed(
     request: Request,
     payload: NotifyFailedRequest,
-    current: Dict[str, Any] = Depends(get_current_user)
+    current: Dict[str, Any] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Intercepted client-side drop on Intent {payload.payment_intent_id[:10]}...")
@@ -113,6 +121,7 @@ async def notify_payment_failed(
         payload.payment_intent_id, payload.error_message or "Client reported failure"
     )
     return success_response(message="Failure logged. You can safely retry.")
+
 
 @router.post("/webhook")
 async def stripe_webhook(request: Request):
