@@ -50,6 +50,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+@app.get("/", include_in_schema=False)
+async def root() -> dict[str, str]:
+    """Minimal public endpoint used to verify that the API process is reachable."""
+    return {
+        "service": settings.APP_NAME,
+        "status": "ok",
+        "health": "/health/live",
+        "api": "/api/v1",
+    }
+
+
 apply_middlewares(app)
 app.add_middleware(AdminAuditMiddleware)
 app.middleware("http")(maintenance_middleware)
