@@ -1,7 +1,6 @@
 """
 Shipping Domain — Service
 ==========================
-Path: app/domains/shipping/service.py
 """
 from __future__ import annotations
 
@@ -32,21 +31,58 @@ class ShippingService:
 
     async def create(self, payload: dict[str, Any]) -> Dict[str, Any]:
         ShippingPolicy.assert_valid_type(payload["type"])
+        requested_active = bool(payload.get("is_active", True))
+        payload["is_active"] = False
+
         method = await self.repo.create(payload)
         if not method:
             raise HTTPException(status_code=500, detail="Failed to create shipping method.")
+
+        if requested_active:
+            return await self.activate(str(method["id"]))
         return method
 
     async def update(self, method_id: str, payload: dict[str, Any]) -> Dict[str, Any]:
-        ShippingPolicy.assert_method(await self.repo.get_by_id(method_id))
+        existing = ShippingPolicy.assert_method(await self.repo.get_by_id(method_id))
+        if "type" in payload:
+            ShippingPolicy.assert_valid_type(payload["type"])
+
+        requested_active = payload.pop("is_active", None)
+        if requested_active is True:
+            updated = await self.repo.update(method_id, payload) if payload else existing
+            if not updated:
+                raise HTTPException(status_code=500, detail="Failed to update shipping method.")
+            return await self.activate(method_id)
+
+        if requested_active is False and existing.get("is_active", False):
+            raise HTTPException(
+                status_code=409,
+                detail="The active shipping method cannot be disabled. Activate another method first.",
+            )
+
         updated = await self.repo.update(method_id, payload)
         if not updated:
             raise HTTPException(status_code=500, detail="Failed to update shipping method.")
         return updated
 
-    async def delete(self, method_id: str) -> None:
-        ShippingPolicy.assert_method(await self.repo.get_by_id(method_id))
-        await self.repo.delete(method_id)
+    async def activate(self, method_id: str) -> Dict[str, Any]:
+        target = ShippingPolicy.assert_method(await self.repo.get_by_id(method_id))
+        if target.get("is_active"):
+            return target
+
+        methods = await self.repo.list_all()
+        # Switch semantics: deactivate the current method(s), then activate target.
+        for method in methods:
+            current_id = str(method.get("id"))
+            if current_id != method_id and method.get("is_active"):
+                changed = await self.repo.set_active(current_id, False)
+                if changed is None:
+                    raise HTTPException(status_code=500, detail="Failed to switch shipping method safely.")
+
+        activated = await self.repo.set_active(method_id, True)
+        if activated is None:
+            raise HTTPException(status_code=500, detail="Failed to activate shipping method.")
+        return activated
 
     async def compute_rate(self, subtotal: float, item_count: int = 1,
                            weight_kg: float = 0.0, method_id: Optional[str] = None,
@@ -60,20 +96,23 @@ class ShippingService:
 
         settings = SettingsCoreEngine()
         try:
-            threshold = float(str(await settings.fetch_by_key("free_shipping_threshold")).replace("'", "").replace('"', "") or 1499.0)
-        except Exception:
-            threshold = 1499.0
-        try:
-            base = float(str(await settings.fetch_by_key("standard_shipping_cost")).replace("'", "").replace('"', "") or 45.90)
-        except Exception:
-            base = 45.90
+            threshold = float(str(await settings.fetch_by_key("free_shipping_threshold")).replace("'", "").replace('"', ""))
+            base = float(str(await settings.fetch_by_key("standard_shipping_cost")).replace("'", "").replace('"', ""))
+        except Exception as exc:
+            logger.exception("[SHIPPING] required shipping settings unavailable")
+            raise HTTPException(
+                status_code=503,
+                detail="Shipping configuration is temporarily unavailable.",
+            ) from exc
 
         shipping = 0.0 if subtotal >= threshold else base
-        method = await self._pick_fallback_method()
+        method = await self._pick_active_method()
+        if method is None:
+            raise HTTPException(status_code=503, detail="No active shipping method is configured.")
         return {
             "shipping_cost": round(shipping, 2),
             "method": method,
-            "method_id": method.get("id") if method else None,
+            "method_id": method.get("id"),
             "free_shipping_threshold": threshold,
             "applied_type": "settings_default",
         }
@@ -100,11 +139,8 @@ class ShippingService:
             "applied_type": mtype,
         }
 
-    async def _pick_fallback_method(self) -> Optional[Dict[str, Any]]:
+    async def _pick_active_method(self) -> Optional[Dict[str, Any]]:
         methods = await self.repo.list_active_methods()
         if not methods:
             return None
-        for m in methods:
-            if m.get("type") == SHIPPING_FLAT:
-                return m
         return methods[0]
