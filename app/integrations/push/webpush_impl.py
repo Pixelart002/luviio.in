@@ -244,6 +244,39 @@ def send_push(
     return "failed"
 
 
+async def _persist_failed_push(
+    sb_admin: Any,
+    *,
+    user_id: str,
+    title: str,
+    body: str,
+    icon: str,
+    url: str,
+    subscription: dict[str, Any],
+) -> None:
+    endpoint = str(subscription.get("endpoint") or "").strip()
+    endpoint_hash = _endpoint_key(endpoint) if endpoint else None
+    try:
+        await sb_admin.table("notification_dlq").insert(
+            {
+                "user_id": user_id,
+                "event_type": "push_delivery",
+                "notification_type": "push",
+                "title": title,
+                "body": body,
+                "target_url": url,
+                "subscription_endpoint_hash": endpoint_hash,
+                "error_type": "delivery_failed",
+                "error_message": "Web push delivery failed after retry attempts.",
+                "attempt_count": _MAX_RETRIES + 1,
+                "status": "failed",
+                "next_retry_at": None,
+            }
+        ).execute()
+    except Exception:
+        logger.exception("Failed to persist notification DLQ entry")
+
+
 async def send_push_to_user(
     user_id: str,
     *,
@@ -286,6 +319,7 @@ async def send_push_to_user(
 
         sent = 0
         dead_endpoints: list[str] = []
+        failed_subscriptions: list[dict[str, Any]] = []
 
         for sub, result in zip(subs, results):
             if result == "sent":
@@ -294,11 +328,31 @@ async def send_push_to_user(
                 endpoint = sub.get("endpoint")
                 if endpoint:
                     dead_endpoints.append(endpoint)
+            elif result == "failed":
+                failed_subscriptions.append(sub)
             elif isinstance(result, Exception):
                 logger.warning(
                     "Push worker failed",
                     extra={"error_type": type(result).__name__},
                 )
+                failed_subscriptions.append(sub)
+
+        if failed_subscriptions:
+            await asyncio.gather(
+                *[
+                    _persist_failed_push(
+                        sb_admin,
+                        user_id=user_id,
+                        title=title,
+                        body=body,
+                        icon=icon,
+                        url=url,
+                        subscription=sub,
+                    )
+                    for sub in failed_subscriptions
+                ],
+                return_exceptions=True,
+            )
 
         if dead_endpoints:
             delete_tasks = [
