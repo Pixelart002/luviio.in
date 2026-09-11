@@ -1,7 +1,6 @@
 """
 Shipping Domain — Repository
 =============================
-Path: app/domains/shipping/repository.py
 """
 import logging
 from typing import Any, List, Optional
@@ -16,8 +15,11 @@ class AsyncShippingRepository:
         sb = await get_async_admin_supabase()
         try:
             res = await (
-                sb.table("shipping_methods").select("*").eq("is_active", True)
-                .order("sort_order").execute()
+                sb.table("shipping_methods")
+                .select("*")
+                .eq("is_active", True)
+                .order("sort_order")
+                .execute()
             )
             return res.data or []
         except Exception as exc:
@@ -36,7 +38,13 @@ class AsyncShippingRepository:
     async def get_by_id(self, method_id: str) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await sb.table("shipping_methods").select("*").eq("id", method_id).maybe_single().execute()
+            res = await (
+                sb.table("shipping_methods")
+                .select("*")
+                .eq("id", method_id)
+                .maybe_single()
+                .execute()
+            )
             return res.data if res else None
         except Exception as exc:
             logger.error("[REPO:SHIPPING] get_by_id failed: %s", exc)
@@ -54,17 +62,29 @@ class AsyncShippingRepository:
     async def update(self, method_id: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await sb.table("shipping_methods").update(data).eq("id", method_id).maybe_single().execute()
+            res = await (
+                sb.table("shipping_methods")
+                .update(data)
+                .eq("id", method_id)
+                .maybe_single()
+                .execute()
+            )
             return res.data if res else None
         except Exception as exc:
             logger.error("[REPO:SHIPPING] update failed: %s", exc)
             return None
 
-    async def delete(self, method_id: str) -> bool:
+    async def set_active(self, method_id: str, active: bool) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            await sb.table("shipping_methods").delete().eq("id", method_id).execute()
-            return True
+            res = await (
+                sb.table("shipping_methods")
+                .update({"is_active": active})
+                .eq("id", method_id)
+                .maybe_single()
+                .execute()
+            )
+            return res.data if res else None
         except Exception as exc:
-            logger.error("[REPO:SHIPPING] delete failed: %s", exc)
-            return False
+            logger.error("[REPO:SHIPPING] set_active failed: %s", exc)
+            return None
