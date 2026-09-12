@@ -103,11 +103,16 @@ async def retry_payment(
     user_id: str = Depends(get_user_id_strict),
 ) -> Dict[str, Any]:
     order_number = _require_public_order_number(order_number)
+    order_repo = AsyncOrderRepository()
+    order = await order_repo.get_order_by_id(order_number)
+    if not order or str(order.get("customer_id")) != str(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
+    internal_order_id = str(order["id"])
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Initiating Smart Paywall Retry for order reference: {order_number[:32]}")
     client_ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "")
-    data = await PaymentService().retry_payment(user_id, order_number, client_ip=client_ip, user_agent=user_agent)
+    data = await PaymentService().retry_payment(user_id, internal_order_id, client_ip=client_ip, user_agent=user_agent)
     return success_response(data=await _public_payment_data(data))
 
 
