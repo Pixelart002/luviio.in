@@ -15,6 +15,7 @@ from nanoid import generate
 from starlette.concurrency import run_in_threadpool
 
 from app.constants.payment_messages import PaymentMessages, PaymentRules, PaymentSecurityMessages
+from app.core.supabase import get_async_admin_supabase
 from app.domains.payments.repository import AsyncPaymentRepository
 from app.domains.pricing.service import get_pricing_from_config
 from app.enums.order_status import OrderStatus
@@ -36,6 +37,37 @@ class PaymentService:
     def _generate_clean_order_number(self) -> str:
         short_id = generate('23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 8)
         return f"ORD-{short_id[:4]}-{short_id[4:]}"
+
+    async def _reserve_retry(self, order_id: str, user_id: str, pi_id: str) -> int:
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await admin_sb.rpc(
+                "reserve_payment_retry",
+                {
+                    "p_order_id": order_id,
+                    "p_user_id": user_id,
+                    "p_pi_id": pi_id,
+                    "p_window_seconds": PaymentRules.BRUTE_FORCE_WINDOW_SEC,
+                    "p_max_attempts": PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS,
+                },
+            ).execute()
+            data = getattr(res, "data", None)
+            if not data:
+                raise RuntimeError("Retry reservation returned no data")
+            row = data[0] if isinstance(data, list) else data
+            return int(row.get("attempt_number"))
+        except Exception as exc:
+            message = str(exc)
+            if "PAYMENT_RETRY_LIMIT:" in message:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=PaymentSecurityMessages.TOO_MANY_ATTEMPTS,
+                ) from exc
+            logger.error("[PAYMENT RETRY] Unable to reserve retry slot for order %s", order_id[:8], exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to verify payment retry availability.",
+            ) from exc
 
     async def create_intent(
         self,
@@ -276,6 +308,7 @@ class PaymentService:
             client_secret = intent.get("client_secret")
             if intent.get("status") == "canceled" or not client_secret:
                 return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise, ip_address=client_ip, user_agent=user_agent)
+            await self._reserve_retry(order_id, user_id, pi_id)
             return {"client_secret": client_secret, "payment_intent_id": intent.get("id"), "order_id": order_id}
         except HTTPException:
             raise
