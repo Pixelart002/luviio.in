@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 
 from app.constants.payment_messages import PaymentRules, PaymentSecurityMessages
+from app.core.supabase import get_admin_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +62,7 @@ class PaymentPolicy:
 
     @staticmethod
     def assert_no_active_pending_order(has_pending: bool) -> None:
-        """Legacy compatibility hook: pending orders do not block new orders.
-
-        Multiple legitimate orders are allowed. Duplicate checkout attempts are
-        prevented by the customer/idempotency-key database unique index; stock
-        safety is enforced atomically by the reservation RPC.
-        """
+        """Legacy compatibility hook: pending orders do not block new orders."""
         return None
 
     @staticmethod
@@ -75,10 +71,29 @@ class PaymentPolicy:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ORDER_NOT_FOUND)
         if order.get("status") not in ("pending", "paid"):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
-        # A COD order has no Stripe PaymentIntent. Fail closed here so a client
-        # cannot turn a COD order into an online payment merely by calling the
-        # retry endpoint directly. Stripe orders retain their PI and may use the
-        # replacement-intent path when Stripe reports the PI as canceled.
         if not order.get("stripe_payment_intent"):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
+
+        # Retry authorization is server-side and atomic. A short-lived DB
+        # reservation prevents concurrent retry requests from bypassing the
+        # 5-attempt/60-second rule, even when Stripe reuses the same PI.
+        if order.get("status") == "pending":
+            try:
+                sb = get_admin_supabase()
+                sb.rpc(
+                    "reserve_payment_retry",
+                    {
+                        "p_order_id": str(order["id"]),
+                        "p_user_id": str(user_id),
+                        "p_pi_id": str(order["stripe_payment_intent"]),
+                        "p_window_seconds": PaymentRules.BRUTE_FORCE_WINDOW_SEC,
+                        "p_max_attempts": PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS,
+                    },
+                ).execute()
+            except Exception as exc:
+                message = str(exc)
+                if "PAYMENT_RETRY_LIMIT" in message:
+                    raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=PaymentSecurityMessages.TOO_MANY_ATTEMPTS) from exc
+                logger.error("Payment retry reservation failed for order %s: %s", order.get("id"), exc, exc_info=True)
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Unable to verify payment retry limit.") from exc
         return order
