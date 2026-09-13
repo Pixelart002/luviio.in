@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 
 from app.constants.payment_messages import PaymentRules, PaymentSecurityMessages
-from app.core.supabase import get_admin_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -67,33 +66,15 @@ class PaymentPolicy:
 
     @staticmethod
     def assert_can_retry(order: Optional[Dict[str, Any]], user_id: str) -> Dict[str, Any]:
+        """Authorize retry access only; retry accounting belongs to PaymentService.
+
+        Keeping the atomic reservation in one orchestration path prevents a
+        single retry request from consuming the same retry slot twice.
+        """
         if not order or str(order.get("customer_id", "")) != str(user_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ORDER_NOT_FOUND)
         if order.get("status") not in ("pending", "paid"):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
         if not order.get("stripe_payment_intent"):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
-
-        # Retry authorization is server-side and atomic. A short-lived DB
-        # reservation prevents concurrent retry requests from bypassing the
-        # 5-attempt/60-second rule, even when Stripe reuses the same PI.
-        if order.get("status") == "pending":
-            try:
-                sb = get_admin_supabase()
-                sb.rpc(
-                    "reserve_payment_retry",
-                    {
-                        "p_order_id": str(order["id"]),
-                        "p_user_id": str(user_id),
-                        "p_pi_id": str(order["stripe_payment_intent"]),
-                        "p_window_seconds": PaymentRules.BRUTE_FORCE_WINDOW_SEC,
-                        "p_max_attempts": PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS,
-                    },
-                ).execute()
-            except Exception as exc:
-                message = str(exc)
-                if "PAYMENT_RETRY_LIMIT" in message:
-                    raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=PaymentSecurityMessages.TOO_MANY_ATTEMPTS) from exc
-                logger.error("Payment retry reservation failed for order %s: %s", order.get("id"), exc, exc_info=True)
-                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Unable to verify payment retry limit.") from exc
         return order
