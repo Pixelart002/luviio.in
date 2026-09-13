@@ -5,6 +5,7 @@ collects them directly. This module only handles Stripe PaymentIntent IDs,
 method type, and durable payment-attempt accounting.
 """
 import logging
+import time
 from typing import Any, Dict
 
 from fastapi import HTTPException, status
@@ -16,7 +17,6 @@ from app.domains.payments.repository import AsyncPaymentRepository
 from app.integrations.payments.registry import get_payment_provider
 
 logger = logging.getLogger(__name__)
-
 _ALLOWED_METHODS = {"upi", "netbanking"}
 
 
@@ -25,18 +25,10 @@ class PaymentMethodChangeService:
         self.repo = AsyncPaymentRepository()
         self.provider = get_payment_provider("stripe")
 
-    async def change_method(
-        self,
-        user_id: str,
-        order_id: str,
-        new_payment_method: str,
-    ) -> Dict[str, Any]:
+    async def change_method(self, user_id: str, order_id: str, new_payment_method: str) -> Dict[str, Any]:
         method = str(new_payment_method or "").strip().lower()
         if method not in _ALLOWED_METHODS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Choose a supported alternative payment method.",
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a supported alternative payment method.")
 
         order = await self.repo.get_order_by_id(order_id)
         if not order or str(order.get("customer_id")) != str(user_id):
@@ -48,22 +40,17 @@ class PaymentMethodChangeService:
         if not old_pi_id:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No active payment session is available to change.")
 
-        # Retire the old PaymentIntent before creating the replacement. This
-        # guarantees the browser cannot continue using the exhausted card PI.
         try:
             old_intent = await run_in_threadpool(self.provider.retrieve_intent, old_pi_id)
             if old_intent.get("status") == "succeeded":
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment has already completed.")
-            if old_intent.get("status") not in {"canceled"}:
+            if old_intent.get("status") != "canceled":
                 await run_in_threadpool(self.provider.cancel_intent, old_pi_id)
         except HTTPException:
             raise
         except Exception as exc:
             logger.error("[PAYMENT METHOD CHANGE] Could not retire old PI for order %s", order_id[:8], exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="We could not safely change the payment method. Please try again.",
-            ) from exc
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="We could not safely change the payment method. Please try again.") from exc
 
         amount_paise = int(round(float(order.get("total_amount") or 0) * 100))
         if amount_paise < PaymentRules.MIN_ORDER_AMOUNT_PAISE:
@@ -76,7 +63,7 @@ class PaymentMethodChangeService:
                 "inr",
                 "AOT_METHOD_CHANGE",
                 user_id,
-                f"method_change_{order_id}_{method}",
+                f"method_change_{order_id}_{method}_{time.time_ns()}",
                 [method],
             )
         except Exception as exc:
@@ -121,12 +108,7 @@ class PaymentMethodChangeService:
             logger.error("[PAYMENT METHOD CHANGE] Atomic DB swap failed", exc_info=True)
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Unable to change payment method safely. Please try again.") from exc
 
-        await run_in_threadpool(
-            self.provider.update_intent_metadata,
-            new_pi_id,
-            {"order_id": order_id, "user_id": user_id, "payment_method_change": "true"},
-        )
-
+        await run_in_threadpool(self.provider.update_intent_metadata, new_pi_id, {"order_id": order_id, "user_id": user_id, "payment_method_change": "true"})
         return {
             "client_secret": new_intent.get("client_secret"),
             "payment_intent_id": new_pi_id,
