@@ -1,8 +1,3 @@
-"""
-Payments Router
-===============
-Path: app/domains/payments/router.py
-"""
 from typing import Any, Dict
 from uuid import UUID
 
@@ -12,11 +7,8 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.dependencies import get_current_user, get_user_id_strict
 from app.domains.orders.repository import AsyncOrderRepository
-from app.domains.payments.schemas import (
-    ConfirmPaymentRequest,
-    NotifyFailedRequest,
-    PaymentIntentRequest,
-)
+from app.domains.payments.method_change import PaymentMethodChangeService
+from app.domains.payments.schemas import ConfirmPaymentRequest, NotifyFailedRequest, PaymentIntentRequest, PaymentMethodChangeRequest
 from app.domains.payments.service import PaymentService
 from app.integrations.payments.registry import get_payment_provider
 from app.utils.response import success_response
@@ -41,7 +33,6 @@ def _require_public_order_number(value: str) -> str:
 
 
 async def _public_payment_data(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Strip internal order UUIDs and retain the existing customer-facing order number."""
     public = dict(data or {})
     internal_order_id = public.pop("order_id", None)
     if not public.get("order_number") and internal_order_id:
@@ -57,36 +48,19 @@ router = APIRouter(prefix="/payments", tags=["Payments"])
 
 @router.post("/create-intent")
 @limiter.limit("10/minute")
-async def create_payment_intent(
-    request: Request,
-    payload: PaymentIntentRequest,
-    user_id: str = Depends(get_user_id_strict),
-) -> Dict[str, Any]:
+async def create_payment_intent(request: Request, payload: PaymentIntentRequest, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Initiating Amazon-Style AOT Checkout -> Target UID: {user_id[:8]}...")
     client_ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "")
     billing_id = str(payload.billing_address_id) if payload.billing_address_id else None
-    data = await PaymentService().create_intent(
-        user_id,
-        client_ip,
-        payload.idempotency_key,
-        str(payload.shipping_address_id),
-        billing_id,
-        user_agent=user_agent,
-        coupon_code=payload.coupon_code,
-    )
+    data = await PaymentService().create_intent(user_id, client_ip, payload.idempotency_key, str(payload.shipping_address_id), billing_id, user_agent=user_agent, coupon_code=payload.coupon_code)
     return success_response(data=await _public_payment_data(data))
 
 
 @router.post("/confirm")
 @limiter.limit("10/minute")
-async def confirm_payment(
-    request: Request,
-    payload: ConfirmPaymentRequest,
-    current: Dict[str, Any] = Depends(get_current_user),
-    user_id: str = Depends(get_user_id_strict),
-) -> Dict[str, Any]:
+async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, current: Dict[str, Any] = Depends(get_current_user), user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Verifying payment success for Intent: {payload.payment_intent_id[:10]}...")
     email = current.get("profile", {}).get("email", "")
@@ -97,38 +71,35 @@ async def confirm_payment(
 
 @router.post("/retry/{order_number}")
 @limiter.limit("10/minute")
-async def retry_payment(
-    request: Request,
-    order_number: str,
-    user_id: str = Depends(get_user_id_strict),
-) -> Dict[str, Any]:
+async def retry_payment(request: Request, order_number: str, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     order_number = _require_public_order_number(order_number)
-    order_repo = AsyncOrderRepository()
-    order = await order_repo.get_order_by_id(order_number)
+    order = await AsyncOrderRepository().get_order_by_id(order_number)
     if not order or str(order.get("customer_id")) != str(user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
     internal_order_id = str(order["id"])
-    if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Initiating Smart Paywall Retry for order reference: {order_number[:32]}")
     client_ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "")
     data = await PaymentService().retry_payment(user_id, internal_order_id, client_ip=client_ip, user_agent=user_agent)
     return success_response(data=await _public_payment_data(data))
 
 
+@router.post("/change-method/{order_number}")
+@limiter.limit("5/minute")
+async def change_payment_method(request: Request, order_number: str, payload: PaymentMethodChangeRequest, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
+    order_number = _require_public_order_number(order_number)
+    order = await AsyncOrderRepository().get_order_by_id(order_number)
+    if not order or str(order.get("customer_id")) != str(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Changing payment method for order reference: {order_number[:32]}")
+    data = await PaymentMethodChangeService().change_method(user_id=user_id, order_id=str(order["id"]), new_payment_method=payload.payment_method)
+    data["order_number"] = order_number
+    return success_response(data=await _public_payment_data(data))
+
+
 @router.post("/cancel/{order_number}")
 @limiter.limit("10/minute")
-async def cancel_checkout_payment(
-    request: Request,
-    order_number: str,
-    user_id: str = Depends(get_user_id_strict),
-) -> Dict[str, Any]:
-    """Cancel an active customer checkout safely before releasing inventory.
-
-    Stripe is checked first. A successful PaymentIntent is never silently
-    converted into a cancelled order; non-terminal intents are cancelled at
-    Stripe before the local order/stock transaction runs.
-    """
+async def cancel_checkout_payment(request: Request, order_number: str, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     order_number = _require_public_order_number(order_number)
     repo = AsyncOrderRepository()
     order = await repo.get_order_by_id(order_number)
@@ -136,7 +107,6 @@ async def cancel_checkout_payment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
     if order.get("status") != "pending":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This checkout is no longer cancellable.")
-
     pi_id = str(order.get("stripe_payment_intent") or "").strip()
     provider = get_payment_provider("stripe")
     if pi_id:
@@ -144,20 +114,13 @@ async def cancel_checkout_payment(
             intent = await run_in_threadpool(provider.retrieve_intent, pi_id)
             stripe_status = intent.get("status")
             if stripe_status == "succeeded":
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Payment has already completed. This order cannot be cancelled from checkout.",
-                )
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment has already completed. This order cannot be cancelled from checkout.")
             if stripe_status not in {"canceled", "succeeded"}:
                 await run_in_threadpool(provider.cancel_intent, pi_id)
         except HTTPException:
             raise
         except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="We could not safely cancel the payment session. Please try again.",
-            ) from exc
-
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="We could not safely cancel the payment session. Please try again.") from exc
     result = await repo.cancel_order_and_restore_stock(str(order["id"]), user_id)
     if not result or result.get("status") != "cancelled":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Checkout changed while cancelling. Please retry.")
@@ -165,22 +128,15 @@ async def cancel_checkout_payment(
 
 
 @router.post("/notify-failed")
-async def notify_payment_failed(
-    request: Request,
-    payload: NotifyFailedRequest,
-    current: Dict[str, Any] = Depends(get_current_user),
-) -> Dict[str, Any]:
+async def notify_payment_failed(request: Request, payload: NotifyFailedRequest, current: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Intercepted client-side drop on Intent {payload.payment_intent_id[:10]}...")
-    await PaymentService().record_client_reported_failure(
-        payload.payment_intent_id, payload.error_message or "Client reported failure"
-    )
+    await PaymentService().record_client_reported_failure(payload.payment_intent_id, payload.error_message or "Client reported failure")
     return success_response(message="Failure logged. You can safely retry.")
 
 
 @router.post("/webhook")
 async def stripe_webhook(request: Request):
-    """Listens to Stripe Webhooks for background async state synchronization."""
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
     if not sig_header:
