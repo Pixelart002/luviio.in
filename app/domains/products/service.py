@@ -17,6 +17,7 @@ from app.utils.image import delete_product_image, upload_multiple_images
 
 logger = logging.getLogger(__name__)
 
+
 class ProductService:
     def __init__(self) -> None:
         self.repo = AsyncProductRepository()
@@ -79,7 +80,12 @@ class ProductService:
         data["images"] = images
         data["image_url"] = images[0] if images else None
         data["hsn_code"] = str(data.get("hsn_code") or "9988").strip()
-        data["gst_percentage"] = int(data.get("gst_percentage") if data.get("gst_percentage") is not None else 18)
+        if data.get("gst_percentage") is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="GST percentage is required for every product.",
+            )
+        data["gst_percentage"] = int(data["gst_percentage"])
         data["attributes"] = data.get("attributes") or {}
         return data
 
@@ -95,15 +101,11 @@ class ProductService:
         data = await self._prepare_product_data(data)
         if len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
-
-        # Image URLs supplied in the product payload count toward the same limit.
         if len(data.get("images") or []) + len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
-
         res = await self.repo.create_product(data)
         if not res:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
-
         try:
             existing = list(res.get("images") or [])
             uploaded: List[str] = []
@@ -122,7 +124,6 @@ class ProductService:
             return self._enrich_discount(res)
         except Exception as exc:
             logger.error("Product creation image upload failed for %s: %s", res.get("id"), exc, exc_info=True)
-            # The product must not remain visible as a partially-created item.
             try:
                 await self.repo.soft_delete_product(res["id"])
             except Exception as cleanup_exc:
@@ -164,20 +165,17 @@ class ProductService:
         prod = await self.repo.get_product_by_id(product_id)
         if not prod:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
-
         existing = prod.get("images") or []
         if not files:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one image is required.")
         ProductPolicy.assert_can_upload_image(len(existing))
         if len(existing) + len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
-
         try:
             uploaded = await run_in_threadpool(upload_multiple_images, files, product_id, max_images=ProductRules.MAX_IMAGES_PER_PRODUCT - len(existing))
         except Exception as exc:
             logger.error("Product image upload failed: %s", exc)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=ProductSecurityMessages.UPLOAD_FAILED) from exc
-
         all_images = existing + uploaded
         await self.repo.update_product(product_id, {"images": all_images, "image_url": all_images[0]})
         await self.repo.sync_product_images_table(product_id, all_images)
