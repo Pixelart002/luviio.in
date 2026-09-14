@@ -41,13 +41,14 @@ class ProductCreate(BaseModel):
     images: List[str] = Field(default_factory=list)
     attributes: Optional[Dict[str, Any]] = Field(default_factory=dict)
     hsn_code: Optional[str] = Field(default="9988", max_length=20)
-    gst_percentage: Optional[int] = Field(default=18)
+    # GST is a product-level fiscal attribute. No global GST-rate fallback.
+    gst_percentage: int = Field(...)
     is_active: bool = True
 
     @field_validator("gst_percentage")
     @classmethod
-    def validate_gst(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None and v not in ProductRules.LEGAL_GST_SLABS:
+    def validate_gst(cls, v: int) -> int:
+        if v not in ProductRules.LEGAL_GST_SLABS:
             raise ValueError(ProductSecurityMessages.INVALID_GST_SLAB)
         return v
 
