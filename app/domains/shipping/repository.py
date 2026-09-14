@@ -74,17 +74,15 @@ class AsyncShippingRepository:
             logger.error("[REPO:SHIPPING] update failed: %s", exc)
             return None
 
-    async def set_active(self, method_id: str, active: bool) -> Optional[dict[str, Any]]:
+    async def activate_atomic(self, method_id: str) -> Optional[dict[str, Any]]:
+        """Switch the active method in one Postgres transaction."""
         sb = await get_async_admin_supabase()
         try:
-            res = await (
-                sb.table("shipping_methods")
-                .update({"is_active": active})
-                .eq("id", method_id)
-                .maybe_single()
-                .execute()
-            )
-            return res.data if res else None
+            res = await sb.rpc("activate_shipping_method", {"p_method_id": method_id}).execute()
+            data = getattr(res, "data", None)
+            if isinstance(data, list):
+                return data[0] if data else None
+            return data if isinstance(data, dict) else None
         except Exception as exc:
-            logger.error("[REPO:SHIPPING] set_active failed: %s", exc)
+            logger.error("[REPO:SHIPPING] activate_atomic failed: %s", exc)
             return None
