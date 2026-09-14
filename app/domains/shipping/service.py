@@ -66,27 +66,20 @@ class ShippingService:
         return updated
 
     async def activate(self, method_id: str) -> Dict[str, Any]:
-        target = ShippingPolicy.assert_method(await self.repo.get_by_id(method_id))
-        if target.get("is_active"):
-            return target
-
-        methods = await self.repo.list_all()
-        # Switch semantics: deactivate the current method(s), then activate target.
-        for method in methods:
-            current_id = str(method.get("id"))
-            if current_id != method_id and method.get("is_active"):
-                changed = await self.repo.set_active(current_id, False)
-                if changed is None:
-                    raise HTTPException(status_code=500, detail="Failed to switch shipping method safely.")
-
-        activated = await self.repo.set_active(method_id, True)
-        if activated is None:
-            raise HTTPException(status_code=500, detail="Failed to activate shipping method.")
+        ShippingPolicy.assert_method(await self.repo.get_by_id(method_id))
+        activated = await self.repo.activate_atomic(method_id)
+        if not activated:
+            raise HTTPException(status_code=500, detail="Failed to activate shipping method safely.")
         return activated
 
-    async def compute_rate(self, subtotal: float, item_count: int = 1,
-                           weight_kg: float = 0.0, method_id: Optional[str] = None,
-                           pincode: Optional[str] = None) -> Dict[str, Any]:
+    async def compute_rate(
+        self,
+        subtotal: float,
+        item_count: int = 1,
+        weight_kg: float = 0.0,
+        method_id: Optional[str] = None,
+        pincode: Optional[str] = None,
+    ) -> Dict[str, Any]:
         if method_id:
             method = await self.repo.get_by_id(method_id)
             ShippingPolicy.assert_method(method)
@@ -96,8 +89,18 @@ class ShippingService:
 
         settings = SettingsCoreEngine()
         try:
-            threshold = float(str(await settings.fetch_by_key("free_shipping_threshold")).replace("'", "").replace('"', ""))
-            base = float(str(await settings.fetch_by_key("standard_shipping_cost")).replace("'", "").replace('"', ""))
+            threshold = float(
+                str(await settings.fetch_by_key("free_shipping_threshold"))
+                .replace("'", "")
+                .replace('"', "")
+            )
+            # `flat_shipping_rate` is the canonical global shipping charge.
+            # `standard_shipping_cost` is a legacy key and must not be required.
+            base = float(
+                str(await settings.fetch_by_key("flat_shipping_rate"))
+                .replace("'", "")
+                .replace('"', "")
+            )
         except Exception as exc:
             logger.exception("[SHIPPING] required shipping settings unavailable")
             raise HTTPException(
@@ -118,8 +121,9 @@ class ShippingService:
         }
 
     @staticmethod
-    def _compute_method_rate(method: dict[str, Any], subtotal: float,
-                             item_count: int, weight_kg: float) -> Dict[str, Any]:
+    def _compute_method_rate(
+        method: dict[str, Any], subtotal: float, item_count: int, weight_kg: float
+    ) -> Dict[str, Any]:
         mtype = method["type"]
         if mtype == SHIPPING_FLAT:
             cost = float(method.get("base_rate") or 0)
