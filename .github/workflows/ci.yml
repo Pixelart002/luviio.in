@@ -24,8 +24,10 @@ jobs:
           version: latest
           enable-cache: true
 
-      - name: Install dependencies
-        run: uv sync --dev
+      - name: Resolve and install dependencies
+        run: |
+          uv lock
+          uv sync --dev
 
       - name: Compile application
         run: uv run python -m compileall -q app
