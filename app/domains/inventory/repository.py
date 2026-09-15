@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from app.core.supabase import get_async_admin_supabase
+from app.integrations.payments.context import get_current_provider_key
 
 logger = logging.getLogger(__name__)
 
@@ -95,25 +96,28 @@ class InventoryRepository:
         payment_method: Optional[str] = None,
         stripe_currency: Optional[str] = None,
     ) -> str:
+        """Commit a reserved order through the provider-neutral settlement RPC."""
         if not stripe_currency:
-            raise ValueError("Stripe currency is required for payment settlement")
+            raise ValueError("Verified payment currency is required for payment settlement")
+        provider = get_current_provider_key()
         admin_sb = await get_async_admin_supabase()
         try:
             res = await admin_sb.rpc(
-                "settle_order_transaction",
+                "settle_payment_transaction",
                 {
                     "p_order_id": order_id,
-                    "p_pi_id": pi_id,
+                    "p_provider": provider,
+                    "p_provider_payment_id": pi_id,
                     "p_amount": amount,
                     "p_user_id": user_id,
                     "p_payment_method": payment_method,
-                    "p_stripe_currency": stripe_currency,
+                    "p_currency": stripe_currency,
                 },
             ).execute()
             data = getattr(res, "data", None)
             return str(data) if data else "FAILED"
         except Exception as exc:
-            logger.error("RPC Error settling order %s: %s", order_id, exc, exc_info=True)
+            logger.error("RPC Error settling order %s with provider %s: %s", order_id, provider, exc, exc_info=True)
             raise
 
     async def release_abandoned_order(self, order_id: str, reason: str = "order_cancelled") -> str:
@@ -162,7 +166,7 @@ class InventoryRepository:
             cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes_old)
             res = await (
                 admin_sb.table("orders")
-                .select("id, created_at, customer_id, stripe_payment_intent")
+                .select("id, created_at, customer_id, payment_provider, provider_payment_id, stripe_payment_intent")
                 .eq("status", "pending")
                 .lt("created_at", cutoff.isoformat())
                 .execute()
