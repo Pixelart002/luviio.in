@@ -249,6 +249,7 @@ class PaymentService:
                 await run_in_threadpool(self.provider.process_refund, pi_id)
             except Exception as refund_exc:
                 logger.error("[PAYMENT] Auto-refund FAILED for orphaned success %s: %s", pi_id, refund_exc, exc_info=True)
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=PaymentSecurityMessages.ORDER_CANCELLED_REFUND_PENDING) from refund_exc
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)
         if result != "SETTLED":
             logger.error("[PAYMENT SECURITY] Unexpected settlement result %r for order %s", result, order_id[:8])
@@ -293,6 +294,7 @@ class PaymentService:
                         await run_in_threadpool(self.provider.process_refund, pi_id)
                     except Exception as refund_error:
                         logger.error("[PAYMENT RETRY] Refund failed for cancelled order %s", order_id[:8], exc_info=True)
+                        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=PaymentSecurityMessages.ORDER_CANCELLED_REFUND_PENDING) from refund_error
                     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)
                 if result not in {"SETTLED", "ALREADY_PAID"}:
                     logger.error("[PAYMENT SECURITY] Unexpected retry settlement result %r for order %s", result, order_id[:8])
@@ -381,8 +383,9 @@ class PaymentService:
                     if result == "ORDER_ALREADY_CANCELLED":
                         try:
                             await run_in_threadpool(self.provider.process_refund, pi_id)
-                        except Exception:
+                        except Exception as refund_exc:
                             logger.error("[WEBHOOK] Auto-refund FAILED for orphaned success %s", pi_id, exc_info=True)
+                            raise RuntimeError("Automatic refund failed; webhook must remain retryable") from refund_exc
                     elif result == "SETTLED":
                         try:
                             get_event_bus().publish(OrderPaidEvent(order=order, customer_email=order.get("shipping_email") or order.get("billing_email") or "", customer_id=customer_id))
