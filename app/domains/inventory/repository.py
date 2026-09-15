@@ -9,6 +9,7 @@ Consolidated stock operations extracted from:
 - app/repositories/order_repo.py (cancellation stock restoration)
 """
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from app.core.supabase import get_async_admin_supabase
@@ -85,10 +86,30 @@ class InventoryRepository:
             logger.error("RPC Error reserving stock and creating order: %s", exc, exc_info=True)
             raise
 
-    async def settle_order_transaction(self, order_id: str, pi_id: str, amount: float, user_id: str, payment_method: Optional[str] = None) -> str:
+    async def settle_order_transaction(
+        self,
+        order_id: str,
+        pi_id: str,
+        amount: float,
+        user_id: str,
+        payment_method: Optional[str] = None,
+        stripe_currency: Optional[str] = None,
+    ) -> str:
+        if not stripe_currency:
+            raise ValueError("Stripe currency is required for payment settlement")
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.rpc("settle_order_transaction", {"p_order_id": order_id, "p_pi_id": pi_id, "p_amount": amount, "p_user_id": user_id, "p_payment_method": payment_method}).execute()
+            res = await admin_sb.rpc(
+                "settle_order_transaction",
+                {
+                    "p_order_id": order_id,
+                    "p_pi_id": pi_id,
+                    "p_amount": amount,
+                    "p_user_id": user_id,
+                    "p_payment_method": payment_method,
+                    "p_stripe_currency": stripe_currency,
+                },
+            ).execute()
             data = getattr(res, "data", None)
             return str(data) if data else "FAILED"
         except Exception as exc:
@@ -134,10 +155,19 @@ class InventoryRepository:
             return []
 
     async def list_stale_pending_orders(self, minutes_old: int = 30) -> List[Dict[str, Any]]:
+        if minutes_old <= 0:
+            raise ValueError("minutes_old must be positive")
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.table("orders").select("id, created_at, customer_id").eq("status", "pending").execute()
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes_old)
+            res = await (
+                admin_sb.table("orders")
+                .select("id, created_at, customer_id, stripe_payment_intent")
+                .eq("status", "pending")
+                .lt("created_at", cutoff.isoformat())
+                .execute()
+            )
             return getattr(res, "data", None) or []
         except Exception as exc:
             logger.error("DB Error fetching stale orders: %s", exc, exc_info=True)
-            return []
+            raise
