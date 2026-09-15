@@ -9,14 +9,15 @@ from starlette.concurrency import run_in_threadpool
 
 from app.constants.order_messages import OrderMessages, OrderSecurityMessages
 from app.domains.orders.repository import AsyncOrderRepository
+from app.domains.payments.refund import refund_payment_intent
 from app.domains.users.repository import AsyncUserRepository
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderShippedEvent, OrderStatusChangedEvent, get_event_bus
-from app.integrations.payments.registry import get_payment_provider
 from app.permissions.policies.order_policies import OrderPolicy
 from app.utils.documents.pdf_invoice import build_invoice_pdf
 
 logger = logging.getLogger(__name__)
+
 
 STATUS_TRANSITIONS = {
     OrderStatus.PENDING: {OrderStatus.PAID, OrderStatus.CANCELLED},
@@ -30,6 +31,7 @@ STATUS_TRANSITIONS = {
 
 _INTERNAL_FIELDS = {"id", "idempotency_key", "updated_at"}
 _MASKED_FIELDS = {"stripe_payment_intent": lambda v: f"pi_***{v[-4:]}" if v and len(v) > 4 else None}
+
 
 class OrderService:
     def __init__(self):
@@ -112,7 +114,7 @@ class OrderService:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.INVALID_TRANSITION)
             if target_status_enum == OrderStatus.REFUNDED and current_res.get("stripe_payment_intent"):
                 try:
-                    await run_in_threadpool(get_payment_provider("stripe").process_refund, current_res["stripe_payment_intent"])
+                    await refund_payment_intent(current_res["stripe_payment_intent"])
                 except Exception as e:
                     logger.error(f"Stripe refund execution failed: {e}")
                     raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=OrderSecurityMessages.REFUND_FAILED)
@@ -147,8 +149,6 @@ class OrderService:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Invoice number is not available for this order.")
         customer = await self.user_repo.get_user_by_id(raw_order.get("customer_id", "")) or {}
         try:
-            # The PDF builder historically reads `id` for its displayed Order No.
-            # Pass a detached public projection so it cannot render the DB UUID.
             invoice_order = dict(raw_order)
             invoice_order["id"] = str(raw_order.get("order_number") or order_identifier)
             pdf_bytes = await run_in_threadpool(build_invoice_pdf, invoice_order, customer)
