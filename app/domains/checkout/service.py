@@ -5,7 +5,7 @@ respective domains; this service only coordinates them.
 """
 from typing import Any, Dict, Optional
 
-from app.domains.orders.cod_service import CodOrderService
+from app.domains.checkout.cod_service import CodOrderService
 from app.domains.payments.service import PaymentService
 
 
