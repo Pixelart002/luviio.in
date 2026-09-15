@@ -12,7 +12,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.constants.order_messages import OrderMessages
-from app.core.dependencies import get_current_user, get_order_payment_port, get_user_id_strict, require_permission
+from app.core.dependencies import (
+    get_current_user,
+    get_order_payment_port,
+    get_user_id_strict,
+    require_permission,
+)
 from app.domains.checkout.service import CheckoutService
 from app.domains.orders.payment_port import OrderPaymentPort
 from app.domains.orders.schemas import (
