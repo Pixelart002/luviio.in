@@ -3,7 +3,7 @@ import json
 import uuid
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
 
@@ -17,11 +17,17 @@ from app.utils.response import success_response
 
 router = APIRouter(tags=["Products"])
 
+
+def _validation_error(exc: ValidationError) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors(include_url=False))
+
+
 @router.get("/categories", status_code=status.HTTP_200_OK)
 async def list_categories(request: Request) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append("Fetching active product categories from Global Catalog")
     return success_response(data=await ProductService().get_categories())
+
 
 @router.post("/categories", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(ProductPermissions.CREATE))])
 async def create_category(request: Request, payload: CategoryCreate) -> Dict[str, Any]:
@@ -30,12 +36,14 @@ async def create_category(request: Request, payload: CategoryCreate) -> Dict[str
     result = await ProductService().create_category(payload.model_dump())
     return success_response(data=result, message=ProductMessages.CATEGORY_CREATED)
 
+
 @router.delete("/categories/{category_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.DELETE))])
 async def delete_category(request: Request, category_id: uuid.UUID) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin initiating deletion for Category: {str(category_id)[:8]}...")
     await ProductService().delete_category(str(category_id))
     return success_response(message=ProductMessages.CATEGORY_DELETED)
+
 
 @router.get("/products", status_code=status.HTTP_200_OK)
 async def list_products(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), category: str = Query(None), search: str = Query(None), min_price: float = Query(None), max_price: float = Query(None), in_stock: bool = Query(None)) -> Dict[str, Any]:
@@ -44,39 +52,55 @@ async def list_products(request: Request, page: int = Query(1, ge=1), page_size:
     items, total = await ProductService().get_products(page, page_size, category, search, min_price, max_price, in_stock)
     return paginate(items, total, page, page_size)
 
+
 @router.get("/products/{slug}", status_code=status.HTTP_200_OK)
 async def get_product(request: Request, slug: str) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Targeting Product fetch for slug -> '{slug}'")
     return success_response(data=await ProductService().get_product(slug))
 
+
 @router.post("/products", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(ProductPermissions.CREATE))])
 async def create_product(request: Request) -> Dict[str, Any]:
     """Create a product from JSON or multipart/form-data with optional image files."""
     content_type = request.headers.get("content-type", "").lower()
+    try:
+        if content_type.startswith("multipart/form-data"):
+            form = await request.form()
+            raw_product = form.get("product")
+            if not raw_product:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Missing product payload")
+            try:
+                payload = ProductCreate.model_validate(json.loads(str(raw_product)))
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Product payload must contain valid JSON") from exc
+            except ValidationError as exc:
+                raise _validation_error(exc)
 
-    if content_type.startswith("multipart/form-data"):
-        form = await request.form()
-        raw_product = form.get("product")
-        if not raw_product:
-            raise ValueError("Missing product payload")
-        try:
-            payload = ProductCreate.model_validate(json.loads(str(raw_product)))
-        except (json.JSONDecodeError, ValidationError) as exc:
-            raise ValueError("Invalid product payload") from exc
-
-        image_files: List[tuple[bytes, str]] = []
-        for value in form.getlist("files"):
-            if isinstance(value, UploadFile):
-                image_files.append((await value.read(), value.filename or "unknown"))
-        result = await ProductService().create_product_with_images(payload.model_dump(), image_files)
-    else:
-        payload = ProductCreate.model_validate(await request.json())
-        result = await ProductService().create_product(payload.model_dump())
+            image_files: List[tuple[bytes, str]] = []
+            for value in form.getlist("files"):
+                if isinstance(value, UploadFile):
+                    image_files.append((await value.read(), value.filename or "unknown"))
+            result = await ProductService().create_product_with_images(payload.model_dump(), image_files)
+        else:
+            try:
+                payload = ProductCreate.model_validate(await request.json())
+            except ValidationError as exc:
+                raise _validation_error(exc)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Request body must contain valid JSON") from exc
+            result = await ProductService().create_product(payload.model_dump())
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Keep unexpected failures observable without leaking internals to clients.
+        request.state.product_create_error = str(exc)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to create product") from exc
 
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin inserting new product -> SKU: {payload.sku or 'Auto'}")
     return success_response(data=result, message=ProductMessages.PRODUCT_CREATED)
+
 
 @router.patch("/products/{product_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
 async def update_product(request: Request, product_id: uuid.UUID, payload: ProductUpdate) -> Dict[str, Any]:
@@ -85,12 +109,14 @@ async def update_product(request: Request, product_id: uuid.UUID, payload: Produ
     result = await ProductService().update_product(str(product_id), payload.model_dump(exclude_unset=True))
     return success_response(data=result, message=ProductMessages.PRODUCT_UPDATED)
 
+
 @router.delete("/products/{product_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.DELETE))])
 async def delete_product(request: Request, product_id: uuid.UUID) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin isolating Product -> ID: {str(product_id)[:8]}...")
     await ProductService().delete_product(str(product_id))
     return success_response(message=ProductMessages.PRODUCT_DELETED)
+
 
 @router.post("/products/{product_id}/images", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
 async def upload_image_endpoint(request: Request, product_id: uuid.UUID) -> Dict[str, Any]:
@@ -104,12 +130,14 @@ async def upload_image_endpoint(request: Request, product_id: uuid.UUID) -> Dict
     result = await ProductService().upload_images(str(product_id), image_files)
     return success_response(data=result, message=ProductMessages.IMAGE_UPLOADED)
 
+
 @router.delete("/products/{product_id}/images/{index}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
 async def delete_image_endpoint(request: Request, product_id: uuid.UUID, index: int) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin deleting Image Index [{index}] for Product: {str(product_id)[:8]}...")
     result = await ProductService().delete_image(str(product_id), index)
     return success_response(data=result, message=ProductMessages.IMAGE_DELETED)
+
 
 @router.put("/products/{product_id}/images/reorder", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
 async def reorder_images(request: Request, product_id: uuid.UUID, ordered_urls: List[str]) -> Dict[str, Any]:
