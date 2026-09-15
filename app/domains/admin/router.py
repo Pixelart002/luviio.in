@@ -9,6 +9,7 @@ from app.constants.admin_messages import AdminMessages
 from app.core.dependencies import get_user_id_strict, require_permission
 from app.domains.admin.service import AdminService
 from app.domains.payments.plugin_schemas import (
+    MethodRegistrationRequest,
     MethodToggleRequest,
     ProviderRegistrationRequest,
     ProviderToggleRequest,
@@ -76,51 +77,34 @@ async def list_payment_methods(
 
 @router.patch("/payment-plugins/{provider_key}", dependencies=[Depends(require_permission(AdminPermissions.MANAGE_SETTINGS))])
 @limiter.limit("20/minute")
-async def toggle_payment_plugin(
-    request: Request,
-    provider_key: str,
-    payload: ProviderToggleRequest,
-    user_id: str = Depends(get_user_id_strict),
-):
+async def toggle_payment_plugin(request: Request, provider_key: str, payload: ProviderToggleRequest, user_id: str = Depends(get_user_id_strict)):
     data = await PaymentPluginManager().set_provider_enabled(provider_key, payload.enabled)
     return success_response(data=data)
 
 
 @router.patch("/payment-plugins/{provider_key}/methods/{method_key}", dependencies=[Depends(require_permission(AdminPermissions.MANAGE_SETTINGS))])
 @limiter.limit("20/minute")
-async def toggle_payment_method(
-    request: Request,
-    provider_key: str,
-    method_key: str,
-    payload: MethodToggleRequest,
-    user_id: str = Depends(get_user_id_strict),
-):
+async def toggle_payment_method(request: Request, provider_key: str, method_key: str, payload: MethodToggleRequest, user_id: str = Depends(get_user_id_strict)):
     data = await PaymentPluginManager().set_method_enabled(provider_key, method_key, payload.enabled)
     return success_response(data=data)
 
 
 @router.post("/payment-plugins", dependencies=[Depends(require_permission(AdminPermissions.MANAGE_SETTINGS))])
 @limiter.limit("10/minute")
-async def register_payment_plugin(
-    request: Request,
-    payload: ProviderRegistrationRequest,
-    user_id: str = Depends(get_user_id_strict),
-):
-    data = await PaymentPluginManager().register_installed_provider(
-        payload.provider_key,
-        payload.display_name,
-        payload.capabilities,
-        payload.priority,
-    )
+async def register_payment_plugin(request: Request, payload: ProviderRegistrationRequest, user_id: str = Depends(get_user_id_strict)):
+    data = await PaymentPluginManager().register_installed_provider(payload.provider_key, payload.display_name, payload.capabilities, payload.priority)
     return success_response(data=data, message="Payment provider registered. It remains disabled until explicitly enabled.")
+
+
+@router.post("/payment-plugins/{provider_key}/methods", dependencies=[Depends(require_permission(AdminPermissions.MANAGE_SETTINGS))])
+@limiter.limit("10/minute")
+async def register_payment_method(request: Request, provider_key: str, payload: MethodRegistrationRequest, user_id: str = Depends(get_user_id_strict)):
+    data = await PaymentPluginManager().register_method(provider_key, payload.method_key, payload.display_name, payload.priority, payload.metadata)
+    return success_response(data=data, message="Payment method registered. It remains disabled until explicitly enabled.")
 
 
 @router.delete("/payment-plugins/{provider_key}", dependencies=[Depends(require_permission(AdminPermissions.MANAGE_SETTINGS))])
 @limiter.limit("10/minute")
-async def deactivate_payment_plugin(
-    request: Request,
-    provider_key: str,
-    user_id: str = Depends(get_user_id_strict),
-):
+async def deactivate_payment_plugin(request: Request, provider_key: str, user_id: str = Depends(get_user_id_strict)):
     data = await PaymentPluginManager().deactivate_provider(provider_key)
     return success_response(data=data, message="Payment provider deactivated; historical payment records are preserved.")
