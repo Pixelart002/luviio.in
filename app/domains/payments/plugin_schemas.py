@@ -25,3 +25,18 @@ class ProviderRegistrationRequest(BaseModel):
         if not value.replace("_", "").replace("-", "").isalnum():
             raise ValueError("provider_key contains invalid characters")
         return value
+
+
+class MethodRegistrationRequest(BaseModel):
+    method_key: str = Field(min_length=2, max_length=64)
+    display_name: str = Field(min_length=1, max_length=120)
+    priority: int = Field(default=100, ge=0, le=10000)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("method_key")
+    @classmethod
+    def normalize_key(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not value.replace("_", "").replace("-", "").isalnum():
+            raise ValueError("method_key contains invalid characters")
+        return value
