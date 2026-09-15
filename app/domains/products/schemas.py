@@ -40,13 +40,21 @@ class ProductCreate(BaseModel):
     image_url: Optional[str] = None
     images: List[str] = Field(default_factory=list)
     attributes: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    hsn_code: Optional[str] = Field(default="9988", max_length=20)
+    hsn_code: str = Field(..., min_length=1, max_length=20)
     gst_percentage: int = Field(...)
     seo_title: Optional[str] = Field(default=None, max_length=70)
     seo_description: Optional[str] = Field(default=None, max_length=170)
     seo_keywords: Optional[str] = Field(default=None, max_length=500)
     canonical_url: Optional[str] = Field(default=None, max_length=2048)
     is_active: bool = True
+
+    @field_validator("hsn_code")
+    @classmethod
+    def validate_hsn(cls, v: str) -> str:
+        value = v.strip()
+        if not value:
+            raise ValueError("HSN code is required for every product.")
+        return value
 
     @field_validator("gst_percentage")
     @classmethod
@@ -76,13 +84,23 @@ class ProductUpdate(BaseModel):
     images: Optional[List[str]] = None
     attributes: Optional[Dict[str, Any]] = None
     category_id: Optional[str] = None
-    hsn_code: Optional[str] = Field(default=None, max_length=20)
+    hsn_code: Optional[str] = Field(default=None, min_length=1, max_length=20)
     gst_percentage: Optional[int] = None
     seo_title: Optional[str] = Field(default=None, max_length=70)
     seo_description: Optional[str] = Field(default=None, max_length=170)
     seo_keywords: Optional[str] = Field(default=None, max_length=500)
     canonical_url: Optional[str] = Field(default=None, max_length=2048)
     is_active: Optional[bool] = None
+
+    @field_validator("hsn_code")
+    @classmethod
+    def validate_hsn(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        value = v.strip()
+        if not value:
+            raise ValueError("HSN code cannot be empty.")
+        return value
 
     @field_validator("gst_percentage")
     @classmethod
