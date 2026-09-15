@@ -7,7 +7,6 @@ This cron module is an application scheduler/entrypoint. Inventory owns stock
 reservation release and payment settlement.
 """
 import logging
-from datetime import datetime, timedelta, timezone
 
 from starlette.concurrency import run_in_threadpool
 
@@ -24,8 +23,6 @@ async def cleanup_abandoned_orders() -> None:
     logger.info("[CRON] Running abandoned-order sweep...")
     inventory = InventoryService()
     provider = get_payment_provider("stripe")
-
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=PaymentRules.ABANDONED_ORDER_TIMEOUT_MINUTES)
     stale_orders = await inventory.repo.list_stale_pending_orders(
         PaymentRules.ABANDONED_ORDER_TIMEOUT_MINUTES
     )
