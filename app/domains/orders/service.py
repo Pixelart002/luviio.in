@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 
 from app.constants.order_messages import OrderMessages, OrderSecurityMessages
+from app.domains.inventory.service import InventoryService
 from app.domains.orders.payment_port import OrderPaymentPort
 from app.domains.orders.repository import AsyncOrderRepository
 from app.domains.users.repository import AsyncUserRepository
@@ -20,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 STATUS_TRANSITIONS = {
     OrderStatus.PENDING: {OrderStatus.PAID, OrderStatus.CANCELLED},
-    OrderStatus.PAID: {OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.CANCELLED, OrderStatus.REFUNDED},
-    OrderStatus.PROCESSING: {OrderStatus.SHIPPED, OrderStatus.CANCELLED, OrderStatus.REFUNDED},
+    OrderStatus.PAID: {OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.REFUNDED},
+    OrderStatus.PROCESSING: {OrderStatus.SHIPPED, OrderStatus.REFUNDED},
     OrderStatus.SHIPPED: {OrderStatus.DELIVERED},
     OrderStatus.DELIVERED: {OrderStatus.REFUNDED},
     OrderStatus.REFUNDED: set(),
@@ -36,6 +37,7 @@ class OrderService:
     def __init__(self, payment_port: OrderPaymentPort | None = None):
         self.repo = AsyncOrderRepository()
         self.user_repo = AsyncUserRepository()
+        self.inventory = InventoryService()
         self.payment_port = payment_port
 
     def _sanitize(self, order: Dict[str, Any]) -> Dict[str, Any]:
@@ -81,7 +83,10 @@ class OrderService:
         OrderPolicy.assert_can_cancel(raw_order, user_id, is_admin=is_admin)
         internal_order_id = str(raw_order["id"])
         actual_old_status = raw_order.get("status", OrderStatus.PENDING.value)
-        updated = await self.repo.cancel_order_and_restore_stock(internal_order_id, user_id if not is_admin else None)
+        updated = await self.inventory.cancel_order_with_stock_restoration(
+            internal_order_id,
+            user_id if not is_admin else None,
+        )
         if not updated:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.CONCURRENCY_CONFLICT)
         try:
@@ -125,7 +130,7 @@ class OrderService:
                     logger.error(f"Stripe refund execution failed: {e}")
                     raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=OrderSecurityMessages.REFUND_FAILED)
             if target_status_enum == OrderStatus.CANCELLED:
-                result = await self.repo.cancel_order_and_restore_stock(internal_order_id)
+                result = await self.inventory.cancel_order_with_stock_restoration(internal_order_id)
                 if not result:
                     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.INVALID_CANCEL_STATE)
             else:

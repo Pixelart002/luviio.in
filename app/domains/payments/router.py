@@ -11,6 +11,7 @@ from slowapi import Limiter
 from starlette.concurrency import run_in_threadpool
 
 from app.core.dependencies import get_current_user, get_user_id_strict
+from app.domains.inventory.service import InventoryService
 from app.domains.orders.repository import AsyncOrderRepository
 from app.domains.payments.schemas import (
     ConfirmPaymentRequest,
@@ -127,7 +128,7 @@ async def cancel_checkout_payment(
 
     Stripe is checked first. A successful PaymentIntent is never silently
     converted into a cancelled order; non-terminal intents are cancelled at
-    Stripe before the local order/stock transaction runs.
+    Stripe before the local order/inventory transaction runs.
     """
     order_number = _require_public_order_number(order_number)
     repo = AsyncOrderRepository()
@@ -158,7 +159,7 @@ async def cancel_checkout_payment(
                 detail="We could not safely cancel the payment session. Please try again.",
             ) from exc
 
-    result = await repo.cancel_order_and_restore_stock(str(order["id"]), user_id)
+    result = await InventoryService().cancel_order_with_stock_restoration(str(order["id"]), user_id)
     if not result or result.get("status") != "cancelled":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Checkout changed while cancelling. Please retry.")
     return success_response(data={"status": "cancelled", "order_number": order_number})

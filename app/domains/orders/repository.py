@@ -40,30 +40,6 @@ class AsyncOrderRepository:
             logger.error(f"[REPO:ORDERS] Failed to resolve order reference: {e}", exc_info=True)
             return None
 
-    async def cancel_order_and_restore_stock(self, order_id: str, user_id: Optional[str] = None) -> Optional[dict[str, Any]]:
-        admin_sb = await get_async_admin_supabase()
-        logger.info(f"[REPO:ORDERS] Cancelling order {order_id} and restoring stock.")
-        try:
-            q = admin_sb.table("orders").select("id").eq("id", order_id).in_("status", ["pending", "paid", "processing"])
-            if user_id:
-                q = q.eq("customer_id", user_id)
-            check = await q.execute()
-            if not check or not check.data:
-                logger.warning(f"[REPO:ORDERS] Cancel failed. Order {order_id} invalid state or access denied.")
-                return None
-            result = await admin_sb.rpc("cancel_order_and_release_stock", {"p_order_id": order_id, "p_reason": "customer_requested" if user_id else "admin_requested"}).execute()
-            outcome = getattr(result, "data", None)
-            if outcome == "ORDER_ALREADY_FULFILLED":
-                logger.info(f"[REPO:ORDERS] Cancel refused for {order_id} — already shipped/delivered.")
-                return None
-            if outcome not in ("CANCELLED", "ALREADY_CANCELLED"):
-                logger.warning(f"[REPO:ORDERS] Unexpected outcome cancelling order {order_id}: {outcome}")
-                return None
-            return await self.get_order_by_id(order_id)
-        except Exception as e:
-            logger.error(f"[REPO:ORDERS] Error during cancel & restore for {order_id}: {e}", exc_info=True)
-            return None
-
     async def update_order_status_safe(self, order_id: str, updates: dict, expected_status: str) -> Optional[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         try:
