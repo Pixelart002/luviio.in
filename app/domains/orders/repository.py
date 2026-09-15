@@ -8,9 +8,8 @@ import logging
 from typing import Any, List, Optional, Tuple
 from uuid import UUID
 
-from fastapi import HTTPException, status
-
 from app.core.supabase import get_async_admin_supabase
+from app.domains.orders.exceptions import OrderRepositoryError
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +18,6 @@ USER_ORDER_SELECT = "id, order_number, status, total_amount, created_at"
 
 
 class AsyncOrderRepository:
-    def __init__(self):
-        pass
-
     async def get_order_by_id(self, order_id: str, user_id: Optional[str] = None) -> Optional[dict[str, Any]]:
         """Resolve either an internal UUID (server-side) or the existing order_number."""
         admin_sb = await get_async_admin_supabase()
@@ -63,7 +59,7 @@ class AsyncOrderRepository:
             return res.data or [], res.count or 0
         except Exception as e:
             logger.error(f"[REPO:ORDERS] Failed fetching user orders: {e}", exc_info=True)
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Unable to load order history right now.") from e
+            raise OrderRepositoryError("Unable to load order history right now.") from e
 
     async def get_all_orders(self, status_filter: Optional[str], page: int, page_size: int) -> Tuple[List[dict], int]:
         admin_sb = await get_async_admin_supabase()
@@ -76,7 +72,7 @@ class AsyncOrderRepository:
             return res.data or [], res.count or 0
         except Exception as e:
             logger.error(f"[REPO:ORDERS] Failed fetching all orders: {e}", exc_info=True)
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Unable to load orders right now.") from e
+            raise OrderRepositoryError("Unable to load orders right now.") from e
 
     async def get_order_for_admin_update(self, order_id: str) -> Optional[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
