@@ -8,8 +8,8 @@ from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 
 from app.constants.order_messages import OrderMessages, OrderSecurityMessages
+from app.domains.orders.payment_port import OrderPaymentPort
 from app.domains.orders.repository import AsyncOrderRepository
-from app.domains.payments.refund import refund_payment_intent
 from app.domains.users.repository import AsyncUserRepository
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderShippedEvent, OrderStatusChangedEvent, get_event_bus
@@ -33,9 +33,10 @@ _MASKED_FIELDS = {"stripe_payment_intent": lambda v: f"pi_***{v[-4:]}" if v and 
 
 
 class OrderService:
-    def __init__(self):
+    def __init__(self, payment_port: OrderPaymentPort | None = None):
         self.repo = AsyncOrderRepository()
         self.user_repo = AsyncUserRepository()
+        self.payment_port = payment_port
 
     def _sanitize(self, order: Dict[str, Any]) -> Dict[str, Any]:
         if not order:
@@ -53,8 +54,6 @@ class OrderService:
             if "products" in item and isinstance(item["products"], dict):
                 prod = item["products"]
                 item["name"] = item.get("product_name") or prod.get("name") or "Product Item"
-                # Never invent fiscal data in an order response. GST/HSN must come
-                # from the persisted order/product snapshot or remain absent.
                 if item.get("hsn_code") is None and prod.get("hsn_code") is not None:
                     item["hsn_code"] = prod.get("hsn_code")
                 if item.get("gst_percentage") is None and prod.get("gst_percentage") is not None:
@@ -117,8 +116,11 @@ class OrderService:
             if target_status_enum not in allowed_transitions:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.INVALID_TRANSITION)
             if target_status_enum == OrderStatus.REFUNDED and current_res.get("stripe_payment_intent"):
+                if self.payment_port is None:
+                    logger.error("Order refund requested without a configured payment port")
+                    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=OrderSecurityMessages.REFUND_FAILED)
                 try:
-                    await refund_payment_intent(current_res["stripe_payment_intent"])
+                    await self.payment_port.refund_payment_intent(current_res["stripe_payment_intent"])
                 except Exception as e:
                     logger.error(f"Stripe refund execution failed: {e}")
                     raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=OrderSecurityMessages.REFUND_FAILED)
