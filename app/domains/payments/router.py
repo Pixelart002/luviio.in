@@ -19,6 +19,7 @@ from app.domains.payments.schemas import (
     PaymentIntentRequest,
 )
 from app.domains.payments.service import PaymentService
+from app.integrations.payments.context import payment_provider_context
 from app.integrations.payments.manager import PaymentPluginManager
 from app.utils.response import success_response
 
@@ -66,42 +67,60 @@ router = APIRouter(prefix="/payments", tags=["Payments"])
 @router.post("/create-intent")
 @limiter.limit("10/minute")
 async def create_payment_intent(request: Request, payload: PaymentIntentRequest, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
-    await _require_provider_enabled("stripe")
+    provider_key = (payload.provider_key or "stripe").strip().lower()
+    await _require_provider_enabled(provider_key)
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Initiating Amazon-Style AOT Checkout -> Target UID: {user_id[:8]}...")
+        request.state.actions.append(f"Initiating AOT Checkout -> provider: {provider_key}")
     client_ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "")
     billing_id = str(payload.billing_address_id) if payload.billing_address_id else None
-    data = await PaymentService().create_intent(user_id, client_ip, payload.idempotency_key, str(payload.shipping_address_id), billing_id, user_agent=user_agent, coupon_code=payload.coupon_code)
+    with payment_provider_context(provider_key):
+        data = await PaymentService().create_intent(
+            user_id,
+            client_ip,
+            payload.idempotency_key,
+            str(payload.shipping_address_id),
+            billing_id,
+            user_agent=user_agent,
+            coupon_code=payload.coupon_code,
+        )
+    data["payment_provider"] = provider_key
     return success_response(data=await _public_payment_data(data))
 
 
 @router.post("/confirm")
 @limiter.limit("10/minute")
 async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, current: Dict[str, Any] = Depends(get_current_user), user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
+    provider_key = (payload.provider_key or "stripe").strip().lower()
+    await _require_provider_enabled(provider_key)
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Verifying payment success for Intent: {payload.payment_intent_id[:10]}...")
+        request.state.actions.append(f"Verifying provider payment: {provider_key}")
     email = current.get("profile", {}).get("email", "")
     client_ip = get_real_ip(request)
-    data = await PaymentService().confirm_payment(user_id, client_ip, payload.payment_intent_id, email)
+    with payment_provider_context(provider_key):
+        data = await PaymentService().confirm_payment(user_id, client_ip, payload.payment_intent_id, email)
+    data["payment_provider"] = provider_key
     return success_response(data=await _public_payment_data(data))
 
 
 @router.post("/retry/{order_number}")
 @limiter.limit("10/minute")
 async def retry_payment(request: Request, order_number: str, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
-    await _require_provider_enabled("stripe")
     order_number = _require_public_order_number(order_number)
     order_repo = AsyncOrderRepository()
     order = await order_repo.get_order_by_id(order_number)
     if not order or str(order.get("customer_id")) != str(user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
+    provider_key = str(order.get("payment_provider") or "stripe").strip().lower()
+    await _require_provider_enabled(provider_key)
     internal_order_id = str(order["id"])
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Initiating Smart Paywall Retry for order reference: {order_number[:32]}")
+        request.state.actions.append(f"Initiating Smart Paywall Retry -> provider: {provider_key}")
     client_ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "")
-    data = await PaymentService().retry_payment(user_id, internal_order_id, client_ip=client_ip, user_agent=user_agent)
+    with payment_provider_context(provider_key):
+        data = await PaymentService().retry_payment(user_id, internal_order_id, client_ip=client_ip, user_agent=user_agent)
+    data["payment_provider"] = provider_key
     return success_response(data=await _public_payment_data(data))
 
 
@@ -116,21 +135,23 @@ async def cancel_checkout_payment(request: Request, order_number: str, user_id: 
     if order.get("status") != "pending":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This checkout is no longer cancellable.")
 
-    await _require_provider_enabled("stripe")
-    pi_id = str(order.get("stripe_payment_intent") or "").strip()
-    provider = await PaymentPluginManager().get_active_provider("stripe")
-    if pi_id:
-        try:
-            intent = await run_in_threadpool(provider.retrieve_intent, pi_id)
-            stripe_status = intent.get("status")
-            if stripe_status == "succeeded":
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment has already completed. This order cannot be cancelled from checkout.")
-            if stripe_status not in {"canceled", "succeeded"}:
-                await run_in_threadpool(provider.cancel_intent, pi_id)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="We could not safely cancel the payment session. Please try again.") from exc
+    provider_key = str(order.get("payment_provider") or "stripe").strip().lower()
+    await _require_provider_enabled(provider_key)
+    pi_id = str(order.get("provider_payment_id") or order.get("stripe_payment_intent") or "").strip()
+    with payment_provider_context(provider_key):
+        provider = await PaymentPluginManager().get_active_provider(provider_key)
+        if pi_id:
+            try:
+                intent = await run_in_threadpool(provider.retrieve_intent, pi_id)
+                provider_status = intent.get("status")
+                if provider_status == "succeeded":
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment has already completed. This order cannot be cancelled from checkout.")
+                if provider_status not in {"canceled", "succeeded"}:
+                    await run_in_threadpool(provider.cancel_intent, pi_id)
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="We could not safely cancel the payment session. Please try again.") from exc
 
     result = await InventoryService().cancel_order_with_stock_restoration(str(order["id"]), user_id)
     if not result or result.get("status") != "cancelled":
@@ -140,21 +161,31 @@ async def cancel_checkout_payment(request: Request, order_number: str, user_id: 
 
 @router.post("/notify-failed")
 async def notify_payment_failed(request: Request, payload: NotifyFailedRequest, current: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    provider_key = (payload.provider_key or "stripe").strip().lower()
+    await _require_provider_enabled(provider_key)
     if hasattr(request.state, "actions"):
-        request.state.actions.append(f"Intercepted client-side drop on Intent {payload.payment_intent_id[:10]}...")
-    await PaymentService().record_client_reported_failure(payload.payment_intent_id, payload.error_message or "Client reported failure")
+        request.state.actions.append(f"Intercepted client-side drop -> provider: {provider_key}")
+    with payment_provider_context(provider_key):
+        await PaymentService().record_client_reported_failure(payload.payment_intent_id, payload.error_message or "Client reported failure")
     return success_response(message="Failure logged. You can safely retry.")
 
 
 @router.post("/webhook")
 async def stripe_webhook(request: Request):
-    """Listens to Stripe Webhooks for background async state synchronization."""
+    return await payment_webhook(request, "stripe")
+
+
+@router.post("/webhook/{provider_key}")
+async def payment_webhook(request: Request, provider_key: str):
+    provider_key = provider_key.strip().lower()
+    await _require_provider_enabled(provider_key)
     payload = await request.body()
-    sig_header = request.headers.get("stripe-signature")
+    sig_header = request.headers.get("stripe-signature") if provider_key == "stripe" else request.headers.get("x-payment-signature")
     if not sig_header:
         return Response(content="Missing signature", status_code=400)
     try:
-        await PaymentService().handle_webhook(payload, sig_header)
+        with payment_provider_context(provider_key):
+            await PaymentService().handle_webhook(payload, sig_header)
     except ValueError as e:
         return Response(content=str(e), status_code=400)
     except Exception:
