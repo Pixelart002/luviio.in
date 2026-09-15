@@ -89,6 +89,42 @@ class PaymentPluginManager:
             raise ValueError("Provider registration returned no record.")
         return data[0]
 
+    async def register_method(
+        self,
+        provider_key: str,
+        method_key: str,
+        display_name: str,
+        priority: int = 100,
+        metadata: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        provider = provider_key.strip().lower()
+        method = method_key.strip().lower()
+        if provider not in PAYMENT_REGISTRY:
+            raise ValueError("Provider code is not installed in the application registry.")
+        if not method or len(method) > 64 or not display_name.strip():
+            raise ValueError("Invalid payment method metadata.")
+        sb = await get_async_admin_supabase()
+        provider_row = await sb.table("payment_provider_plugins").select("provider_key").eq(
+            "provider_key", provider
+        ).limit(1).execute()
+        if not (getattr(provider_row, "data", None) or []):
+            raise ValueError("Provider must be registered before adding methods.")
+        res = await sb.table("payment_provider_methods").upsert(
+            {
+                "provider_key": provider,
+                "method_key": method,
+                "display_name": display_name.strip()[:120],
+                "enabled": False,
+                "priority": priority,
+                "metadata": metadata or {},
+            },
+            on_conflict="provider_key,method_key",
+        ).select("id,provider_key,method_key,display_name,enabled,priority,metadata").execute()
+        data = getattr(res, "data", None) or []
+        if not data:
+            raise ValueError("Payment method registration returned no record.")
+        return data[0]
+
     async def deactivate_provider(self, provider_key: str) -> Dict[str, Any]:
         """Deactivate a provider without deleting historical payment records."""
         return await self.set_provider_enabled(provider_key, False)
