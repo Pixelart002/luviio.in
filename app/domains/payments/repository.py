@@ -101,18 +101,13 @@ class AsyncPaymentRepository:
         provider_payment_id = str(order_data.get("provider_payment_id") or order_data.get("stripe_payment_intent") or "").strip()
         if not provider_payment_id:
             raise RuntimeError("Provider payment reference is required before order creation.")
-
         payload = dict(order_data)
         payload["payment_provider"] = provider
         payload["provider_payment_id"] = provider_payment_id
         if provider != "stripe":
             payload.pop("stripe_payment_intent", None)
-
         try:
-            res = await admin_sb.rpc(
-                "create_pending_order_with_payment",
-                {"p_order_data": payload, "p_items": items},
-            ).execute()
+            res = await admin_sb.rpc("create_pending_order_with_payment", {"p_order_data": payload, "p_items": items}).execute()
             data = getattr(res, "data", None)
             if not data:
                 raise RuntimeError("RPC returned no data for pending order reservation.")
@@ -138,10 +133,7 @@ class AsyncPaymentRepository:
     async def update_order_payment_intent(self, order_id: str, new_pi_id: str) -> bool:
         admin_sb = await get_async_admin_supabase()
         provider = get_current_provider_key()
-        values: Dict[str, Any] = {
-            "payment_provider": provider,
-            "provider_payment_id": new_pi_id,
-        }
+        values: Dict[str, Any] = {"payment_provider": provider, "provider_payment_id": new_pi_id}
         if provider == "stripe":
             values["stripe_payment_intent"] = new_pi_id
         try:
@@ -158,15 +150,7 @@ class AsyncPaymentRepository:
         if provider == "stripe":
             values["stripe_payment_intent"] = None
         try:
-            res = await (
-                admin_sb.table("orders")
-                .update(values)
-                .eq("id", order_id)
-                .eq("status", "pending")
-                .eq("payment_provider", provider)
-                .eq("provider_payment_id", expected_pi_id)
-                .execute()
-            )
+            res = await (admin_sb.table("orders").update(values).eq("id", order_id).eq("status", "pending").eq("payment_provider", provider).eq("provider_payment_id", expected_pi_id).execute())
             return bool(getattr(res, "data", None))
         except Exception as exc:
             logger.error("DB Error clearing payment reference for order %s: %s", order_id, exc, exc_info=True)
@@ -178,10 +162,7 @@ class AsyncPaymentRepository:
         try:
             await admin_sb.rpc("record_payment_attempt", {"p_order_id": order_id, "p_user_id": user_id, "p_pi_id": pi_id, "p_amount": amount, "p_status": status, "p_payment_method": payment_method, "p_error_code": error_code, "p_error_message": error_message, "p_ip_address": ip_address, "p_user_agent": user_agent}).execute()
             if provider == "stripe":
-                await admin_sb.table("payment_attempts").update({
-                    "payment_provider": provider,
-                    "provider_payment_id": pi_id,
-                }).eq("order_id", order_id).eq("stripe_payment_intent_id", pi_id).order("created_at", desc=True).limit(1).execute()
+                await admin_sb.table("payment_attempts").update({"payment_provider": provider, "provider_payment_id": pi_id}).eq("order_id", order_id).eq("stripe_payment_intent_id", pi_id).order("created_at", desc=True).limit(1).execute()
         except Exception as exc:
             logger.error("RPC Error recording payment attempt for provider payment %s: %s", pi_id, exc, exc_info=True)
 
@@ -203,14 +184,7 @@ class AsyncPaymentRepository:
         admin_sb = await get_async_admin_supabase()
         provider = get_current_provider_key()
         try:
-            res = await (
-                admin_sb.table("orders")
-                .select("*")
-                .eq("payment_provider", provider)
-                .eq("provider_payment_id", pi_id)
-                .maybe_single()
-                .execute()
-            )
+            res = await (admin_sb.table("orders").select("*").eq("payment_provider", provider).eq("provider_payment_id", pi_id).maybe_single().execute())
             order = getattr(res, "data", None)
             if order:
                 return order
@@ -230,10 +204,7 @@ class AsyncPaymentRepository:
             data = getattr(res, "data", None)
             result = True if data is None else bool(data)
             if pi_id:
-                await admin_sb.table("webhook_events").update({
-                    "payment_provider": provider,
-                    "provider_payment_id": pi_id,
-                }).eq("event_id", event_id).execute()
+                await admin_sb.table("webhook_events_ledger").update({"payment_provider": provider, "provider_payment_id": pi_id}).eq("event_id", event_id).execute()
             return result
         except Exception as exc:
             logger.error("DB Error claiming webhook event %s: %s", event_id, exc, exc_info=True)
