@@ -8,7 +8,6 @@ reservation release and payment settlement; this module only orchestrates the
 scheduled recovery workflow.
 """
 import logging
-from datetime import datetime, timedelta, timezone
 
 from starlette.concurrency import run_in_threadpool
 
@@ -26,8 +25,9 @@ async def cleanup_abandoned_orders() -> None:
     inventory = InventoryService()
     provider = get_payment_provider("stripe")
 
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=PaymentRules.ABANDONED_ORDER_TIMEOUT_MINUTES)
-    stale_orders = await inventory.repo.list_stale_pending_orders(PaymentRules.ABANDONED_ORDER_TIMEOUT_MINUTES)
+    stale_orders = await inventory.list_stale_pending_orders(
+        PaymentRules.ABANDONED_ORDER_TIMEOUT_MINUTES
+    )
 
     if not stale_orders:
         logger.info("[CRON] No abandoned orders found.")
@@ -78,10 +78,13 @@ async def cleanup_abandoned_orders() -> None:
                         logger.info("[CRON] Order %s recovered to PAID on retry check. Result: %s", order_id[:8], result)
                         continue
 
-            released = await inventory.release_reservation(order_id, reason="abandoned_checkout_timeout")
+            released = await inventory.release_reservation(
+                order_id,
+                reason="abandoned_checkout_timeout",
+            )
             logger.info("[CRON] Order %s cancelled + stock released. Success: %s", order_id[:8], released)
 
-        except Exception as e:
-            logger.error("[CRON] Error processing stale order %s: %s", order_id, e, exc_info=True)
+        except Exception as exc:
+            logger.error("[CRON] Error processing stale order %s: %s", order_id, exc, exc_info=True)
 
     logger.info("[CRON] Abandoned-order sweep complete. Checked %d order(s).", len(stale_orders))
