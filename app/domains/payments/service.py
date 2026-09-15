@@ -411,7 +411,10 @@ class PaymentService:
                         logger.error("[WEBHOOK] Failed to publish OrderFailedEvent", exc_info=True)
             elif event_type == "payment_intent.canceled":
                 if current_status == OrderStatus.PENDING.value:
-                    await self.repo.release_abandoned_order(order_id, reason=f"stripe_event:{event_type}")
+                    await self.inventory.release_reservation(
+                        order_id,
+                        reason=f"stripe_event:{event_type}",
+                    )
             elif event_type == "charge.refunded":
                 if current_status not in [OrderStatus.CANCELLED.value, OrderStatus.REFUNDED.value]:
                     await self.repo.update_order_status_via_rpc(order_id, OrderStatus.REFUNDED.value, f"Webhook Auto-Update: {event_type}")
