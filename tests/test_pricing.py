@@ -51,3 +51,40 @@ def test_zero_price_is_not_treated_as_missing():
     )
     assert result.subtotal == Decimal("0")
     assert result.tax == Decimal("0")
+
+
+def test_rejects_fractional_quantity(pricing):
+    with pytest.raises(HTTPException) as exc:
+        pricing.calculate(
+            [{"quantity": 1.5, "price_snapshot": "100", "products": {"gst_percentage": 18}}]
+        )
+    assert exc.value.status_code == 422
+
+
+def test_rejects_non_finite_price(pricing):
+    with pytest.raises(HTTPException) as exc:
+        pricing.calculate(
+            [{"quantity": 1, "price_snapshot": "NaN", "products": {"gst_percentage": 18}}]
+        )
+    assert exc.value.status_code == 500
+
+
+def test_rejects_invalid_gst_rate(pricing):
+    with pytest.raises(HTTPException) as exc:
+        pricing.calculate(
+            [{"quantity": 1, "price_snapshot": "100", "products": {"gst_percentage": 101}}]
+        )
+    assert exc.value.status_code == 500
+
+
+def test_rejects_non_inr_checkout_configuration():
+    config = {
+        "tax_enabled": True,
+        "shipping_enabled": True,
+        "currency": "USD",
+        "shipping_flat": "45.90",
+        "shipping_threshold": "1499",
+    }
+    with pytest.raises(HTTPException) as exc:
+        get_pricing_from_config(config)
+    assert exc.value.status_code == 503
