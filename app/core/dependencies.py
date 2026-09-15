@@ -119,10 +119,10 @@ async def get_user_id_strict(current_user: Dict[str, Any] = Depends(get_current_
 
 
 def get_order_payment_port():
-    """Application composition dependency for the Orders -> Payments port."""
-    from app.integrations.payments.order_port_adapter import PaymentOrderPortAdapter
+    """Composition-root dependency that supplies the Orders payment port."""
+    from app.integrations.payments.order_adapter import PaymentsOrderAdapter
 
-    return PaymentOrderPortAdapter()
+    return PaymentsOrderAdapter()
 
 
 def require_permission(required_perm: str) -> Callable:
