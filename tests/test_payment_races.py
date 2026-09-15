@@ -1,4 +1,5 @@
-from unittest.mock import AsyncMock
+import asyncio
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
@@ -9,7 +10,7 @@ from app.constants.payment_messages import PaymentSecurityMessages
 def build_service(monkeypatch):
     from app.domains.payments.service import PaymentService
 
-    provider = __import__("unittest.mock", fromlist=["Mock"]).Mock()
+    provider = Mock()
     monkeypatch.setattr(
         "app.domains.payments.service.get_payment_provider",
         lambda name="stripe": provider,
@@ -158,3 +159,67 @@ async def test_webhook_refund_failure_is_left_unprocessed(monkeypatch):
 
     service.repo.mark_webhook_event_processed.assert_not_awaited()
     provider.process_refund.assert_called_once_with("pi_fail")
+
+
+@pytest.mark.asyncio
+async def test_concurrent_confirmations_only_one_settles(monkeypatch):
+    service, provider = build_service(monkeypatch)
+    service.repo.get_order_by_id = AsyncMock(
+        return_value={"id": "order-1", "customer_id": "user-1", "status": "pending"}
+    )
+    service.repo.settle_order_transaction = AsyncMock(side_effect=["SETTLED", "ALREADY_PAID"])
+    provider.retrieve_intent.return_value = {
+        "id": "pi_concurrent",
+        "status": "succeeded",
+        "amount": 1000,
+        "payment_method_types": ["card"],
+        "metadata": {"order_id": "order-1"},
+    }
+
+    results = await asyncio.gather(
+        service.confirm_payment("user-1", "127.0.0.1", "pi_concurrent", "user@example.com"),
+        service.confirm_payment("user-1", "127.0.0.1", "pi_concurrent", "user@example.com"),
+    )
+
+    assert [result["status"] for result in results] == ["paid", "paid"]
+    assert service.repo.settle_order_transaction.await_count == 2
+    provider.process_refund.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_retry_and_webhook_same_payment_intent_converge(monkeypatch):
+    service, provider = build_service(monkeypatch)
+    order = {
+        "id": "order-1",
+        "customer_id": "user-1",
+        "status": "pending",
+        "total_amount": 10,
+        "stripe_payment_intent": "pi_shared",
+        "shipping_email": "user@example.com",
+    }
+    service.repo.get_order_by_id = AsyncMock(return_value=order.copy())
+    service.repo.get_order_by_payment_intent = AsyncMock(return_value=order.copy())
+    service.repo.settle_order_transaction = AsyncMock(side_effect=["SETTLED", "ALREADY_PAID"])
+    service.repo.mark_webhook_event_processed = AsyncMock()
+    service.repo.record_webhook_event = AsyncMock(return_value=True)
+    provider.retrieve_intent.return_value = {
+        "id": "pi_shared",
+        "status": "succeeded",
+        "amount": 1000,
+        "payment_method_types": ["card"],
+    }
+    provider.verify_webhook.return_value = {
+        "id": "evt_shared",
+        "type": "payment_intent.succeeded",
+        "data": {"object": {"object": "payment_intent", "id": "pi_shared"}},
+    }
+
+    retry_result, _ = await asyncio.gather(
+        service.retry_payment("user-1", "order-1"),
+        service.handle_webhook(b"payload", "signature"),
+    )
+
+    assert retry_result["status"] == "paid"
+    assert service.repo.settle_order_transaction.await_count == 2
+    service.repo.mark_webhook_event_processed.assert_awaited_once_with("evt_shared")
+    provider.process_refund.assert_not_called()
