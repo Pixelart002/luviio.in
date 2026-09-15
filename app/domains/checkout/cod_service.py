@@ -5,7 +5,7 @@ same server-side cart pricing, stock validation, address ownership and atomic
 reservation path as card checkout.
 """
 import logging
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Dict, List, Optional
 
 from email_validator import EmailNotValidError, validate_email
