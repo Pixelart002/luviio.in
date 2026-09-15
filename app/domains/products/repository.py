@@ -1,5 +1,5 @@
 """
-Product Domain Repository — Async Enterprise Grade (GST & HSN support).
+Product Domain Repository — Async Enterprise Grade (GST, HSN & SEO support).
 """
 import logging
 from typing import Any, Dict, List, Optional, Tuple
@@ -18,7 +18,6 @@ class AsyncProductRepository:
             imgs = product.pop("product_images") or []
             imgs.sort(key=lambda x: x.get("position", 0) if x.get("position") is not None else 0)
             relational_urls = [img["url"] for img in imgs if "url" in img]
-            # Relational rows are the canonical ordered gallery.
             product["images"] = relational_urls
         else:
             product["images"] = product.get("images") or []
@@ -35,6 +34,16 @@ class AsyncProductRepository:
         data_list = getattr(res, "data", None)
         return data_list[0] if data_list else None
 
+    async def generate_unique_category_slug(self, base_slug: str) -> str:
+        admin_sb = await get_async_admin_supabase()
+        slug, counter = base_slug, 2
+        while True:
+            existing = await admin_sb.table("categories").select("id").eq("slug", slug).limit(1).execute()
+            if not getattr(existing, "data", None):
+                return slug
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+
     async def check_active_products_in_category(self, category_id: str) -> int:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("products").select("id", count="exact").eq("category_id", category_id).eq("is_active", True).limit(1).execute()
@@ -47,7 +56,7 @@ class AsyncProductRepository:
 
     async def get_products(self, page: int, page_size: int, category_slug: Optional[str], search: Optional[str], min_price: Optional[float], max_price: Optional[float], in_stock: Optional[bool]) -> Tuple[List[Dict[str, Any]], int]:
         admin_sb = await get_async_admin_supabase()
-        q = admin_sb.table("products").select("id, name, slug, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, attributes, is_active, created_at, hsn_code, gst_percentage, discount_amount, discount_percentage, categories(name, slug), product_images(id, url, alt, position)", count="exact").eq("is_active", True)
+        q = admin_sb.table("products").select("id, name, slug, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, attributes, is_active, created_at, hsn_code, gst_percentage, seo_title, seo_description, seo_keywords, canonical_url, discount_amount, discount_percentage, categories(name, slug), product_images(id, url, alt, position)", count="exact").eq("is_active", True)
         if category_slug:
             cat = await admin_sb.table("categories").select("id").eq("slug", category_slug).limit(1).execute()
             if cat and getattr(cat, "data", None):
@@ -163,4 +172,4 @@ class AsyncProductRepository:
     async def delete_product_variant(self, variant_id: str) -> bool:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("product_variants").delete().eq("id", variant_id).execute()
-        return bool(getattr(res, "data", None))
+        return bool(data_list := getattr(res, "data", None))
