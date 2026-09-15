@@ -14,8 +14,8 @@ from nanoid import generate
 from starlette.concurrency import run_in_threadpool
 
 from app.constants.payment_messages import PaymentSecurityMessages
+from app.domains.checkout.repository import AsyncCheckoutRepository
 from app.domains.coupons.service import CouponService
-from app.domains.payments.repository import AsyncPaymentRepository
 from app.domains.pricing.service import get_pricing_from_config
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderCreatedEvent, get_event_bus
@@ -29,7 +29,7 @@ class CodOrderService:
     """Create a COD order without leaving a Stripe PaymentIntent attached."""
 
     def __init__(self) -> None:
-        self.repo = AsyncPaymentRepository()
+        self.repo = AsyncCheckoutRepository()
         self.provider = get_payment_provider("stripe")
 
     @staticmethod
@@ -236,6 +236,12 @@ class CodOrderService:
                 }
             logger.exception("COD order creation failed for user %s", user_id[:8])
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to create COD order. Please try again.") from exc
+
+        try:
+            from app.domains.cart.service import CartService
+            await CartService().clear_cart(user_id)
+        except Exception:
+            pass
 
         try:
             get_event_bus().publish(OrderCreatedEvent(order=order, customer_email=shipping_email, customer_id=user_id))
