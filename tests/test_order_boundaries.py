@@ -1,6 +1,6 @@
-import pytest
 from pathlib import Path
 
+import pytest
 from fastapi import HTTPException
 
 from app.domains.orders.service import STATUS_TRANSITIONS
