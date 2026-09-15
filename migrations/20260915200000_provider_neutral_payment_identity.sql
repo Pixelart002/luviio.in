@@ -17,7 +17,7 @@ ALTER TABLE public.payment_retry_reservations
   ADD COLUMN IF NOT EXISTS payment_provider text,
   ADD COLUMN IF NOT EXISTS provider_payment_id text;
 
-ALTER TABLE public.webhook_events
+ALTER TABLE public.webhook_events_ledger
   ADD COLUMN IF NOT EXISTS payment_provider text,
   ADD COLUMN IF NOT EXISTS provider_payment_id text;
 
@@ -41,7 +41,7 @@ SET payment_provider = 'stripe', provider_payment_id = stripe_payment_intent_id
 WHERE payment_provider IS NULL
   AND stripe_payment_intent_id IS NOT NULL;
 
-UPDATE public.webhook_events
+UPDATE public.webhook_events_ledger
 SET payment_provider = 'stripe', provider_payment_id = stripe_payment_intent_id
 WHERE payment_provider IS NULL
   AND stripe_payment_intent_id IS NOT NULL;
@@ -62,8 +62,8 @@ CREATE INDEX IF NOT EXISTS payment_retry_provider_payment_id_idx
   ON public.payment_retry_reservations(payment_provider, provider_payment_id)
   WHERE provider_payment_id IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS webhook_events_provider_payment_id_idx
-  ON public.webhook_events(payment_provider, provider_payment_id)
+CREATE INDEX IF NOT EXISTS webhook_events_ledger_provider_payment_id_idx
+  ON public.webhook_events_ledger(payment_provider, provider_payment_id)
   WHERE provider_payment_id IS NOT NULL;
 
 -- Provider-neutral atomic checkout/order creation. The previous Stripe-only RPC
