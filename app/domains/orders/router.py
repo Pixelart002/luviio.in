@@ -12,9 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.constants.order_messages import OrderMessages
-from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
+from app.core.dependencies import get_current_user, get_order_payment_port, get_user_id_strict, require_permission
 from app.domains.checkout.service import CheckoutService
-from app.domains.orders.payment_adapter import PaymentsOrderAdapter
+from app.domains.orders.payment_port import OrderPaymentPort
 from app.domains.orders.schemas import (
     OrderAdminUpdate,
     OrderCancelResponse,
@@ -152,11 +152,19 @@ async def list_all_orders(
 
 
 @router.patch("/{order_number}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(OrderPermissions.UPDATE))])
-async def admin_update_order(request: Request, order_number: str, payload: OrderAdminUpdate):
+async def admin_update_order(
+    request: Request,
+    order_number: str,
+    payload: OrderAdminUpdate,
+    payment_port: OrderPaymentPort = Depends(get_order_payment_port),
+):
     order_number = _require_public_order_number(order_number)
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin overriding order reference: {order_number[:32]}")
-    result = await OrderService(payment_port=PaymentsOrderAdapter()).admin_update_order(order_number, payload.model_dump(exclude_unset=True))
+    result = await OrderService(payment_port=payment_port).admin_update_order(
+        order_number,
+        payload.model_dump(exclude_unset=True),
+    )
     return success_response(data=result, message=OrderMessages.UPDATE_SUCCESS)
 
 
