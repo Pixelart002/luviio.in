@@ -96,7 +96,10 @@ class ProductService:
             images = [data["image_url"]]
         data["images"] = images
         data["image_url"] = images[0] if images else None
-        data["hsn_code"] = str(data.get("hsn_code") or "9988").strip()
+        hsn_code = str(data.get("hsn_code") or "").strip()
+        if not hsn_code:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="HSN code is required for every product.")
+        data["hsn_code"] = hsn_code
         if data.get("gst_percentage") is None:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="GST percentage is required for every product.")
         data["gst_percentage"] = int(data["gst_percentage"])
