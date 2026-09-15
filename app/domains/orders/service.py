@@ -9,6 +9,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.constants.order_messages import OrderMessages, OrderSecurityMessages
 from app.domains.inventory.service import InventoryService
+from app.domains.orders.exceptions import OrderRepositoryError
 from app.domains.orders.payment_port import OrderPaymentPort
 from app.domains.orders.repository import AsyncOrderRepository
 from app.domains.users.repository import AsyncUserRepository
@@ -68,7 +69,10 @@ class OrderService:
         return sanitized
 
     async def get_user_orders(self, user_id: str, status_filter: str, page: int, page_size: int) -> Tuple[List[Dict[str, Any]], int]:
-        items, total = await self.repo.get_user_orders(user_id, status_filter, page, page_size)
+        try:
+            items, total = await self.repo.get_user_orders(user_id, status_filter, page, page_size)
+        except OrderRepositoryError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
         return [self._sanitize(o) for o in items], total
 
     async def get_order(self, order_identifier: str, user_id: str, is_admin: bool = False) -> Dict[str, Any]:
@@ -96,7 +100,10 @@ class OrderService:
         return {"status": OrderStatus.CANCELLED.value, "order_number": raw_order.get("order_number", ""), "message": OrderMessages.CANCEL_SUCCESS}
 
     async def get_all_orders(self, status_filter: str, page: int, page_size: int) -> Tuple[List[Dict[str, Any]], int]:
-        items, total = await self.repo.get_all_orders(status_filter, page, page_size)
+        try:
+            items, total = await self.repo.get_all_orders(status_filter, page, page_size)
+        except OrderRepositoryError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
         return [self._sanitize(o) for o in items], total
 
     async def admin_update_order(self, order_identifier: str, payload_data: Dict[str, Any]) -> Dict[str, Any]:
