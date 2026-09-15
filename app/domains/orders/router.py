@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 
 from app.constants.order_messages import OrderMessages
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
-from app.domains.orders.cod_service import CodOrderService
+from app.domains.checkout.service import CheckoutService
 from app.domains.orders.payment_adapter import PaymentsOrderAdapter
 from app.domains.orders.schemas import (
     OrderAdminUpdate,
@@ -21,7 +21,6 @@ from app.domains.orders.schemas import (
     OrderCreateFromCartRequest,
 )
 from app.domains.orders.service import OrderService
-from app.domains.payments.service import PaymentService
 from app.enums.roles import UserRole
 from app.permissions.orders import OrderPermissions
 from app.utils.pagination import paginate
@@ -39,7 +38,10 @@ def _require_public_order_number(value: str) -> str:
     """Public order routes accept only the existing customer-facing order_number."""
     reference = str(value or "").strip()
     if not reference:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=OrderMessages.NOT_FOUND if hasattr(OrderMessages, "NOT_FOUND") else "Order not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=OrderMessages.NOT_FOUND if hasattr(OrderMessages, "NOT_FOUND") else "Order not found.",
+        )
     try:
         UUID(reference)
     except (ValueError, TypeError):
@@ -60,12 +62,16 @@ router = APIRouter(prefix="/orders", tags=["Orders"])
 
 
 @router.post("/checkout", status_code=status.HTTP_201_CREATED)
-async def create_order_from_cart(request: Request, payload: OrderCreateFromCartRequest, user_id: str = Depends(get_user_id_strict)):
+async def create_order_from_cart(
+    request: Request,
+    payload: OrderCreateFromCartRequest,
+    user_id: str = Depends(get_user_id_strict),
+):
     if not payload.idempotency_key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="idempotency_key is required for checkout.")
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Checkout initiated by UID: {user_id[:8]}...")
-    data = await PaymentService().create_intent(
+    data = await CheckoutService().create_online_order(
         user_id=user_id,
         client_ip=_get_real_ip(request),
         idempotency_key=payload.idempotency_key,
@@ -77,13 +83,17 @@ async def create_order_from_cart(request: Request, payload: OrderCreateFromCartR
 
 
 @router.post("/cod", status_code=status.HTTP_201_CREATED)
-async def create_cod_order(request: Request, payload: OrderCreateFromCartRequest, user_id: str = Depends(get_user_id_strict)):
+async def create_cod_order(
+    request: Request,
+    payload: OrderCreateFromCartRequest,
+    user_id: str = Depends(get_user_id_strict),
+):
     """Create a COD order without creating a Stripe PaymentIntent."""
     if not payload.idempotency_key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="idempotency_key is required for checkout.")
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"COD checkout initiated by UID: {user_id[:8]}...")
-    data = await CodOrderService().create_order(
+    data = await CheckoutService().create_cod_order(
         user_id=user_id,
         address_id=str(payload.shipping_address_id),
         idempotency_key=payload.idempotency_key,
@@ -93,7 +103,13 @@ async def create_cod_order(request: Request, payload: OrderCreateFromCartRequest
 
 
 @router.get("/my", status_code=status.HTTP_200_OK)
-async def my_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str = Query(None), user_id: str = Depends(get_user_id_strict)):
+async def my_orders(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status_filter: str = Query(None),
+    user_id: str = Depends(get_user_id_strict),
+):
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"ABAC Scoped Fetch -> Target UID: {user_id[:8]}...")
     items, total = await OrderService().get_user_orders(user_id, status_filter, page, page_size)
@@ -101,7 +117,12 @@ async def my_orders(request: Request, page: int = Query(1, ge=1), page_size: int
 
 
 @router.get("/my/{order_number}", status_code=status.HTTP_200_OK)
-async def get_my_order(request: Request, order_number: str, user_id: str = Depends(get_user_id_strict), current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_my_order(
+    request: Request,
+    order_number: str,
+    user_id: str = Depends(get_user_id_strict),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
     order_number = _require_public_order_number(order_number)
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Targeting order reference: {order_number[:32]}")
@@ -118,7 +139,12 @@ async def cancel_order(request: Request, order_number: str, user_id: str = Depen
 
 
 @router.get("/", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(OrderPermissions.READ))])
-async def list_all_orders(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), status_filter: str = Query(None)):
+async def list_all_orders(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status_filter: str = Query(None),
+):
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin fetching global order ledger (Page: {page})")
     items, total = await OrderService().get_all_orders(status_filter, page, page_size)
@@ -135,7 +161,12 @@ async def admin_update_order(request: Request, order_number: str, payload: Order
 
 
 @router.get("/{order_number}/invoice", status_code=status.HTTP_200_OK)
-async def download_invoice(request: Request, order_number: str, current: dict = Depends(get_current_user), user_id: str = Depends(get_user_id_strict)):
+async def download_invoice(
+    request: Request,
+    order_number: str,
+    current: dict = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict),
+):
     order_number = _require_public_order_number(order_number)
     """Generate an invoice using order_number; the internal order UUID never leaves the backend."""
     if hasattr(request.state, "actions"):
