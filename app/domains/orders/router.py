@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from app.constants.order_messages import OrderMessages
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
 from app.domains.orders.cod_service import CodOrderService
+from app.domains.orders.payment_adapter import PaymentsOrderAdapter
 from app.domains.orders.schemas import (
     OrderAdminUpdate,
     OrderCancelResponse,
@@ -43,7 +44,6 @@ def _require_public_order_number(value: str) -> str:
         UUID(reference)
     except (ValueError, TypeError):
         return reference
-    # Do not allow an internal database UUID to be used through a public URL.
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
 
 
@@ -130,7 +130,7 @@ async def admin_update_order(request: Request, order_number: str, payload: Order
     order_number = _require_public_order_number(order_number)
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin overriding order reference: {order_number[:32]}")
-    result = await OrderService().admin_update_order(order_number, payload.model_dump(exclude_unset=True))
+    result = await OrderService(payment_port=PaymentsOrderAdapter()).admin_update_order(order_number, payload.model_dump(exclude_unset=True))
     return success_response(data=result, message=OrderMessages.UPDATE_SUCCESS)
 
 
