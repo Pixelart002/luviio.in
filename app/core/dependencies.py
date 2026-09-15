@@ -27,6 +27,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 _token_cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
 _profile_cache: TTLCache = TTLCache(maxsize=1024, ttl=300)
 
+
 def _extract_token(request: Request, credentials: Optional[HTTPAuthorizationCredentials]) -> str:
     if credentials and credentials.credentials:
         return credentials.credentials
@@ -34,6 +35,7 @@ def _extract_token(request: Request, credentials: Optional[HTTPAuthorizationCred
     if token:
         return token
     raise UnauthenticatedUser("Authentication credentials missing.")
+
 
 def _extract_jwt_payload(token: str) -> dict:
     try:
@@ -44,6 +46,7 @@ def _extract_jwt_payload(token: str) -> dict:
         return json.loads(base64.urlsafe_b64decode(payload_b64))
     except Exception:
         return {}
+
 
 async def _validate_token_natively(token: str) -> Any:
     if token in _token_cache:
@@ -63,6 +66,7 @@ async def _validate_token_natively(token: str) -> Any:
         logger.error(f"Token validation error: {e}")
         raise UnauthenticatedUser("Authentication failed.")
 
+
 async def _get_or_create_profile(user_id: str, email: str, user_metadata: dict) -> Dict[str, Any]:
     if user_id in _profile_cache:
         return _profile_cache[user_id]
@@ -80,6 +84,7 @@ async def _get_or_create_profile(user_id: str, email: str, user_metadata: dict) 
     if profile:
         _profile_cache[user_id] = profile
     return profile or {}
+
 
 async def get_current_user(
     request: Request,
@@ -105,11 +110,20 @@ async def get_current_user(
         "auth_user": auth_user
     }
 
+
 async def get_user_id_strict(current_user: Dict[str, Any] = Depends(get_current_user)) -> str:
     user_id = current_user.get("sub")
     if not user_id:
         raise UnauthenticatedUser("User identity missing for scope resolution.")
     return str(user_id)
+
+
+def get_order_payment_port():
+    """Application composition dependency for the Orders -> Payments port."""
+    from app.integrations.payments.order_port_adapter import PaymentOrderPortAdapter
+
+    return PaymentOrderPortAdapter()
+
 
 def require_permission(required_perm: str) -> Callable:
     async def permission_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
