@@ -18,7 +18,6 @@ from app.utils.documents.pdf_invoice import build_invoice_pdf
 
 logger = logging.getLogger(__name__)
 
-
 STATUS_TRANSITIONS = {
     OrderStatus.PENDING: {OrderStatus.PAID, OrderStatus.CANCELLED},
     OrderStatus.PAID: {OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.CANCELLED, OrderStatus.REFUNDED},
@@ -54,9 +53,14 @@ class OrderService:
             if "products" in item and isinstance(item["products"], dict):
                 prod = item["products"]
                 item["name"] = item.get("product_name") or prod.get("name") or "Product Item"
-                item["hsn_code"] = item.get("hsn_code") or prod.get("hsn_code") or "9988"
-                item["gst_percentage"] = item.get("gst_percentage") or prod.get("gst_percentage") or 18
-                item["compare_price"] = item.get("compare_price") or prod.get("compare_price")
+                # Never invent fiscal data in an order response. GST/HSN must come
+                # from the persisted order/product snapshot or remain absent.
+                if item.get("hsn_code") is None and prod.get("hsn_code") is not None:
+                    item["hsn_code"] = prod.get("hsn_code")
+                if item.get("gst_percentage") is None and prod.get("gst_percentage") is not None:
+                    item["gst_percentage"] = prod.get("gst_percentage")
+                if item.get("compare_price") is None and prod.get("compare_price") is not None:
+                    item["compare_price"] = prod.get("compare_price")
                 item["product_slug"] = prod.get("slug")
                 item["product_image_url"] = prod.get("image_url")
                 del item["products"]
