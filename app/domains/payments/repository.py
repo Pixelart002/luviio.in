@@ -117,12 +117,6 @@ class AsyncPaymentRepository:
         data = getattr(res, "data", None)
         return str(data) if data else "FAILED"
 
-    async def release_abandoned_order(self, order_id: str, reason: str = "order_cancelled") -> str:
-        admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.rpc("cancel_order_and_release_stock", {"p_order_id": order_id, "p_reason": reason}).execute()
-        data = getattr(res, "data", None)
-        return str(data) if data else "FAILED"
-
     async def update_order_payment_intent(self, order_id: str, new_pi_id: str) -> bool:
         admin_sb = await get_async_admin_supabase()
         try:
