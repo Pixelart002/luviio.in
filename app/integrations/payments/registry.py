@@ -10,6 +10,18 @@ from app.integrations.payments.stripe_impl import StripeProvider
 PAYMENT_REGISTRY: Dict[str, Type[PaymentProvider]] = {"stripe": StripeProvider}
 
 
+def register_payment_provider(provider_key: str, provider_class: Type[PaymentProvider]) -> None:
+    """Register provider implementation code at application/plugin load time."""
+    key = provider_key.strip().lower()
+    if not key or len(key) > 64 or not key.replace("_", "").replace("-", "").isalnum():
+        raise ValueError("Invalid payment provider key.")
+    if not issubclass(provider_class, PaymentProvider):
+        raise TypeError("Payment provider must implement PaymentProvider.")
+    if key in PAYMENT_REGISTRY:
+        raise ValueError(f"Payment provider '{key}' is already registered.")
+    PAYMENT_REGISTRY[key] = provider_class
+
+
 class ConfiguredPaymentProvider(PaymentProvider):
     """Provider adapter applying DB-backed activation and method settings."""
 
