@@ -34,13 +34,19 @@ class AsyncCartRepository:
             logger.warning("Failed to touch cart timestamp for cart %s: %s", cart_id, exc)
 
     async def get_pricing_config(self) -> dict[str, Any]:
+        """Load pricing configuration exclusively from canonical system settings."""
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.table("pricing_config").select("*").limit(1).maybe_single().execute()
-            return res.data if res and getattr(res, "data", None) else {}
+            res = await admin_sb.rpc("get_canonical_pricing_config").execute()
+            data = getattr(res, "data", None)
+            if not data:
+                raise RuntimeError("Canonical pricing configuration is missing")
+            return data
+        except RuntimeError:
+            raise
         except Exception as exc:
-            logger.error("DB Error fetching pricing config: %s", exc, exc_info=True)
-            return {}
+            logger.error("DB Error fetching canonical pricing config: %s", exc, exc_info=True)
+            raise RuntimeError("Unable to load pricing configuration") from exc
 
     async def get_or_create_cart(self, user_id: str) -> dict[str, Any]:
         """Read the cart first; create it only when the user has no cart yet."""
@@ -59,17 +65,13 @@ class AsyncCartRepository:
             raise RuntimeError("Cart creation succeeded but cart retrieval returned empty data.")
         except Exception as exc:
             logger.error("Critical DB failure in get_or_create_cart for UID %s: %s", user_id, exc, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=CartSecurityMessages.DB_OPERATION_FAILED,
-            ) from exc
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=CartSecurityMessages.DB_OPERATION_FAILED) from exc
 
     async def get_cart_items_with_products(self, cart_id: str) -> list[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         try:
             res = await admin_sb.table("cart_items").select(
-                "id, product_id, quantity, price_snapshot, added_at, "
-                "products(id, name, slug, price, compare_price, stock, hsn_code, gst_percentage, image_url, is_active)"
+                "id, product_id, quantity, price_snapshot, added_at, products(id, name, slug, price, compare_price, stock, hsn_code, gst_percentage, image_url, is_active)"
             ).eq("cart_id", cart_id).order("added_at", desc=False).execute()
             return getattr(res, "data", None) or []
         except Exception as exc:
@@ -79,9 +81,7 @@ class AsyncCartRepository:
     async def get_product_stock_status(self, product_id: str) -> Optional[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.table("products").select(
-                "id, name, price, compare_price, stock, hsn_code, gst_percentage, is_active"
-            ).eq("id", product_id).limit(1).execute()
+            res = await admin_sb.table("products").select("id, name, price, compare_price, stock, hsn_code, gst_percentage, is_active").eq("id", product_id).limit(1).execute()
             data = getattr(res, "data", None)
             return data[0] if data and len(data) > 0 else None
         except Exception as exc:
