@@ -49,17 +49,18 @@ class AsyncPaymentRepository:
             raise RuntimeError("Unable to load checkout address") from exc
 
     async def get_pricing_config(self) -> Dict[str, Any]:
+        """Load checkout pricing configuration from canonical system settings."""
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.table("pricing_config").select("*").limit(1).maybe_single().execute()
+            res = await admin_sb.rpc("get_canonical_pricing_config").execute()
             data = getattr(res, "data", None)
             if not data:
-                raise RuntimeError("pricing_config is missing")
+                raise RuntimeError("Canonical pricing configuration is missing")
             return data
         except RuntimeError:
             raise
         except Exception as exc:
-            logger.error("DB Error fetching pricing config: %s", exc, exc_info=True)
+            logger.error("DB Error fetching canonical pricing config: %s", exc, exc_info=True)
             raise RuntimeError("Unable to load pricing configuration") from exc
 
     async def get_customer_email(self, user_id: str) -> str:
