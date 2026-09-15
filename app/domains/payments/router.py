@@ -11,6 +11,7 @@ from slowapi import Limiter
 from starlette.concurrency import run_in_threadpool
 
 from app.core.dependencies import get_current_user, get_user_id_strict
+from app.core.supabase import get_async_admin_supabase
 from app.domains.inventory.service import InventoryService
 from app.domains.orders.repository import AsyncOrderRepository
 from app.domains.payments.schemas import (
@@ -157,6 +158,62 @@ async def cancel_checkout_payment(request: Request, order_number: str, user_id: 
     if not result or result.get("status") != "cancelled":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Checkout changed while cancelling. Please retry.")
     return success_response(data={"status": "cancelled", "order_number": order_number})
+
+
+@router.post("/switch-method/{order_number}")
+@limiter.limit("10/minute")
+async def switch_pending_payment_method(request: Request, order_number: str, method: str, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
+    """Switch a still-pending checkout without rebuilding or restoring its cart payload."""
+    order_number = _require_public_order_number(order_number)
+    target = str(method or "").strip().lower()
+    if target not in {"stripe", "cod"}:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unsupported payment method.")
+
+    repo = AsyncOrderRepository()
+    order = await repo.get_order_by_id(order_number)
+    if not order or str(order.get("customer_id")) != str(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
+    if str(order.get("status") or "").lower() != "pending":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This checkout is no longer changeable.")
+
+    current_method = str(order.get("payment_method") or "stripe").strip().lower()
+    if current_method == target:
+        return success_response(data={"status": "unchanged", "order_number": order_number, "payment_method": target})
+
+    if target == "cod":
+        provider_key = str(order.get("payment_provider") or "stripe").strip().lower()
+        pi_id = str(order.get("provider_payment_id") or order.get("stripe_payment_intent") or "").strip()
+        if pi_id:
+            await _require_provider_enabled(provider_key)
+            with payment_provider_context(provider_key):
+                provider = await PaymentPluginManager().get_active_provider(provider_key)
+                try:
+                    intent = await run_in_threadpool(provider.retrieve_intent, pi_id)
+                    provider_status = str(intent.get("status") or "").lower()
+                    if provider_status == "succeeded":
+                        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment has already completed. This order cannot switch payment method.")
+                    if provider_status not in {"canceled", "succeeded"}:
+                        await run_in_threadpool(provider.cancel_intent, pi_id)
+                except HTTPException:
+                    raise
+                except Exception as exc:
+                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="We could not safely switch the payment session. Please try again.") from exc
+
+    admin_sb = await get_async_admin_supabase()
+    update = {
+        "payment_method": target,
+        "payment_provider": None if target == "cod" else "stripe",
+        "provider_payment_id": None if target == "cod" else order.get("provider_payment_id"),
+        "stripe_payment_intent": None if target == "cod" else order.get("stripe_payment_intent"),
+    }
+    result = await admin_sb.table("orders").update(update).eq("id", str(order["id"])).eq("customer_id", str(user_id)).eq("status", "pending").execute()
+    rows = getattr(result, "data", None) or []
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Checkout changed while switching payment method. Please try again.")
+
+    if hasattr(request.state, "actions"):
+        request.state.actions.append(f"Switched pending checkout payment method -> {target}")
+    return success_response(data={"status": "switched", "order_number": order_number, "payment_method": target})
 
 
 @router.post("/notify-failed")
