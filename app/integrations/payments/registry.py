@@ -1,6 +1,7 @@
 """Payment provider plugin registry and runtime configuration adapter."""
 from __future__ import annotations
 
+from importlib.metadata import entry_points
 from typing import Any, Dict, List, Type
 
 from app.core.supabase import get_admin_supabase
@@ -10,16 +11,43 @@ from app.integrations.payments.stripe_impl import StripeProvider
 PAYMENT_REGISTRY: Dict[str, Type[PaymentProvider]] = {"stripe": StripeProvider}
 
 
-def register_payment_provider(provider_key: str, provider_class: Type[PaymentProvider]) -> None:
+def register_payment_provider(provider_key: str, provider_class: Type[PaymentProvider], *, replace: bool = False) -> None:
     """Register provider implementation code at application/plugin load time."""
     key = provider_key.strip().lower()
     if not key or len(key) > 64 or not key.replace("_", "").replace("-", "").isalnum():
         raise ValueError("Invalid payment provider key.")
     if not issubclass(provider_class, PaymentProvider):
         raise TypeError("Payment provider must implement PaymentProvider.")
-    if key in PAYMENT_REGISTRY:
+    if key in PAYMENT_REGISTRY and not replace:
         raise ValueError(f"Payment provider '{key}' is already registered.")
     PAYMENT_REGISTRY[key] = provider_class
+
+
+def discover_payment_plugins() -> List[str]:
+    """Discover trusted installed Python payment-provider plugins."""
+    discovered: List[str] = []
+    try:
+        eps = entry_points()
+        group = eps.select(group="luviio.payment_providers") if hasattr(eps, "select") else eps.get("luviio.payment_providers", [])
+    except Exception:
+        return discovered
+
+    for ep in group:
+        try:
+            loaded = ep.load()
+            key = ep.name.strip().lower()
+            if isinstance(loaded, type) and issubclass(loaded, PaymentProvider):
+                register_payment_provider(key, loaded)
+            elif callable(loaded):
+                loaded()
+            else:
+                raise TypeError(f"Plugin '{ep.name}' does not expose a PaymentProvider or registration callable.")
+            if key in PAYMENT_REGISTRY:
+                discovered.append(key)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error("Payment plugin discovery failed for %s: %s", ep.name, exc, exc_info=True)
+    return discovered
 
 
 class ConfiguredPaymentProvider(PaymentProvider):
@@ -66,3 +94,9 @@ def get_payment_provider(provider_name: str = "stripe") -> PaymentProvider:
     if not provider_class:
         raise ValueError(f"Payment provider '{provider_name}' is not registered.")
     return ConfiguredPaymentProvider(key, provider_class())
+
+
+try:
+    discover_payment_plugins()
+except Exception:
+    pass
