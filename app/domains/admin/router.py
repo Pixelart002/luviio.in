@@ -103,8 +103,15 @@ async def register_payment_method(request: Request, provider_key: str, payload: 
     return success_response(data=data, message="Payment method registered. It remains disabled until explicitly enabled.")
 
 
+@router.post("/payment-plugins/{provider_key}/default", dependencies=[Depends(require_permission(AdminPermissions.MANAGE_SETTINGS))])
+@limiter.limit("10/minute")
+async def set_default_payment_plugin(request: Request, provider_key: str, user_id: str = Depends(get_user_id_strict)):
+    data = await PaymentPluginManager().set_default_provider(provider_key)
+    return success_response(data=data, message="Payment provider set as default.")
+
+
 @router.delete("/payment-plugins/{provider_key}", dependencies=[Depends(require_permission(AdminPermissions.MANAGE_SETTINGS))])
 @limiter.limit("10/minute")
-async def deactivate_payment_plugin(request: Request, provider_key: str, user_id: str = Depends(get_user_id_strict)):
-    data = await PaymentPluginManager().deactivate_provider(provider_key)
-    return success_response(data=data, message="Payment provider deactivated; historical payment records are preserved.")
+async def remove_payment_plugin(request: Request, provider_key: str, user_id: str = Depends(get_user_id_strict)):
+    data = await PaymentPluginManager().remove_provider(provider_key)
+    return success_response(data=data, message="Payment provider removed from runtime configuration; historical payments are preserved.")
