@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Type
 
 from app.core.supabase import get_admin_supabase
 from app.integrations.payments.base import PaymentProvider
+from app.integrations.payments.context import get_current_provider_key
 from app.integrations.payments.stripe_impl import StripeProvider
 
 PAYMENT_REGISTRY: Dict[str, Type[PaymentProvider]] = {"stripe": StripeProvider}
@@ -89,7 +90,8 @@ class ConfiguredPaymentProvider(PaymentProvider):
 
 
 def get_payment_provider(provider_name: str = "stripe") -> PaymentProvider:
-    key = provider_name.strip().lower()
+    requested = get_current_provider_key()
+    key = requested if provider_name.strip().lower() == "stripe" and requested != "stripe" else provider_name.strip().lower()
     provider_class = PAYMENT_REGISTRY.get(key)
     if not provider_class:
         raise ValueError(f"Payment provider '{provider_name}' is not registered.")
