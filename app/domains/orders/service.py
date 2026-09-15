@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 STATUS_TRANSITIONS = {
     OrderStatus.PENDING: {OrderStatus.PAID, OrderStatus.CANCELLED},
-    OrderStatus.PAID: {OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.CANCELLED, OrderStatus.REFUNDED},
-    OrderStatus.PROCESSING: {OrderStatus.SHIPPED, OrderStatus.CANCELLED, OrderStatus.REFUNDED},
+    OrderStatus.PAID: {OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.REFUNDED},
+    OrderStatus.PROCESSING: {OrderStatus.SHIPPED, OrderStatus.REFUNDED},
     OrderStatus.SHIPPED: {OrderStatus.DELIVERED},
     OrderStatus.DELIVERED: {OrderStatus.REFUNDED},
     OrderStatus.REFUNDED: set(),
