@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, List
 
 from fastapi import HTTPException, status
@@ -60,6 +60,38 @@ class PricingStrategy(ABC):
     def currency(self) -> str: ...
 
 
+def _validated_quantity(item: dict[str, Any]) -> Decimal:
+    if "quantity" not in item or item["quantity"] is None:
+        raise HTTPException(status_code=500, detail="Pricing data is incomplete.")
+    try:
+        quantity = Decimal(str(item["quantity"]))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid item quantity.") from exc
+    if not quantity.is_finite() or quantity <= 0 or quantity != quantity.to_integral_value():
+        raise HTTPException(status_code=422, detail="Invalid item quantity.")
+    return quantity
+
+
+def _validated_price(value: Any) -> Decimal:
+    try:
+        price = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=500, detail="Invalid product price.") from exc
+    if not price.is_finite() or price < 0:
+        raise HTTPException(status_code=500, detail="Invalid product price.")
+    return price
+
+
+def _validated_gst(value: Any) -> Decimal:
+    try:
+        gst = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=500, detail="Invalid GST configuration.") from exc
+    if not gst.is_finite() or gst < 0 or gst > 100:
+        raise HTTPException(status_code=500, detail="Invalid GST configuration.")
+    return gst
+
+
 class StandardPricing(PricingStrategy):
     def __init__(self, shipping_threshold: Decimal, shipping_flat: Decimal, currency: str) -> None:
         self._threshold = shipping_threshold
@@ -87,11 +119,7 @@ class StandardPricing(PricingStrategy):
 
         for item in items:
             prod_data = item.get("products") or item
-            if "quantity" not in item or item["quantity"] is None:
-                raise HTTPException(status_code=500, detail="Pricing data is incomplete.")
-            item_qty = Decimal(str(item["quantity"]))
-            if item_qty <= 0:
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid item quantity.")
+            item_qty = _validated_quantity(item)
 
             if "price_snapshot" in item and item["price_snapshot"] is not None:
                 price_val = item["price_snapshot"]
@@ -102,9 +130,7 @@ class StandardPricing(PricingStrategy):
             else:
                 raise HTTPException(status_code=500, detail="Pricing data is incomplete.")
 
-            item_price = Decimal(str(price_val))
-            if item_price < 0:
-                raise HTTPException(status_code=500, detail="Invalid product price.")
+            item_price = _validated_price(price_val)
 
             if prod_data.get("gst_percentage") is not None:
                 item_gst_pct = prod_data["gst_percentage"]
@@ -113,13 +139,13 @@ class StandardPricing(PricingStrategy):
             else:
                 raise HTTPException(status_code=500, detail="Pricing data is incomplete.")
 
-            item_tax_rate = Decimal(str(item_gst_pct)) / Decimal("100")
+            gst_percentage = _validated_gst(item_gst_pct)
             item["price_snapshot"] = float(round(item_price, 2))
-            item["gst_percentage_snapshot"] = float(item_gst_pct)
+            item["gst_percentage_snapshot"] = float(gst_percentage)
 
             item_sub = item_price * item_qty
             calc_subtotal += item_sub
-            calc_tax += item_sub * item_tax_rate
+            calc_tax += item_sub * (gst_percentage / Decimal("100"))
 
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
@@ -159,11 +185,7 @@ class ZeroTaxPricing(PricingStrategy):
         calc_subtotal = Decimal("0")
         for item in items:
             prod_data = item.get("products") or item
-            if "quantity" not in item or item["quantity"] is None:
-                raise HTTPException(status_code=500, detail="Pricing data is incomplete.")
-            item_qty = Decimal(str(item["quantity"]))
-            if item_qty <= 0:
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid item quantity.")
+            item_qty = _validated_quantity(item)
 
             if "price_snapshot" in item and item["price_snapshot"] is not None:
                 price_val = item["price_snapshot"]
@@ -174,9 +196,7 @@ class ZeroTaxPricing(PricingStrategy):
             else:
                 raise HTTPException(status_code=500, detail="Pricing data is incomplete.")
 
-            item_price = Decimal(str(price_val))
-            if item_price < 0:
-                raise HTTPException(status_code=500, detail="Invalid product price.")
+            item_price = _validated_price(price_val)
             item["price_snapshot"] = float(round(item_price, 2))
             item["gst_percentage_snapshot"] = 0.0
             calc_subtotal += item_price * item_qty
@@ -243,11 +263,18 @@ def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
     try:
         shipping_flat = Decimal(str(config["shipping_flat"]))
         shipping_threshold = Decimal(str(config["shipping_threshold"]))
-    except (ArithmeticError, ValueError, TypeError) as exc:
+    except (ArithmeticError, ValueError, TypeError, InvalidOperation) as exc:
         logger.error("Invalid pricing configuration", exc_info=True)
         raise HTTPException(status_code=503, detail="Pricing service temporarily unavailable. Please try again.") from exc
 
-    if shipping_flat < 0 or shipping_threshold < 0:
+    if not shipping_flat.is_finite() or not shipping_threshold.is_finite() or shipping_flat < 0 or shipping_threshold < 0:
+        raise HTTPException(status_code=503, detail="Pricing service temporarily unavailable. Please try again.")
+
+    if not isinstance(tax_enabled, bool) or not isinstance(shipping_enabled, bool):
+        raise HTTPException(status_code=503, detail="Pricing service temporarily unavailable. Please try again.")
+
+    if currency != "INR":
+        logger.error("Unsupported checkout currency: %s", currency)
         raise HTTPException(status_code=503, detail="Pricing service temporarily unavailable. Please try again.")
 
     if not tax_enabled:
