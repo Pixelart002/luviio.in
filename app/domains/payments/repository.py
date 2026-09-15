@@ -109,10 +109,12 @@ class AsyncPaymentRepository:
                 .execute()
             )
             data = getattr(res, "data", None)
-            if data and provider_payment_id := data.get("provider_payment_id"):
-                # Compatibility alias for legacy PaymentService code. This value
-                # never leaves the payment domain and is not returned to clients.
-                if provider == str(data.get("payment_provider") or provider).strip().lower():
+            provider_payment_id = data.get("provider_payment_id") if data else None
+            if provider_payment_id:
+                # Compatibility alias for existing orchestration code. It is
+                # internal-only and is never serialized into public responses.
+                stored_provider = str(data.get("payment_provider") or provider).strip().lower()
+                if stored_provider == provider:
                     data.setdefault("stripe_payment_intent", provider_payment_id)
             return data
         except Exception as exc:
@@ -175,9 +177,7 @@ class AsyncPaymentRepository:
     ) -> str:
         admin_sb = await get_async_admin_supabase()
         provider = get_current_provider_key()
-        currency = stripe_currency
-
-        if currency is None:
+        if stripe_currency is None:
             raise RuntimeError("Payment currency is required for provider-neutral settlement")
 
         res = await admin_sb.rpc(
@@ -189,7 +189,7 @@ class AsyncPaymentRepository:
                 "p_amount": amount,
                 "p_user_id": user_id,
                 "p_payment_method": payment_method,
-                "p_currency": currency,
+                "p_currency": stripe_currency,
             },
         ).execute()
         data = getattr(res, "data", None)
@@ -301,15 +301,6 @@ class AsyncPaymentRepository:
             if order:
                 return order
             if provider == "stripe":
-                res = await (
-                    admin_sb.table("orders")
-                    .select("*")
-                    .eq("id", order.get("id") if order else "__missing__")
-                    .maybe_single()
-                    .execute()
-                ) if order else None
-                if res:
-                    return getattr(res, "data", None)
                 res = await (
                     admin_sb.table("orders")
                     .select("*")
