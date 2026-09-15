@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from app.core.supabase import get_async_admin_supabase
+from app.integrations.payments.context import get_current_provider_key
 from app.integrations.payments.registry import get_payment_provider
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,6 @@ class AsyncPaymentRepository:
             raise RuntimeError("Unable to load checkout address") from exc
 
     async def get_pricing_config(self) -> Dict[str, Any]:
-        """Load checkout pricing configuration from canonical system settings."""
         admin_sb = await get_async_admin_supabase()
         try:
             res = await admin_sb.rpc("get_canonical_pricing_config").execute()
@@ -97,11 +97,29 @@ class AsyncPaymentRepository:
 
     async def create_pending_order_with_reservation(self, order_data: Dict[str, Any], items: List[Dict[str, Any]]) -> Dict[str, Any]:
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.rpc("create_pending_order_with_reservation", {"p_order_data": order_data, "p_items": items}).execute()
-        data = getattr(res, "data", None)
-        if not data:
-            raise RuntimeError("RPC returned no data for pending order reservation.")
-        return data
+        provider = get_current_provider_key()
+        provider_payment_id = str(order_data.get("provider_payment_id") or order_data.get("stripe_payment_intent") or "").strip()
+        if not provider_payment_id:
+            raise RuntimeError("Provider payment reference is required before order creation.")
+
+        payload = dict(order_data)
+        payload["payment_provider"] = provider
+        payload["provider_payment_id"] = provider_payment_id
+        if provider != "stripe":
+            payload.pop("stripe_payment_intent", None)
+
+        try:
+            res = await admin_sb.rpc(
+                "create_pending_order_with_payment",
+                {"p_order_data": payload, "p_items": items},
+            ).execute()
+            data = getattr(res, "data", None)
+            if not data:
+                raise RuntimeError("RPC returned no data for pending order reservation.")
+            return data
+        except Exception as exc:
+            logger.error("RPC Error reserving stock and creating order: %s", exc, exc_info=True)
+            raise
 
     async def settle_order_transaction(self, order_id: str, pi_id: str, amount: float, user_id: str, payment_method: Optional[str] = None, stripe_currency: Optional[str] = None) -> str:
         admin_sb = await get_async_admin_supabase()
@@ -111,49 +129,61 @@ class AsyncPaymentRepository:
                 intent = await __import__("starlette.concurrency", fromlist=["run_in_threadpool"]).run_in_threadpool(provider.retrieve_intent, pi_id)
                 stripe_currency = intent.get("currency")
             except Exception as exc:
-                logger.error("Unable to verify Stripe currency for PI %s: %s", pi_id, exc, exc_info=True)
-                raise RuntimeError("Unable to verify Stripe payment currency") from exc
+                logger.error("Unable to verify payment currency for provider payment %s: %s", pi_id, exc, exc_info=True)
+                raise RuntimeError("Unable to verify payment currency") from exc
         res = await admin_sb.rpc("settle_order_transaction", {"p_order_id": order_id, "p_pi_id": pi_id, "p_amount": amount, "p_user_id": user_id, "p_payment_method": payment_method, "p_stripe_currency": stripe_currency}).execute()
         data = getattr(res, "data", None)
         return str(data) if data else "FAILED"
 
     async def update_order_payment_intent(self, order_id: str, new_pi_id: str) -> bool:
         admin_sb = await get_async_admin_supabase()
+        provider = get_current_provider_key()
+        values: Dict[str, Any] = {
+            "payment_provider": provider,
+            "provider_payment_id": new_pi_id,
+        }
+        if provider == "stripe":
+            values["stripe_payment_intent"] = new_pi_id
         try:
-            res = await admin_sb.table("orders").update({"stripe_payment_intent": new_pi_id}).eq("id", order_id).eq("status", "pending").execute()
+            res = await admin_sb.table("orders").update(values).eq("id", order_id).eq("status", "pending").execute()
             return bool(getattr(res, "data", None))
         except Exception as exc:
-            logger.error("DB Error updating payment intent for order %s: %s", order_id, exc, exc_info=True)
+            logger.error("DB Error updating payment reference for order %s: %s", order_id, exc, exc_info=True)
             raise
 
     async def clear_order_payment_intent(self, order_id: str, expected_pi_id: str) -> bool:
-        """Detach a stale Stripe PI while the order is still pending.
-
-        The expected PI guard prevents a concurrent retry from being detached
-        accidentally. COD conversion must only clear the exact PI that it first
-        observed.
-        """
         admin_sb = await get_async_admin_supabase()
+        provider = get_current_provider_key()
+        values: Dict[str, Any] = {"provider_payment_id": None}
+        if provider == "stripe":
+            values["stripe_payment_intent"] = None
         try:
             res = await (
                 admin_sb.table("orders")
-                .update({"stripe_payment_intent": None})
+                .update(values)
                 .eq("id", order_id)
                 .eq("status", "pending")
-                .eq("stripe_payment_intent", expected_pi_id)
+                .eq("payment_provider", provider)
+                .eq("provider_payment_id", expected_pi_id)
                 .execute()
             )
             return bool(getattr(res, "data", None))
         except Exception as exc:
-            logger.error("DB Error clearing Stripe payment intent for order %s: %s", order_id, exc, exc_info=True)
+            logger.error("DB Error clearing payment reference for order %s: %s", order_id, exc, exc_info=True)
             raise
 
     async def record_payment_attempt(self, order_id: str, user_id: Optional[str], pi_id: str, amount: float, status: str, payment_method: Optional[str] = None, error_code: Optional[str] = None, error_message: Optional[str] = None, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
         admin_sb = await get_async_admin_supabase()
+        provider = get_current_provider_key()
         try:
             await admin_sb.rpc("record_payment_attempt", {"p_order_id": order_id, "p_user_id": user_id, "p_pi_id": pi_id, "p_amount": amount, "p_status": status, "p_payment_method": payment_method, "p_error_code": error_code, "p_error_message": error_message, "p_ip_address": ip_address, "p_user_agent": user_agent}).execute()
+            if provider == "stripe":
+                await admin_sb.table("payment_attempts").update({
+                    "payment_provider": provider,
+                    "provider_payment_id": pi_id,
+                }).eq("order_id", order_id).eq("stripe_payment_intent_id", pi_id).order("created_at", desc=True).limit(1).execute()
         except Exception as exc:
-            logger.error("RPC Error recording payment attempt for PI %s: %s", pi_id, exc, exc_info=True)
+            logger.error("RPC Error recording payment attempt for provider payment %s: %s", pi_id, exc, exc_info=True)
 
     async def get_attempt_count(self, order_id: str) -> int:
         admin_sb = await get_async_admin_supabase()
@@ -171,19 +201,40 @@ class AsyncPaymentRepository:
 
     async def get_order_by_payment_intent(self, pi_id: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
+        provider = get_current_provider_key()
         try:
-            res = await admin_sb.table("orders").select("*").eq("stripe_payment_intent", pi_id).maybe_single().execute()
-            return getattr(res, "data", None)
+            res = await (
+                admin_sb.table("orders")
+                .select("*")
+                .eq("payment_provider", provider)
+                .eq("provider_payment_id", pi_id)
+                .maybe_single()
+                .execute()
+            )
+            order = getattr(res, "data", None)
+            if order:
+                return order
+            if provider == "stripe":
+                res = await admin_sb.table("orders").select("*").eq("stripe_payment_intent", pi_id).maybe_single().execute()
+                return getattr(res, "data", None)
+            return None
         except Exception as exc:
-            logger.error("DB Error fetching order by PI %s: %s", pi_id, exc, exc_info=True)
-            raise RuntimeError("Unable to resolve payment intent") from exc
+            logger.error("DB Error fetching order by provider payment %s: %s", pi_id, exc, exc_info=True)
+            raise RuntimeError("Unable to resolve payment reference") from exc
 
     async def record_webhook_event(self, event_id: str, event_type: str, pi_id: Optional[str]) -> bool:
         admin_sb = await get_async_admin_supabase()
+        provider = get_current_provider_key()
         try:
             res = await admin_sb.rpc("claim_webhook_event", {"p_event_id": event_id, "p_event_type": event_type, "p_pi_id": pi_id}).execute()
             data = getattr(res, "data", None)
-            return True if data is None else bool(data)
+            result = True if data is None else bool(data)
+            if pi_id:
+                await admin_sb.table("webhook_events").update({
+                    "payment_provider": provider,
+                    "provider_payment_id": pi_id,
+                }).eq("event_id", event_id).execute()
+            return result
         except Exception as exc:
             logger.error("DB Error claiming webhook event %s: %s", event_id, exc, exc_info=True)
             raise RuntimeError("Unable to claim webhook event") from exc
@@ -207,7 +258,7 @@ class AsyncPaymentRepository:
     async def list_stale_pending_orders(self, cutoff_iso: str) -> List[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.table("orders").select("id, customer_id, stripe_payment_intent, created_at").eq("status", "pending").lt("created_at", cutoff_iso).execute()
+            res = await admin_sb.table("orders").select("id, customer_id, payment_provider, provider_payment_id, stripe_payment_intent, created_at").eq("status", "pending").lt("created_at", cutoff_iso).execute()
             return getattr(res, "data", None) or []
         except Exception as exc:
             logger.error("DB Error listing stale pending orders: %s", exc, exc_info=True)
