@@ -1,7 +1,8 @@
 name: P0 payment refund fix
 on:
   push:
-    branches: [p0-payment-refund-fix]
+    branches:
+      - p0-payment-refund-fix
 permissions:
   contents: write
 jobs:
@@ -9,24 +10,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch refund failure semantics
+      - name: Patch service
+        shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           p = Path('app/domains/payments/service.py')
           s = p.read_text()
-          replacements = [
-          ('''        if result == "ORDER_ALREADY_CANCELLED":\n            try:\n                await run_in_threadpool(self.provider.process_refund, pi_id)\n            except Exception as refund_exc:\n                logger.error("[PAYMENT] Auto-refund FAILED for orphaned success %s: %s", pi_id, refund_exc, exc_info=True)\n            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)''', '''        if result == "ORDER_ALREADY_CANCELLED":\n            try:\n                await run_in_threadpool(self.provider.process_refund, pi_id)\n            except Exception as refund_exc:\n                logger.error("[PAYMENT] Auto-refund FAILED for orphaned success %s: %s", pi_id, refund_exc, exc_info=True)\n                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=PaymentSecurityMessages.ORDER_CANCELLED_REFUND_PENDING) from refund_exc\n            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)'''),
-          ('''                if result == "ORDER_ALREADY_CANCELLED":\n                    try:\n                        await run_in_threadpool(self.provider.process_refund, pi_id)\n                    except Exception as refund_error:\n                        logger.error("[PAYMENT RETRY] Refund failed for cancelled order %s", order_id[:8], exc_info=True)\n                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)''', '''                if result == "ORDER_ALREADY_CANCELLED":\n                    try:\n                        await run_in_threadpool(self.provider.process_refund, pi_id)\n                    except Exception as refund_error:\n                        logger.error("[PAYMENT RETRY] Refund failed for cancelled order %s", order_id[:8], exc_info=True)\n                        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=PaymentSecurityMessages.ORDER_CANCELLED_REFUND_PENDING) from refund_error\n                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)'''),
-          ('''                    if result == "ORDER_ALREADY_CANCELLED":\n                        try:\n                            await run_in_threadpool(self.provider.process_refund, pi_id)\n                        except Exception:\n                            logger.error("[WEBHOOK] Auto-refund FAILED for orphaned success %s", pi_id, exc_info=True)\n                    elif result == "SETTLED":''', '''                    if result == "ORDER_ALREADY_CANCELLED":\n                        try:\n                            await run_in_threadpool(self.provider.process_refund, pi_id)\n                        except Exception as refund_exc:\n                            logger.error("[WEBHOOK] Auto-refund FAILED for orphaned success %s", pi_id, exc_info=True)\n                            raise RuntimeError("Automatic refund failed; webhook must remain retryable") from refund_exc\n                    elif result == "SETTLED":'''),
-          ]
-          for old, new in replacements:
-              assert old in s
-              s = s.replace(old, new, 1)
+          s = s.replace('''            except Exception as refund_exc:\n                logger.error("[PAYMENT] Auto-refund FAILED for orphaned success %s: %s", pi_id, refund_exc, exc_info=True)\n            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)''','''            except Exception as refund_exc:\n                logger.error("[PAYMENT] Auto-refund FAILED for orphaned success %s: %s", pi_id, refund_exc, exc_info=True)\n                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=PaymentSecurityMessages.ORDER_CANCELLED_REFUND_PENDING) from refund_exc\n            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)''',1)
+          s = s.replace('''                    except Exception as refund_error:\n                        logger.error("[PAYMENT RETRY] Refund failed for cancelled order %s", order_id[:8], exc_info=True)\n                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)''','''                    except Exception as refund_error:\n                        logger.error("[PAYMENT RETRY] Refund failed for cancelled order %s", order_id[:8], exc_info=True)\n                        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=PaymentSecurityMessages.ORDER_CANCELLED_REFUND_PENDING) from refund_error\n                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_CANCELLED_AUTO_REFUNDED)''',1)
+          s = s.replace('''                        except Exception:\n                            logger.error("[WEBHOOK] Auto-refund FAILED for orphaned success %s", pi_id, exc_info=True)\n                    elif result == "SETTLED":''','''                        except Exception as refund_exc:\n                            logger.error("[WEBHOOK] Auto-refund FAILED for orphaned success %s", pi_id, exc_info=True)\n                            raise RuntimeError("Automatic refund failed; webhook must remain retryable") from refund_exc\n                    elif result == "SETTLED":''',1)
           p.write_text(s)
           PY
-      - name: Add regression tests
+      - name: Patch tests and verify
+        shell: bash
         run: |
+          sed -i '1a from app.constants.payment_messages import PaymentSecurityMessages' tests/test_payment_races.py
           cat >> tests/test_payment_races.py <<'PY'
 
 
@@ -56,13 +55,13 @@ async def test_retry_cancelled_order_refund_failure_is_pending(monkeypatch):
     assert error.value.detail == PaymentSecurityMessages.ORDER_CANCELLED_REFUND_PENDING
 PY
           python -m py_compile app/domains/payments/service.py
-          grep -q 'ORDER_CANCELLED_REFUND_PENDING' app/domains/payments/service.py
           pytest -q tests/test_payment_races.py
       - name: Commit and remove runner
+        shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/domains/payments/service.py tests/test_payment_races.py
-          git rm .github/workflows/p0_payment_refund_fix.yml
+          git rm .github/workflows/p0_payment_refund_fix.yml P0_REFUND_FIX_TRIGGER
           git commit -m 'fix: harden payment refund failure semantics'
           git push
