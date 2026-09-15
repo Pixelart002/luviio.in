@@ -5,6 +5,8 @@ Canonical product business logic. Legacy service remains available for
 compatibility while domain consumers use this module directly.
 """
 import logging
+import re
+import unicodedata
 from typing import Any, Dict, List, Tuple
 
 from fastapi import HTTPException, status
@@ -21,6 +23,18 @@ logger = logging.getLogger(__name__)
 class ProductService:
     def __init__(self) -> None:
         self.repo = AsyncProductRepository()
+
+    @staticmethod
+    def _slugify(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode("ascii")
+        slug = re.sub(r"[^a-zA-Z0-9]+", "-", normalized).strip("-").lower()
+        return slug[:260]
+
+    async def _resolve_slug(self, name: str, requested_slug: str | None = None) -> str:
+        base = self._slugify(requested_slug or name)
+        if not base:
+            base = "product"
+        return await self.repo.generate_unique_slug(base)
 
     def _enrich_discount(self, prod: Dict[str, Any]) -> Dict[str, Any]:
         if not prod:
@@ -45,6 +59,9 @@ class ProductService:
         return await self.repo.get_active_categories()
 
     async def create_category(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        if not data.get("slug"):
+            data["slug"] = self._slugify(data.get("name", "")) or "category"
+            data["slug"] = await self.repo.generate_unique_category_slug(data["slug"])
         res = await self.repo.create_category(data)
         if not res:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
@@ -70,7 +87,7 @@ class ProductService:
     async def _prepare_product_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         if data.get("sku") and await self.repo.check_sku_exists(data["sku"]):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ProductSecurityMessages.SKU_COLLISION)
-        data["slug"] = await self.repo.generate_unique_slug(data["slug"])
+        data["slug"] = await self._resolve_slug(data.get("name", ""), data.get("slug"))
         data["price"] = float(data["price"])
         if data.get("compare_price"):
             data["compare_price"] = float(data["compare_price"])
@@ -81,12 +98,13 @@ class ProductService:
         data["image_url"] = images[0] if images else None
         data["hsn_code"] = str(data.get("hsn_code") or "9988").strip()
         if data.get("gst_percentage") is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="GST percentage is required for every product.",
-            )
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="GST percentage is required for every product.")
         data["gst_percentage"] = int(data["gst_percentage"])
         data["attributes"] = data.get("attributes") or {}
+        data["seo_title"] = str(data.get("seo_title") or data.get("name", "")).strip()[:70] or None
+        data["seo_description"] = str(data.get("seo_description") or data.get("short_description") or data.get("description") or "").strip()[:170] or None
+        data["seo_keywords"] = str(data.get("seo_keywords") or "").strip()[:500] or None
+        data["canonical_url"] = str(data.get("canonical_url") or "").strip()[:2048] or None
         return data
 
     async def create_product(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -110,12 +128,7 @@ class ProductService:
             existing = list(res.get("images") or [])
             uploaded: List[str] = []
             if files:
-                uploaded = await run_in_threadpool(
-                    upload_multiple_images,
-                    files,
-                    res["id"],
-                    max_images=ProductRules.MAX_IMAGES_PER_PRODUCT - len(existing),
-                )
+                uploaded = await run_in_threadpool(upload_multiple_images, files, res["id"], max_images=ProductRules.MAX_IMAGES_PER_PRODUCT - len(existing))
             all_images = existing + uploaded
             await self.repo.update_product(res["id"], {"images": all_images, "image_url": all_images[0] if all_images else None})
             await self.repo.sync_product_images_table(res["id"], all_images)
@@ -136,7 +149,9 @@ class ProductService:
         if "sku" in data and data["sku"] and await self.repo.check_sku_exists(data["sku"], exclude_product_id=product_id):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ProductSecurityMessages.SKU_COLLISION)
         if "slug" in data and data["slug"]:
-            data["slug"] = await self.repo.generate_unique_slug(data["slug"], exclude_product_id=product_id)
+            data["slug"] = await self.repo.generate_unique_slug(self._slugify(data["slug"]) or "product", exclude_product_id=product_id)
+        if "name" in data and not data.get("slug"):
+            data["slug"] = await self.repo.generate_unique_slug(self._slugify(data["name"]) or "product", exclude_product_id=product_id)
         if "price" in data and data["price"] is not None:
             data["price"] = float(data["price"])
         if "compare_price" in data and data["compare_price"] is not None:
@@ -145,6 +160,14 @@ class ProductService:
             data["gst_percentage"] = int(data["gst_percentage"])
         if "hsn_code" in data and data["hsn_code"]:
             data["hsn_code"] = str(data["hsn_code"]).strip()
+        if "seo_title" in data and data["seo_title"] is not None:
+            data["seo_title"] = str(data["seo_title"]).strip()[:70] or None
+        if "seo_description" in data and data["seo_description"] is not None:
+            data["seo_description"] = str(data["seo_description"]).strip()[:170] or None
+        if "seo_keywords" in data and data["seo_keywords"] is not None:
+            data["seo_keywords"] = str(data["seo_keywords"]).strip()[:500] or None
+        if "canonical_url" in data and data["canonical_url"] is not None:
+            data["canonical_url"] = str(data["canonical_url"]).strip()[:2048] or None
         if "images" in data:
             imgs = data["images"] or []
             data["images"], data["image_url"] = imgs, imgs[0] if imgs else None
