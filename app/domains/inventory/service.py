@@ -141,7 +141,6 @@ class InventoryService:
         Raises: ReservationFailedError if reservation fails
         """
         try:
-            # Convert ReservationItem to dict format for RPC
             items_dict = [
                 {
                     "product_id": item.product_id,
@@ -151,7 +150,6 @@ class InventoryService:
                 for item in items
             ]
 
-            # Call atomic RPC
             result = await self.repo.create_pending_order_with_reservation(
                 order_data=order_data,
                 items=items_dict
@@ -185,21 +183,28 @@ class InventoryService:
         pi_id: str,
         amount: float,
         user_id: str,
-        payment_method: Optional[str] = None
+        payment_method: Optional[str] = None,
+        stripe_currency: Optional[str] = None,
     ) -> str:
         """
-        Commit stock reservation when payment succeeds.
+        Commit the reserved stock as part of the atomic payment settlement.
 
-        Moved from: payment_repo.settle_order_transaction()
+        The payment service verifies the Stripe PaymentIntent and passes its
+        currency through this domain boundary. The inventory repository/RPC
+        remains the only persistence path that commits the reservation.
 
         Returns: Settlement status ('SETTLED', 'ALREADY_PAID', 'ORDER_ALREADY_CANCELLED')
         """
+        if not stripe_currency:
+            raise ValueError("Verified Stripe currency is required for reservation settlement")
+
         result = await self.repo.settle_order_transaction(
             order_id=order_id,
             pi_id=pi_id,
             amount=amount,
             user_id=user_id,
-            payment_method=payment_method
+            payment_method=payment_method,
+            stripe_currency=stripe_currency,
         )
 
         logger.info(

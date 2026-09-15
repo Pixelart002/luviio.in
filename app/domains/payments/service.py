@@ -16,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.constants.payment_messages import PaymentMessages, PaymentRules, PaymentSecurityMessages
 from app.core.supabase import get_async_admin_supabase
+from app.domains.inventory.service import InventoryService
 from app.domains.payments.repository import AsyncPaymentRepository
 from app.domains.pricing.service import get_pricing_from_config
 from app.enums.order_status import OrderStatus
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 class PaymentService:
     def __init__(self) -> None:
         self.repo = AsyncPaymentRepository()
+        self.inventory = InventoryService()
         self.provider = get_payment_provider("stripe")
 
     def _paise(self, amount: Any) -> int:
@@ -238,7 +240,7 @@ class PaymentService:
         try:
             pm_types = intent.get("payment_method_types", [])
             pm_type = pm_types[0] if pm_types else "card"
-            result = await self.repo.settle_order_transaction(order_id, intent["id"], intent.get("amount", 0) / 100, user_id, payment_method=pm_type)
+            result = await self.inventory.commit_reservation(order_id, intent["id"], intent.get("amount", 0) / 100, user_id, payment_method=pm_type, stripe_currency=intent.get("currency"))
         except Exception as exc:
             logger.error("[PAYMENT] Settlement failed for order %s", order_id[:8], exc_info=True)
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=PaymentSecurityMessages.RACE_CONDITION) from exc
@@ -288,7 +290,7 @@ class PaymentService:
             if intent.get("status") == "succeeded":
                 pm_types = intent.get("payment_method_types", [])
                 pm_type = pm_types[0] if pm_types else "card"
-                result = await self.repo.settle_order_transaction(order_id, pi_id, intent.get("amount", 0) / 100, user_id, payment_method=pm_type)
+                result = await self.inventory.commit_reservation(order_id, pi_id, intent.get("amount", 0) / 100, user_id, payment_method=pm_type, stripe_currency=intent.get("currency"))
                 if result == "ORDER_ALREADY_CANCELLED":
                     try:
                         await run_in_threadpool(self.provider.process_refund, pi_id)
@@ -379,7 +381,7 @@ class PaymentService:
                     amount = obj.get("amount", 0) / 100
                     pm_types = obj.get("payment_method_types", [])
                     pm_type = pm_types[0] if pm_types else "card"
-                    result = await self.repo.settle_order_transaction(order_id, pi_id, amount, customer_id, payment_method=pm_type)
+                    result = await self.inventory.commit_reservation(order_id, pi_id, amount, customer_id, payment_method=pm_type, stripe_currency=obj.get("currency"))
                     if result == "ORDER_ALREADY_CANCELLED":
                         try:
                             await run_in_threadpool(self.provider.process_refund, pi_id)

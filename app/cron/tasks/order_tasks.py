@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.constants.payment_messages import PaymentRules
 from app.cron.registry import cron_task
+from app.domains.inventory.service import InventoryService
 from app.domains.payments.repository import AsyncPaymentRepository
 from app.integrations.payments.registry import get_payment_provider
 
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 async def cleanup_abandoned_orders() -> None:
     logger.info("[CRON] Running abandoned-order sweep...")
     repo = AsyncPaymentRepository()
+    inventory = InventoryService()
     provider = get_payment_provider("stripe")
 
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=PaymentRules.ABANDONED_ORDER_TIMEOUT_MINUTES)
@@ -49,13 +51,15 @@ async def cleanup_abandoned_orders() -> None:
             intent = await run_in_threadpool(provider.retrieve_intent, pi_id)
 
             # Self-heal: the success webhook may have been the thing
-            # that got lost, not the payment itself.
+            # that got lost, not the payment itself. Inventory owns the
+            # reservation commit boundary.
             if intent.get("status") == "succeeded":
-                result = await repo.settle_order_transaction(
+                result = await inventory.commit_reservation(
                     order_id,
                     pi_id,
                     intent.get("amount", 0) / 100,
                     customer_id,
+                    payment_method=(intent.get("payment_method_types") or ["card"])[0],
                     stripe_currency=intent.get("currency"),
                 )
                 logger.info("[CRON] Order %s recovered to PAID (missed webhook). Result: %s", order_id[:8], result)
@@ -75,11 +79,12 @@ async def cleanup_abandoned_orders() -> None:
                     # succeeded, re-check instead of racing cancellation.
                     refreshed = await run_in_threadpool(provider.retrieve_intent, pi_id)
                     if refreshed.get("status") == "succeeded":
-                        result = await repo.settle_order_transaction(
+                        result = await inventory.commit_reservation(
                             order_id,
                             pi_id,
                             refreshed.get("amount", 0) / 100,
                             customer_id,
+                            payment_method=(refreshed.get("payment_method_types") or ["card"])[0],
                             stripe_currency=refreshed.get("currency"),
                         )
                         logger.info("[CRON] Order %s recovered to PAID on retry check. Result: %s", order_id[:8], result)
