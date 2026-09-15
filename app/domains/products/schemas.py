@@ -10,7 +10,7 @@ from app.constants.product_messages import ProductRules, ProductSecurityMessages
 class CategoryCreate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     name: str = Field(..., min_length=2, max_length=100)
-    slug: str = Field(..., min_length=2, max_length=120, pattern=r"^[a-z0-9-]+$")
+    slug: Optional[str] = Field(default=None, min_length=2, max_length=120, pattern=r"^[a-z0-9-]+$")
     description: Optional[str] = Field(default=None, max_length=1000)
     image_url: Optional[str] = None
 
@@ -27,7 +27,7 @@ class ProductAttributes(BaseModel):
 class ProductCreate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     name: str = Field(..., min_length=2, max_length=255)
-    slug: str = Field(..., min_length=2, max_length=280, pattern=r"^[a-z0-9-]+$")
+    slug: Optional[str] = Field(default=None, min_length=2, max_length=280, pattern=r"^[a-z0-9-]+$")
     description: Optional[str] = None
     short_description: Optional[str] = Field(default=None, max_length=500)
     sku: Optional[str] = Field(default=None, max_length=100)
@@ -41,8 +41,11 @@ class ProductCreate(BaseModel):
     images: List[str] = Field(default_factory=list)
     attributes: Optional[Dict[str, Any]] = Field(default_factory=dict)
     hsn_code: Optional[str] = Field(default="9988", max_length=20)
-    # GST is a product-level fiscal attribute. No global GST-rate fallback.
     gst_percentage: int = Field(...)
+    seo_title: Optional[str] = Field(default=None, max_length=70)
+    seo_description: Optional[str] = Field(default=None, max_length=170)
+    seo_keywords: Optional[str] = Field(default=None, max_length=500)
+    canonical_url: Optional[str] = Field(default=None, max_length=2048)
     is_active: bool = True
 
     @field_validator("gst_percentage")
@@ -75,6 +78,10 @@ class ProductUpdate(BaseModel):
     category_id: Optional[str] = None
     hsn_code: Optional[str] = Field(default=None, max_length=20)
     gst_percentage: Optional[int] = None
+    seo_title: Optional[str] = Field(default=None, max_length=70)
+    seo_description: Optional[str] = Field(default=None, max_length=170)
+    seo_keywords: Optional[str] = Field(default=None, max_length=500)
+    canonical_url: Optional[str] = Field(default=None, max_length=2048)
     is_active: Optional[bool] = None
 
     @field_validator("gst_percentage")
