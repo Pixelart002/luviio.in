@@ -35,8 +35,8 @@ class PaymentSecurityMessages:
     )
     ORDER_CANCELLED_AUTO_REFUNDED = (
         "This order was already cancelled before your payment went through. "
-        "The payment has been refunded successfully and will reflect in your "
-        "account according to your bank's processing timeline."
+        "The payment is being refunded automatically and will reflect in your "
+        "account after the payment provider completes the refund."
     )
     ORDER_CANCELLED_REFUND_PENDING = (
         "This order was already cancelled before your payment went through. "
