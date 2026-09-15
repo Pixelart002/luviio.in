@@ -24,11 +24,12 @@ async def test_success_after_cancel_is_refunded(monkeypatch):
     service.repo.get_order_by_id = AsyncMock(
         return_value={"id": "order-1", "customer_id": "user-1", "status": "pending"}
     )
-    service.repo.settle_order_transaction = AsyncMock(return_value="ORDER_ALREADY_CANCELLED")
+    service.inventory.commit_reservation = AsyncMock(return_value="ORDER_ALREADY_CANCELLED")
     provider.retrieve_intent.return_value = {
         "id": "pi_race",
         "status": "succeeded",
         "amount": 1000,
+        "currency": "inr",
         "payment_method_types": ["card"],
         "metadata": {"order_id": "order-1"},
     }
@@ -38,7 +39,9 @@ async def test_success_after_cancel_is_refunded(monkeypatch):
 
     assert error.value.status_code == 409
     provider.process_refund.assert_called_once_with("pi_race")
-    service.repo.settle_order_transaction.assert_awaited_once()
+    service.inventory.commit_reservation.assert_awaited_once_with(
+        "order-1", "pi_race", 10.0, "user-1", payment_method="card", stripe_currency="inr"
+    )
 
 
 @pytest.mark.asyncio
@@ -47,11 +50,12 @@ async def test_duplicate_success_after_settlement_is_idempotent(monkeypatch):
     service.repo.get_order_by_id = AsyncMock(
         return_value={"id": "order-1", "customer_id": "user-1", "status": "pending"}
     )
-    service.repo.settle_order_transaction = AsyncMock(return_value="ALREADY_PAID")
+    service.inventory.commit_reservation = AsyncMock(return_value="ALREADY_PAID")
     provider.retrieve_intent.return_value = {
         "id": "pi_same",
         "status": "succeeded",
         "amount": 1000,
+        "currency": "inr",
         "payment_method_types": ["card"],
         "metadata": {"order_id": "order-1"},
     }
@@ -61,7 +65,7 @@ async def test_duplicate_success_after_settlement_is_idempotent(monkeypatch):
 
     assert first["status"] == "paid"
     assert second["status"] == "paid"
-    assert service.repo.settle_order_transaction.await_count == 2
+    assert service.inventory.commit_reservation.await_count == 2
     provider.process_refund.assert_not_called()
 
 
@@ -70,7 +74,7 @@ async def test_duplicate_webhook_delivery_does_not_settle_twice(monkeypatch):
     service, provider = build_service(monkeypatch)
     service.repo.record_webhook_event = AsyncMock(return_value=False)
     service.repo.get_order_by_payment_intent = AsyncMock()
-    service.repo.settle_order_transaction = AsyncMock()
+    service.inventory.commit_reservation = AsyncMock()
     provider.verify_webhook.return_value = {
         "id": "evt_duplicate",
         "type": "payment_intent.succeeded",
@@ -83,7 +87,7 @@ async def test_duplicate_webhook_delivery_does_not_settle_twice(monkeypatch):
         "evt_duplicate", "payment_intent.succeeded", "pi_duplicate"
     )
     service.repo.get_order_by_payment_intent.assert_not_awaited()
-    service.repo.settle_order_transaction.assert_not_awaited()
+    service.inventory.commit_reservation.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -92,11 +96,12 @@ async def test_confirm_cancelled_order_refund_failure_is_pending(monkeypatch):
     service.repo.get_order_by_id = AsyncMock(
         return_value={"id": "order-1", "customer_id": "user-1", "status": "pending"}
     )
-    service.repo.settle_order_transaction = AsyncMock(return_value="ORDER_ALREADY_CANCELLED")
+    service.inventory.commit_reservation = AsyncMock(return_value="ORDER_ALREADY_CANCELLED")
     provider.retrieve_intent.return_value = {
         "id": "pi_fail",
         "status": "succeeded",
         "amount": 1000,
+        "currency": "inr",
         "payment_method_types": ["card"],
         "metadata": {"order_id": "order-1"},
     }
@@ -116,11 +121,12 @@ async def test_retry_cancelled_order_refund_failure_is_pending(monkeypatch):
     service.repo.get_order_by_id = AsyncMock(
         return_value={"id": "order-1", "customer_id": "user-1", "status": "pending", "total_amount": 10}
     )
-    service.repo.settle_order_transaction = AsyncMock(return_value="ORDER_ALREADY_CANCELLED")
+    service.inventory.commit_reservation = AsyncMock(return_value="ORDER_ALREADY_CANCELLED")
     provider.retrieve_intent.return_value = {
         "id": "pi_fail",
         "status": "succeeded",
         "amount": 1000,
+        "currency": "inr",
         "payment_method_types": ["card"],
     }
     provider.process_refund.side_effect = RuntimeError("refund unavailable")
@@ -145,7 +151,7 @@ async def test_webhook_refund_failure_is_left_unprocessed(monkeypatch):
             "shipping_email": "user@example.com",
         }
     )
-    service.repo.settle_order_transaction = AsyncMock(return_value="ORDER_ALREADY_CANCELLED")
+    service.inventory.commit_reservation = AsyncMock(return_value="ORDER_ALREADY_CANCELLED")
     service.repo.mark_webhook_event_processed = AsyncMock()
     provider.verify_webhook.return_value = {
         "id": "evt_refund_fail",
@@ -167,11 +173,12 @@ async def test_concurrent_confirmations_only_one_settles(monkeypatch):
     service.repo.get_order_by_id = AsyncMock(
         return_value={"id": "order-1", "customer_id": "user-1", "status": "pending"}
     )
-    service.repo.settle_order_transaction = AsyncMock(side_effect=["SETTLED", "ALREADY_PAID"])
+    service.inventory.commit_reservation = AsyncMock(side_effect=["SETTLED", "ALREADY_PAID"])
     provider.retrieve_intent.return_value = {
         "id": "pi_concurrent",
         "status": "succeeded",
         "amount": 1000,
+        "currency": "inr",
         "payment_method_types": ["card"],
         "metadata": {"order_id": "order-1"},
     }
@@ -182,7 +189,7 @@ async def test_concurrent_confirmations_only_one_settles(monkeypatch):
     )
 
     assert [result["status"] for result in results] == ["paid", "paid"]
-    assert service.repo.settle_order_transaction.await_count == 2
+    assert service.inventory.commit_reservation.await_count == 2
     provider.process_refund.assert_not_called()
 
 
@@ -199,13 +206,14 @@ async def test_retry_and_webhook_same_payment_intent_converge(monkeypatch):
     }
     service.repo.get_order_by_id = AsyncMock(return_value=order.copy())
     service.repo.get_order_by_payment_intent = AsyncMock(return_value=order.copy())
-    service.repo.settle_order_transaction = AsyncMock(side_effect=["SETTLED", "ALREADY_PAID"])
+    service.inventory.commit_reservation = AsyncMock(side_effect=["SETTLED", "ALREADY_PAID"])
     service.repo.mark_webhook_event_processed = AsyncMock()
     service.repo.record_webhook_event = AsyncMock(return_value=True)
     provider.retrieve_intent.return_value = {
         "id": "pi_shared",
         "status": "succeeded",
         "amount": 1000,
+        "currency": "inr",
         "payment_method_types": ["card"],
     }
     provider.verify_webhook.return_value = {
@@ -220,6 +228,6 @@ async def test_retry_and_webhook_same_payment_intent_converge(monkeypatch):
     )
 
     assert retry_result["status"] == "paid"
-    assert service.repo.settle_order_transaction.await_count == 2
+    assert service.inventory.commit_reservation.await_count == 2
     service.repo.mark_webhook_event_processed.assert_awaited_once_with("evt_shared")
     provider.process_refund.assert_not_called()
