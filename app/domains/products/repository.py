@@ -172,4 +172,4 @@ class AsyncProductRepository:
     async def delete_product_variant(self, variant_id: str) -> bool:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("product_variants").delete().eq("id", variant_id).execute()
-        return bool(data_list := getattr(res, "data", None))
+        return bool(getattr(res, "data", None))
