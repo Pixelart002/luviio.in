@@ -4,6 +4,7 @@ Shipping Domain — Service
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 from typing import Any, Dict, List, Optional
@@ -83,6 +84,17 @@ class ShippingService:
             raise HTTPException(status_code=503, detail=f"Invalid shipping configuration: {field_name}.")
         return number
 
+    @staticmethod
+    def _enabled(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        normalized = str(value).strip().lower().replace("'", "").replace('"', "")
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+        raise HTTPException(status_code=503, detail="Invalid shipping configuration: shipping_enabled.")
+
     async def compute_rate(
         self,
         subtotal: float,
@@ -96,17 +108,14 @@ class ShippingService:
         if item_count < 0 or not math.isfinite(float(weight_kg)) or float(weight_kg) < 0:
             raise HTTPException(status_code=422, detail="Invalid shipping quantity or weight.")
 
-        # The system-settings configuration is authoritative for checkout
-        # shipping. The shipping-method table describes the selected method
-        # but must not silently override the global enable/disable switch.
         settings = SettingsCoreEngine()
         try:
-            shipping_enabled_raw, threshold_raw, flat_raw = await __import__("asyncio").gather(
+            shipping_enabled_raw, threshold_raw, flat_raw = await asyncio.gather(
                 settings.fetch_by_key("shipping_enabled"),
                 settings.fetch_by_key("free_shipping_threshold"),
                 settings.fetch_by_key("flat_shipping_rate"),
             )
-            shipping_enabled = str(shipping_enabled_raw).strip().lower().replace("'", "").replace('"', "") == "true" if not isinstance(shipping_enabled_raw, bool) else shipping_enabled_raw
+            shipping_enabled = self._enabled(shipping_enabled_raw)
             threshold = self._number(threshold_raw, "free_shipping_threshold")
             base = self._number(flat_raw, "flat_shipping_rate")
         except HTTPException:
@@ -135,9 +144,9 @@ class ShippingService:
                 "applied_type": "disabled",
             }
 
-        # Explicit method selection is supported for admin/advanced callers.
-        # Customer checkout without a method_id uses the canonical global
-        # settings so legacy/stale method rates cannot change checkout totals.
+        # Explicit method selection is supported for advanced callers. Normal
+        # checkout remains settings-driven so stale method rates cannot silently
+        # replace the canonical store shipping configuration.
         if method_id and method is not None:
             result = self._compute_method_rate(method, subtotal, item_count, weight_kg)
             result["free_shipping_threshold"] = threshold
