@@ -2,14 +2,6 @@
 Subscription Domain — Service
 ==============================
 Path: app/domains/subscriptions/service.py
-
-Effective tier resolution:
-  1. Active `user_subscriptions` row (highest ends_at) -> its plan tier.
-  2. Else fall back to `user.tier` (legacy column) normalized.
-  3. Else "free".
-
-`get_tier_for_user` is the single source other domains use to know what a
-user may access (premium/platinum-gated products, free shipping, discounts).
 """
 from __future__ import annotations
 
@@ -36,22 +28,16 @@ class SubscriptionService:
     def __init__(self) -> None:
         self.repo = AsyncSubscriptionRepository()
 
-    # ── Public tiers ───────────────────────────────────────────────────────────
     async def public_tiers(self) -> List[dict[str, Any]]:
         return all_tiers_public()
 
     async def list_plans(self, active_only: bool = True) -> List[dict[str, Any]]:
-        """List subscription plans, optionally including inactive plans."""
         return await self.repo.list_plans(active_only=active_only)
 
-    # ── Effective tier for a user (SSOT consumers call this) ───────────────────
     async def get_tier_for_user(
         self, user_id: Optional[str], user: Optional[dict[str, Any]] = None
     ) -> dict[str, Any]:
-        """Returns {tier, plan_id, plan_name, ends_at, perks} with graceful
-        fallback to user.tier / free when no paid subscription is found."""
         fallback = normalize_tier((user or {}).get("tier")) if user else "free"
-
         if not user_id:
             return self._tier_result(fallback, perks=get_tier_perks(fallback))
 
@@ -78,7 +64,6 @@ class SubscriptionService:
     def _tier_result(tier: str, **extras: Any) -> dict[str, Any]:
         return {"tier": tier, "perks": render_tier(tier), **extras}
 
-    # ── Plan CRUD (admin) ──────────────────────────────────────────────────────
     async def create_plan(self, payload: dict[str, Any]) -> Dict[str, Any]:
         tier = SubscriptionPolicy.assert_valid_tier(payload["tier"])
         plan = await self.repo.create_plan({**payload, "tier": tier})
@@ -96,11 +81,16 @@ class SubscriptionService:
             raise HTTPException(status_code=500, detail="Failed to update subscription plan.")
         return updated
 
-    # ── Subscribe (simulated grant; real flow connects to Stripe/Payment later) ─
     async def subscribe(self, user_id: str, plan_id: str) -> Dict[str, Any]:
         plan = await self.repo.get_plan(plan_id)
         SubscriptionPolicy.assert_plan(plan)
         SubscriptionPolicy.assert_plan_active(plan)
+
+        # Free plans do not need a payment step. Paid recurring billing remains
+        # intentionally outside this MVP flow until a billing provider is wired.
+        existing = await self.repo.get_active_for_user(user_id)
+        if existing:
+            raise HTTPException(status_code=409, detail="User already has an active subscription.")
 
         now = datetime.now(timezone.utc)
         days = int(plan.get("duration_days") or 30)
@@ -117,3 +107,18 @@ class SubscriptionService:
         if not sub:
             raise HTTPException(status_code=500, detail="Failed to start subscription.")
         return sub
+
+    async def cancel(self, user_id: str, reason: Optional[str] = None) -> Dict[str, Any]:
+        sub = await self.repo.get_active_for_user(user_id)
+        if not sub:
+            raise HTTPException(status_code=404, detail="No active subscription found.")
+
+        now = datetime.now(timezone.utc).isoformat()
+        data: dict[str, Any] = {"status": "cancelled", "cancelled_at": now}
+        if reason:
+            data["cancellation_reason"] = reason
+
+        updated = await self.repo.cancel_subscription(sub["id"], data)
+        if not updated:
+            raise HTTPException(status_code=409, detail="Subscription could not be cancelled.")
+        return updated
