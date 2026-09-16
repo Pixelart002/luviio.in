@@ -165,12 +165,34 @@ class OrderService:
         invoice_number = str(raw_order.get("invoice_number") or "").strip()
         if not invoice_number:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Invoice number is not available for this order.")
+
+        invoice = await self.repo.get_invoice_snapshot(str(raw_order["id"]))
+        if not invoice:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Immutable invoice snapshot is not available for this paid order.")
+
+        seller_snapshot = invoice.get("seller_snapshot") or {}
+        if not seller_snapshot:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Invoice seller configuration is incomplete. Configure the registered seller legal details before generating GST invoices.")
+
         customer = await self.user_repo.get_user_by_id(raw_order.get("customer_id", "")) or {}
         try:
             invoice_order = dict(raw_order)
             invoice_order["id"] = str(raw_order.get("order_number") or order_identifier)
+            invoice_order["invoice_number"] = invoice.get("invoice_number") or invoice_number
+            invoice_order["issued_at"] = invoice.get("issued_at")
+            invoice_order["currency"] = invoice.get("currency")
+            invoice_order["tax_type"] = invoice.get("tax_type")
+            totals = invoice.get("totals_snapshot") or {}
+            invoice_order.update(totals)
+            invoice_order["billing_snapshot"] = invoice.get("billing_snapshot") or {}
+            invoice_order["shipping_snapshot"] = invoice.get("shipping_snapshot") or {}
+            invoice_order["seller_snapshot"] = seller_snapshot
+            invoice_order["qr_payload"] = invoice.get("qr_payload")
+            invoice_order["order_items"] = invoice.get("invoice_items") or []
             pdf_bytes = await run_in_threadpool(build_invoice_pdf, invoice_order, customer)
-            return pdf_bytes, invoice_number
+            return pdf_bytes, invoice_order["invoice_number"]
+        except HTTPException:
+            raise
         except Exception as exc:
-            logger.error(f"PDF generator failure for order reference {order_identifier}: {exc}")
+            logger.error(f"PDF generator failure for order reference {order_identifier}: {exc}", exc_info=True)
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=OrderSecurityMessages.PDF_GENERATION_FAILED)
