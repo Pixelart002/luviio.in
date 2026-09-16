@@ -2,10 +2,6 @@
 Subscription Domain — Repository
 =================================
 Path: app/domains/subscriptions/repository.py
-
-Tables:
-  * subscription_plans  -> price-per-tier catalogue (free/premium/platinum)
-  * user_subscriptions  -> active grant of a tier to a user (ends_at)
 """
 from __future__ import annotations
 
@@ -18,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class AsyncSubscriptionRepository:
-    # ── Plans ──────────────────────────────────────────────────────────────────
     async def list_plans(self, active_only: bool = True) -> List[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
@@ -58,18 +53,44 @@ class AsyncSubscriptionRepository:
             logger.error("[REPO:SUB] update_plan failed: %s", exc)
             return None
 
-    # ── User subscriptions ─────────────────────────────────────────────────────
     async def get_active_for_user(self, user_id: str) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
             res = await (
                 sb.table("user_subscriptions").select("*")
                 .eq("user_id", user_id).eq("status", "active")
+                .gt("ends_at", "now()")
                 .order("ends_at", desc=True).limit(1).maybe_single().execute()
             )
             return res.data if res else None
         except Exception as exc:
             logger.error("[REPO:SUB] get_active_for_user failed: %s", exc)
+            return None
+
+    async def get_latest_for_user(self, user_id: str) -> Optional[dict[str, Any]]:
+        sb = await get_async_admin_supabase()
+        try:
+            res = await (
+                sb.table("user_subscriptions").select("*")
+                .eq("user_id", user_id)
+                .order("starts_at", desc=True).limit(1).maybe_single().execute()
+            )
+            return res.data if res else None
+        except Exception as exc:
+            logger.error("[REPO:SUB] get_latest_for_user failed: %s", exc)
+            return None
+
+    async def cancel_subscription(self, subscription_id: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+        sb = await get_async_admin_supabase()
+        try:
+            res = await (
+                sb.table("user_subscriptions").update(data)
+                .eq("id", subscription_id).eq("status", "active")
+                .maybe_single().execute()
+            )
+            return res.data if res else None
+        except Exception as exc:
+            logger.error("[REPO:SUB] cancel failed: %s", exc)
             return None
 
     async def upsert_subscription(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
