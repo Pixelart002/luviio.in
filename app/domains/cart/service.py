@@ -18,6 +18,7 @@ from app.permissions.policies.cart_policies import CartPolicy
 
 logger = logging.getLogger(__name__)
 
+
 class CartService:
     def __init__(self):
         self.repo = AsyncCartRepository()
@@ -51,9 +52,6 @@ class CartService:
                 raise HTTPException(status_code=500, detail="Cart contains an invalid product price.")
             comp_p = prod.get("compare_price")
             compare_price = float(comp_p) if comp_p is not None else 0.0
-            # Financial display uses the locked cart snapshot. The current
-            # catalogue price is exposed separately so a price change is
-            # visible without silently changing the checkout amount.
             line_total = snapshot * qty
             subtotal += line_total
             total_item_count += qty
@@ -80,8 +78,6 @@ class CartService:
         return await self._calculate_cart_pricing(cart["id"])
 
     async def add_item(self, user_id: str, product_id: str, quantity: int) -> Dict[str, Any]:
-        # Product availability and cart lookup are independent. Fetch both in
-        # parallel before checking for an existing line item.
         prod, cart = await asyncio.gather(
             self.repo.get_product_stock_status(product_id),
             self.repo.get_or_create_cart(user_id),
@@ -100,7 +96,6 @@ class CartService:
 
     async def update_item(self, user_id: str, product_id: str, quantity: int) -> Dict[str, Any]:
         CartPolicy.assert_item_limit(quantity)
-        # Cart lookup and product validation do not depend on one another.
         cart, prod = await asyncio.gather(
             self.repo.get_or_create_cart(user_id),
             self.repo.get_product_stock_status(product_id),
@@ -139,8 +134,13 @@ class CartService:
         email, name = user_info.get("email", ""), user_info.get("full_name", "there")
         push_sent, email_sent = 0, False
         try:
-            from app.core.supabase import get_admin_supabase
-            push_sent = send_push_to_user(get_admin_supabase(), user_id, title="🛒 Left something behind?", body=f"Your cart has {len(items)} item(s) waiting.", icon="/icons/cart.png", url="/cart.html")
+            push_sent = await send_push_to_user(
+                user_id,
+                title="🛒 Left something behind?",
+                body=f"Your cart has {len(items)} item(s) waiting.",
+                icon="/icons/cart.png",
+                url="/cart.html",
+            )
         except Exception as exc:
             logger.warning("WebPush failed for cart %s: %s", cart_id, exc)
         if email:
