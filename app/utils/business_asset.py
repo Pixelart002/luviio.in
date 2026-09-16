@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import logging
 import uuid
+from urllib.parse import unquote, urlparse
 
 from PIL import Image, UnidentifiedImageError
 
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 BUCKET = "business-assets"
 MAX_BYTES = 5 * 1024 * 1024
 MAX_PIXELS = 12_000_000
+PUBLIC_PREFIX = "/storage/v1/object/public/business-assets/"
 
 
 def _validate(data: bytes, filename: str) -> None:
@@ -72,3 +74,34 @@ def upload_business_asset(data: bytes, filename: str, asset_type: str) -> str:
     except Exception as exc:
         logger.error("Business asset upload failed | type=%s", asset_type, exc_info=True)
         raise RuntimeError("Failed to upload business asset. Please try again.") from exc
+
+
+def _asset_path_from_public_url(url: str | None) -> str | None:
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    if parsed.scheme != "https" or PUBLIC_PREFIX not in parsed.path:
+        return None
+    path = unquote(parsed.path.split(PUBLIC_PREFIX, 1)[1]).lstrip("/")
+    if not path or path.startswith("/") or ".." in path.split("/"):
+        return None
+    asset_type = path.split("/", 1)[0]
+    if asset_type not in {"logo", "signature"}:
+        return None
+    return path
+
+
+def delete_business_asset(url: str | None) -> bool:
+    """Delete a Luviio-managed business asset; ignore external/invalid URLs."""
+    path = _asset_path_from_public_url(url)
+    if not path:
+        return False
+    try:
+        get_admin_supabase().storage.from_(BUCKET).remove([path])
+        return True
+    except Exception:
+        logger.warning("Business asset cleanup failed | path=%s", path, exc_info=True)
+        return False
