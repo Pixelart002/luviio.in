@@ -33,8 +33,8 @@ async def init_admin_clients() -> None:
         raise RuntimeError("Supabase credentials missing.")
 
     try:
-        opts = ClientOptions(auto_refresh_token=False)
-        async_opts = ClientOptions(auto_refresh_token=False)
+        opts = ClientOptions(auto_refresh_token=False, persist_session=False)
+        async_opts = ClientOptions(auto_refresh_token=False, persist_session=False)
 
         _admin_supabase = create_client(settings.SB_URL, settings.SB_SERVICE_ROLE_KEY, options=opts)
         _async_admin_supabase = await create_async_client(
@@ -54,16 +54,24 @@ def get_supabase() -> Client:
     if not settings.SB_URL or not settings.SB_KEY:
         raise RuntimeError("Supabase credentials missing.")
 
-    opts = ClientOptions(auto_refresh_token=False)
+    opts = ClientOptions(auto_refresh_token=False, persist_session=False)
     return create_client(settings.SB_URL, settings.SB_KEY, options=opts)
 
 
 async def get_async_supabase_on_demand() -> AsyncClient:
-    """Returns a fresh async client per-request with isolated in-memory auth storage."""
+    """Return a fresh async client that never persists an auth session."""
     if not settings.SB_URL or not settings.SB_KEY:
         raise RuntimeError("Supabase credentials missing.")
 
-    async_opts = ClientOptions(auto_refresh_token=False)
+    # This is a backend request-scoped client. Persisting sessions is neither
+    # required nor desirable here. In supabase-py, sign_in_with_password()
+    # clears any existing session on authentication failure; with persistence
+    # enabled that cleanup awaits storage.remove_item(). The default async
+    # storage implementation in the pinned client can be absent/incompatible
+    # in this server-side lifecycle, producing:
+    #   TypeError: object NoneType can't be used in 'await' expression
+    # Keep the client explicitly stateless so auth cleanup uses in-memory state.
+    async_opts = ClientOptions(auto_refresh_token=False, persist_session=False)
     return await create_async_client(settings.SB_URL, settings.SB_KEY, options=async_opts)
 
 
@@ -72,7 +80,7 @@ async def get_async_supabase_on_demand() -> AsyncClient:
 def get_admin_supabase() -> Client:
     """Returns the globally shared Sync Admin Client."""
     if not _initialized_admins:
-        opts = ClientOptions(auto_refresh_token=False)
+        opts = ClientOptions(auto_refresh_token=False, persist_session=False)
         return create_client(settings.SB_URL, settings.SB_SERVICE_ROLE_KEY, options=opts)
     return _admin_supabase
 
