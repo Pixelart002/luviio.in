@@ -21,7 +21,6 @@ async def retry_notification_dlq(limit: int = 50) -> int:
         sb.table("notification_dlq")
         .select("*")
         .eq("status", "failed")
-        .lte("next_retry_at", now.isoformat())
         .order("created_at")
         .limit(limit)
         .execute()
@@ -30,8 +29,20 @@ async def retry_notification_dlq(limit: int = 50) -> int:
     resolved = 0
 
     for row in rows:
+        attempt_count = int(row.get("attempt_count") or 0)
+        next_retry_raw = row.get("next_retry_at")
+        if attempt_count >= _MAX_ATTEMPTS:
+            continue
+        if next_retry_raw:
+            try:
+                next_retry = datetime.fromisoformat(str(next_retry_raw).replace("Z", "+00:00"))
+                if next_retry > now:
+                    continue
+            except ValueError:
+                logger.warning("Ignoring malformed notification retry timestamp | id=%s", row.get("id"))
+
         row_id = str(row.get("id"))
-        attempt = int(row.get("attempt_count") or 0) + 1
+        attempt = attempt_count + 1
         claim = await (
             sb.table("notification_dlq")
             .update({"status": "retrying", "attempt_count": attempt})
@@ -95,6 +106,7 @@ async def retry_notification_dlq(limit: int = 50) -> int:
                             "status": "resolved",
                             "resolved_at": datetime.now(timezone.utc).isoformat(),
                             "error_message": None,
+                            "next_retry_at": None,
                         }
                     )
                     .eq("id", row_id)
