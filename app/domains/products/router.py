@@ -1,5 +1,6 @@
 """Product Domain Router — canonical HTTP boundary."""
 import json
+import logging
 import uuid
 from typing import Any, Dict, List
 
@@ -9,6 +10,7 @@ from starlette.datastructures import UploadFile
 
 from app.constants.product_messages import ProductMessages
 from app.core.dependencies import require_permission
+from app.core.logging_config import request_id_ctx
 from app.domains.products.schemas import CategoryCreate, ProductCreate, ProductUpdate
 from app.domains.products.service import ProductService
 from app.permissions.products import ProductPermissions
@@ -16,6 +18,7 @@ from app.utils.pagination import paginate
 from app.utils.response import success_response
 
 router = APIRouter(tags=["Products"])
+logger = logging.getLogger(__name__)
 
 
 def _validation_error(exc: ValidationError) -> HTTPException:
@@ -64,6 +67,8 @@ async def get_product(request: Request, slug: str) -> Dict[str, Any]:
 async def create_product(request: Request) -> Dict[str, Any]:
     """Create a product from JSON or multipart/form-data with optional image files."""
     content_type = request.headers.get("content-type", "").lower()
+    request_id = request_id_ctx.get()
+    logger.info("product.create.start request_id=%s content_type=%s", request_id, content_type.split(";", 1)[0])
     try:
         if content_type.startswith("multipart/form-data"):
             form = await request.form()
@@ -81,6 +86,12 @@ async def create_product(request: Request) -> Dict[str, Any]:
             for value in form.getlist("files"):
                 if isinstance(value, UploadFile):
                     image_files.append((await value.read(), value.filename or "unknown"))
+            logger.info(
+                "product.create.payload request_id=%s sku=%s images=%s",
+                request_id,
+                payload.sku or "Auto",
+                len(image_files),
+            )
             result = await ProductService().create_product_with_images(payload.model_dump(), image_files)
         else:
             try:
@@ -89,16 +100,30 @@ async def create_product(request: Request) -> Dict[str, Any]:
                 raise _validation_error(exc)
             except json.JSONDecodeError as exc:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Request body must contain valid JSON") from exc
+            logger.info("product.create.payload request_id=%s sku=%s images=0", request_id, payload.sku or "Auto")
             result = await ProductService().create_product(payload.model_dump())
-    except HTTPException:
+    except HTTPException as exc:
+        logger.warning(
+            "product.create.http_error request_id=%s status=%s detail=%s",
+            request_id,
+            exc.status_code,
+            str(exc.detail)[:300],
+        )
         raise
     except Exception as exc:
-        # Keep unexpected failures observable without leaking internals to clients.
+        logger.exception("product.create.error request_id=%s error=%s", request_id, str(exc)[:300])
         request.state.product_create_error = str(exc)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to create product") from exc
 
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin inserting new product -> SKU: {payload.sku or 'Auto'}")
+    product_id = result.get("id") if isinstance(result, dict) else None
+    logger.info(
+        "product.create.success request_id=%s product_id=%s sku=%s",
+        request_id,
+        product_id or "-",
+        payload.sku or "Auto",
+    )
     return success_response(data=result, message=ProductMessages.PRODUCT_CREATED)
 
 
