@@ -18,6 +18,14 @@ USER_ORDER_SELECT = "id, order_number, status, total_amount, created_at"
 INVOICE_SELECT = "id, order_id, invoice_number, status, issued_at, currency, tax_type, seller_snapshot, billing_snapshot, shipping_snapshot, totals_snapshot, place_of_supply_state_code, reverse_charge, pdf_storage_path, qr_payload, invoice_items(*)"
 
 
+def _s(value: Any, default: str = "") -> str:
+    """Normalize optional scalar snapshot values without leaking null-like text."""
+    if value is None:
+        return default
+    normalized = str(value).strip()
+    return normalized if normalized and normalized.lower() not in {"none", "null"} else default
+
+
 class AsyncOrderRepository:
     async def get_order_by_id(self, order_id: str, user_id: Optional[str] = None) -> Optional[dict[str, Any]]:
         """Resolve either an internal UUID (server-side) or the existing order_number."""
@@ -51,9 +59,6 @@ class AsyncOrderRepository:
             if not res or not res.data:
                 return None
             invoice = res.data
-
-            # Feed the immutable invoice POS code into the shipping snapshot so
-            # the renderer never has to infer tax context from mutable order data.
             pos_code = _s(invoice.get("place_of_supply_state_code"))
             shipping_snapshot = invoice.get("shipping_snapshot") or {}
             if pos_code:
