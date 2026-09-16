@@ -7,7 +7,6 @@ from app.domains.orders.service import STATUS_TRANSITIONS
 from app.enums.order_status import OrderStatus
 from app.permissions.policies.order_policies import OrderPolicy
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
