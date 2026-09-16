@@ -6,6 +6,7 @@ Path: app/domains/subscriptions/repository.py
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from app.core.supabase import get_async_admin_supabase
@@ -56,10 +57,11 @@ class AsyncSubscriptionRepository:
     async def get_active_for_user(self, user_id: str) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
+            now = datetime.now(timezone.utc).isoformat()
             res = await (
                 sb.table("user_subscriptions").select("*")
                 .eq("user_id", user_id).eq("status", "active")
-                .gt("ends_at", "now()")
+                .gt("ends_at", now)
                 .order("ends_at", desc=True).limit(1).maybe_single().execute()
             )
             return res.data if res else None
