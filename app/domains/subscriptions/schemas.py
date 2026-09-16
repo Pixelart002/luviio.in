@@ -2,6 +2,10 @@
 Subscription Domain — Schemas
 ==============================
 Path: app/domains/subscriptions/schemas.py
+
+Subscription billing is intentionally lightweight for the current MVP:
+plans + membership lifecycle are modelled here; recurring Stripe billing
+can be connected later without changing the tier-resolution contract.
 """
 from __future__ import annotations
 
@@ -14,7 +18,8 @@ from pydantic import BaseModel, Field
 class SubscriptionPlanCreate(BaseModel):
     tier: str = Field(..., description="free | premium | platinum")
     name: str
-    price_inr: Decimal = Field(..., gt=0)
+    # Free plans may legitimately cost zero.
+    price_inr: Decimal = Field(..., ge=0)
     duration_days: int = Field(30, gt=0)
     description: Optional[str] = None
     is_active: bool = True
@@ -22,7 +27,7 @@ class SubscriptionPlanCreate(BaseModel):
 
 class SubscriptionPlanUpdate(BaseModel):
     name: Optional[str] = None
-    price_inr: Optional[Decimal] = Field(None, gt=0)
+    price_inr: Optional[Decimal] = Field(None, ge=0)
     duration_days: Optional[int] = Field(None, gt=0)
     description: Optional[str] = None
     is_active: Optional[bool] = None
@@ -30,6 +35,10 @@ class SubscriptionPlanUpdate(BaseModel):
 
 class SubscribeRequest(BaseModel):
     plan_id: str
+
+
+class SubscriptionCancelRequest(BaseModel):
+    reason: Optional[str] = Field(None, max_length=500)
 
 
 class TierPublic(BaseModel):
