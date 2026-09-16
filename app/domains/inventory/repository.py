@@ -58,7 +58,7 @@ class InventoryRepository:
             raise
 
     async def admin_adjust_stock(self, product_id: str, delta: int, reason: str) -> Dict[str, Any]:
-        """Atomically adjust stock and append a stock-audit record."""
+        """Atomically adjust stock through the canonical inventory RPC."""
         admin_sb = await get_async_admin_supabase()
         try:
             res = await admin_sb.rpc(
@@ -73,6 +73,104 @@ class InventoryRepository:
             return data
         except Exception as exc:
             logger.error("RPC Error adjusting stock for product %s: %s", product_id, exc, exc_info=True)
+            raise
+
+    async def inventory_receive_stock(
+        self, product_id: str, quantity: int, reason: str, reference_id: Optional[str], metadata: dict[str, Any]
+    ) -> Dict[str, Any]:
+        return await self._inventory_rpc(
+            "inventory_receive_stock",
+            {"p_product_id": product_id, "p_quantity": quantity, "p_reason": reason,
+             "p_reference_id": reference_id, "p_metadata": metadata},
+        )
+
+    async def inventory_record_return(
+        self, product_id: str, quantity: int, reason: str, order_id: Optional[str], metadata: dict[str, Any]
+    ) -> Dict[str, Any]:
+        return await self._inventory_rpc(
+            "inventory_record_return",
+            {"p_product_id": product_id, "p_quantity": quantity, "p_reason": reason,
+             "p_order_id": order_id, "p_metadata": metadata},
+        )
+
+    async def inventory_record_damage(
+        self, product_id: str, quantity: int, reason: str, reference_id: Optional[str], metadata: dict[str, Any]
+    ) -> Dict[str, Any]:
+        return await self._inventory_rpc(
+            "inventory_record_damage",
+            {"p_product_id": product_id, "p_quantity": quantity, "p_reason": reason,
+             "p_reference_id": reference_id, "p_metadata": metadata},
+        )
+
+    async def inventory_record_wastage(
+        self, product_id: str, quantity: int, reason: str, reference_id: Optional[str], metadata: dict[str, Any]
+    ) -> Dict[str, Any]:
+        return await self._inventory_rpc(
+            "inventory_record_wastage",
+            {"p_product_id": product_id, "p_quantity": quantity, "p_reason": reason,
+             "p_reference_id": reference_id, "p_metadata": metadata},
+        )
+
+    async def inventory_reconcile_stock(
+        self, product_id: str, counted_stock: int, reason: str, metadata: dict[str, Any]
+    ) -> Dict[str, Any]:
+        return await self._inventory_rpc(
+            "inventory_reconcile_stock",
+            {"p_product_id": product_id, "p_counted_stock": counted_stock,
+             "p_reason": reason, "p_metadata": metadata},
+        )
+
+    async def list_inventory_history(
+        self, product_id: str, limit: int = 50, offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await (
+                admin_sb.table("inventory_activity")
+                .select("id, product_id, sku, activity_type, delta, stock_after, reference_type, reference_id, reason, metadata, created_at")
+                .eq("product_id", product_id)
+                .order("created_at", desc=True)
+                .range(offset, offset + limit - 1)
+                .execute()
+            )
+            return getattr(res, "data", None) or []
+        except Exception as exc:
+            logger.error("DB Error fetching inventory history for %s: %s", product_id, exc, exc_info=True)
+            raise
+
+    async def get_inventory_summary(self, low_stock_only: bool = False) -> List[Dict[str, Any]]:
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await (
+                admin_sb.table("products")
+                .select("id, name, sku, stock, low_stock_threshold, is_active")
+                .eq("is_active", True)
+                .order("stock")
+                .execute()
+            )
+            data = getattr(res, "data", None) or []
+            if low_stock_only:
+                data = [
+                    item for item in data
+                    if item.get("stock", 0) <= item.get("low_stock_threshold", 10)
+                ]
+            return data
+        except Exception as exc:
+            logger.error("DB Error fetching inventory summary: %s", exc, exc_info=True)
+            raise
+
+    async def _inventory_rpc(self, name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await admin_sb.rpc(name, params).execute()
+            data = getattr(res, "data", None)
+            if isinstance(data, list):
+                data = data[0] if data else None
+            if not data:
+                raise RuntimeError(f"{name} returned no data.")
+            return data
+        except Exception as exc:
+            logger.error("Inventory RPC %s failed: %s", name, exc, exc_info=True)
             raise
 
     async def create_pending_order_with_reservation(self, order_data: Dict[str, Any], items: List[Dict[str, Any]]) -> Dict[str, Any]:
