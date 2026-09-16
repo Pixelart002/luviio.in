@@ -1,13 +1,10 @@
 """Durable application-event outbox persistence."""
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from app.core.supabase import get_async_admin_supabase
-
-logger = logging.getLogger(__name__)
 
 
 async def enqueue_event(*, event_id: str, event_type: str, payload: dict[str, Any]) -> None:
@@ -42,24 +39,23 @@ async def fetch_pending(limit: int = 50) -> list[dict[str, Any]]:
     return list(getattr(result, "data", None) or [])
 
 
-async def claim_event(event_id: str) -> dict[str, Any] | None:
+async def claim_event(event_id: str, attempt: int) -> bool:
     sb = await get_async_admin_supabase()
-    now = datetime.now(timezone.utc).isoformat()
     result = await (
         sb.table("event_outbox")
         .update(
             {
                 "status": "processing",
-                "attempts": 1,
-                "locked_at": now,
+                "attempts": attempt,
+                "locked_at": datetime.now(timezone.utc).isoformat(),
             }
         )
         .eq("id", event_id)
         .eq("status", "pending")
+        .select("id")
         .execute()
     )
-    rows = list(getattr(result, "data", None) or [])
-    return rows[0] if rows else {"id": event_id}
+    return bool(getattr(result, "data", None))
 
 
 async def mark_completed(event_id: str) -> None:
