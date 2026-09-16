@@ -31,10 +31,9 @@ class Settings(BaseSettings):
     VAPID_PRIVATE_KEY: str = ""
     VAPID_CLAIM_EMAIL: str = "mailto:admin@luviio.in"
 
-    FRONTEND_URL: str = "https://www.luviio.in"
+    OLA_MAPS_API_KEY: str = ""
 
-    # Production must never implicitly trust localhost or a Vercel preview.
-    # Add local/preview origins explicitly through deployment env vars.
+    FRONTEND_URL: str = "https://www.luviio.in"
     ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in"
 
     RATE_LIMIT_PER_MINUTE: int = 60
