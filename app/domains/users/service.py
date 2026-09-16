@@ -118,6 +118,8 @@ class UserService:
             res = await self.repo.update_profile(target_user_id, payload)
             if not res:
                 raise ResourceNotFound("User")
+            from app.core.dependencies import invalidate_profile_cache
+            invalidate_profile_cache(target_user_id)
             return res
         except ResourceNotFound:
             raise
@@ -132,7 +134,7 @@ class UserService:
         try:
             total_orders = await self.repo.count_user_orders(target_user_id)
         except Exception as exc:
-            logger.warning("Error fetching order count for %s", target_user_id[:8], exc)
+            logger.warning("Error fetching order count for %s: %s", target_user_id[:8], exc)
             total_orders = 0
         user["total_orders"] = total_orders
         return user
