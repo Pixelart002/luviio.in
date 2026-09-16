@@ -5,6 +5,7 @@ Shipping Domain — Service
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
@@ -72,6 +73,16 @@ class ShippingService:
             raise HTTPException(status_code=500, detail="Failed to activate shipping method safely.")
         return activated
 
+    @staticmethod
+    def _number(value: Any, field_name: str) -> float:
+        try:
+            number = float(str(value).strip().replace("'", "").replace('"', ""))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=503, detail=f"Invalid shipping configuration: {field_name}.") from exc
+        if not math.isfinite(number) or number < 0:
+            raise HTTPException(status_code=503, detail=f"Invalid shipping configuration: {field_name}.")
+        return number
+
     async def compute_rate(
         self,
         subtotal: float,
@@ -80,27 +91,26 @@ class ShippingService:
         method_id: Optional[str] = None,
         pincode: Optional[str] = None,
     ) -> Dict[str, Any]:
-        if method_id:
-            method = await self.repo.get_by_id(method_id)
-            ShippingPolicy.assert_method(method)
-            if not method.get("is_active", True):
-                raise HTTPException(status_code=400, detail="This shipping method is inactive.")
-            return self._compute_method_rate(method, subtotal, item_count, weight_kg)
+        if not math.isfinite(float(subtotal)) or float(subtotal) < 0:
+            raise HTTPException(status_code=422, detail="Invalid cart subtotal.")
+        if item_count < 0 or not math.isfinite(float(weight_kg)) or float(weight_kg) < 0:
+            raise HTTPException(status_code=422, detail="Invalid shipping quantity or weight.")
 
+        # The system-settings configuration is authoritative for checkout
+        # shipping. The shipping-method table describes the selected method
+        # but must not silently override the global enable/disable switch.
         settings = SettingsCoreEngine()
         try:
-            threshold = float(
-                str(await settings.fetch_by_key("free_shipping_threshold"))
-                .replace("'", "")
-                .replace('"', "")
+            shipping_enabled_raw, threshold_raw, flat_raw = await __import__("asyncio").gather(
+                settings.fetch_by_key("shipping_enabled"),
+                settings.fetch_by_key("free_shipping_threshold"),
+                settings.fetch_by_key("flat_shipping_rate"),
             )
-            # `flat_shipping_rate` is the canonical global shipping charge.
-            # `standard_shipping_cost` is a legacy key and must not be required.
-            base = float(
-                str(await settings.fetch_by_key("flat_shipping_rate"))
-                .replace("'", "")
-                .replace('"', "")
-            )
+            shipping_enabled = str(shipping_enabled_raw).strip().lower().replace("'", "").replace('"', "") == "true" if not isinstance(shipping_enabled_raw, bool) else shipping_enabled_raw
+            threshold = self._number(threshold_raw, "free_shipping_threshold")
+            base = self._number(flat_raw, "flat_shipping_rate")
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.exception("[SHIPPING] required shipping settings unavailable")
             raise HTTPException(
@@ -108,14 +118,36 @@ class ShippingService:
                 detail="Shipping configuration is temporarily unavailable.",
             ) from exc
 
+        method: Optional[Dict[str, Any]] = None
+        if method_id:
+            method = ShippingPolicy.assert_method(await self.repo.get_by_id(method_id))
+            if not method.get("is_active", True):
+                raise HTTPException(status_code=400, detail="This shipping method is inactive.")
+        else:
+            method = await self._pick_active_method()
+
+        if not shipping_enabled:
+            return {
+                "shipping_cost": 0.0,
+                "method": method,
+                "method_id": method.get("id") if method else None,
+                "free_shipping_threshold": threshold,
+                "applied_type": "disabled",
+            }
+
+        # Explicit method selection is supported for admin/advanced callers.
+        # Customer checkout without a method_id uses the canonical global
+        # settings so legacy/stale method rates cannot change checkout totals.
+        if method_id and method is not None:
+            result = self._compute_method_rate(method, subtotal, item_count, weight_kg)
+            result["free_shipping_threshold"] = threshold
+            return result
+
         shipping = 0.0 if subtotal >= threshold else base
-        method = await self._pick_active_method()
-        if method is None:
-            raise HTTPException(status_code=503, detail="No active shipping method is configured.")
         return {
             "shipping_cost": round(shipping, 2),
             "method": method,
-            "method_id": method.get("id"),
+            "method_id": method.get("id") if method else None,
             "free_shipping_threshold": threshold,
             "applied_type": "settings_default",
         }
@@ -145,6 +177,4 @@ class ShippingService:
 
     async def _pick_active_method(self) -> Optional[Dict[str, Any]]:
         methods = await self.repo.list_active_methods()
-        if not methods:
-            return None
-        return methods[0]
+        return methods[0] if methods else None
