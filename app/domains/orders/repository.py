@@ -38,7 +38,7 @@ class AsyncOrderRepository:
             return None
 
     async def get_invoice_snapshot(self, order_id: str) -> Optional[dict[str, Any]]:
-        """Return the immutable issued invoice snapshot and its frozen line items."""
+        """Return immutable invoice data, enriching legacy lines only when compare price was not snapshotted."""
         admin_sb = await get_async_admin_supabase()
         try:
             res = await (
@@ -48,7 +48,39 @@ class AsyncOrderRepository:
                 .maybe_single()
                 .execute()
             )
-            return res.data if res and res.data else None
+            if not res or not res.data:
+                return None
+            invoice = res.data
+            invoice_items = invoice.get("invoice_items") or []
+            if invoice_items:
+                legacy_lines = [
+                    item for item in invoice_items
+                    if not item.get("compare_price")
+                    and not (_metadata_compare_price(item))
+                ]
+                if legacy_lines:
+                    order_items_res = await (
+                        admin_sb.table("order_items")
+                        .select("id, compare_price")
+                        .eq("order_id", order_id)
+                        .execute()
+                    )
+                    compare_by_id = {
+                        str(row.get("id")): row.get("compare_price")
+                        for row in (order_items_res.data or [])
+                        if row.get("id") is not None
+                    }
+                    for item in invoice_items:
+                        metadata = item.get("metadata") or {}
+                        source_id = str(metadata.get("source_order_item_id") or "")
+                        if not _metadata_compare_price(item) and not item.get("compare_price") and source_id in compare_by_id:
+                            item["compare_price"] = compare_by_id[source_id]
+                for item in invoice_items:
+                    metadata = item.get("metadata") or {}
+                    if not item.get("compare_price") and _metadata_compare_price(item):
+                        item["compare_price"] = _metadata_compare_price(item)
+                invoice["invoice_items"] = invoice_items
+            return invoice
         except Exception as e:
             logger.error(f"[REPO:INVOICES] Failed loading invoice snapshot for order {order_id}: {e}", exc_info=True)
             return None
@@ -107,3 +139,14 @@ class AsyncOrderRepository:
             return res.data["email"] if res and res.data else None
         except Exception:
             return None
+
+
+def _metadata_compare_price(item: dict[str, Any]) -> Any:
+    metadata = item.get("metadata") or {}
+    value = metadata.get("compare_price")
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
