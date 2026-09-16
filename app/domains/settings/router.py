@@ -2,7 +2,7 @@
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -12,6 +12,7 @@ from app.core.maintenance import invalidate_maintenance_cache
 from app.domains.settings.admin_service import AdminSettingsService
 from app.domains.settings.schemas import SettingUpdate
 from app.permissions.settings import SettingsPermissions
+from app.utils.business_asset import upload_business_asset
 from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,36 @@ async def update_setting(
     if hasattr(request.state, "actions"):
         request.state.actions.append("Setting mutated successfully & global TTL cache purged")
     return success_response(data=updated, message=SettingsMessages.UPDATED)
+
+
+@router.post(
+    "/business-profile/assets/{asset_type}",
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_permission(SettingsPermissions.UPDATE))],
+)
+@limiter.limit("10/minute")
+async def upload_business_profile_asset(
+    request: Request,
+    asset_type: str,
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_user_id_strict),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    if asset_type not in {"logo", "signature"}:
+        return success_response(data=None, message="Unsupported business asset type.", status_code=status.HTTP_400_BAD_REQUEST)
+    data = await file.read()
+    url = upload_business_asset(data, file.filename or "business-asset", asset_type)
+    key = "business_logo_url" if asset_type == "logo" else "business_signature_url"
+    role = current_user.get("role") or current_user.get("profile", {}).get("role", "admin")
+    updated = await AdminSettingsService().update_core_setting(
+        key=key,
+        new_value=url,
+        admin_id=user_id,
+        role=role,
+        reason=f"Uploaded business {asset_type} from Business Profile",
+    )
+    invalidate_maintenance_cache()
+    return success_response(data={"asset_type": asset_type, "url": url, "setting": updated}, message=f"Business {asset_type} uploaded.")
 
 
 @router.post(
