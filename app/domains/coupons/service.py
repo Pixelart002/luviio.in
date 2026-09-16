@@ -57,9 +57,17 @@ class CouponService:
         coupon = await self.repo.get_by_id(coupon_id)
         if not coupon:
             raise HTTPException(status_code=404, detail=CouponSecurityMessages.NOT_FOUND)
+
         data = {k: v for k, v in payload.items() if v is not None}
         if "code" in data:
-            data["code"] = self._normalize_code(data["code"])
+            normalized_code = self._normalize_code(data["code"])
+            current_code = self._normalize_code(coupon.get("code", ""))
+            if normalized_code != current_code:
+                existing = await self.repo.get_by_code(normalized_code)
+                if existing is not None and str(existing.get("id")) != str(coupon_id):
+                    raise HTTPException(status_code=400, detail="Coupon code already exists.")
+            data["code"] = normalized_code
+
         updated = await self.repo.update(coupon_id, data)
         if not updated:
             raise HTTPException(status_code=500, detail="Failed to update coupon.")
