@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in"
 
     RATE_LIMIT_PER_MINUTE: int = 60
+    # Forwarded client-IP headers are ignored unless the immediate peer is
+    # explicitly trusted. Set comma-separated proxy IPs/CIDRs in production.
+    TRUSTED_PROXY_IPS: str = ""
     SENTRY_DSN: str = ""
     APP_VERSION: str = "unknown"
 
@@ -54,6 +57,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def trusted_proxy_ips(self) -> List[str]:
+        return [item.strip() for item in self.TRUSTED_PROXY_IPS.split(",") if item.strip()]
 
     @property
     def is_production(self) -> bool:
