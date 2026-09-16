@@ -42,6 +42,7 @@
 ### D-008 — Process-local global rate limit / proxy IP ambiguity
 **Status:** partially fixed; distributed storage remains open.
 **Fixed:** forwarded client-IP headers are no longer trusted from arbitrary peers. `TRUSTED_PROXY_IPS` now explicitly defines trusted proxy IPs/CIDRs; invalid entries never grant trust, and the direct peer is the fallback identity.
+**Verification:** targeted tests now cover untrusted spoofing, trusted Cloudflare IPs, invalid forwarded values, CIDR configuration, invalid proxy configuration, and forwarded-chain parsing.
 **Remaining:** SlowAPI storage is still process-local. For true cross-worker/global throttling, move the limiter store to shared Redis/edge/DB-backed storage.
 
 ### D-009 — Stripe intent may exist without a persisted pending order
@@ -77,9 +78,11 @@
 **Verification:** live production SQL verified the table and function privileges (`anon`/`authenticated` denied; `service_role` allowed). A live database assertion verified the 3-per-window rate gate, 5-failure circuit trip, and fresh-state recovery. Targeted unit tests cover the service-role RPC boundary and fail-closed behavior.
 
 ### D-015 — Dependency/framework deprecation warnings
-**Status:** open; warning-only cleanup.
-**Scope:** gotrue, Starlette/httpx, Pydantic field-extra, and deprecated HTTP status constant usage observed in CI/runtime logs.
+**Status:** partially addressed; full dependency modernization remains open.
+**Fixed:** removed Luviio's direct `gotrue.AsyncMemoryStorage` import. Supabase client creation now uses its default in-memory auth storage, preserving the existing stateless-session behavior without a direct dependency on the deprecated package name.
+**Remaining:** the project still pins the older Supabase client line, and dependency-level Starlette/httpx, Pydantic field-extra, and deprecated HTTP-status warnings require a separately verified upgrade because dependency resolution must remain green.
 
 ### D-016 — Test coverage depth
-**Status:** open.
-**Required fix:** add targeted security/concurrency tests for authorization boundaries, throttling, coupon reservation, payment races, and document snapshot immutability.
+**Status:** partially addressed; broader targeted coverage remains open.
+**Added:** rate-limit identity-boundary tests for proxy trust, spoofing resistance, CIDR configuration, invalid headers, and forwarded chains.
+**Required next:** retain/add targeted security/concurrency tests for authorization boundaries, coupon reservation, payment races, and document snapshot immutability; do not mark this complete until the full CI coverage artifact confirms the intended critical-domain depth.
