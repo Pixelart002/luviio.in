@@ -2,7 +2,7 @@ begin;
 
 -- jsonb_populate_record() preserves an explicit JSON null, so the
 -- orders.reverse_charge DEFAULT is not applied when the checkout payload
--- contains null. Normalize the value before record population.
+-- contains null or omits the key. Normalize it before record population.
 create or replace function public.create_pending_order_with_payment(
   p_order_data jsonb,
   p_items jsonb,
@@ -86,13 +86,17 @@ begin
 
   v_order_id := gen_random_uuid();
 
-  -- Explicitly normalize nullable tax-document fields before
-  -- jsonb_populate_record(), because an explicit JSON null bypasses SQL
-  -- column defaults.
+  -- Explicitly normalize reverse_charge before jsonb_populate_record().
+  -- This handles both an omitted key and a JSON null without relying on the
+  -- SQL column DEFAULT, which does not apply to explicit NULL values.
   p_order_data := p_order_data || jsonb_build_object(
     'id', v_order_id,
     'tax_type', coalesce(p_order_data->>'tax_type', 'IGST'),
-    'reverse_charge', coalesce((p_order_data->'reverse_charge')::boolean, false),
+    'reverse_charge', case
+      when jsonb_typeof(p_order_data->'reverse_charge') = 'boolean'
+        then (p_order_data->>'reverse_charge')::boolean
+      else false
+    end,
     'created_at', coalesce(p_order_data->>'created_at', now()::text),
     'updated_at', now()::text
   );
