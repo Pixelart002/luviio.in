@@ -59,6 +59,11 @@ class SettingsCoreEngine:
     async def mutate_setting(
         self, key: str, new_value: Any, old_value: Any, user_id: str, reason: str
     ) -> Dict[str, Any]:
+        """Persist real changes while making repeated identical writes no-ops."""
+        if new_value == old_value:
+            logger.debug("Ignoring no-op settings mutation | key=%s", key)
+            return await self.fetch_by_key(key)
+
         updated = await self.repo.update_setting_value(key, new_value)
         self.invalidate_cache()
         try:
@@ -73,6 +78,12 @@ class SettingsCoreEngine:
     async def reset_to_default(
         self, key: str, default_value: Any, user_id: str
     ) -> Dict[str, Any]:
+        """Restore a setting only when its current value differs."""
+        existing = await self.fetch_by_key(key)
+        if existing.get("value") == default_value:
+            logger.debug("Ignoring no-op settings reset | key=%s", key)
+            return existing
+
         restored = await self.repo.reset_setting_to_default(key, default_value)
         self.invalidate_cache()
         try:
