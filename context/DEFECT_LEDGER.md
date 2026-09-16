@@ -36,20 +36,20 @@
 **Fix:** indexes added for addresses.user_id, audit_logs.actor_user_id, notification_dlq.user_id, payment_ledger.payment_id, product_reviews.user_id, and user_subscriptions.plan_id.
 
 ### D-007 — Stale RBAC/profile cache
-**Status:** open.
-**Required fix:** invalidate `_profile_cache` on role/is_active changes or move sensitive permission checks to authoritative DB lookup with bounded caching.
+**Status:** fixed in code.
+**Fix:** profile cache TTL reduced to 60 seconds and explicit invalidation added after administrative user mutations. Sensitive authorization still uses server-side profile state.
 
 ### D-008 — Process-local global rate limit / proxy IP ambiguity
 **Status:** open.
-**Required fix:** trusted proxy IP extraction + shared rate-limit storage.
+**Required fix:** trusted proxy IP extraction + shared rate-limit storage (edge/Redis/shared DB) for global HTTP throttling.
 
 ### D-009 — Stripe intent may exist without a persisted pending order
 **Status:** open.
-**Required fix:** create a durable checkout-attempt record first and add cancellation/compensation for an orphan provider intent.
+**Required fix:** durable checkout-attempt record before provider creation where feasible, plus cancellation/compensation and reconciliation for an orphan provider intent.
 
-### D-010 — CI Ruff failures prevent tests from running
-**Status:** open.
-**Latest observed:** compile succeeded; Ruff failed with 6 errors, so Mypy, dependency audit, and tests were skipped.
+### D-010 — CI static/type gate
+**Status:** in progress; current main had a stale invoice renderer typing regression and CI failed at Mypy before tests.
+**Fix applied:** restored the complete invoice renderer and declared the module-level `ST` style registry type. A fresh CI run is required before marking green.
 
 ## P2 / operations
 
@@ -59,3 +59,19 @@
 ### D-012 — Business asset storage orphaning
 **Status:** open.
 **Required fix:** keep previous asset reference and delete superseded object after new reference is committed.
+
+### D-013 — Settings mutations are chatty
+**Status:** open.
+**Required fix:** batch validation/update/audit/cache invalidation where multiple settings change in one operation.
+
+### D-014 — Push circuit breaker / limiter is process-local
+**Status:** open.
+**Required fix:** move distributed protection to shared storage or an external queue/provider boundary if multi-worker consistency is required.
+
+### D-015 — Dependency/framework deprecation warnings
+**Status:** open; warning-only cleanup.
+**Scope:** gotrue, Starlette/httpx, Pydantic field-extra, and deprecated HTTP status constant usage observed in CI/runtime logs.
+
+### D-016 — Test coverage depth
+**Status:** open.
+**Required fix:** add targeted security/concurrency tests for authorization boundaries, throttling, coupon reservation, payment races, and document snapshot immutability.
