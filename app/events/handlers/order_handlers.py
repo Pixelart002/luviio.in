@@ -39,11 +39,9 @@ class _Copy:
     URL_CART = "/cart.html"
     URL_ADMIN = "/admin.html"
 
-    # Admin notifications
     ADMIN_ORDER_TITLE = "New order received"
     ADMIN_ORDER_BODY = "₹{amt} order #{oid} is ready for processing."
 
-    # Customer notifications
     PAID_PUSH_TITLE = "Your order is confirmed 🎉"
     PAID_PUSH_BODY = "Order #{oid} is confirmed. We're getting it ready for you."
 
@@ -74,6 +72,14 @@ def _safe_oid(order: dict[str, Any]) -> str:
     return str(order.get("order_number") or order.get("id") or "UNKNOWN")[:14].upper()
 
 
+def _safe_email(email: str) -> str:
+    value = str(email or "").strip()
+    if "@" not in value:
+        return "[invalid]"
+    local, domain = value.split("@", 1)
+    return f"{local[:2]}***@{domain}"
+
+
 async def handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
     oid = _safe_oid(event.order or {})
     amt = (event.order or {}).get("total_amount", 0)
@@ -88,12 +94,15 @@ async def handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
 async def handle_paid_email(event: OrderPaidEvent) -> None:
     if not event.customer_email or not event.order:
         return
-    logger.info("[HOOK:EMAIL] Triggering Payment Success Email for %s", event.customer_email)
+
+    oid = _safe_oid(event.order)
+    email = _safe_email(event.customer_email)
     email_provider = get_email_provider("resend")
     try:
         await email_provider.send_payment_success(event.customer_email, event.order)
+        logger.info("[EMAIL] payment_success sent | order=%s recipient=%s", oid, email)
     except Exception:
-        logger.error("[HOOK:EMAIL] Failed to send payment email", exc_info=True)
+        logger.exception("[EMAIL] payment_success failed | order=%s recipient=%s", oid, email)
         raise
 
 
@@ -133,7 +142,7 @@ async def handle_failed_push(event: OrderFailedEvent) -> None:
         body = "Something went wrong while processing your payment. Your items are still safe in your cart."
         icon = _Icon.FAILED
 
-    logger.info("[HOOK:PUSH] Sending customer payment notification to %s: %s", uid, title)
+    logger.info("[PUSH] customer payment notification | user=%s type=%s", uid, event.reason)
     await send_push_to_user(uid, title=title, body=body, icon=icon, url=_Copy.URL_CART)
 
 
