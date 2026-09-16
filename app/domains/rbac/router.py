@@ -7,13 +7,13 @@ import logging
 
 from fastapi import APIRouter, Depends, status
 
+from app.constants.rbac_messages import RbacMessages
 from app.core.dependencies import get_user_id_strict, require_permission
 from app.domains.rbac.policy import RbacPolicy
 from app.domains.rbac.schemas import RolePermissionToggle, UserActionControlUpdate
 from app.domains.rbac.service import RolePermissionService, UserActionControlService
 from app.permissions.admin import AdminPermissions
 from app.utils.response import success_response
-from app.constants.rbac_messages import RbacMessages
 
 logger = logging.getLogger(__name__)
 
@@ -112,9 +112,7 @@ async def get_user_control(user_id: str, action: str):
         data={
             "user_id": user_id,
             "action": action,
-            "note": _action_svc.action_catalogue()[next(
-                i for i, item in enumerate(_action_svc.action_catalogue()) if item["action"] == action
-            )]["note"],
+            "note": _action_svc.action_note(action),
             "control": result,
             "enabled": True if result is None else bool(result.get("enabled", True)),
         },
@@ -140,13 +138,13 @@ async def remove_user_control(user_id: str, action: str):
 async def check_user_action(user_id: str, action: str):
     from app.permissions.action_control import is_action_enabled
 
+    enabled = await is_action_enabled(user_id, action) if action in _action_svc.action_note.__func__.__globals__["USER_ACTION_NOTES"] else False
     _action_svc.validate_action(action)
-    enabled = await is_action_enabled(user_id, action)
     return success_response(
         data={
             "user_id": user_id,
             "action": action,
-            "note": next(item["note"] for item in _action_svc.action_catalogue() if item["action"] == action),
+            "note": _action_svc.action_note(action),
             "enabled": enabled,
         }
     )
