@@ -67,7 +67,7 @@ def register_all_event_handlers() -> None:
     """Idempotent — safe for hot-reload and tests. Call once in main.py."""
     global _registered
     if _registered:
-        logger.debug("Event handlers already registered — skipping")
+        logger.debug("Event handlers already registered | action=skip")
         return
 
     bus = get_event_bus()
@@ -85,4 +85,4 @@ def register_all_event_handlers() -> None:
 
     _install_durable_publish_adapter(bus)
     _registered = True
-    logger.info("✅ All Application Event Handlers registered with durable outbox routing.")
+    logger.info("Event handlers registered | durable_outbox=true")
