@@ -4,6 +4,7 @@ Inventory Schemas
 Pydantic models for inventory DTOs.
 """
 from typing import Any, List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -60,8 +61,8 @@ class InventoryOperationRequest(BaseModel):
     product_id: str
     quantity: int = Field(gt=0, le=1000000)
     reason: str = Field(..., min_length=3, max_length=500)
-    reference_id: Optional[str] = None
-    order_id: Optional[str] = None
+    reference_id: Optional[UUID] = None
+    order_id: Optional[UUID] = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
