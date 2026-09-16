@@ -40,19 +40,19 @@
 **Fix:** profile cache TTL reduced to 60 seconds and explicit invalidation added after administrative user mutations. Sensitive authorization still uses server-side profile state.
 
 ### D-008 — Process-local global rate limit / proxy IP ambiguity
-**Status:** partially fixed; distributed storage remains open.
-**Fixed:** forwarded client-IP headers are no longer trusted from arbitrary peers. `TRUSTED_PROXY_IPS` now explicitly defines trusted proxy IPs/CIDRs; invalid entries never grant trust, and the direct peer is the fallback identity.
-**Verification:** targeted tests now cover untrusted spoofing, trusted Cloudflare IPs, invalid forwarded values, CIDR configuration, invalid proxy configuration, and forwarded-chain parsing.
-**Remaining:** SlowAPI storage is still process-local. For true cross-worker/global throttling, move the limiter store to shared Redis/edge/DB-backed storage.
+**Status:** fixed for the global API ceiling; endpoint-specific SlowAPI limits remain process-local.
+**Fixed:** forwarded client-IP headers are no longer trusted from arbitrary peers. `TRUSTED_PROXY_IPS` explicitly defines trusted proxy IPs/CIDRs; invalid entries never grant trust, and the direct peer is the fallback identity.
+**Distributed enforcement:** `/api/v1` HTTP traffic is additionally protected by a service-role-only Postgres-backed global rate-limit RPC, so the global ceiling is shared across Koyeb workers rather than maintained independently in each Python process. SlowAPI remains available for endpoint-specific limits and is intentionally separate from the shared global ceiling.
+**Verification:** targeted tests cover untrusted spoofing, trusted Cloudflare IPs, invalid forwarded values, CIDR configuration, invalid proxy configuration, and forwarded-chain parsing. The shared database gate was live-verified for allowed/blocked behavior and client-role execution denial.
 
 ### D-009 — Stripe intent may exist without a persisted pending order
 **Status:** mitigated with durable compensation + reconciliation.
 **Fixed:** a service-role-only durable checkout attempt is created before provider creation and tracks provider/order lifecycle. Provider creation failures close the attempt. Atomic order-persistence failures trigger provider cancellation; cancellation failures become `orphan_risk`.
-**Reconciliation:** a 15-minute sweep checks expired durable attempts; cancelled/nonexistent provider objects are closed, cancellable provider objects are cancelled, and succeeded provider objects without a Luviio order are refunded and marked completed when refund succeeds.
+**Reconciliation:** a 15-minute sweep checks expired durable attempts; cancelled/nonexistent provider objects are closed, cancellable provider objects are cancelled, and succeeded provider objects without a Luviio order are refunded and marked completed when refund succeeds. Provider/order correlation uses persisted payment identifiers, with idempotency retained for retry safety.
 
 ### D-010 — CI static/type gate
 **Status:** fixed and verified on current main.
-**Fix:** restored the complete invoice renderer and declared the module-level `ST` style registry type. Fresh CI runs on commits `0e3913c7` and `9c674a80` passed.
+**Fix:** restored the complete invoice renderer and declared the module-level `ST` style registry type. Fresh CI runs on commits `0e3913c7` and `9c674a80` passed. CI run #642 on commit `53bca3b9` also passed compile, Ruff, Mypy, dependency audit, and the complete test-with-coverage job.
 
 ## P2 / operations
 
