@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -104,13 +104,31 @@ def _normalize_details(payload: dict[str, Any]) -> dict[str, Any]:
 async def _ola_get(path: str, params: dict[str, Any]) -> dict[str, Any]:
     if not settings.OLA_MAPS_API_KEY:
         raise RuntimeError("Ola Maps API is not configured on the server")
+
     query = {**params, "api_key": settings.OLA_MAPS_API_KEY}
     url = f"{OLA_BASE_URL}{path}?{urlencode(query)}"
     async with httpx.AsyncClient(timeout=httpx.Timeout(6.0, connect=3.0)) as client:
         response = await client.get(url)
+
+    if response.status_code == 403:
+        logger.error("Ola Maps authentication rejected | endpoint=%s status=403", path)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Location provider authentication is unavailable",
+        )
     if response.status_code == 429:
-        raise RuntimeError("Ola Maps rate limit reached")
-    response.raise_for_status()
+        logger.warning("Ola Maps rate limit reached | endpoint=%s", path)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Location provider rate limit reached",
+        )
+    if response.is_error:
+        logger.error("Ola Maps request failed | endpoint=%s status=%s", path, response.status_code)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Location provider is temporarily unavailable",
+        )
+
     payload = response.json()
     return payload if isinstance(payload, dict) else {"data": payload}
 
@@ -130,9 +148,14 @@ async def autocomplete(
         payload = await _ola_get("/places/v1/autocomplete", {"input": query, "language": language})
         items = [_normalize_suggestion(item) for item in _extract_items(payload)]
         return success_response(data={"items": items[:8]}, message="Location suggestions")
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.warning("Ola Maps autocomplete failed: %s", exc)
-        raise RuntimeError("Location search is temporarily unavailable") from exc
+        logger.exception("Ola Maps autocomplete integration failed | type=%s", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Location search is temporarily unavailable",
+        ) from exc
 
 
 @router.get("/details", status_code=status.HTTP_200_OK)
@@ -146,6 +169,11 @@ async def details(
     try:
         payload = await _ola_get("/places/v1/details", {"place_id": place_id.strip(), "language": language})
         return success_response(data=_normalize_details(payload), message="Location details")
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.warning("Ola Maps place details failed: %s", exc)
-        raise RuntimeError("Location details are temporarily unavailable") from exc
+        logger.exception("Ola Maps place-details integration failed | type=%s", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Location details are temporarily unavailable",
+        ) from exc
