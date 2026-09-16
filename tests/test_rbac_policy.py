@@ -46,3 +46,31 @@ def test_admin_cannot_change_super_admin_role():
             UserRole.ADMIN,
         )
     assert exc.value.status_code == 403
+
+
+def test_self_demotion_is_blocked():
+    with pytest.raises(HTTPException) as exc:
+        UserPolicy.assert_admin_not_downgrading_self(
+            "admin-1",
+            "admin-1",
+            {"role": UserRole.MANAGER.value},
+        )
+    assert exc.value.status_code == 403
+
+
+def test_self_deactivation_is_blocked():
+    with pytest.raises(HTTPException) as exc:
+        UserPolicy.assert_admin_not_downgrading_self(
+            "admin-1",
+            "admin-1",
+            {"is_active": False},
+        )
+    assert exc.value.status_code == 403
+
+
+def test_self_update_without_demotion_is_allowed():
+    UserPolicy.assert_admin_not_downgrading_self(
+        "admin-1",
+        "admin-1",
+        {"role": UserRole.ADMIN.value, "is_active": True},
+    )
