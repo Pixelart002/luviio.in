@@ -40,16 +40,17 @@
 **Fix:** profile cache TTL reduced to 60 seconds and explicit invalidation added after administrative user mutations. Sensitive authorization still uses server-side profile state.
 
 ### D-008 — Process-local global rate limit / proxy IP ambiguity
-**Status:** open.
-**Required fix:** trusted proxy IP extraction + shared rate-limit storage (edge/Redis/shared DB) for global HTTP throttling.
+**Status:** partially fixed; distributed storage remains open.
+**Fixed:** forwarded client-IP headers are no longer trusted from arbitrary peers. `TRUSTED_PROXY_IPS` now explicitly defines trusted proxy IPs/CIDRs; invalid entries never grant trust, and the direct peer is the fallback identity.
+**Remaining:** SlowAPI storage is still process-local. For true cross-worker/global throttling, move the limiter store to shared Redis/edge/DB-backed storage.
 
 ### D-009 — Stripe intent may exist without a persisted pending order
 **Status:** open.
 **Required fix:** durable checkout-attempt record before provider creation where feasible, plus cancellation/compensation and reconciliation for an orphan provider intent.
 
 ### D-010 — CI static/type gate
-**Status:** in progress; current main had a stale invoice renderer typing regression and CI failed at Mypy before tests.
-**Fix applied:** restored the complete invoice renderer and declared the module-level `ST` style registry type. A fresh CI run is required before marking green.
+**Status:** fixed and verified on current main.
+**Fix:** restored the complete invoice renderer and declared the module-level `ST` style registry type. Fresh CI runs on commits `0e3913c7` and `9c674a80` passed.
 
 ## P2 / operations
 
