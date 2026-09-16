@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 ORDER_ITEMS_SELECT = "*, order_items(*, products(name, image_url, slug, price, hsn_code, gst_percentage, compare_price))"
 USER_ORDER_SELECT = "id, order_number, status, total_amount, created_at"
+INVOICE_SELECT = "id, order_id, invoice_number, status, issued_at, currency, tax_type, seller_snapshot, billing_snapshot, shipping_snapshot, totals_snapshot, pdf_storage_path, qr_payload, invoice_items(*)"
 
 
 class AsyncOrderRepository:
@@ -34,6 +35,22 @@ class AsyncOrderRepository:
             return res.data if res else None
         except Exception as e:
             logger.error(f"[REPO:ORDERS] Failed to resolve order reference: {e}", exc_info=True)
+            return None
+
+    async def get_invoice_snapshot(self, order_id: str) -> Optional[dict[str, Any]]:
+        """Return the immutable issued invoice snapshot and its frozen line items."""
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await (
+                admin_sb.table("invoices")
+                .select(INVOICE_SELECT)
+                .eq("order_id", order_id)
+                .maybe_single()
+                .execute()
+            )
+            return res.data if res and res.data else None
+        except Exception as e:
+            logger.error(f"[REPO:INVOICES] Failed loading invoice snapshot for order {order_id}: {e}", exc_info=True)
             return None
 
     async def update_order_status_safe(self, order_id: str, updates: dict, expected_status: str) -> Optional[dict[str, Any]]:
