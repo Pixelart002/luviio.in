@@ -45,7 +45,7 @@ def test_rejects_missing_pricing_configuration():
     assert exc.value.status_code == 503
 
 
-def test_zero_price_is_not_treated_as_missing():
+def test_zero_price_is_not_treated_as_missing(pricing):
     result = pricing.calculate(
         [{"quantity": 1, "price_snapshot": 0, "products": {"gst_percentage": 0}}]
     )
