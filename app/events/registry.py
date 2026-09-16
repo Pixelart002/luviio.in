@@ -34,12 +34,18 @@ _registered: bool = False
 
 
 def _install_durable_publish_adapter(bus) -> None:
-    """Keep legacy synchronous publisher call sites while persisting events first."""
+    """Route transaction-backed events to the DB outbox without duplicate dispatch."""
     if getattr(bus, "_durable_publish_adapter_installed", False):
         return
 
+    legacy_publish = bus.publish
+
     async def _run_durable(event) -> None:
         try:
+            if isinstance(event, OrderFailedEvent):
+                # Some gateway failures have no persisted DB mutation to trigger from.
+                legacy_publish(event)
+                return
             await bus.publish_durable(event)
         except Exception:
             logger.exception("Durable event publish failed | type=%s", type(event).__name__)
