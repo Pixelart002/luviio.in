@@ -1,7 +1,6 @@
 -- Prevent duplicate transactional order events from causing duplicate customer/admin side effects.
 -- Keep the first event for each naturally-once order transition.
 
--- Clean duplicates already present in the outbox before adding uniqueness.
 with ranked as (
     select
         id,
@@ -24,7 +23,6 @@ from ranked r
 where e.id = r.id
   and r.rn > 1;
 
--- Naturally-once transitions must have at most one outbox record per order.
 create unique index if not exists uq_event_outbox_order_created
     on public.event_outbox (event_type, ((payload->'order'->>'id')))
     where event_type = 'OrderCreatedEvent'
@@ -40,8 +38,6 @@ create unique index if not exists uq_event_outbox_order_shipped
     where event_type = 'OrderShippedEvent'
       and payload->'order'->>'id' is not null;
 
--- Make future trigger writes conflict-safe. The unique indexes above provide
--- the database-level idempotency boundary; application retries remain safe.
 create or replace function public.enqueue_transactional_order_event()
 returns trigger
 language plpgsql
@@ -64,7 +60,7 @@ begin
     );
     insert into public.event_outbox(id,event_type,payload,status,attempts,next_retry_at)
     values(gen_random_uuid(),v_event_type,v_payload,'pending',0,now())
-    on conflict (event_type, ((payload->'order'->>'id'))) do nothing;
+    on conflict do nothing;
     return new;
   end if;
 
@@ -86,14 +82,13 @@ begin
 
     insert into public.event_outbox(id,event_type,payload,status,attempts,next_retry_at)
     values(gen_random_uuid(),v_event_type,v_payload,'pending',0,now())
-    on conflict (event_type, ((payload->'order'->>'id'))) do nothing;
+    on conflict do nothing;
   end if;
 
   return new;
 end;
 $$;
 
--- Keep the trigger definition aligned with the idempotent function above.
 drop trigger if exists trg_transactional_order_event_outbox on public.orders;
 create trigger trg_transactional_order_event_outbox
 after insert or update of status on public.orders
