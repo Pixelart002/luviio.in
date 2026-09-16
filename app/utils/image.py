@@ -13,7 +13,11 @@ from PIL import Image, UnidentifiedImageError
 # 🔥 ARCHITECTURE CHANGE: Corrected Import
 from app.core.supabase import get_admin_supabase
 
-Image.MAX_IMAGE_PIXELS = 10_000_000
+# Product uploads may be high-resolution, but Pillow must still retain a
+# decompression-bomb guard. 25 MP is large enough for normal phone/camera
+# product photos while keeping an explicit upper bound on decoded pixels.
+MAX_SOURCE_PIXELS = 25_000_000
+Image.MAX_IMAGE_PIXELS = MAX_SOURCE_PIXELS
 logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -38,6 +42,14 @@ def _validate_image(file_bytes: bytes, filename: str = "unknown") -> None:
 def _process_image(file_bytes: bytes, size: tuple[int, int] = THUMB_SIZE, quality: int = WEBP_QUALITY) -> bytes:
     try:
         img = Image.open(io.BytesIO(file_bytes))
+
+        # Reject genuinely excessive decoded images before any expensive
+        # colour conversion/resizing. Normal high-resolution uploads are
+        # accepted and then reduced to the storage dimensions below.
+        source_pixels = img.width * img.height
+        if source_pixels > MAX_SOURCE_PIXELS:
+            raise ValueError("Image dimensions too large")
+
         if img.mode in ("RGBA", "P", "LA"):
             background = Image.new("RGB", img.size, (255, 255, 255))
             if img.mode == "P": img = img.convert("RGBA")
@@ -46,16 +58,16 @@ def _process_image(file_bytes: bytes, size: tuple[int, int] = THUMB_SIZE, qualit
             img = background
         elif img.mode != "RGB":
             img = img.convert("RGB")
-        
-        if img.width * img.height > Image.MAX_IMAGE_PIXELS: raise ValueError("Image dimensions too large")
+
         img.thumbnail(size, _LANCZOS)
-        
+
         buffer = io.BytesIO()
         img.save(buffer, format="WEBP", quality=quality, optimize=True)
         return buffer.getvalue()
     except UnidentifiedImageError:
         raise ValueError("Invalid image file format. Please upload JPEG, PNG, or WebP.")
-    except ValueError: raise
+    except ValueError:
+        raise
     except Exception as exc:
         raise ValueError(f"Could not process image: {str(exc)[:100]}")
 
@@ -83,7 +95,7 @@ def upload_product_image(file_bytes: bytes, product_id: str, *, filename: str = 
     unique_id = uuid.uuid4().hex[:12]
     main_path = f"products/{product_id}/{unique_id}.webp"
     url = _upload_to_storage(optimized, main_path)
-    
+
     if generate_thumbnail:
         try:
             thumbnail = _process_image(file_bytes, size=SMALL_SIZE, quality=WEBP_QUALITY_SMALL)
@@ -99,7 +111,7 @@ def upload_multiple_images(files: list[tuple[bytes, str]], product_id: str, *, m
     for i, (file_bytes, filename) in enumerate(files):
         try: urls.append(upload_product_image(file_bytes, product_id, filename=filename))
         except Exception as exc: errors.append(f"Image {i+1} ('{filename}'): {exc}")
-    
+
     if errors:
         for url in urls:
             try:
