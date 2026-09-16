@@ -165,7 +165,8 @@ def _address_rows(snapshot: dict[str, Any], fallback_name: str = "") -> list[lis
 def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str, Any], seller_snapshot: dict[str, Any], billing_snapshot: dict[str, Any], shipping_snapshot: dict[str, Any]) -> bytes:
     global ST
     ST = _styles()
-    seller, billing, shipping, order = seller_snapshot or {}, billing_snapshot or {}, shipping_snapshot or {}, invoice_order or {}
+    seller, billing, shipping, order = seller_snapshot or {}, billing_snapshot or {}, shipping_snapshot or {}
+    order = invoice_order or {}
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=MARGIN, bottomMargin=MARGIN, title=f"Luviio Invoice #{_s(order.get('invoice_number'))}")
     story: list[Any] = []
@@ -185,10 +186,14 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
     seller_rows = [[Paragraph("Sold By:", ST["label"])], [Paragraph(seller_name, ST["body_b"])]]
     for key in ("address_1", "address_2", "city", "district", "state", "pincode", "country"):
         value = _s(seller.get(key))
-        if value: seller_rows.append([Paragraph(value, ST["body"])])
-    if _s(seller.get("email")): seller_rows += [[Spacer(1,2)], [Paragraph(_s(seller.get("email")), ST["small"])]]
-    if _s(seller.get("pan")): seller_rows.append([Paragraph(f"<b>PAN:</b> {_s(seller.get('pan'))}", ST["body"])])
-    if _s(seller.get("gstin")): seller_rows.append([Paragraph(f"<b>GSTIN:</b> {_s(seller.get('gstin'))}", ST["body"])])
+        if value:
+            seller_rows.append([Paragraph(value, ST["body"])])
+    if _s(seller.get("email")):
+        seller_rows += [[Spacer(1,2)], [Paragraph(_s(seller.get("email")), ST["small"])]]
+    if _s(seller.get("pan")):
+        seller_rows.append([Paragraph(f"<b>PAN:</b> {_s(seller.get('pan'))}", ST["body"])])
+    if _s(seller.get("gstin")):
+        seller_rows.append([Paragraph(f"<b>GSTIN:</b> {_s(seller.get('gstin'))}", ST["body"])])
 
     billing_rows = [[Paragraph("Billed To:", ST["label"])]] + _address_rows(billing, _s(customer.get("full_name"), "Valued Customer"))
     shipping_rows = [[Paragraph("Shipped To:", ST["label"])]] + _address_rows(shipping, _s(customer.get("full_name"), "Valued Customer"))
@@ -212,7 +217,7 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
     story += [meta, Spacer(1,10)]
 
     widths = [18,134,36,50,22,44,54,26,44,52,75]
-    rows = [[Paragraph("Sl.",ST["head"]),Paragraph("Description",ST["head_l"]),Paragraph("HSN",ST["head"]),Paragraph("Unit Price",ST["head_r"]),Paragraph("Qty",ST["head"]),Paragraph("Discount",ST["head_r"]),Paragraph("Net Amount",ST["head_r"]),Paragraph("GST %",ST["head"]),Paragraph("Tax Type",ST["head"]),Paragraph("Tax Amt",ST["head_r"]),Paragraph("Total",ST["head_r"])]]
+    rows = [[Paragraph("Sl.",ST["head"]),Paragraph("Description",ST["head_l"]),Paragraph("HSN",ST["head"]),Paragraph("Unit Price",ST["head_r"]),Paragraph("Qty",ST["head"]),Paragraph("Discount",ST["head_r"]),Paragraph("Net Amount",ST["head_r"]),Paragraph("GST %",ST["head"]),Paragraph("Tax Type",ST["head"]),Paragraph("Tax Amt",ST["head_r"]),Paragraph("Total",ST["head_r"])] ]
     items = order.get("order_items") or []
     run_tax = 0.0
     run_net = 0.0
@@ -250,13 +255,14 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
     signature = _asset_image(seller.get("signature_url"), 145, 52)
     sign_rows: list[list[Any]] = [[summary],[Spacer(1,8)],[Paragraph(f"<b>For {seller_name}:</b>",ST["sign"])],[Spacer(1,5)]]
     if signature:
-        sign_rows.append([signature]); sign_rows.append([Spacer(1,3)])
+        sign_rows.append([signature])
+        sign_rows.append([Spacer(1,3)])
     else:
         sign_rows.append([Spacer(1,35)])
     if sign_name: sign_rows.append([Paragraph(f"<b>{sign_name}</b>",ST["sign"])])
     if sign_designation: sign_rows.append([Paragraph(sign_designation,ST["sign"])])
     sign_rows.append([Paragraph("Authorised Signatory",ST["sign"])])
-    left = [[Paragraph("Amount in Words:",ST["label"])],[Spacer(1,3)],[Paragraph(_amount_words(grand),ST["words"])]]
+    left = [[Paragraph("Amount in Words:",ST["label"])],[Spacer(1,3)],[Paragraph(_amount_words(grand),ST["words"])]
     bottom = Table([[Table(left,colWidths=[288]),Table(sign_rows,colWidths=[234])]],colWidths=[304,250])
     bottom.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.5,BORDER),("LINEBEFORE",(1,0),(1,0),.5,BORDER),("TOPPADDING",(0,0),(-1,-1),8),("BOTTOMPADDING",(0,0),(-1,-1),8),("LEFTPADDING",(0,0),(-1,-1),8),("RIGHTPADDING",(0,0),(-1,-1),8),("VALIGN",(0,0),(-1,-1),"TOP")]))
     story += [KeepTogether(bottom), Spacer(1,8), HRFlowable(width="100%", thickness=.4, color=BORDER, spaceAfter=4)]
