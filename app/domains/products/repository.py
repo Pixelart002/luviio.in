@@ -56,13 +56,16 @@ class AsyncProductRepository:
 
     async def get_products(self, page: int, page_size: int, category_slug: Optional[str], search: Optional[str], min_price: Optional[float], max_price: Optional[float], in_stock: Optional[bool]) -> Tuple[List[Dict[str, Any]], int]:
         admin_sb = await get_async_admin_supabase()
-        q = admin_sb.table("products").select("id, name, slug, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, attributes, is_active, created_at, hsn_code, gst_percentage, seo_title, seo_description, seo_keywords, canonical_url, discount_amount, discount_percentage, categories(name, slug), product_images(id, url, alt, position)", count="exact").eq("is_active", True)
+        # Listing cards only need these fields. Keep detail-only tax/SEO/image
+        # relations out of the hot catalogue query to reduce DB work and payload.
+        q = admin_sb.table("products").select(
+            "id, name, slug, short_description, price, compare_price, stock, image_url, is_active, created_at, categories(name, slug)",
+            count="exact",
+        ).eq("is_active", True)
         if category_slug:
-            cat = await admin_sb.table("categories").select("id").eq("slug", category_slug).limit(1).execute()
-            if cat and getattr(cat, "data", None):
-                q = q.eq("category_id", cat.data[0]["id"])
-            else:
-                return [], 0
+            # Filter through the embedded category relation instead of doing a
+            # separate category-id lookup round trip.
+            q = q.eq("categories.slug", category_slug)
         if search:
             q = q.ilike("name", f"%{search}%")
         if min_price is not None:
