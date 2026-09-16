@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 ORDER_ITEMS_SELECT = "*, order_items(*, products(name, image_url, slug, price, hsn_code, gst_percentage, compare_price))"
 USER_ORDER_SELECT = "id, order_number, status, total_amount, created_at"
-INVOICE_SELECT = "id, order_id, invoice_number, status, issued_at, currency, tax_type, seller_snapshot, billing_snapshot, shipping_snapshot, totals_snapshot, pdf_storage_path, qr_payload, invoice_items(*)"
+INVOICE_SELECT = "id, order_id, invoice_number, status, issued_at, currency, tax_type, seller_snapshot, billing_snapshot, shipping_snapshot, totals_snapshot, place_of_supply_state_code, reverse_charge, pdf_storage_path, qr_payload, invoice_items(*)"
 
 
 class AsyncOrderRepository:
@@ -51,6 +51,15 @@ class AsyncOrderRepository:
             if not res or not res.data:
                 return None
             invoice = res.data
+
+            # Feed the immutable invoice POS code into the shipping snapshot so
+            # the renderer never has to infer tax context from mutable order data.
+            pos_code = _s(invoice.get("place_of_supply_state_code"))
+            shipping_snapshot = invoice.get("shipping_snapshot") or {}
+            if pos_code:
+                shipping_snapshot["state_code"] = pos_code
+                invoice["shipping_snapshot"] = shipping_snapshot
+
             invoice_items = invoice.get("invoice_items") or []
             if invoice_items:
                 legacy_lines = [
