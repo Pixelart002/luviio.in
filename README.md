@@ -135,3 +135,5 @@ More guides: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), [`docs/API.md`](docs/AP
 ## License and ownership
 
 Internal Luviio.in project. Changes should be small, reviewable, tested, and documented.
+
+<!-- Koyeb redeploy trigger: 2026-09-16 -->
