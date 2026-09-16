@@ -105,7 +105,7 @@ class ShippingService:
     ) -> Dict[str, Any]:
         if not math.isfinite(float(subtotal)) or float(subtotal) < 0:
             raise HTTPException(status_code=422, detail="Invalid cart subtotal.")
-        if item_count < 0 or not math.isfinite(float(weight_kg)) or float(weight_kg) < 0:
+        if item_count < 1 or not math.isfinite(float(weight_kg)) or float(weight_kg) < 0:
             raise HTTPException(status_code=422, detail="Invalid shipping quantity or weight.")
 
         settings = SettingsCoreEngine()
