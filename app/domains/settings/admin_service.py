@@ -16,6 +16,10 @@ class AdminSettingsService:
     ) -> List[Dict[str, Any]]:
         return await self.engine.fetch_all(category=category, force_refresh=force_refresh)
 
+    async def get_setting(self, key: str) -> Dict[str, Any]:
+        """Return one setting for workflows that need its current value."""
+        return await self.engine.fetch_by_key(key)
+
     async def update_core_setting(
         self, key: str, new_value: Any, admin_id: str, role: str, reason: str
     ) -> Dict[str, Any]:
