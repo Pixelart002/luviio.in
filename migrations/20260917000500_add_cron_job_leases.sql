@@ -1,9 +1,5 @@
 begin;
 
--- Cross-worker lease table. API runs with 4 workers, so APScheduler exists in
--- each process. A database lease makes each registered job single-run across
--- all workers/instances while still allowing another worker to take over if
--- the current worker dies.
 create table if not exists private.cron_job_leases (
   job_name text primary key,
   lease_token uuid not null,
@@ -61,12 +57,12 @@ security definer
 set search_path = private, pg_catalog, public
 as $$
 declare
-  v_deleted boolean;
+  v_count integer;
 begin
   delete from private.cron_job_leases
   where job_name = p_job_name and lease_token = p_lease_token;
-  get diagnostics v_deleted = row_count > 0;
-  return v_deleted;
+  get diagnostics v_count = row_count;
+  return v_count > 0;
 end;
 $$;
 
