@@ -55,3 +55,24 @@ def test_trusted_proxy_supports_cidr(monkeypatch):
     )
 
     assert rate_limit._get_client_ip(request) == "203.0.113.60"
+
+
+def test_invalid_proxy_configuration_never_trusts_peer(monkeypatch):
+    _set_trusted_proxy_ips(monkeypatch, "not-a-network")
+    request = FakeRequest(
+        host="10.0.0.25",
+        headers={"X-Forwarded-For": "203.0.113.61"},
+    )
+
+    assert not rate_limit._peer_is_trusted(request)
+    assert rate_limit._get_client_ip(request) == "10.0.0.25"
+
+
+def test_trusted_forwarded_chain_uses_leftmost_address(monkeypatch):
+    _set_trusted_proxy_ips(monkeypatch, "10.0.0.25")
+    request = FakeRequest(
+        host="10.0.0.25",
+        headers={"X-Forwarded-For": "203.0.113.61, 10.0.0.24"},
+    )
+
+    assert rate_limit._get_client_ip(request) == "203.0.113.61"
