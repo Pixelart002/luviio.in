@@ -29,7 +29,6 @@ begin
   if p_job_name is null or btrim(p_job_name) = '' then
     raise exception 'CRON_JOB_NAME_REQUIRED';
   end if;
-
   if p_lease_seconds < 30 or p_lease_seconds > 86400 then
     raise exception 'CRON_LEASE_SECONDS_OUT_OF_RANGE';
   end if;
@@ -43,14 +42,11 @@ begin
     where private.cron_job_leases.expires_at <= now();
 
   if exists (
-    select 1
-    from private.cron_job_leases
-    where job_name = p_job_name
-      and lease_token = v_token
+    select 1 from private.cron_job_leases
+    where job_name = p_job_name and lease_token = v_token
   ) then
     return v_token;
   end if;
-
   return null;
 end;
 $$;
@@ -60,14 +56,18 @@ create or replace function private.release_cron_job_lease(
   p_lease_token uuid
 )
 returns boolean
-language sql
+language plpgsql
 security definer
 set search_path = private, pg_catalog, public
 as $$
+declare
+  v_deleted boolean;
+begin
   delete from private.cron_job_leases
-  where job_name = p_job_name
-    and lease_token = p_lease_token
-  returning true;
+  where job_name = p_job_name and lease_token = p_lease_token;
+  get diagnostics v_deleted = row_count > 0;
+  return v_deleted;
+end;
 $$;
 
 create or replace function public.acquire_cron_job_lease(
@@ -78,9 +78,7 @@ returns uuid
 language sql
 security definer
 set search_path = pg_catalog, private, public
-as $$
-  select private.acquire_cron_job_lease(p_job_name, p_lease_seconds);
-$$;
+as $$ select private.acquire_cron_job_lease(p_job_name, p_lease_seconds); $$;
 
 create or replace function public.release_cron_job_lease(
   p_job_name text,
@@ -90,9 +88,7 @@ returns boolean
 language sql
 security definer
 set search_path = pg_catalog, private, public
-as $$
-  select private.release_cron_job_lease(p_job_name, p_lease_token);
-$$;
+as $$ select private.release_cron_job_lease(p_job_name, p_lease_token); $$;
 
 revoke all on function public.acquire_cron_job_lease(text, integer) from public, anon, authenticated;
 revoke all on function public.release_cron_job_lease(text, uuid) from public, anon, authenticated;
