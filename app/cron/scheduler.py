@@ -3,6 +3,7 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # Import task modules so their decorators populate CRON_JOBS.
+import app.cron.tasks.coupon_tasks  # noqa: F401,E402
 import app.cron.tasks.event_tasks  # noqa: F401,E402
 import app.cron.tasks.order_tasks  # noqa: F401,E402
 from app.cron.registry import CRON_JOBS
