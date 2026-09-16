@@ -16,7 +16,7 @@ from app.domains.users.repository import AsyncUserRepository
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderShippedEvent, OrderStatusChangedEvent, get_event_bus
 from app.permissions.policies.order_policies import OrderPolicy
-from app.utils.documents.pdf_invoice import build_invoice_pdf
+from app.utils.documents.snapshot_invoice_pdf import build_snapshot_invoice_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -205,12 +205,21 @@ class OrderService:
             invoice_order["tax_type"] = invoice.get("tax_type")
             totals = invoice.get("totals_snapshot") or {}
             invoice_order.update(totals)
-            invoice_order["billing_snapshot"] = invoice.get("billing_snapshot") or {}
-            invoice_order["shipping_snapshot"] = invoice.get("shipping_snapshot") or {}
+            billing_snapshot = invoice.get("billing_snapshot") or {}
+            shipping_snapshot = invoice.get("shipping_snapshot") or {}
+            invoice_order["billing_snapshot"] = billing_snapshot
+            invoice_order["shipping_snapshot"] = shipping_snapshot
             invoice_order["seller_snapshot"] = seller_snapshot
             invoice_order["qr_payload"] = invoice.get("qr_payload")
             invoice_order["order_items"] = invoice.get("invoice_items") or []
-            pdf_bytes = await run_in_threadpool(build_invoice_pdf, invoice_order, customer)
+            pdf_bytes = await run_in_threadpool(
+                build_snapshot_invoice_pdf,
+                invoice_order,
+                customer,
+                seller_snapshot,
+                billing_snapshot,
+                shipping_snapshot,
+            )
             return pdf_bytes, invoice_order["invoice_number"]
         except HTTPException:
             raise
