@@ -1,9 +1,7 @@
 """
-Order Event Handlers (Hooks)
-============================
-Path: app/events/handlers/order_handlers.py
-
-Contains all application reactions to order-related events.
+Order Event Handlers
+====================
+Customer-facing and admin reactions to order-related events.
 """
 import logging
 import os
@@ -40,35 +38,48 @@ class _Copy:
     URL_ORDERS = "/orders.html"
     URL_CART = "/cart.html"
     URL_ADMIN = "/admin.html"
-    ADMIN_ORDER_TITLE = "New Order #{oid}"
-    ADMIN_ORDER_BODY = "₹{amt} — needs processing"
-    PAID_PUSH_TITLE = "Payment Confirmed ✓"
-    PAID_PUSH_BODY = "Order #{oid} confirmed. We're preparing it now."
-    FAILED_PUSH_TITLE = "Payment Failed — Order #{oid}"
-    FAILED_PUSH_BODY = "Your payment could not be processed. Please try again."
-    CANCEL_PUSH_TITLE = "Order #{oid} Cancelled"
-    CANCEL_PUSH_BODY = "Your order was successfully cancelled."
-    SHIPPED_PUSH_TITLE = "Order #{oid} Shipped!"
-    SHIPPED_PUSH_BODY = "Your order is on the way."
+
+    # Admin notifications
+    ADMIN_ORDER_TITLE = "New order received"
+    ADMIN_ORDER_BODY = "₹{amt} order #{oid} is ready for processing."
+
+    # Customer notifications
+    PAID_PUSH_TITLE = "Your order is confirmed 🎉"
+    PAID_PUSH_BODY = "Order #{oid} is confirmed. We're getting it ready for you."
+
+    FAILED_PUSH_TITLE = "Payment needs another try"
+    FAILED_PUSH_BODY = "We couldn't complete your payment. Your items are safe — you can try again anytime."
+
+    CANCEL_PUSH_TITLE = "Your order was cancelled"
+    CANCEL_PUSH_BODY = "Your order has been cancelled successfully. Your items are back in your cart."
+
+    PAYMENT_CANCELLED_TITLE = "Payment cancelled"
+    PAYMENT_CANCELLED_BODY = "No worries — your payment was cancelled. Your items are safely saved in your cart."
+
+    SHIPPED_PUSH_TITLE = "Your order is on the way 🚚"
+    SHIPPED_PUSH_BODY = "Great news! Your order #{oid} has been shipped and is on its way to you."
     SHIPPED_TRACKING = " Tracking: {tracking}"
-    DELIVERED_TITLE = "Order #{oid} Delivered!"
-    DELIVERED_BODY = "Your order has arrived. Enjoy!"
-    REFUNDED_TITLE = "Refund Initiated — Order #{oid}"
-    REFUNDED_BODY = "Your refund has been processed."
-    LOW_STOCK_TITLE = "Low Stock — {name}"
-    LOW_STOCK_BODY = "Only {stock} left (threshold: {threshold})"
+
+    DELIVERED_TITLE = "Your order has arrived 📦"
+    DELIVERED_BODY = "Order #{oid} has been delivered. We hope you love your purchase!"
+
+    REFUNDED_TITLE = "Your refund is on its way"
+    REFUNDED_BODY = "Your refund for order #{oid} has been initiated successfully."
+
+    LOW_STOCK_TITLE = "Low stock alert — {name}"
+    LOW_STOCK_BODY = "Only {stock} left (threshold: {threshold})."
 
 
 def _safe_oid(order: dict[str, Any]) -> str:
-    return str(order.get("id", "UNKNOWN"))[:8].upper()
+    return str(order.get("order_number") or order.get("id") or "UNKNOWN")[:14].upper()
 
 
 async def handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
     oid = _safe_oid(event.order or {})
     amt = (event.order or {}).get("total_amount", 0)
     await broadcast_push_to_admins(
-        title=_Copy.ADMIN_ORDER_TITLE.format(oid=oid),
-        body=_Copy.ADMIN_ORDER_BODY.format(amt=amt),
+        title=_Copy.ADMIN_ORDER_TITLE,
+        body=_Copy.ADMIN_ORDER_BODY.format(oid=oid, amt=amt),
         icon=_Icon.NEW_ORDER,
         url=_Copy.URL_ADMIN,
     )
@@ -109,25 +120,20 @@ async def handle_failed_push(event: OrderFailedEvent) -> None:
     is_cart = "SESSION" in raw_id
     oid = _safe_oid(order)
 
-    if is_cart:
-        base_title = "Checkout Failed ❌"
-    else:
-        base_title = _Copy.FAILED_PUSH_TITLE.format(oid=oid)
-
     if event.reason == "payment_canceled":
-        title = "Payment Cancelled" if is_cart else _Copy.CANCEL_PUSH_TITLE.format(oid=oid)
-        body = "Your payment was cancelled. Your items are safely saved in your cart."
+        title = _Copy.PAYMENT_CANCELLED_TITLE if is_cart else _Copy.CANCEL_PUSH_TITLE.format(oid=oid)
+        body = _Copy.PAYMENT_CANCELLED_BODY if is_cart else _Copy.CANCEL_PUSH_BODY
         icon = _Icon.CANCELLED
     elif event.reason == "payment_failed":
-        title = base_title
+        title = _Copy.FAILED_PUSH_TITLE
         body = _Copy.FAILED_PUSH_BODY
         icon = _Icon.FAILED
     else:
-        title = base_title
-        body = str(event.reason)[:200]
+        title = "We couldn't complete your checkout"
+        body = "Something went wrong while processing your payment. Your items are still safe in your cart."
         icon = _Icon.FAILED
 
-    logger.info("[HOOK:PUSH] Sending Failed Push to %s: %s", uid, title)
+    logger.info("[HOOK:PUSH] Sending customer payment notification to %s: %s", uid, title)
     await send_push_to_user(uid, title=title, body=body, icon=icon, url=_Copy.URL_CART)
 
 
@@ -136,13 +142,14 @@ async def handle_shipped_push(event: OrderShippedEvent) -> None:
     uid = event.customer_id or order.get("customer_id", "")
     if not uid:
         return
-    body = _Copy.SHIPPED_PUSH_BODY
+
+    body = _Copy.SHIPPED_PUSH_BODY.format(oid=_safe_oid(order))
     if event.tracking_number:
         body += _Copy.SHIPPED_TRACKING.format(tracking=event.tracking_number)
 
     await send_push_to_user(
         uid,
-        title=_Copy.SHIPPED_PUSH_TITLE.format(oid=_safe_oid(order)),
+        title=_Copy.SHIPPED_PUSH_TITLE,
         body=body,
         icon=_Icon.SHIPPED,
         url=_Copy.URL_ORDERS,
@@ -163,7 +170,7 @@ async def handle_status_push(event: OrderStatusChangedEvent) -> None:
     await send_push_to_user(
         event.customer_id,
         title=title_tpl.format(oid=_safe_oid(event.order or {})),
-        body=body,
+        body=body.format(oid=_safe_oid(event.order or {})),
         icon=icon,
         url=_Copy.URL_ORDERS,
     )
