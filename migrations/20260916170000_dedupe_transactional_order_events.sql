@@ -1,6 +1,5 @@
--- Prevent duplicate transactional order events from causing duplicate customer/admin side effects.
--- Keep the first event for each naturally-once order transition.
-
+-- Prevent duplicate transactional order events from causing duplicate side effects.
+-- Keep the earliest row for naturally-once order events and remove later technical duplicates.
 with ranked as (
     select
         id,
@@ -11,15 +10,9 @@ with ranked as (
     from public.event_outbox
     where event_type in ('OrderCreatedEvent', 'OrderPaidEvent', 'OrderShippedEvent')
       and payload->'order'->>'id' is not null
-      and status in ('pending', 'processing')
 )
-update public.event_outbox e
-set
-    status = 'completed',
-    processed_at = coalesce(processed_at, now()),
-    locked_at = null,
-    last_error = 'Duplicate transactional event suppressed during outbox deduplication.'
-from ranked r
+delete from public.event_outbox e
+using ranked r
 where e.id = r.id
   and r.rn > 1;
 
