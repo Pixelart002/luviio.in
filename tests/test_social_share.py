@@ -1,3 +1,4 @@
+from importlib import import_module
 from unittest.mock import AsyncMock
 
 
@@ -11,7 +12,8 @@ def test_product_share_page_contains_dynamic_og_metadata(client, monkeypatch):
     }
 
     mock_service = type("MockProductService", (), {"get_product": AsyncMock(return_value=product)})
-    monkeypatch.setattr("app.infrastructure.social_share.router.ProductService", mock_service)
+    router_module = import_module("app.infrastructure.social_share.router")
+    monkeypatch.setattr(router_module, "ProductService", mock_service)
 
     response = client.get("/share/products/premium-drain-cover")
 
@@ -20,7 +22,7 @@ def test_product_share_page_contains_dynamic_og_metadata(client, monkeypatch):
     assert '<meta property="og:title" content="Premium Drain Cover | Luviio">' in response.text
     assert '<meta property="og:description" content="Durable drain cover for everyday use.">' in response.text
     assert '<meta property="og:image" content="https://cdn.example.com/products/drain-cover.webp">' in response.text
-    assert '<meta property="og:url" content="https://www.luviio.in/products/premium-drain-cover">' in response.text
+    assert '<meta property="og:url" content="https://www.luviio.in/product/premium-drain-cover">' in response.text
     assert '<meta name="twitter:card" content="summary_large_image">' in response.text
 
 
@@ -33,7 +35,8 @@ def test_product_share_page_escapes_metadata(client, monkeypatch):
     }
 
     mock_service = type("MockProductService", (), {"get_product": AsyncMock(return_value=product)})
-    monkeypatch.setattr("app.infrastructure.social_share.router.ProductService", mock_service)
+    router_module = import_module("app.infrastructure.social_share.router")
+    monkeypatch.setattr(router_module, "ProductService", mock_service)
 
     response = client.get("/share/products/safe-item")
 
