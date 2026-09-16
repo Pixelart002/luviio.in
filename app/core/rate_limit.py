@@ -3,16 +3,25 @@ Global Rate Limiter
 ===================
 Path: app/core/rate_limit.py
 
-The limiter remains process-local (SlowAPI); this module is responsible for
-correct client-IP extraction. Forwarded headers are trusted only when the
-immediate peer belongs to an explicitly configured trusted proxy.
+Client-IP extraction is kept separate from the enforcement layer. The global
+API ceiling is enforced through a service-role-only Postgres RPC so multiple
+Koyeb workers share the same counter. SlowAPI remains available for the
+existing endpoint-specific limits.
 """
-from ipaddress import ip_address, ip_network
+from __future__ import annotations
+
+import hashlib
+import logging
 
 from fastapi import Request
+from fastapi.responses import JSONResponse
+from ipaddress import ip_address, ip_network
 from slowapi import Limiter
 
 from app.core.config import settings
+from app.core.supabase import get_async_admin_supabase
+
+logger = logging.getLogger(__name__)
 
 
 def _peer_is_trusted(request: Request) -> bool:
@@ -33,14 +42,11 @@ def _peer_is_trusted(request: Request) -> bool:
             elif peer_ip == ip_address(entry):
                 return True
         except ValueError:
-            # Invalid deployment configuration must never make an untrusted
-            # request trusted.
             continue
     return False
 
 
 def _get_client_ip(request: Request) -> str:
-    # Only consume proxy-supplied identity when the direct peer is trusted.
     if _peer_is_trusted(request):
         cf_ip = request.headers.get("CF-Connecting-IP")
         if cf_ip:
@@ -51,8 +57,6 @@ def _get_client_ip(request: Request) -> str:
 
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
-            # The left-most value is the original client only when the
-            # immediate proxy is trusted and the proxy chain is controlled.
             candidate = forwarded.split(",")[0].strip()
             try:
                 return str(ip_address(candidate))
@@ -66,11 +70,79 @@ def _get_client_ip(request: Request) -> str:
             except ValueError:
                 pass
 
-    # Direct peer is the only trusted identity by default.
     return request.client.host if request.client else "unknown"
 
 
-limiter = Limiter(
-    key_func=_get_client_ip,
-    default_limits=[f"{settings.RATE_LIMIT_PER_MINUTE}/minute"],
-)
+# Endpoint-specific decorators still use SlowAPI. The global ceiling is
+# enforced by SharedRateLimitMiddleware below and is intentionally removed
+# from SlowAPI's default_limits to avoid two independent global counters.
+limiter = Limiter(key_func=_get_client_ip, default_limits=[])
+
+
+class SharedRateLimitMiddleware:
+    """Cross-worker global API rate-limit gate backed by Postgres."""
+
+    def __init__(self, app):
+        self.app = app
+        self.limit = settings.RATE_LIMIT_PER_MINUTE
+        self.window_seconds = 60
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        method = scope.get("method", "GET")
+        if not path.startswith("/api/v1") or method == "OPTIONS":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive=receive)
+        client_ip = _get_client_ip(request)
+        key = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
+
+        try:
+            sb = await get_async_admin_supabase()
+            result = await sb.rpc(
+                "consume_http_rate_limit",
+                {
+                    "p_rate_key": key,
+                    "p_limit": self.limit,
+                    "p_window_seconds": self.window_seconds,
+                },
+            ).execute()
+            data = result.data
+            if isinstance(data, list):
+                data = data[0] if data else None
+            if not isinstance(data, dict) or not data.get("allowed"):
+                retry_after = int((data or {}).get("retry_after_seconds", 1))
+                response = JSONResponse(
+                    status_code=429,
+                    content={
+                        "success": False,
+                        "error": "rate_limit_exceeded",
+                        "message": "Too many requests. Please retry later.",
+                    },
+                    headers={"Retry-After": str(max(1, retry_after))},
+                )
+                await response(scope, receive, send)
+                return
+        except Exception:
+            # Rate limiting is a security boundary. If its shared state is
+            # unavailable, fail closed instead of silently reverting to a
+            # per-process limiter.
+            logger.exception("Shared rate-limit state unavailable")
+            response = JSONResponse(
+                status_code=503,
+                content={
+                    "success": False,
+                    "error": "rate_limit_unavailable",
+                    "message": "Request protection is temporarily unavailable.",
+                },
+                headers={"Retry-After": "5"},
+            )
+            await response(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
