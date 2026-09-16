@@ -16,7 +16,6 @@ from typing import Any, Callable
 
 from app.events.outbox import (
     claim_event,
-    enqueue_event,
     fetch_pending,
     mark_completed,
     mark_retry,
@@ -183,10 +182,7 @@ def _serialize_event(event: Any) -> dict[str, Any]:
 
 
 def _event_class(event_type_name: str) -> type[Any] | None:
-    return {
-        cls.__name__: cls
-        for cls in _EVENT_CLASSES
-    }.get(event_type_name)
+    return {cls.__name__: cls for cls in _EVENT_CLASSES}.get(event_type_name)
 
 
 async def _invoke_handler(handler: Handler, event: Any) -> None:
@@ -311,33 +307,14 @@ class EventBus:
         )
 
     async def publish_durable(self, event: Any) -> str:
-        """Persist an event before dispatch; failed delivery remains retryable in DB."""
-        event_type = type(event)
+        """Compatibility boundary; the DB transaction already persists this event."""
         event_id = str(uuid.uuid4())
-        event_type_name = event_type.__name__
-        payload = _serialize_event(event)
-        event_metrics.record_publish(event_type_name)
-
-        await enqueue_event(
-            event_id=event_id,
-            event_type=event_type_name,
-            payload=payload,
+        event_metrics.record_publish(type(event).__name__)
+        logger.debug(
+            "Durable event already persisted by transaction trigger | id=%s type=%s",
+            event_id,
+            type(event).__name__,
         )
-        await claim_event(event_id, 1)
-        success = await self._dispatch_event(
-            event_id=event_id,
-            event_type_name=event_type_name,
-            event=event,
-        )
-        if success:
-            await mark_completed(event_id)
-        else:
-            await mark_retry(
-                event_id,
-                attempt=1,
-                error="One or more event handlers failed",
-                max_attempts=_OUTBOX_MAX_ATTEMPTS,
-            )
         return event_id
 
     async def _dispatch_event(
@@ -360,12 +337,7 @@ class EventBus:
 
         results = await asyncio.gather(
             *[
-                _async_run_handler_with_retry(
-                    handler,
-                    event,
-                    event_id,
-                    event_type_name,
-                )
+                _async_run_handler_with_retry(handler, event, event_id, event_type_name)
                 for handler in handlers
             ],
             return_exceptions=True,
@@ -427,7 +399,7 @@ class EventBus:
         return processed
 
     def publish(self, event: Any) -> None:
-        """Backward-compatible volatile publisher for tests/non-critical local use."""
+        """Volatile publisher retained for isolated non-production tests."""
         event_type = type(event)
         event_id = str(uuid.uuid4())
         with self._lock:
@@ -444,30 +416,11 @@ class EventBus:
         for handler in handlers:
             if asyncio.iscoroutinefunction(handler):
                 if loop is not None and loop.is_running():
-                    loop.create_task(
-                        _async_run_handler_with_retry(
-                            handler,
-                            event,
-                            event_id,
-                            event_type_name,
-                        )
-                    )
+                    loop.create_task(_async_run_handler_with_retry(handler, event, event_id, event_type_name))
                 else:
-                    _handler_pool.submit(
-                        _run_async_handler_from_worker,
-                        handler,
-                        event,
-                        event_id,
-                        event_type_name,
-                    )
+                    _handler_pool.submit(_run_async_handler_from_worker, handler, event, event_id, event_type_name)
             else:
-                _handler_pool.submit(
-                    _run_handler_with_retry,
-                    handler,
-                    event,
-                    event_id,
-                    event_type_name,
-                )
+                _handler_pool.submit(_run_handler_with_retry, handler, event, event_id, event_type_name)
 
     def get_stats(self) -> dict[str, Any]:
         return event_metrics.get_stats()
@@ -490,23 +443,14 @@ class EventBus:
             try:
                 event = event_cls(**letter.event_data)
             except Exception as exc:
-                retained.append(
-                    dataclasses.replace(
-                        letter,
-                        error=f"Replay reconstruction failed: {exc}",
-                    )
-                )
+                retained.append(dataclasses.replace(letter, error=f"Replay reconstruction failed: {exc}"))
                 continue
             self.publish(event)
             replayed += 1
         dead_letter_queue.clear()
         for letter in retained:
             dead_letter_queue.push(letter)
-        logger.info(
-            "Dead letters replayed | count=%d retained=%d",
-            replayed,
-            len(retained),
-        )
+        logger.info("Dead letters replayed | count=%d retained=%d", replayed, len(retained))
         return replayed
 
     def shutdown(self, wait: bool = True) -> None:
