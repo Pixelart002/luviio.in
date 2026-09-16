@@ -1,12 +1,9 @@
 """
 Pricing Service — SSOT Architecture (STRICT MODE & ZERO FALLBACKS)
 ==================================================================
-Path: app/domains/pricing/service.py
-
 Pricing is authoritative for checkout totals. Configuration is supplied by
 system_settings through the canonical backend configuration path; missing
-financial configuration must fail closed rather than silently inventing a
-rate.
+financial configuration must fail closed rather than silently inventing a rate.
 """
 from __future__ import annotations
 
@@ -17,6 +14,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, List
 
 from fastapi import HTTPException, status
+
+from app.domains.shipping.calculator import calculate_settings_shipping
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +140,12 @@ class StandardPricing(PricingStrategy):
             calc_tax += item_sub * (gst_percentage / Decimal("100"))
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
-        shipping = Decimal("0") if calc_subtotal >= self._threshold else self._flat
+        shipping = calculate_settings_shipping(
+            subtotal=calc_subtotal,
+            shipping_enabled=self.shipping_enabled,
+            threshold=self._threshold,
+            flat_rate=self._flat,
+        )
         return PriceBreakdown(subtotal=calc_subtotal, shipping=shipping, tax=calc_tax, total=calc_subtotal + shipping + calc_tax, currency=self._currency)
 
 
@@ -184,7 +188,12 @@ class ZeroTaxPricing(PricingStrategy):
             calc_subtotal += item_price * item_qty
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
-        shipping = Decimal("0") if calc_subtotal >= self._threshold else self._flat
+        shipping = calculate_settings_shipping(
+            subtotal=calc_subtotal,
+            shipping_enabled=self.shipping_enabled,
+            threshold=self._threshold,
+            flat_rate=self._flat,
+        )
         return PriceBreakdown(subtotal=calc_subtotal, shipping=shipping, tax=Decimal("0"), total=calc_subtotal + shipping, currency=self._currency)
 
 
