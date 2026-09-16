@@ -55,6 +55,27 @@ def _date(v: Any, fallback_now: bool = False) -> str:
         return raw[:10]
 
 
+_STATE_CODES = {
+    "andhra pradesh": "AP", "arunachal pradesh": "AR", "assam": "AS", "bihar": "BR",
+    "chhattisgarh": "CG", "goa": "GA", "gujarat": "GJ", "haryana": "HR",
+    "himachal pradesh": "HP", "jharkhand": "JH", "karnataka": "KA", "kerala": "KL",
+    "madhya pradesh": "MP", "maharashtra": "MH", "manipur": "MN", "meghalaya": "ML",
+    "mizoram": "MZ", "nagaland": "NL", "odisha": "OD", "punjab": "PB", "rajasthan": "RJ",
+    "sikkim": "SK", "tamil nadu": "TN", "telangana": "TS", "tripura": "TR", "uttar pradesh": "UP",
+    "uttarakhand": "UK", "west bengal": "WB", "andaman and nicobar islands": "AN", "chandigarh": "CH",
+    "dadra and nagar haveli and daman and diu": "DH", "delhi": "DL", "new delhi": "DL",
+    "jammu and kashmir": "JK", "ladakh": "LA", "lakshadweep": "LD", "puducherry": "PY",
+}
+
+
+def _state_code(snapshot: dict[str, Any]) -> str:
+    raw_code = _s(snapshot.get("state_code"))
+    if raw_code:
+        return raw_code.upper()
+    state = _s(snapshot.get("state"))
+    return _STATE_CODES.get(state.lower(), "") if state else ""
+
+
 def _qr(data: str, size: float = 72.0) -> Drawing:
     widget = QrCodeWidget(data or "LUVIIO")
     x1, y1, x2, y2 = widget.getBounds()
@@ -222,8 +243,20 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
     top.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.5,BORDER),("LINEBEFORE",(1,0),(1,0),.5,BORDER),("LINEBEFORE",(2,0),(2,0),.5,BORDER),("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("VALIGN",(0,0),(-1,-1),"TOP")]))
     story += [top, Spacer(1,6)]
 
+    place_state = _s(shipping.get("state"), "—")
+    place_code = _state_code(shipping)
+    place_of_supply = f"{place_state} ({place_code})" if place_code else place_state
+    reverse_charge = _s(order.get("reverse_charge"), "No")
     order_meta = [[Paragraph("Order Details:",ST["label"])],[Paragraph(f"<b>Order No:</b> {order_no}",ST["body"])],[Paragraph(f"<b>Order Date:</b> {_date(order.get('created_at'))}",ST["body"])] ]
-    invoice_meta = [[Paragraph("Invoice Details:",ST["label"])],[Paragraph(f"<b>Invoice No:</b> {invoice_no}",ST["body"])],[Paragraph(f"<b>Invoice Date:</b> {_date(order.get('issued_at'),True)}",ST["body"])],[Paragraph(f"<b>Payment:</b> {status}",ST["body"])],[Paragraph(f"<b>Tracking:</b> {_s(order.get('tracking_number'),'—')}",ST["body"])]]
+    invoice_meta = [
+        [Paragraph("Invoice Details:",ST["label"])],
+        [Paragraph(f"<b>Invoice No:</b> {invoice_no}",ST["body"])],
+        [Paragraph(f"<b>Invoice Date:</b> {_date(order.get('issued_at'),True)}",ST["body"])],
+        [Paragraph(f"<b>Payment:</b> {status}",ST["body"])],
+        [Paragraph(f"<b>Tracking:</b> {_s(order.get('tracking_number'),'—')}",ST["body"])],
+        [Paragraph(f"<b>Place of Supply:</b> {place_of_supply}",ST["body"])],
+        [Paragraph(f"<b>Reverse Charge:</b> {reverse_charge}",ST["body"])],
+    ]
     qr_payload = _s(order.get("qr_payload")) or f"INV:{invoice_no}|ORD:{order_no}|TOTAL:{_f(order.get('total_amount')):.2f}"
     qr_cell = Table([[Paragraph("SCAN TO VERIFY",ST["head"])],[_qr(qr_payload,72)]], colWidths=[105])
     qr_cell.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0)]))
