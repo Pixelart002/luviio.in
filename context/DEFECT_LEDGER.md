@@ -71,8 +71,10 @@
 **Verification:** targeted async tests cover identical update, real update, and no-op reset semantics.
 
 ### D-014 — Push circuit breaker / limiter is process-local
-**Status:** open.
-**Required fix:** move distributed protection to shared storage or an external queue/provider boundary if multi-worker consistency is required.
+**Status:** fixed with shared Postgres state.
+**Root cause:** circuit and per-endpoint rate state lived in Python process memory, so separate Koyeb workers could independently exceed the intended limits and circuit state disappeared on restart.
+**Fix:** added service-role-only `private.push_delivery_state` plus atomic `push_delivery_guard`, `push_delivery_record_success`, and `push_delivery_record_failure` RPCs. Push delivery now uses the shared guard and fails closed if the guard storage is unavailable. The policy remains 3 attempts per endpoint per second, trips after 5 consecutive terminal failures, and resets after 60 seconds or a successful delivery.
+**Verification:** live production SQL verified the table and function privileges (`anon`/`authenticated` denied; `service_role` allowed). A live database assertion verified the 3-per-window rate gate, 5-failure circuit trip, and fresh-state recovery. Targeted unit tests cover the service-role RPC boundary and fail-closed behavior.
 
 ### D-015 — Dependency/framework deprecation warnings
 **Status:** open; warning-only cleanup.
