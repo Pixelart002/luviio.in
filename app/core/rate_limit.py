@@ -12,16 +12,18 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from ipaddress import ip_address, ip_network
+from typing import Any, Awaitable, Callable
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from ipaddress import ip_address, ip_network
 from slowapi import Limiter
 
 from app.core.config import settings
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
+ASGIApp = Callable[[dict[str, Any], Callable[..., Awaitable[Any]], Callable[..., Awaitable[Any]]], Awaitable[None]]
 
 
 def _peer_is_trusted(request: Request) -> bool:
@@ -82,12 +84,12 @@ limiter = Limiter(key_func=_get_client_ip, default_limits=[])
 class SharedRateLimitMiddleware:
     """Cross-worker global API rate-limit gate backed by Postgres."""
 
-    def __init__(self, app):
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
         self.limit = settings.RATE_LIMIT_PER_MINUTE
         self.window_seconds = 60
 
-    async def __call__(self, scope, receive, send):
+    async def __call__(self, scope: dict[str, Any], receive: Callable[..., Awaitable[Any]], send: Callable[..., Awaitable[Any]]) -> None:
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
             return
@@ -129,9 +131,6 @@ class SharedRateLimitMiddleware:
                 await response(scope, receive, send)
                 return
         except Exception:
-            # Rate limiting is a security boundary. If its shared state is
-            # unavailable, fail closed instead of silently reverting to a
-            # per-process limiter.
             logger.exception("Shared rate-limit state unavailable")
             response = JSONResponse(
                 status_code=503,
