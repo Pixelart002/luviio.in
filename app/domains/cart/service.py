@@ -80,9 +80,13 @@ class CartService:
         return await self._calculate_cart_pricing(cart["id"])
 
     async def add_item(self, user_id: str, product_id: str, quantity: int) -> Dict[str, Any]:
-        prod = await self.repo.get_product_stock_status(product_id)
+        # Product availability and cart lookup are independent. Fetch both in
+        # parallel before checking for an existing line item.
+        prod, cart = await asyncio.gather(
+            self.repo.get_product_stock_status(product_id),
+            self.repo.get_or_create_cart(user_id),
+        )
         CartPolicy.assert_product_available(prod, quantity)
-        cart = await self.repo.get_or_create_cart(user_id)
         existing = await self.repo.get_cart_item(cart["id"], product_id)
         if existing:
             new_qty = existing["quantity"] + quantity
@@ -96,8 +100,11 @@ class CartService:
 
     async def update_item(self, user_id: str, product_id: str, quantity: int) -> Dict[str, Any]:
         CartPolicy.assert_item_limit(quantity)
-        cart = await self.repo.get_or_create_cart(user_id)
-        prod = await self.repo.get_product_stock_status(product_id)
+        # Cart lookup and product validation do not depend on one another.
+        cart, prod = await asyncio.gather(
+            self.repo.get_or_create_cart(user_id),
+            self.repo.get_product_stock_status(product_id),
+        )
         CartPolicy.assert_product_available(prod, quantity)
         success = await self.repo.update_item_quantity_by_product(cart["id"], product_id, quantity)
         if not success:
