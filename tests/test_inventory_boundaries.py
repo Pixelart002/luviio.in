@@ -39,3 +39,25 @@ async def test_commit_reservation_forwards_verified_currency():
         payment_method="card",
         stripe_currency="inr",
     )
+
+
+@pytest.mark.asyncio
+async def test_check_availability_rejects_zero_quantity():
+    service = InventoryService()
+    service.repo.get_product_stock_status = AsyncMock()
+
+    with pytest.raises(ValueError, match="positive integer"):
+        await service.check_availability("product-1", 0)
+
+    service.repo.get_product_stock_status.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_adjust_stock_rejects_zero_delta():
+    service = InventoryService()
+    service.repo.admin_adjust_stock = AsyncMock()
+
+    with pytest.raises(ValueError, match="non-zero integer"):
+        await service.adjust_stock("product-1", 0, "test")
+
+    service.repo.admin_adjust_stock.assert_not_awaited()
