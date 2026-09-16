@@ -12,8 +12,8 @@ Architecture & Fixes:
 import logging
 from typing import Optional
 
-from gotrue import AsyncMemoryStorage
 from supabase import AsyncClient, Client, ClientOptions, create_async_client, create_client
+from supabase_auth import AsyncMemoryStorage
 
 from app.core.config import settings
 
@@ -68,7 +68,7 @@ async def get_async_supabase_on_demand() -> AsyncClient:
     return await create_async_client(settings.SB_URL, settings.SB_KEY, options=async_opts)
 
 
-# ── ADMIN CLIENTS (Singletons) ──────────────────────────────────────────────
+# ── ADMIN CLIENTS (SINGLETONS) ──────────────────────────────────────────────
 
 def get_admin_supabase() -> Client:
     """Returns the globally shared Sync Admin Client."""
