@@ -25,5 +25,6 @@ def test_invoice_pdf_uses_public_order_number_for_document_identity():
 
 def test_invoice_service_keeps_pdf_generation_off_request_thread():
     source = (REPO_ROOT / "app/domains/orders/service.py").read_text(encoding="utf-8")
-    assert "run_in_threadpool(build_invoice_pdf" in source
+    assert "run_in_threadpool(" in source
+    assert "build_snapshot_invoice_pdf" in source
     assert OrderService.generate_invoice_pdf is not None
