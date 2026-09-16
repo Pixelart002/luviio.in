@@ -66,15 +66,13 @@ class PaymentPolicy:
 
     @staticmethod
     def assert_can_retry(order: Optional[Dict[str, Any]], user_id: str) -> Dict[str, Any]:
-        """Authorize retry access only; retry accounting belongs to PaymentService.
+        """Authorize retry access; a missing PaymentIntent is a recoverable state.
 
-        Keeping the atomic reservation in one orchestration path prevents a
-        single retry request from consuming the same retry slot twice.
+        PaymentService can create and atomically link a replacement intent when
+        the original provider intent is absent or unusable.
         """
         if not order or str(order.get("customer_id", "")) != str(user_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ORDER_NOT_FOUND)
         if order.get("status") not in ("pending", "paid"):
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
-        if not order.get("stripe_payment_intent"):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
         return order
