@@ -238,6 +238,7 @@ async def test_retry_and_webhook_same_payment_intent_converge(monkeypatch):
     service.repo.mark_webhook_event_processed.assert_awaited_once_with("evt_shared")
     provider.process_refund.assert_not_called()
 
+
 @pytest.mark.asyncio
 async def test_create_intent_persistence_failure_compensates_provider_intent(monkeypatch):
     service, provider = build_service(monkeypatch)
@@ -246,7 +247,13 @@ async def test_create_intent_persistence_failure_compensates_provider_intent(mon
         "product_id": "prod-1", "quantity": 1, "price_snapshot": 100,
         "products": {"name": "Item", "compare_price": 100, "stock": 10, "hsn_code": "1234", "gst_percentage": 18, "is_active": True},
     }])
-    service.repo.get_pricing_config = AsyncMock(return_value={})
+    service.repo.get_pricing_config = AsyncMock(return_value={
+        "tax_enabled": True,
+        "shipping_enabled": True,
+        "currency": "INR",
+        "shipping_flat": 45.9,
+        "shipping_threshold": 1499,
+    })
     service.repo.get_shipping_address = AsyncMock(return_value={
         "id": "addr-1", "full_name": "User", "phone": "9999999999", "email": "user@example.com",
         "line1": "1 Main St", "city": "Delhi", "state": "Delhi", "postal_code": "110001", "country": "IN",
