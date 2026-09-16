@@ -41,9 +41,8 @@ async def fetch_pending(limit: int = 50) -> list[dict[str, Any]]:
 
 async def claim_event(event_id: str, attempt: int) -> bool:
     sb = await get_async_admin_supabase()
-    # In the installed postgrest client, filters return an
-    # AsyncFilterRequestBuilder that does not expose .select(). Put the
-    # response modifier on the update builder before adding filters.
+    # Response modifiers must be attached before filters with the installed
+    # async postgrest builder; filters otherwise return AsyncFilterRequestBuilder.
     result = await (
         sb.table("event_outbox")
         .update(
