@@ -22,6 +22,7 @@ from app.events.outbox import (
     mark_retry,
     recover_stale_processing,
 )
+from app.events.settings_events import SettingResetEvent, SettingUpdatedEvent
 
 logger = logging.getLogger(__name__)
 
@@ -350,7 +351,11 @@ class EventBus:
             event_cls = type(event)
             handlers = tuple(self._handlers.get(event_cls, ()))
         if not handlers:
-            logger.debug("Event has no registered handlers | id=%s type=%s", event_id, event_type_name)
+            logger.debug(
+                "Event has no registered handlers | id=%s type=%s",
+                event_id,
+                event_type_name,
+            )
             return True
 
         results = await asyncio.gather(
@@ -408,7 +413,11 @@ class EventBus:
                         max_attempts=_OUTBOX_MAX_ATTEMPTS,
                     )
             except Exception as exc:
-                logger.exception("Durable event replay failed | id=%s type=%s", event_id, event_type_name)
+                logger.exception(
+                    "Durable event replay failed | id=%s type=%s",
+                    event_id,
+                    event_type_name,
+                )
                 await mark_retry(
                     event_id,
                     attempt=attempt,
@@ -435,11 +444,30 @@ class EventBus:
         for handler in handlers:
             if asyncio.iscoroutinefunction(handler):
                 if loop is not None and loop.is_running():
-                    loop.create_task(_async_run_handler_with_retry(handler, event, event_id, event_type_name))
+                    loop.create_task(
+                        _async_run_handler_with_retry(
+                            handler,
+                            event,
+                            event_id,
+                            event_type_name,
+                        )
+                    )
                 else:
-                    _handler_pool.submit(_run_async_handler_from_worker, handler, event, event_id, event_type_name)
+                    _handler_pool.submit(
+                        _run_async_handler_from_worker,
+                        handler,
+                        event,
+                        event_id,
+                        event_type_name,
+                    )
             else:
-                _handler_pool.submit(_run_handler_with_retry, handler, event, event_id, event_type_name)
+                _handler_pool.submit(
+                    _run_handler_with_retry,
+                    handler,
+                    event,
+                    event_id,
+                    event_type_name,
+                )
 
     def get_stats(self) -> dict[str, Any]:
         return event_metrics.get_stats()
@@ -492,6 +520,8 @@ _EVENT_CLASSES = (
     OrderShippedEvent,
     OrderStatusChangedEvent,
     LowStockEvent,
+    SettingUpdatedEvent,
+    SettingResetEvent,
 )
 
 _bus = EventBus()
