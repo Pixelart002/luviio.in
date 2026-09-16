@@ -56,11 +56,13 @@
 ## P2 / operations
 
 ### D-011 — Auth leaked-password protection disabled
-**Status:** open; configuration action required in Supabase Auth settings.
+**Status:** deferred for test credentials; production go-live configuration item.
 
 ### D-012 — Business asset storage orphaning
-**Status:** open.
-**Required fix:** keep previous asset reference and delete superseded object after new reference is committed.
+**Status:** fixed in code.
+**Root cause:** every business logo/signature upload created a new immutable object; a later settings write could fail, or a successful replacement could leave the previous object indefinitely.
+**Fix:** the API now captures the previous asset reference, deletes the newly uploaded object if the settings mutation fails, and deletes the superseded managed object after the new setting is committed. Resetting a business asset setting also removes the managed object. Cleanup is restricted to canonical HTTPS URLs in the `business-assets` bucket; external URLs are never deleted.
+**Residual:** if Storage deletion itself fails, the reference remains correct and a warning is logged; a future scheduled garbage-collection sweep can remove such unreachable objects.
 
 ### D-013 — Settings mutations are chatty
 **Status:** open.
