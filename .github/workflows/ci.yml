@@ -32,8 +32,10 @@ jobs:
       - name: Compile application
         run: uv run python -m compileall -q app
 
-      - name: Ruff
-        run: uv run ruff check app tests
+      - name: Ruff autofix + gate
+        run: |
+          uv run ruff check --fix app tests
+          uv run ruff check app tests
 
       - name: Mypy
         run: uv run mypy app --config-file mypy.ini
