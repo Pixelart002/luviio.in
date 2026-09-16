@@ -32,7 +32,7 @@ class SettingsCoreEngine:
         global _settings_cache, _cache_timestamp
         _settings_cache.clear()
         _cache_timestamp = 0.0
-        logger.info("System Settings in-memory cache invalidated.")
+        logger.debug("System Settings in-memory cache invalidated.")
 
     async def fetch_all(
         self, category: Optional[str] = None, force_refresh: bool = False
