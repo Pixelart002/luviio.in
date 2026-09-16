@@ -119,13 +119,13 @@ async def test_confirm_cancelled_order_refund_failure_is_pending(monkeypatch):
 async def test_retry_cancelled_order_refund_failure_is_pending(monkeypatch):
     service, provider = build_service(monkeypatch)
     service.repo.get_order_by_id = AsyncMock(
-        return_value={"id": "order-1", "customer_id": "user-1", "status": "pending", "total_amount": 10}
+        return_value={"id": "order-1", "customer_id": "user-1", "status": "pending", "total_amount": 100}
     )
     service.inventory.commit_reservation = AsyncMock(return_value="ORDER_ALREADY_CANCELLED")
     provider.retrieve_intent.return_value = {
         "id": "pi_fail",
         "status": "succeeded",
-        "amount": 1000,
+        "amount": 10000,
         "currency": "inr",
         "payment_method_types": ["card"],
     }
@@ -200,7 +200,7 @@ async def test_retry_and_webhook_same_payment_intent_converge(monkeypatch):
         "id": "order-1",
         "customer_id": "user-1",
         "status": "pending",
-        "total_amount": 10,
+        "total_amount": 100,
         "stripe_payment_intent": "pi_shared",
         "shipping_email": "user@example.com",
     }
@@ -212,7 +212,7 @@ async def test_retry_and_webhook_same_payment_intent_converge(monkeypatch):
     provider.retrieve_intent.return_value = {
         "id": "pi_shared",
         "status": "succeeded",
-        "amount": 1000,
+        "amount": 10000,
         "currency": "inr",
         "payment_method_types": ["card"],
     }
