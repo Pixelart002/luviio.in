@@ -84,3 +84,35 @@ async def test_resolve_discount_for_checkout_inactive():
         with pytest.raises(HTTPException) as exc:
             await coupon_service.resolve_discount_for_checkout("TEST10", 100, "user-1")
         assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_update_rejects_coupon_code_collision():
+    coupon_service = CouponService()
+    coupon_service.repo = AsyncMock()
+    coupon_service.repo.get_by_id = AsyncMock(return_value={"id": "coupon-1", "code": "OLD"})
+    coupon_service.repo.get_by_code = AsyncMock(return_value={"id": "coupon-2", "code": "NEW"})
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        await coupon_service.update("coupon-1", {"code": " new "})
+
+    assert exc.value.status_code == 400
+    coupon_service.repo.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_allows_same_normalized_coupon_code():
+    coupon_service = CouponService()
+    coupon_service.repo = AsyncMock()
+    coupon_service.repo.get_by_id = AsyncMock(return_value={"id": "coupon-1", "code": "TEST10"})
+    coupon_service.repo.get_by_code = AsyncMock(return_value={"id": "coupon-1", "code": "TEST10"})
+    coupon_service.repo.update = AsyncMock(return_value={
+        "id": "coupon-1", "code": "TEST10", "type": "percent", "value": 10,
+    })
+
+    updated = await coupon_service.update("coupon-1", {"code": " test10 "})
+
+    assert updated["code"] == "TEST10"
+    coupon_service.repo.update.assert_awaited_once_with("coupon-1", {"code": "TEST10"})
