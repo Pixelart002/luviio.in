@@ -33,6 +33,7 @@ async def handle_setting_updated(event: SettingUpdatedEvent) -> None:
         logger.info("Settings audit written | action=updated key=%s", event.key)
     except Exception:
         logger.exception("Settings audit write failed | action=updated key=%s", event.key)
+        raise
 
 
 async def handle_setting_reset(event: SettingResetEvent) -> None:
@@ -49,3 +50,4 @@ async def handle_setting_reset(event: SettingResetEvent) -> None:
         logger.info("Settings audit written | action=reset key=%s", event.key)
     except Exception:
         logger.exception("Settings audit write failed | action=reset key=%s", event.key)
+        raise
