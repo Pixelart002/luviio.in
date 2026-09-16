@@ -119,7 +119,13 @@ async def test_confirm_cancelled_order_refund_failure_is_pending(monkeypatch):
 async def test_retry_cancelled_order_refund_failure_is_pending(monkeypatch):
     service, provider = build_service(monkeypatch)
     service.repo.get_order_by_id = AsyncMock(
-        return_value={"id": "order-1", "customer_id": "user-1", "status": "pending", "total_amount": 100}
+        return_value={
+            "id": "order-1",
+            "customer_id": "user-1",
+            "status": "pending",
+            "total_amount": 100,
+            "stripe_payment_intent": "pi_fail",
+        }
     )
     service.inventory.commit_reservation = AsyncMock(return_value="ORDER_ALREADY_CANCELLED")
     provider.retrieve_intent.return_value = {
