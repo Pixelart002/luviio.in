@@ -45,6 +45,7 @@ async def test_get_tier_for_user_user_tier_fallback():
 async def test_subscribe():
     service = SubscriptionService()
     service.repo = AsyncMock()
+    service.repo.get_active_for_user = AsyncMock(return_value=None)
     service.repo.get_plan = AsyncMock(return_value={"id": "plan-1", "tier": "premium", "duration_days": 30})
     service.repo.upsert_subscription = AsyncMock(
         return_value={"id": "sub-1", "status": "active", "plan_id": "plan-1"})
