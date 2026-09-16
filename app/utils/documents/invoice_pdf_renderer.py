@@ -179,6 +179,18 @@ def _line_discount(item: dict[str, Any], unit_price: float, qty: int) -> tuple[f
     return display_mrp, discount
 
 
+def _gst_display(item: dict[str, Any], order: dict[str, Any], tax_amount: float, rate: float) -> str:
+    if rate <= 0 or tax_amount <= 0:
+        return "—"
+    tax_type = _s(order.get("tax_type"), "IGST")
+    if tax_type == "CGST+SGST":
+        half = round(tax_amount / 2, 2)
+        other = round(tax_amount - half, 2)
+        half_rate = rate / 2
+        return f"<b>{rate:g}% GST</b><br/>CGST {half_rate:g}% + SGST {half_rate:g}%<br/><font color='#555555'>{_money(half)} + {_money(other)} = {_money(tax_amount)}</font>"
+    return f"<b>{rate:g}% GST</b><br/>{tax_type} {rate:g}%<br/><font color='#555555'>{_money(tax_amount)}</font>"
+
+
 def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str, Any], seller_snapshot: dict[str, Any], billing_snapshot: dict[str, Any], shipping_snapshot: dict[str, Any]) -> bytes:
     global ST
     ST = _styles()
@@ -231,7 +243,7 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
     story += [meta, Spacer(1,10)]
 
     widths = [18, 150, 38, 50, 22, 52, 60, 86, 66]
-    rows = [[Paragraph("Sl.",ST["head"]),Paragraph("Description",ST["head_l"]),Paragraph("HSN",ST["head"]),Paragraph("Unit Price",ST["head_r"]),Paragraph("Qty",ST["head"]),Paragraph("Discount",ST["head_r"]),Paragraph("Net Amount",ST["head_r"]),Paragraph("GST / Tax",ST["head"]),Paragraph("Total",ST["head_r"])]]
+    rows = [[Paragraph("Sl.",ST["head"]),Paragraph("Description",ST["head_l"]),Paragraph("HSN",ST["head"]),Paragraph("Unit Price",ST["head_r"]),Paragraph("Qty",ST["head"]),Paragraph("Discount",ST["head_r"]),Paragraph("Net Amount",ST["head_r"]),Paragraph("GST",ST["head"]),Paragraph("Total",ST["head_r"])]]
     items = order.get("order_items") or []
     run_tax = 0.0
     run_net = 0.0
@@ -247,8 +259,7 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
         if item_tax == 0 and rate > 0 and net > 0: item_tax = round(net * rate / 100,2)
         line_total = _f(item.get("line_total"))
         if line_total <= 0: line_total = net + item_tax
-        tax_type = _s(order.get("tax_type"), "IGST")
-        tax_display = f"<b>{rate:g}%</b><br/>{tax_type}<br/><font color='#555555'>{_money(item_tax)}</font>"
+        tax_display = _gst_display(item, order, item_tax, rate)
         name = _s(item.get("product_name"), "Product")
         hsn = _s(item.get("hsn_code"))
         rows.append([Paragraph(str(idx),ST["cell_c"]),Paragraph(name,ST["cell"]),Paragraph(hsn,ST["cell_c"]),Paragraph(_money(display_unit),ST["cell_r"]),Paragraph(str(qty),ST["cell_c"]),Paragraph(_money(discount),ST["cell_r"]),Paragraph(_money(net),ST["cell_r"]),Paragraph(tax_display,ST["cell_c"]),Paragraph(_money(line_total),ST["cell_r"])])
