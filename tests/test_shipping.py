@@ -108,3 +108,12 @@ async def test_shipping_disabled_returns_zero():
         result = await service.compute_rate(1000)
     assert result["shipping_cost"] == 0.0
     assert result["applied_type"] == "disabled"
+
+
+@pytest.mark.asyncio
+async def test_compute_rate_rejects_zero_items():
+    service = ShippingService()
+    service.repo = AsyncMock()
+    with pytest.raises(Exception):
+        await service.compute_rate(1000, 0)
+    service.repo.list_active_methods.assert_not_awaited()
