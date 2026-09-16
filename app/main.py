@@ -20,6 +20,7 @@ from app.core.logging_config import configure_logging
 from app.core.maintenance import maintenance_middleware
 from app.core.monitoring import init_sentry
 from app.core.setup_middlewares import apply_middlewares
+from app.cron.registry import CRON_JOBS
 from app.cron.scheduler import start_cron_jobs
 from app.events.registry import register_all_event_handlers
 from app.infrastructure.health.router import router as health_router
@@ -36,7 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     register_all_event_handlers()
     logger.info("Event bus ready | durable_outbox=true")
     start_cron_jobs()
-    logger.info("Background scheduler ready | tasks=3")
+    logger.info("Background scheduler ready | tasks=%s", len(CRON_JOBS))
     yield
     logger.info("Application shutdown | service=%s", settings.APP_NAME)
 
