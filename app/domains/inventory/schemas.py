@@ -3,7 +3,8 @@ Inventory Schemas
 =================
 Pydantic models for inventory DTOs.
 """
-from typing import List, Optional
+from typing import Any, List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -54,3 +55,41 @@ class AvailabilityCheck(BaseModel):
     stock: int
     is_active: bool
     message: Optional[str] = None
+
+
+class InventoryOperationRequest(BaseModel):
+    product_id: str
+    quantity: int = Field(gt=0, le=1000000)
+    reason: str = Field(..., min_length=3, max_length=500)
+    reference_id: Optional[UUID] = None
+    order_id: Optional[UUID] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class InventoryReconcileRequest(BaseModel):
+    product_id: str
+    counted_stock: int = Field(ge=0, le=100000000)
+    reason: str = Field(..., min_length=3, max_length=500)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class InventoryOperationResult(BaseModel):
+    product_id: str
+    previous_stock: int
+    new_stock: int
+    delta: int
+    activity_id: Optional[str] = None
+
+
+class InventoryHistoryItem(BaseModel):
+    id: str
+    product_id: str
+    sku: Optional[str] = None
+    activity_type: str
+    delta: int
+    stock_after: Optional[int] = None
+    reference_type: Optional[str] = None
+    reference_id: Optional[str] = None
+    reason: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
