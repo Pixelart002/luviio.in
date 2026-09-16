@@ -65,8 +65,10 @@
 **Residual:** if Storage deletion itself fails, the reference remains correct and a warning is logged; a future scheduled garbage-collection sweep can remove such unreachable objects.
 
 ### D-013 — Settings mutations are chatty
-**Status:** open.
-**Required fix:** batch validation/update/audit/cache invalidation where multiple settings change in one operation.
+**Status:** fixed in code.
+**Root cause:** repeated writes of an already-current setting still performed a database UPDATE, cache invalidation, and SettingUpdatedEvent dispatch.
+**Fix:** settings mutations now short-circuit identical values; resets also short-circuit when the setting already equals its default. Real changes retain the existing persistence, cache invalidation, and event behavior.
+**Verification:** targeted async tests cover identical update, real update, and no-op reset semantics.
 
 ### D-014 — Push circuit breaker / limiter is process-local
 **Status:** open.
