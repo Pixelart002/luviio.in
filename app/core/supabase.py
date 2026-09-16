@@ -13,7 +13,6 @@ import logging
 from typing import Optional
 
 from supabase import AsyncClient, Client, ClientOptions, create_async_client, create_client
-from supabase_auth import AsyncMemoryStorage
 
 from app.core.config import settings
 
@@ -35,7 +34,7 @@ async def init_admin_clients() -> None:
 
     try:
         opts = ClientOptions(auto_refresh_token=False)
-        async_opts = ClientOptions(auto_refresh_token=False, storage=AsyncMemoryStorage())
+        async_opts = ClientOptions(auto_refresh_token=False)
 
         _admin_supabase = create_client(settings.SB_URL, settings.SB_SERVICE_ROLE_KEY, options=opts)
         _async_admin_supabase = await create_async_client(
@@ -60,11 +59,11 @@ def get_supabase() -> Client:
 
 
 async def get_async_supabase_on_demand() -> AsyncClient:
-    """Returns a fresh async client per-request with isolated memory storage."""
+    """Returns a fresh async client per-request with isolated in-memory auth storage."""
     if not settings.SB_URL or not settings.SB_KEY:
         raise RuntimeError("Supabase credentials missing.")
 
-    async_opts = ClientOptions(auto_refresh_token=False, storage=AsyncMemoryStorage())
+    async_opts = ClientOptions(auto_refresh_token=False)
     return await create_async_client(settings.SB_URL, settings.SB_KEY, options=async_opts)
 
 
