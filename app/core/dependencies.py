@@ -25,7 +25,13 @@ logger = logging.getLogger(__name__)
 
 bearer_scheme = HTTPBearer(auto_error=False)
 _token_cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
-_profile_cache: TTLCache = TTLCache(maxsize=1024, ttl=300)
+_profile_cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
+
+
+def invalidate_profile_cache(user_id: str) -> None:
+    """Invalidate cached profile/RBAC context after an administrative mutation."""
+    if user_id:
+        _profile_cache.pop(str(user_id), None)
 
 
 def _extract_token(request: Request, credentials: Optional[HTTPAuthorizationCredentials]) -> str:
@@ -60,10 +66,10 @@ async def _validate_token_natively(token: str) -> Any:
         _token_cache[token] = user
         return user
     except AuthApiError as e:
-        logger.warning(f"Native Auth Block: {e}")
+        logger.warning("Native Auth Block: %s", e)
         raise UnauthenticatedUser("Token is invalid or expired.")
     except Exception as e:
-        logger.error(f"Token validation error: {e}")
+        logger.error("Token validation error: %s", e)
         raise UnauthenticatedUser("Authentication failed.")
 
 
@@ -79,7 +85,7 @@ async def _get_or_create_profile(user_id: str, email: str, user_metadata: dict) 
                 full_name=user_metadata.get("full_name", ""), phone=""
             )
         except Exception as e:
-            logger.error(f"Profile auto-create failed for {user_id}: {e}")
+            logger.error("Profile auto-create failed for %s: %s", user_id, e)
             return {}
     if profile:
         _profile_cache[user_id] = profile
@@ -121,7 +127,6 @@ async def get_user_id_strict(current_user: Dict[str, Any] = Depends(get_current_
 def get_order_payment_port():
     """Composition-root dependency that supplies the Orders payment port."""
     from app.integrations.payments.order_adapter import PaymentsOrderAdapter
-
     return PaymentsOrderAdapter()
 
 
@@ -133,7 +138,7 @@ def require_permission(required_perm: str) -> Callable:
         if "*" in user_perms:
             return current_user
         if required_perm not in user_perms:
-            logger.warning(f"PBAC Block | User {current_user.get('sub')} missing perm: {required_perm}")
+            logger.warning("PBAC Block | User %s missing perm: %s", current_user.get("sub"), required_perm)
             raise UnauthorizedAction(f"Missing required permission: {required_perm}")
         return current_user
     return permission_checker
