@@ -24,13 +24,24 @@ logger = logging.getLogger(__name__)
 
 
 class InventoryService:
-    """Service layer for inventory operations."""
+    """Service layer for stock and inventory operations."""
 
     def __init__(self):
         self.repo = InventoryRepository()
         self.event_bus = get_event_bus()
 
+    @staticmethod
+    def _require_positive_quantity(quantity: int, field_name: str = "quantity") -> None:
+        if not isinstance(quantity, int) or isinstance(quantity, bool) or quantity <= 0:
+            raise ValueError(f"{field_name} must be a positive integer")
+
+    @staticmethod
+    def _require_non_negative_stock(quantity: int, field_name: str = "counted_stock") -> None:
+        if not isinstance(quantity, int) or isinstance(quantity, bool) or quantity < 0:
+            raise ValueError(f"{field_name} must be a non-negative integer")
+
     async def check_availability(self, product_id: str, quantity: int = 1) -> AvailabilityCheck:
+        self._require_positive_quantity(quantity)
         product = await self.repo.get_product_stock_status(product_id)
         if not product:
             return AvailabilityCheck(product_id=product_id, available=False, stock=0, is_active=False, message="Product not found")
@@ -45,6 +56,8 @@ class InventoryService:
         return AvailabilityCheck(product_id=product_id, available=available, stock=stock, is_active=is_active, message=message)
 
     async def check_multiple_availability(self, items: List[Tuple[str, int]]) -> Dict[str, AvailabilityCheck]:
+        for _, quantity in items:
+            self._require_positive_quantity(quantity)
         product_ids = [item[0] for item in items]
         products = await self.repo.check_multiple_products_stock(product_ids)
         results = {}
@@ -61,6 +74,10 @@ class InventoryService:
         return results
 
     async def reserve_stock(self, order_id: str, items: List[ReservationItem], order_data: Dict[str, Any]) -> ReservationResult:
+        if not items:
+            raise ValueError("At least one reservation item is required")
+        for item in items:
+            self._require_positive_quantity(item.quantity, "reservation quantity")
         try:
             items_dict = [{"product_id": item.product_id, "quantity": item.quantity, "price": item.price} for item in items]
             result = await self.repo.create_pending_order_with_reservation(order_data=order_data, items=items_dict)
@@ -90,25 +107,32 @@ class InventoryService:
         return StockLevel(product_id=product_id, stock=stock, low_stock_threshold=threshold, is_low_stock=(0 < stock <= threshold), is_out_of_stock=(stock == 0))
 
     async def adjust_stock(self, product_id: str, delta: int, reason: str) -> Dict[str, Any]:
+        if not isinstance(delta, int) or isinstance(delta, bool) or delta == 0:
+            raise ValueError("delta must be a non-zero integer")
         return await self.repo.admin_adjust_stock(product_id, delta, reason)
 
     async def receive_stock(self, payload: InventoryOperationRequest) -> InventoryOperationResult:
+        self._require_positive_quantity(payload.quantity)
         result = await self.repo.inventory_receive_stock(payload.product_id, payload.quantity, payload.reason, payload.reference_id, payload.metadata)
         return InventoryOperationResult(**self._normalize_operation_result(result))
 
     async def record_return(self, payload: InventoryOperationRequest) -> InventoryOperationResult:
+        self._require_positive_quantity(payload.quantity)
         result = await self.repo.inventory_record_return(payload.product_id, payload.quantity, payload.reason, payload.order_id, payload.metadata)
         return InventoryOperationResult(**self._normalize_operation_result(result))
 
     async def record_damage(self, payload: InventoryOperationRequest) -> InventoryOperationResult:
+        self._require_positive_quantity(payload.quantity)
         result = await self.repo.inventory_record_damage(payload.product_id, payload.quantity, payload.reason, payload.reference_id, payload.metadata)
         return InventoryOperationResult(**self._normalize_operation_result(result))
 
     async def record_wastage(self, payload: InventoryOperationRequest) -> InventoryOperationResult:
+        self._require_positive_quantity(payload.quantity)
         result = await self.repo.inventory_record_wastage(payload.product_id, payload.quantity, payload.reason, payload.reference_id, payload.metadata)
         return InventoryOperationResult(**self._normalize_operation_result(result))
 
     async def reconcile_stock(self, payload: InventoryReconcileRequest) -> InventoryOperationResult:
+        self._require_non_negative_stock(payload.counted_stock)
         result = await self.repo.inventory_reconcile_stock(payload.product_id, payload.counted_stock, payload.reason, payload.metadata)
         return InventoryOperationResult(**self._normalize_operation_result(result))
 
