@@ -20,6 +20,78 @@ logger = logging.getLogger(__name__)
 
 
 @cron_task(minutes=15)
+async def reconcile_checkout_payment_attempts() -> None:
+    """Reconcile durable pre-provider checkout attempts that outlived their TTL."""
+    from datetime import datetime, timezone
+
+    logger.info("[CRON] Running checkout-payment-attempt reconciliation...")
+    payments = __import__("app.domains.payments.repository", fromlist=["AsyncPaymentRepository"]).AsyncPaymentRepository()
+    cutoff = datetime.now(timezone.utc).isoformat()
+    attempts = await payments.list_stale_checkout_payment_attempts(cutoff)
+
+    for attempt in attempts:
+        attempt_id = attempt["id"]
+        provider_key = str(attempt.get("payment_provider") or "").strip().lower()
+        provider_payment_id = str(attempt.get("provider_payment_id") or "").strip()
+        try:
+            if not provider_key:
+                await payments.update_checkout_payment_attempt(attempt_id, status="cancelled", last_error="missing_provider")
+                continue
+
+            provider = get_payment_provider(provider_key)
+            with payment_provider_context(provider_key):
+                if provider_payment_id:
+                    order = await payments.get_order_by_payment_intent(provider_payment_id)
+                    if order:
+                        await payments.update_checkout_payment_attempt(
+                            attempt_id, status="order_created", last_error=None
+                        )
+                        continue
+
+                    intent = await run_in_threadpool(provider.retrieve_intent, provider_payment_id)
+                    provider_status = str(intent.get("status") or "").lower()
+
+                    if provider_status == "succeeded":
+                        refunded = await run_in_threadpool(provider.process_refund, provider_payment_id)
+                        if refunded:
+                            await payments.update_checkout_payment_attempt(
+                                attempt_id, status="completed", last_error="orphan_success_refunded"
+                            )
+                        else:
+                            await payments.update_checkout_payment_attempt(
+                                attempt_id, status="orphan_risk", last_error="orphan_success_refund_failed"
+                            )
+                    elif provider_status not in {"canceled", "cancelled"}:
+                        await payments.update_checkout_payment_attempt(
+                            attempt_id, status="cancel_requested", last_error="expired_reconciliation"
+                        )
+                        try:
+                            await run_in_threadpool(provider.cancel_intent, provider_payment_id)
+                            await payments.update_checkout_payment_attempt(
+                                attempt_id, status="cancelled", last_error="expired_reconciliation"
+                            )
+                        except Exception as cancel_exc:
+                            await payments.update_checkout_payment_attempt(
+                                attempt_id, status="orphan_risk", last_error=str(cancel_exc)[:1000]
+                            )
+                    else:
+                        await payments.update_checkout_payment_attempt(
+                            attempt_id, status="cancelled", last_error="provider_already_cancelled"
+                        )
+                else:
+                    await payments.update_checkout_payment_attempt(
+                        attempt_id, status="cancelled", last_error="provider_not_created_before_expiry"
+                    )
+        except Exception as exc:
+            logger.error(
+                "[CRON] Checkout payment attempt %s reconciliation failed: %s",
+                attempt_id, exc, exc_info=True,
+            )
+
+    logger.info("[CRON] Checkout-payment-attempt reconciliation complete. Checked %d attempt(s).", len(attempts))
+
+
+@cron_task(minutes=15)
 async def cleanup_abandoned_orders() -> None:
     logger.info("[CRON] Running abandoned-order sweep...")
     inventory = InventoryService()

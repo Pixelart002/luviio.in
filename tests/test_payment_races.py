@@ -237,3 +237,32 @@ async def test_retry_and_webhook_same_payment_intent_converge(monkeypatch):
     assert service.inventory.commit_reservation.await_count == 2
     service.repo.mark_webhook_event_processed.assert_awaited_once_with("evt_shared")
     provider.process_refund.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_create_intent_persistence_failure_compensates_provider_intent(monkeypatch):
+    service, provider = build_service(monkeypatch)
+    service.repo.get_order_by_idempotency_key = AsyncMock(return_value=None)
+    service.repo.get_cart_items_for_checkout = AsyncMock(return_value=[{
+        "product_id": "prod-1", "quantity": 1, "price_snapshot": 100,
+        "products": {"name": "Item", "compare_price": 100, "stock": 10, "hsn_code": "1234", "gst_percentage": 18, "is_active": True},
+    }])
+    service.repo.get_pricing_config = AsyncMock(return_value={})
+    service.repo.get_shipping_address = AsyncMock(return_value={
+        "id": "addr-1", "full_name": "User", "phone": "9999999999", "email": "user@example.com",
+        "line1": "1 Main St", "city": "Delhi", "state": "Delhi", "postal_code": "110001", "country": "IN",
+    })
+    service.repo.create_checkout_payment_attempt = AsyncMock(return_value="attempt-1")
+    service.repo.update_checkout_payment_attempt = AsyncMock()
+    service.repo.create_pending_order_with_reservation = AsyncMock(side_effect=RuntimeError("db down"))
+    service.repo.get_order_by_idempotency_key = AsyncMock(side_effect=[None, None])
+    provider.create_payment_intent.return_value = {"id": "pi_orphan", "client_secret": "secret", "status": "requires_payment_method"}
+    provider.cancel_intent.return_value = {"id": "pi_orphan", "status": "canceled"}
+
+    with pytest.raises(HTTPException) as error:
+        await service.create_intent("user-1", "127.0.0.1", "11111111-1111-4111-8111-111111111111", "addr-1")
+
+    assert error.value.status_code == 409
+    provider.cancel_intent.assert_called_once_with("pi_orphan")
+    service.repo.update_checkout_payment_attempt.assert_any_await(
+        "attempt-1", status="orphan_risk", last_error="db down"
+    )

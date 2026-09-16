@@ -178,10 +178,31 @@ class PaymentService:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
 
         try:
+            checkout_attempt_id = await self.repo.create_checkout_payment_attempt(
+                user_id, clean_idem_key, amount_paise, "inr"
+            )
+            await self.repo.update_checkout_payment_attempt(
+                checkout_attempt_id, status="provider_pending"
+            )
+        except Exception as exc:
+            logger.error("[PAYMENT ERROR] Durable checkout-attempt creation failed: %s", exc, exc_info=True)
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
+
+        try:
             intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_PENDING", user_id, f"aot_pi_{clean_idem_key}")
         except Exception as exc:
             logger.error("[PAYMENT ERROR] Initial Stripe Intent creation failed: %s", exc, exc_info=True)
+            try:
+                await self.repo.update_checkout_payment_attempt(
+                    checkout_attempt_id, status="cancelled", last_error=str(exc)[:1000]
+                )
+            except Exception:
+                logger.critical("[PAYMENT ORPHAN RISK] Could not close durable checkout attempt %s", checkout_attempt_id, exc_info=True)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
+
+        await self.repo.update_checkout_payment_attempt(
+            checkout_attempt_id, provider_payment_id=intent["id"], status="provider_created"
+        )
 
         order_number = self._generate_clean_order_number()
         order_data = {"customer_id": user_id, "status": OrderStatus.PENDING.value, "order_number": order_number, "idempotency_key": clean_idem_key, "stripe_payment_intent": intent["id"], "coupon_id": coupon_id, "coupon_code": coupon_code_resolved, "discount_amount": float(coupon_discount), **breakdown.as_dict(), "total_amount": float(max(breakdown.total - coupon_discount, Decimal("0"))), "shipping_address_id": address_id, "shipping_name": addr.get("full_name"), "shipping_phone": addr.get("phone"), "shipping_email": addr.get("email"), "shipping_line1": addr.get("line1"), "shipping_line2": addr.get("line2"), "shipping_landmark": addr.get("landmark"), "shipping_city": addr.get("city"), "shipping_state": addr.get("state"), "shipping_postal_code": addr.get("postal_code"), "shipping_country": addr.get("country", "IN"), "shipping_company_name": addr.get("company_name"), "shipping_gstin": addr.get("gstin"), "billing_same_as_shipping": is_same_as_shipping, "billing_address_id": billing_addr.get("id"), "billing_name": billing_addr.get("full_name"), "billing_phone": billing_addr.get("phone"), "billing_email": billing_addr.get("email"), "billing_line1": billing_addr.get("line1"), "billing_line2": billing_addr.get("line2"), "billing_landmark": billing_addr.get("landmark"), "billing_city": billing_addr.get("city"), "billing_state": billing_addr.get("state"), "billing_postal_code": billing_addr.get("postal_code"), "billing_country": billing_addr.get("country", "IN"), "billing_company_name": billing_addr.get("company_name"), "billing_gstin": billing_addr.get("gstin")}
@@ -198,6 +219,12 @@ class PaymentService:
                 except Exception:
                     logger.error("[PAYMENT] Existing idempotent order found but Stripe retrieval failed", exc_info=True)
             logger.error("[CRITICAL DB ERROR] Atomic Reservation Failed: %s", exc, exc_info=True)
+            try:
+                await self.repo.update_checkout_payment_attempt(
+                    checkout_attempt_id, status="cancel_requested", last_error=str(exc)[:1000]
+                )
+            except Exception:
+                logger.critical("[PAYMENT ORPHAN RISK] Could not mark checkout attempt %s cancel_requested", checkout_attempt_id, exc_info=True)
             # Compensation boundary: Stripe created the provider object before the
             # durable order/reservation transaction. If persistence failed and no
             # concurrent idempotent order won the race, cancel the newly-created
@@ -207,6 +234,9 @@ class PaymentService:
                 logger.warning(
                     "[PAYMENT COMPENSATION] Cancelled Stripe PaymentIntent %s after order persistence failure",
                     intent["id"],
+                )
+                await self.repo.update_checkout_payment_attempt(
+                    checkout_attempt_id, status="cancelled", last_error=str(exc)[:1000]
                 )
             except Exception as cancel_exc:
                 # Cancellation failure remains observable and must not be hidden.
@@ -218,8 +248,17 @@ class PaymentService:
                     cancel_exc,
                     exc_info=True,
                 )
+                try:
+                    await self.repo.update_checkout_payment_attempt(
+                        checkout_attempt_id, status="orphan_risk", last_error=str(cancel_exc)[:1000]
+                    )
+                except Exception:
+                    logger.critical("[PAYMENT ORPHAN RISK] Durable checkout attempt update also failed for %s", checkout_attempt_id, exc_info=True)
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION) from exc
 
+        await self.repo.update_checkout_payment_attempt(
+            checkout_attempt_id, provider_payment_id=intent["id"], status="order_created"
+        )
         await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
         await self.repo.record_payment_attempt(pending_order["id"], user_id, intent["id"], amount_paise / 100, status="requires_payment_method", ip_address=client_ip, user_agent=user_agent)
         try:

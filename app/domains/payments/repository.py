@@ -136,6 +136,67 @@ class AsyncPaymentRepository:
             logger.error("DB Error fetching order %s: %s", order_id, exc, exc_info=True)
             raise RuntimeError("Unable to load order") from exc
 
+    async def create_checkout_payment_attempt(
+        self, customer_id: str, idempotency_key: str, amount_paise: int, currency: str = "inr"
+    ) -> str:
+        admin_sb = await get_async_admin_supabase()
+        provider = get_current_provider_key()
+        try:
+            res = await admin_sb.rpc(
+                "create_checkout_payment_attempt",
+                {
+                    "p_customer_id": customer_id,
+                    "p_idempotency_key": idempotency_key,
+                    "p_provider": provider,
+                    "p_amount_paise": amount_paise,
+                    "p_currency": currency,
+                },
+            ).execute()
+            data = getattr(res, "data", None)
+            if not data:
+                raise RuntimeError("Checkout payment attempt RPC returned no id")
+            row = data[0] if isinstance(data, list) else data
+            return str(row.get("id") if isinstance(row, dict) else row)
+        except Exception as exc:
+            logger.error("DB Error creating checkout payment attempt: %s", exc, exc_info=True)
+            raise RuntimeError("Unable to create durable checkout payment attempt") from exc
+
+    async def update_checkout_payment_attempt(
+        self, attempt_id: str, provider_payment_id: Optional[str] = None,
+        status: Optional[str] = None, last_error: Optional[str] = None
+    ) -> None:
+        admin_sb = await get_async_admin_supabase()
+        try:
+            await admin_sb.rpc(
+                "update_checkout_payment_attempt",
+                {
+                    "p_id": attempt_id,
+                    "p_provider_payment_id": provider_payment_id,
+                    "p_status": status,
+                    "p_last_error": last_error,
+                },
+            ).execute()
+        except Exception as exc:
+            logger.error("DB Error updating checkout payment attempt %s: %s", attempt_id, exc, exc_info=True)
+            raise RuntimeError("Unable to update durable checkout payment attempt") from exc
+
+    async def list_stale_checkout_payment_attempts(self, cutoff_iso: str) -> List[Dict[str, Any]]:
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await (
+                admin_sb.table("checkout_payment_attempts")
+                .select("id, customer_id, idempotency_key, payment_provider, provider_payment_id, amount_paise, currency, status, created_at, expires_at")
+                .lt("expires_at", cutoff_iso)
+                .in_("status", ["provider_pending", "provider_created", "cancel_requested", "orphan_risk"])
+                .order("expires_at")
+                .limit(100)
+                .execute()
+            )
+            return getattr(res, "data", None) or []
+        except Exception as exc:
+            logger.error("DB Error listing stale checkout payment attempts: %s", exc, exc_info=True)
+            raise RuntimeError("Unable to load stale checkout payment attempts") from exc
+
     async def create_pending_order_with_reservation(
         self, order_data: Dict[str, Any], items: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
