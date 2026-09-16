@@ -1,4 +1,4 @@
-"""Structured, redacted logging and request correlation helpers."""
+"""Structured, redacted production logging and request-correlation helpers."""
 from __future__ import annotations
 
 import json
@@ -17,7 +17,10 @@ trace_id_ctx: ContextVar[str] = ContextVar("trace_id", default="-")
 span_id_ctx: ContextVar[str] = ContextVar("span_id", default="-")
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
-_SECRET_KEYS = re.compile(r"authorization|cookie|token|secret|password|api[_-]?key|card|cvv|private", re.I)
+_SECRET_KEYS = re.compile(
+    r"authorization|cookie|token|secret|password|api[_-]?key|card|cvv|private",
+    re.I,
+)
 
 
 def safe_id(value: str | None) -> str:
@@ -31,7 +34,10 @@ def new_id() -> str:
 
 def redact(value: Any) -> Any:
     if isinstance(value, dict):
-        return {key: "[REDACTED]" if _SECRET_KEYS.search(str(key)) else redact(item) for key, item in value.items()}
+        return {
+            key: "[REDACTED]" if _SECRET_KEYS.search(str(key)) else redact(item)
+            for key, item in value.items()
+        }
     if isinstance(value, (list, tuple)):
         return [redact(item) for item in value]
     return value
@@ -59,7 +65,7 @@ class PrettyFormatter(logging.Formatter):
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
             "level": record.levelname,
             "logger": record.name,
             "message": redact(record.getMessage()),
@@ -77,15 +83,36 @@ def configure_logging() -> None:
     root = logging.getLogger()
     if getattr(root, "_luviio_configured", False):
         return
+
     root.handlers.clear()
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(JsonFormatter() if os.getenv("APP_ENV", "production") == "production" else PrettyFormatter())
+    handler.setFormatter(
+        JsonFormatter()
+        if os.getenv("APP_ENV", "production") == "production"
+        else PrettyFormatter()
+    )
     handler.addFilter(ContextFilter())
     root.addHandler(handler)
-    root.setLevel(logging.DEBUG if os.getenv("DEBUG", "false").lower() == "true" else logging.INFO)
+    root.setLevel(
+        logging.DEBUG if os.getenv("DEBUG", "false").lower() == "true" else logging.INFO
+    )
+
+    # Framework internals are useful during debugging but too noisy for normal
+    # production operations. Application warnings/errors remain visible.
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("apscheduler").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+
     root._luviio_configured = True
 
 
-__all__ = ["configure_logging", "correlation_id_ctx", "new_id", "request_id_ctx", "safe_id", "span_id_ctx", "trace_id_ctx"]
+__all__ = [
+    "configure_logging",
+    "correlation_id_ctx",
+    "new_id",
+    "request_id_ctx",
+    "safe_id",
+    "span_id_ctx",
+    "trace_id_ctx",
+]
