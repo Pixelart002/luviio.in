@@ -32,13 +32,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    logger.info("🚀 Starting %s [%s]", settings.APP_NAME, settings.APP_ENV)
+    logger.info("Application startup | service=%s env=%s", settings.APP_NAME, settings.APP_ENV)
     register_all_event_handlers()
-    logger.info("✅ Application Event Bus ready")
+    logger.info("Event bus ready | durable_outbox=true")
     start_cron_jobs()
-    logger.info("✅ Cron Scheduler started")
+    logger.info("Background scheduler ready | tasks=3")
     yield
-    logger.info("👋 Shutting down %s", settings.APP_NAME)
+    logger.info("Application shutdown | service=%s", settings.APP_NAME)
 
 
 app = FastAPI(
