@@ -41,6 +41,9 @@ async def fetch_pending(limit: int = 50) -> list[dict[str, Any]]:
 
 async def claim_event(event_id: str, attempt: int) -> bool:
     sb = await get_async_admin_supabase()
+    # In the installed postgrest client, filters return an
+    # AsyncFilterRequestBuilder that does not expose .select(). Put the
+    # response modifier on the update builder before adding filters.
     result = await (
         sb.table("event_outbox")
         .update(
@@ -50,9 +53,9 @@ async def claim_event(event_id: str, attempt: int) -> bool:
                 "locked_at": datetime.now(timezone.utc).isoformat(),
             }
         )
+        .select("id")
         .eq("id", event_id)
         .eq("status", "pending")
-        .select("id")
         .execute()
     )
     return bool(getattr(result, "data", None))
