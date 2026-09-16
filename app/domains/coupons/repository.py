@@ -16,11 +16,12 @@ logger = logging.getLogger(__name__)
 class AsyncCouponRepository:
     async def get_by_code(self, code: str) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
+        normalized_code = str(code or "").strip().upper()
         try:
             res = await (
                 sb.table("coupons")
                 .select("*")
-                .eq("code", code)
+                .eq("code", normalized_code)
                 .limit(1)
                 .execute()
             )
@@ -60,9 +61,6 @@ class AsyncCouponRepository:
     async def create(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            # Supabase/PostgREST's async request builder expects JSON-native values.
-            # Pydantic keeps valid_from/valid_until as datetime objects, so encode
-            # them before sending the request.
             encoded_data = jsonable_encoder(data)
             await sb.table("coupons").insert(encoded_data).execute()
             code = data.get("code")
@@ -117,7 +115,7 @@ class AsyncCouponRepository:
             raise RuntimeError("Coupon redemption lookup failed") from exc
 
     async def record_redemption(self, coupon_id: str, user_id: str, order_id: str, discount: float) -> bool:
-        """Record a redemption and increment usage atomically in Postgres."""
+        """Convert an existing reservation to redeemed atomically in Postgres."""
         sb = await get_async_admin_supabase()
         try:
             res = await sb.rpc("record_coupon_redemption", {
