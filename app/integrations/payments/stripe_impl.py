@@ -89,6 +89,18 @@ class StripeProvider(PaymentProvider):
         try:
             intent = stripe.PaymentIntent.cancel(payment_intent_id)
             return {"id": intent.id, "status": intent.status}
+        except stripe.error.InvalidRequestError as e:
+            # Compensation is intentionally idempotent. Stripe returns
+            # payment_intent_unexpected_state when the intent is already
+            # canceled. Treat that terminal state as successful cancellation,
+            # but never silently accept a succeeded intent.
+            if getattr(e, "code", None) == "payment_intent_unexpected_state":
+                current = stripe.PaymentIntent.retrieve(payment_intent_id)
+                if current.status == "canceled":
+                    logger.info("Stripe PaymentIntent %s was already canceled", payment_intent_id)
+                    return {"id": current.id, "status": current.status}
+            logger.warning("Stripe Intent cancel failed for %s: %s", payment_intent_id, e)
+            raise
         except stripe.error.StripeError as e:
             logger.warning("Stripe Intent cancel failed for %s: %s", payment_intent_id, e)
             raise
