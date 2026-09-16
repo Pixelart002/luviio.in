@@ -1,0 +1,51 @@
+name: Harden D-009
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Patch orphan PaymentIntent compensation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("app/domains/payments/service.py")
+          text = path.read_text()
+          old = '''            logger.error("[CRITICAL DB ERROR] Atomic Reservation Failed: %s", exc, exc_info=True)\n            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION) from exc\n'''
+          new = '''            logger.error("[CRITICAL DB ERROR] Atomic Reservation Failed: %s", exc, exc_info=True)\n            # Compensation boundary: Stripe created the provider object before the\n            # durable order/reservation transaction. If persistence failed and no\n            # concurrent idempotent order won the race, cancel the newly-created\n            # PaymentIntent so funds are not left attached to a non-existent order.\n            try:\n                await run_in_threadpool(self.provider.cancel_intent, intent["id"])\n                logger.warning(\n                    "[PAYMENT COMPENSATION] Cancelled Stripe PaymentIntent %s after order persistence failure",\n                    intent["id"],\n                )\n            except Exception as cancel_exc:\n                # Cancellation failure remains observable and must not be hidden.\n                # The existing abandoned-order sweep cannot see an order that was\n                # never committed, so this is logged as a high-severity orphan risk.\n                logger.critical(\n                    "[PAYMENT ORPHAN RISK] Failed to cancel Stripe PaymentIntent %s after order persistence failure: %s",\n                    intent["id"],\n                    cancel_exc,\n                    exc_info=True,\n                )\n            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION) from exc\n'''
+          if old not in text:
+              raise SystemExit("target block not found; refusing unsafe patch")
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Update defect ledger
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("context/DEFECT_LEDGER.md")
+          text = path.read_text()
+          old = '''### D-009 — Stripe intent may exist without a persisted pending order\n**Status:** open.\n**Required fix:** durable checkout-attempt record before provider creation where feasible, plus cancellation/compensation and reconciliation for an orphan provider intent.\n'''
+          new = '''### D-009 — Stripe intent may exist without a persisted pending order\n**Status:** partially mitigated; durable orphan reconciliation remains open.\n**Fixed:** when the Stripe PaymentIntent is created but atomic order/reservation persistence fails, the service now attempts provider-side cancellation before returning the checkout error. If cancellation fails, a high-severity orphan-risk log is emitted.\n**Remaining:** add a durable pre-provider checkout-attempt record and reconciliation sweep for provider intents that have no matching Luviio order.\n'''
+          if old not in text:
+              raise SystemExit("D-009 ledger block not found; refusing unsafe patch")
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Remove one-shot workflow and commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/harden-d009.yml
+          git add app/domains/payments/service.py context/DEFECT_LEDGER.md .github/workflows/harden-d009.yml
+          git commit -m "fix payments: compensate orphan Stripe intents"
+          git push
