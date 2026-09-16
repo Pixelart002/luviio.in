@@ -126,7 +126,7 @@ class ProductService:
         if len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
         if len(data.get("images") or []) + len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
         res = await self.repo.create_product(data)
         if not res:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
