@@ -10,15 +10,13 @@ import json
 import logging
 import os
 import random
-import threading
 import time
-from collections import defaultdict
 from typing import Any, Literal
 
 import requests
 from starlette.concurrency import run_in_threadpool
 
-from app.core.supabase import get_async_admin_supabase
+from app.core.supabase import get_admin_supabase, get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -38,62 +36,53 @@ _RATE_LIMIT_PER_ENDPOINT = 3
 PushResult = Literal["sent", "dead", "failed"]
 
 
-class CircuitBreaker:
-    def __init__(
-        self,
-        threshold: int = _CIRCUIT_BREAKER_THRESHOLD,
-        reset_sec: int = _CIRCUIT_BREAKER_RESET_SEC,
-    ):
-        self.threshold = threshold
-        self.reset_sec = reset_sec
-        self._failures: dict[str, int] = defaultdict(int)
-        self._tripped_until: dict[str, float] = {}
-        self._lock = threading.Lock()
-
-    def is_open(self, key: str) -> bool:
-        with self._lock:
-            tripped_until = self._tripped_until.get(key, 0)
-            if tripped_until > time.time():
-                return True
-            if tripped_until > 0:
-                self._tripped_until.pop(key, None)
-                self._failures.pop(key, None)
-            return False
-
-    def record_failure(self, key: str) -> None:
-        with self._lock:
-            self._failures[key] += 1
-            if self._failures[key] >= self.threshold:
-                self._tripped_until[key] = time.time() + self.reset_sec
-
-    def record_success(self, key: str) -> None:
-        with self._lock:
-            self._failures.pop(key, None)
-            self._tripped_until.pop(key, None)
-
-
-_push_circuit_breaker = CircuitBreaker()
-_push_rate_limiter: dict[str, list[float]] = defaultdict(list)
-_rate_lock = threading.Lock()
-
-
-def _check_rate_limit(endpoint: str) -> bool:
-    now = time.time()
-    with _rate_lock:
-        _push_rate_limiter[endpoint] = [
-            timestamp
-            for timestamp in _push_rate_limiter.get(endpoint, [])
-            if now - timestamp < 1.0
-        ]
-        if len(_push_rate_limiter[endpoint]) >= _RATE_LIMIT_PER_ENDPOINT:
-            return False
-        _push_rate_limiter[endpoint].append(now)
-        return True
-
-
 def _endpoint_key(endpoint: str) -> str:
-    """Return a stable non-sensitive key for circuit/rate-limit state."""
+    """Return a stable non-sensitive key for shared delivery state."""
     return hashlib.sha256(endpoint.encode("utf-8")).hexdigest()[:20]
+
+
+def _shared_push_guard(endpoint_key: str) -> bool:
+    """Atomically enforce rate/circuit state in shared Postgres storage."""
+    try:
+        sb = get_admin_supabase()
+        result = sb.rpc(
+            "push_delivery_guard",
+            {
+                "p_endpoint_key": endpoint_key,
+                "p_limit": _RATE_LIMIT_PER_ENDPOINT,
+                "p_window_seconds": 1,
+                "p_failure_threshold": _CIRCUIT_BREAKER_THRESHOLD,
+                "p_reset_seconds": _CIRCUIT_BREAKER_RESET_SEC,
+            },
+        ).execute()
+        return bool(getattr(result, "data", False))
+    except Exception:
+        # A fail-open delivery guard would reintroduce the multi-worker problem.
+        logger.exception("Shared push delivery guard unavailable")
+        return False
+
+
+def _record_push_success(endpoint_key: str) -> None:
+    try:
+        get_admin_supabase().rpc(
+            "push_delivery_record_success", {"p_endpoint_key": endpoint_key}
+        ).execute()
+    except Exception:
+        logger.exception("Failed to reset shared push circuit state")
+
+
+def _record_push_failure(endpoint_key: str) -> None:
+    try:
+        get_admin_supabase().rpc(
+            "push_delivery_record_failure",
+            {
+                "p_endpoint_key": endpoint_key,
+                "p_failure_threshold": _CIRCUIT_BREAKER_THRESHOLD,
+                "p_reset_seconds": _CIRCUIT_BREAKER_RESET_SEC,
+            },
+        ).execute()
+    except Exception:
+        logger.exception("Failed to persist shared push circuit failure")
 
 
 def _retry_after_seconds(exc: Exception) -> float | None:
@@ -143,9 +132,7 @@ def send_push(
         return "dead"
 
     endpoint_key = _endpoint_key(endpoint)
-    if _push_circuit_breaker.is_open(endpoint_key):
-        return "failed"
-    if not _check_rate_limit(endpoint_key):
+    if not _shared_push_guard(endpoint_key):
         return "failed"
 
     payload = json.dumps(
@@ -170,7 +157,7 @@ def send_push(
                     requests_session=session,
                     timeout=_PUSH_TIMEOUT_SEC,
                 )
-                _push_circuit_breaker.record_success(endpoint_key)
+                _record_push_success(endpoint_key)
                 return "sent"
             except WebPushException as exc:
                 response = getattr(exc, "response", None)
@@ -203,7 +190,7 @@ def send_push(
                     time.sleep(delay)
                     continue
 
-                _push_circuit_breaker.record_failure(endpoint_key)
+                _record_push_failure(endpoint_key)
                 logger.warning(
                     "Web push delivery failed",
                     extra={"endpoint_key": endpoint_key, "status_code": status_code},
@@ -219,20 +206,21 @@ def send_push(
                     time.sleep(delay)
                     continue
 
-                _push_circuit_breaker.record_failure(endpoint_key)
+                _record_push_failure(endpoint_key)
                 logger.warning(
                     "Web push network request failed",
                     extra={"endpoint_key": endpoint_key, "error_type": type(exc).__name__},
                 )
                 return "failed"
             except (ValueError, TypeError, KeyError) as exc:
+                _record_push_failure(endpoint_key)
                 logger.warning(
                     "Web push subscription data is invalid",
                     extra={"endpoint_key": endpoint_key, "error_type": type(exc).__name__},
                 )
                 return "failed"
             except Exception:
-                _push_circuit_breaker.record_failure(endpoint_key)
+                _record_push_failure(endpoint_key)
                 logger.exception(
                     "Unexpected web push delivery failure",
                     extra={"endpoint_key": endpoint_key},
