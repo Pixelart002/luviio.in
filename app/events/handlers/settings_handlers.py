@@ -7,11 +7,22 @@ Persists audit rows for settings changes using the canonical
 `settings_audit_log` schema.
 """
 import logging
+from uuid import UUID
 
 from app.core.supabase import get_async_admin_supabase
 from app.events.settings_events import SettingResetEvent, SettingUpdatedEvent
 
 logger = logging.getLogger(__name__)
+
+
+def _actor_uuid(value: str | None) -> str | None:
+    """Return a valid actor UUID or None for system/non-user mutations."""
+    if not value:
+        return None
+    try:
+        return str(UUID(str(value)))
+    except (TypeError, ValueError, AttributeError):
+        return None
 
 
 async def _write_audit_row(payload: dict) -> None:
@@ -27,7 +38,7 @@ async def handle_setting_updated(event: SettingUpdatedEvent) -> None:
             "key": event.key,
             "old_value": event.old_value,
             "new_value": event.new_value,
-            "changed_by": event.updated_by,
+            "changed_by": _actor_uuid(event.updated_by),
             "reason": event.reason,
         })
         logger.info("Settings audit written | action=updated key=%s", event.key)
@@ -44,7 +55,7 @@ async def handle_setting_reset(event: SettingResetEvent) -> None:
             "key": event.key,
             "old_value": None,
             "new_value": event.restored_value,
-            "changed_by": event.reset_by,
+            "changed_by": _actor_uuid(event.reset_by),
             "reason": "reset_to_default",
         })
         logger.info("Settings audit written | action=reset key=%s", event.key)
