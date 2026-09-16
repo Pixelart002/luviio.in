@@ -245,7 +245,7 @@ async def test_create_intent_persistence_failure_compensates_provider_intent(mon
     service.repo.get_order_by_idempotency_key = AsyncMock(return_value=None)
     service.repo.get_cart_items_for_checkout = AsyncMock(return_value=[{
         "product_id": "prod-1", "quantity": 1, "price_snapshot": 100,
-        "products": {"name": "Item", "compare_price": 100, "stock": 10, "hsn_code": "1234", "gst_percentage": 18, "is_active": True},
+        "products": {"name": "Item", "price": 100, "compare_price": 100, "stock": 10, "hsn_code": "1234", "gst_percentage": 18, "is_active": True},
     }])
     service.repo.get_pricing_config = AsyncMock(return_value={
         "tax_enabled": True,
@@ -271,5 +271,5 @@ async def test_create_intent_persistence_failure_compensates_provider_intent(mon
     assert error.value.status_code == 409
     provider.cancel_intent.assert_called_once_with("pi_orphan")
     service.repo.update_checkout_payment_attempt.assert_any_await(
-        "attempt-1", status="orphan_risk", last_error="db down"
+        "attempt-1", status="cancelled", last_error="db down"
     )
