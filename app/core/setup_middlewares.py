@@ -16,7 +16,7 @@ from app.api.middlewares.security import (
     RequestIDMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.core.rate_limit import limiter
+from app.core.rate_limit import SharedRateLimitMiddleware, limiter
 
 
 def apply_middlewares(app: FastAPI) -> None:
@@ -27,7 +27,7 @@ def apply_middlewares(app: FastAPI) -> None:
     app.add_middleware(HideServerHeaderMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(PureWindowLoggerMiddleware)
+    app.add_middleware(SharedRateLimitMiddleware)
 
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    
