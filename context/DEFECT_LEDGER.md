@@ -45,8 +45,9 @@
 **Remaining:** SlowAPI storage is still process-local. For true cross-worker/global throttling, move the limiter store to shared Redis/edge/DB-backed storage.
 
 ### D-009 — Stripe intent may exist without a persisted pending order
-**Status:** open.
-**Required fix:** durable checkout-attempt record before provider creation where feasible, plus cancellation/compensation and reconciliation for an orphan provider intent.
+**Status:** partially mitigated; durable orphan reconciliation remains open.
+**Fixed:** when the Stripe PaymentIntent is created but atomic order/reservation persistence fails, the service now attempts provider-side cancellation before returning the checkout error. If cancellation fails, a high-severity orphan-risk log is emitted.
+**Remaining:** add a durable pre-provider checkout-attempt record and reconciliation sweep for provider intents that have no matching Luviio order.
 
 ### D-010 — CI static/type gate
 **Status:** fixed and verified on current main.

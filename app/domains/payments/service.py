@@ -198,6 +198,26 @@ class PaymentService:
                 except Exception:
                     logger.error("[PAYMENT] Existing idempotent order found but Stripe retrieval failed", exc_info=True)
             logger.error("[CRITICAL DB ERROR] Atomic Reservation Failed: %s", exc, exc_info=True)
+            # Compensation boundary: Stripe created the provider object before the
+            # durable order/reservation transaction. If persistence failed and no
+            # concurrent idempotent order won the race, cancel the newly-created
+            # PaymentIntent so funds are not left attached to a non-existent order.
+            try:
+                await run_in_threadpool(self.provider.cancel_intent, intent["id"])
+                logger.warning(
+                    "[PAYMENT COMPENSATION] Cancelled Stripe PaymentIntent %s after order persistence failure",
+                    intent["id"],
+                )
+            except Exception as cancel_exc:
+                # Cancellation failure remains observable and must not be hidden.
+                # The existing abandoned-order sweep cannot see an order that was
+                # never committed, so this is logged as a high-severity orphan risk.
+                logger.critical(
+                    "[PAYMENT ORPHAN RISK] Failed to cancel Stripe PaymentIntent %s after order persistence failure: %s",
+                    intent["id"],
+                    cancel_exc,
+                    exc_info=True,
+                )
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION) from exc
 
         await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
