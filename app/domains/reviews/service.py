@@ -21,17 +21,30 @@ class ReviewService:
         product = await sb.table("products").select("id,is_active").eq("id", product_id).limit(1).execute()
         if not (getattr(product, "data", None) or []):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found.")
+
         existing = await self.repo.get_user_review(product_id, user_id)
         if existing:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You have already reviewed this product.")
 
-        delivered = await sb.table("orders").select("id").eq("customer_id", user_id).eq("status", "delivered").limit(100).execute()
-        order_ids = [row.get("id") for row in (getattr(delivered, "data", None) or []) if row.get("id")]
-        if not order_ids:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A delivered purchase is required before reviewing this product.")
-        item = await sb.table("order_items").select("id").in_("order_id", order_ids).eq("product_id", product_id).limit(1).execute()
+        # Verify the customer purchased this exact product in a delivered order.
+        # The previous implementation fetched up to 100 delivered orders first, which
+        # could reject a legitimate reviewer after the 100-order boundary and added
+        # an unnecessary second round-trip. Use the relational join to let Postgres
+        # perform the existence check in one indexed query.
+        item = await (
+            sb.table("order_items")
+            .select("id,orders!inner(id)")
+            .eq("product_id", product_id)
+            .eq("orders.customer_id", user_id)
+            .eq("orders.status", "delivered")
+            .limit(1)
+            .execute()
+        )
         if not (getattr(item, "data", None) or []):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only customers who purchased this product can review it.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only customers who purchased this product can review it.",
+            )
 
         try:
             return await self.repo.insert(product_id, user_id, {**data, "status": "pending"})
