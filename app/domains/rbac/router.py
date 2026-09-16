@@ -138,8 +138,8 @@ async def remove_user_control(user_id: str, action: str):
 async def check_user_action(user_id: str, action: str):
     from app.permissions.action_control import is_action_enabled
 
-    enabled = await is_action_enabled(user_id, action) if action in _action_svc.action_note.__func__.__globals__["USER_ACTION_NOTES"] else False
     _action_svc.validate_action(action)
+    enabled = await is_action_enabled(user_id, action)
     return success_response(
         data={
             "user_id": user_id,
