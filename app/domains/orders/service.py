@@ -94,9 +94,16 @@ class OrderService:
         if not updated:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.CONCURRENCY_CONFLICT)
         try:
-            get_event_bus().publish(OrderStatusChangedEvent(order=updated, customer_id=user_id, old_status=actual_old_status, new_status=OrderStatus.CANCELLED.value))
-        except Exception as e:
-            logger.error(f"Event bus dispatch failed during order cancel: {e}")
+            await get_event_bus().publish_durable(
+                OrderStatusChangedEvent(
+                    order=updated,
+                    customer_id=user_id,
+                    old_status=actual_old_status,
+                    new_status=OrderStatus.CANCELLED.value,
+                )
+            )
+        except Exception:
+            logger.error("Durable event dispatch failed during order cancel", exc_info=True)
         return {"status": OrderStatus.CANCELLED.value, "order_number": raw_order.get("order_number", ""), "message": OrderMessages.CANCEL_SUCCESS}
 
     async def get_all_orders(self, status_filter: str, page: int, page_size: int) -> Tuple[List[Dict[str, Any]], int]:
@@ -152,9 +159,23 @@ class OrderService:
         if target_status_str == OrderStatus.SHIPPED.value:
             email = await self.repo.get_user_email(current_res["customer_id"])
             if email:
-                get_event_bus().publish(OrderShippedEvent(order=result, customer_email=email, customer_id=current_res["customer_id"], tracking_number=payload_data.get("tracking_number")))
+                await get_event_bus().publish_durable(
+                    OrderShippedEvent(
+                        order=result,
+                        customer_email=email,
+                        customer_id=current_res["customer_id"],
+                        tracking_number=payload_data.get("tracking_number"),
+                    )
+                )
         elif target_status_str in (OrderStatus.DELIVERED.value, OrderStatus.REFUNDED.value, OrderStatus.CANCELLED.value):
-            get_event_bus().publish(OrderStatusChangedEvent(order=result, customer_id=current_res["customer_id"], old_status=current_status_enum.value, new_status=target_status_str))
+            await get_event_bus().publish_durable(
+                OrderStatusChangedEvent(
+                    order=result,
+                    customer_id=current_res["customer_id"],
+                    old_status=current_status_enum.value,
+                    new_status=target_status_str,
+                )
+            )
         return self._sanitize(result)
 
     async def generate_invoice_pdf(self, order_identifier: str, user_id: str, is_admin: bool) -> tuple[bytes, str]:
