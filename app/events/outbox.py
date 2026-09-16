@@ -40,9 +40,13 @@ async def fetch_pending(limit: int = 50) -> list[dict[str, Any]]:
 
 
 async def claim_event(event_id: str, attempt: int) -> bool:
+    """Atomically claim a pending event without relying on response modifiers.
+
+    The installed async PostgREST builder does not expose ``select`` on the
+    filtered request builder.  Using an exact update count avoids that
+    incompatibility while retaining the pending-state compare-and-set.
+    """
     sb = await get_async_admin_supabase()
-    # Response modifiers must be attached before filters with the installed
-    # async postgrest builder; filters otherwise return AsyncFilterRequestBuilder.
     result = await (
         sb.table("event_outbox")
         .update(
@@ -50,14 +54,14 @@ async def claim_event(event_id: str, attempt: int) -> bool:
                 "status": "processing",
                 "attempts": attempt,
                 "locked_at": datetime.now(timezone.utc).isoformat(),
-            }
+            },
+            count="exact",
         )
-        .select("id")
         .eq("id", event_id)
         .eq("status", "pending")
         .execute()
     )
-    return bool(getattr(result, "data", None))
+    return getattr(result, "count", None) == 1
 
 
 async def mark_completed(event_id: str) -> None:
