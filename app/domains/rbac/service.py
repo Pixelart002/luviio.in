@@ -78,6 +78,11 @@ class UserActionControlService:
         if action not in USER_ACTION_NOTES:
             raise ValueError(f"Unknown user action: {action}")
 
+    @staticmethod
+    def action_note(action: str) -> str:
+        UserActionControlService.validate_action(action)
+        return USER_ACTION_NOTES[action]
+
     async def list_for_user(self, user_id: str) -> List[Dict[str, Any]]:
         return await self.repo.list(user_id)
 
