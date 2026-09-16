@@ -4,6 +4,7 @@ Product Domain Service — Async Enterprise Grade
 Canonical product business logic. Legacy service remains available for
 compatibility while domain consumers use this module directly.
 """
+import asyncio
 import logging
 import re
 import unicodedata
@@ -88,9 +89,23 @@ class ProductService:
         # New products are active by default. An explicit is_active=False from
         # the admin workflow still remains respected.
         data.setdefault("is_active", True)
-        if data.get("sku") and await self.repo.check_sku_exists(data["sku"]):
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ProductSecurityMessages.SKU_COLLISION)
-        data["slug"] = await self._resolve_slug(data.get("name", ""), data.get("slug"))
+        sku = data.get("sku")
+        requested_slug = data.get("slug")
+
+        # SKU collision and slug generation are independent DB reads. Run them
+        # concurrently so product creation does not pay two network round trips
+        # in sequence.
+        if sku:
+            sku_exists, slug = await asyncio.gather(
+                self.repo.check_sku_exists(sku),
+                self._resolve_slug(data.get("name", ""), requested_slug),
+            )
+            if sku_exists:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ProductSecurityMessages.SKU_COLLISION)
+        else:
+            slug = await self._resolve_slug(data.get("name", ""), requested_slug)
+        data["slug"] = slug
+
         data["price"] = float(data["price"])
         if data.get("compare_price"):
             data["compare_price"] = float(data["compare_price"])
@@ -136,8 +151,12 @@ class ProductService:
             if files:
                 uploaded = await run_in_threadpool(upload_multiple_images, files, res["id"], max_images=ProductRules.MAX_IMAGES_PER_PRODUCT - len(existing))
             all_images = existing + uploaded
-            await self.repo.update_product(res["id"], {"images": all_images, "image_url": all_images[0] if all_images else None})
-            await self.repo.sync_product_images_table(res["id"], all_images)
+            # The product row and relational image projection are independent
+            # once all image URLs are known, so update them concurrently.
+            await asyncio.gather(
+                self.repo.update_product(res["id"], {"images": all_images, "image_url": all_images[0] if all_images else None}),
+                self.repo.sync_product_images_table(res["id"], all_images),
+            )
             res["images"] = all_images
             res["image_url"] = all_images[0] if all_images else None
             return self._enrich_discount(res)
