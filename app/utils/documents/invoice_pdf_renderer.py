@@ -98,13 +98,13 @@ def _styles() -> dict[str, ParagraphStyle]:
         "body": st("body", fontSize=7.3, leading=9.5),
         "body_b": st("body_b", fontName="Helvetica-Bold", fontSize=7.3, leading=9.5),
         "small": st("small", fontSize=6.5, leading=8.5, textColor=DIM),
-        "head": st("head", fontName="Helvetica-Bold", fontSize=6.7, leading=8, alignment=TA_CENTER),
-        "head_l": st("head_l", fontName="Helvetica-Bold", fontSize=6.7, leading=8, alignment=TA_LEFT),
-        "head_r": st("head_r", fontName="Helvetica-Bold", fontSize=6.7, leading=8, alignment=TA_RIGHT),
-        "cell": st("cell", fontSize=6.7, leading=8.8),
-        "cell_c": st("cell_c", fontSize=6.7, leading=8.8, alignment=TA_CENTER),
-        "cell_r": st("cell_r", fontSize=6.7, leading=8.8, alignment=TA_RIGHT),
-        "cell_b": st("cell_b", fontName="Helvetica-Bold", fontSize=6.7, leading=8.8),
+        "head": st("head", fontName="Helvetica-Bold", fontSize=6.4, leading=7.5, alignment=TA_CENTER),
+        "head_l": st("head_l", fontName="Helvetica-Bold", fontSize=6.4, leading=7.5, alignment=TA_LEFT),
+        "head_r": st("head_r", fontName="Helvetica-Bold", fontSize=6.4, leading=7.5, alignment=TA_RIGHT),
+        "cell": st("cell", fontSize=6.5, leading=8.4),
+        "cell_c": st("cell_c", fontSize=6.5, leading=8.4, alignment=TA_CENTER),
+        "cell_r": st("cell_r", fontSize=6.5, leading=8.4, alignment=TA_RIGHT),
+        "cell_b": st("cell_b", fontName="Helvetica-Bold", fontSize=6.5, leading=8.4),
         "sum_l": st("sum_l", fontSize=7.5, leading=10, alignment=TA_RIGHT),
         "sum_v": st("sum_v", fontName="Helvetica-Bold", fontSize=7.5, leading=10, alignment=TA_RIGHT),
         "words": st("words", fontSize=7.4, leading=10),
@@ -201,6 +201,29 @@ def _line_discount(item: dict[str, Any], unit_price: float, qty: int) -> tuple[f
     return display_mrp, discount
 
 
+def _tax_mode(order: dict[str, Any], seller: dict[str, Any], shipping: dict[str, Any]) -> str:
+    explicit = _s(order.get("tax_type")).upper().replace(" ", "")
+    if explicit in {"IGST", "CGST+SGST", "CGST/SGST", "CGSTSGST"}:
+        return "IGST" if explicit == "IGST" else "CGST+SGST"
+    seller_code = _state_code(seller)
+    recipient_code = _state_code(shipping)
+    return "CGST+SGST" if seller_code and seller_code == recipient_code else "IGST"
+
+
+def _tax_breakdown(rate: float, tax_amount: float, mode: str) -> str:
+    if rate <= 0 or tax_amount <= 0:
+        return "—"
+    if mode == "CGST+SGST":
+        cgst_rate = rate / 2
+        cgst_amount = round(tax_amount / 2, 2)
+        sgst_amount = round(tax_amount - cgst_amount, 2)
+        return (
+            f"<b>CGST {cgst_rate:g}%</b><br/>{_money(cgst_amount)}"
+            f"<br/><b>SGST {cgst_rate:g}%</b><br/>{_money(sgst_amount)}"
+        )
+    return f"<b>IGST {rate:g}%</b><br/>{_money(tax_amount)}"
+
+
 def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str, Any], seller_snapshot: dict[str, Any], billing_snapshot: dict[str, Any], shipping_snapshot: dict[str, Any]) -> bytes:
     global ST
     ST = _styles()
@@ -214,9 +237,9 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
 
     invoice_no = _s(order.get("invoice_number")) or "—"
     order_no = _s(order.get("order_number")) or _s(order.get("id")) or "—"
-    status = _s(order.get("status"), "paid").upper()
     website = _s(seller.get("website"), "https://luviio.in")
     seller_name = _s(seller.get("legal_name"), _s(seller.get("brand_name"), "LUVIIO"))
+    tax_mode = _tax_mode(order, seller, shipping)
 
     logo = _asset_image(seller.get("logo_url"), 98, 42)
     brand_cell = logo or Paragraph("LUVIIO", ST["logo"])
@@ -252,9 +275,9 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
         [Paragraph("Invoice Details:",ST["label"])],
         [Paragraph(f"<b>Invoice No:</b> {invoice_no}",ST["body"])],
         [Paragraph(f"<b>Invoice Date:</b> {_date(order.get('issued_at'),True)}",ST["body"])],
-        [Paragraph(f"<b>Payment:</b> {status}",ST["body"])],
         [Paragraph(f"<b>Tracking:</b> {_s(order.get('tracking_number'),'—')}",ST["body"])],
         [Paragraph(f"<b>Place of Supply:</b> {place_of_supply}",ST["body"])],
+        [Paragraph(f"<b>Tax:</b> {tax_mode}",ST["body"])],
         [Paragraph(f"<b>Reverse Charge:</b> {reverse_charge}",ST["body"])],
     ]
     qr_payload = _s(order.get("qr_payload")) or f"INV:{invoice_no}|ORD:{order_no}|TOTAL:{_f(order.get('total_amount')):.2f}"
@@ -264,8 +287,8 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
     meta.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.5,BORDER),("LINEBEFORE",(1,0),(1,0),.5,BORDER),("LINEBEFORE",(2,0),(2,0),.5,BORDER),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
     story += [meta, Spacer(1,10)]
 
-    widths = [18, 150, 38, 50, 22, 52, 60, 86, 66]
-    rows = [[Paragraph("Sl.",ST["head"]),Paragraph("Description",ST["head_l"]),Paragraph("HSN",ST["head"]),Paragraph("Unit Price",ST["head_r"]),Paragraph("Qty",ST["head"]),Paragraph("Discount",ST["head_r"]),Paragraph("Net Amount",ST["head_r"]),Paragraph("GST / Tax",ST["head"]),Paragraph("Total",ST["head_r"])]]
+    widths = [18, 138, 34, 48, 20, 48, 60, 104, 65]
+    rows = [[Paragraph("Sl.",ST["head"]),Paragraph("Description",ST["head_l"]),Paragraph("HSN",ST["head"]),Paragraph("Unit Price",ST["head_r"]),Paragraph("Qty",ST["head"]),Paragraph("Discount",ST["head_r"]),Paragraph("Taxable Value",ST["head_r"]),Paragraph("GST (CGST + SGST)",ST["head"]),Paragraph("Total",ST["head_r"])]]
     items = order.get("order_items") or []
     run_tax = 0.0
     run_net = 0.0
@@ -281,8 +304,7 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
         if item_tax == 0 and rate > 0 and net > 0: item_tax = round(net * rate / 100,2)
         line_total = _f(item.get("line_total"))
         if line_total <= 0: line_total = net + item_tax
-        tax_type = _s(order.get("tax_type"), "IGST")
-        tax_display = f"<b>{rate:g}%</b><br/>{tax_type}<br/><font color='#555555'>{_money(item_tax)}</font>"
+        tax_display = _tax_breakdown(rate, item_tax, tax_mode)
         name = _s(item.get("product_name"), "Product")
         hsn = _s(item.get("hsn_code"))
         rows.append([Paragraph(str(idx),ST["cell_c"]),Paragraph(name,ST["cell"]),Paragraph(hsn,ST["cell_c"]),Paragraph(_money(display_unit),ST["cell_r"]),Paragraph(str(qty),ST["cell_c"]),Paragraph(_money(discount),ST["cell_r"]),Paragraph(_money(net),ST["cell_r"]),Paragraph(tax_display,ST["cell_c"]),Paragraph(_money(line_total),ST["cell_r"])])
@@ -295,14 +317,15 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
         run_net += shipping_cost
 
     grand = _f(order.get("total_amount"), run_net + run_tax)
-    rows.append([Paragraph("Total",ST["cell_b"]),"","","","","","",Paragraph(_money(run_tax),ST["head_r"]),Paragraph(_money(grand),ST["head_r"])])
+    rows.append([Paragraph("Total",ST["cell_b"]),"","","","","",Paragraph(_money(run_net),ST["head_r"]),Paragraph(f"<b>Total GST</b><br/>{_money(run_tax)}",ST["head_r"]),Paragraph(_money(grand),ST["head_r"])])
     items_table = Table(rows,colWidths=widths,repeatRows=1)
-    items_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),HEADER),("LINEBELOW",(0,0),(-1,0),.8,BORDER),("ROWBACKGROUNDS",(0,1),(-1,-2),[colors.white,ALT]),("BACKGROUND",(0,-1),(-1,-1),TOTAL),("SPAN",(0,-1),(6,-1)),("BOX",(0,0),(-1,-1),.5,BORDER),("INNERGRID",(0,0),(-1,-1),.25,colors.HexColor("#dddddd")),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2),("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
+    items_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),HEADER),("LINEBELOW",(0,0),(-1,0),.8,BORDER),("ROWBACKGROUNDS",(0,1),(-1,-2),[colors.white,ALT]),("BACKGROUND",(0,-1),(-1,-1),TOTAL),("SPAN",(0,-1),(5,-1)),("BOX",(0,0),(-1,-1),.5,BORDER),("INNERGRID",(0,0),(-1,-1),.25,colors.HexColor("#dddddd")),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2),("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
     story += [items_table,Spacer(1,10)]
 
     subtotal = _f(order.get("subtotal"), run_net-shipping_cost)
     tax_total = _f(order.get("tax_amount"), run_tax)
-    summary = Table([[Paragraph("Price Summary:",ST["label"]),""],[Paragraph("Subtotal",ST["sum_l"]),Paragraph(_money(subtotal),ST["sum_v"])],[Paragraph("Shipping",ST["sum_l"]),Paragraph(_money(shipping_cost) if shipping_cost else "FREE",ST["sum_v"])],[Paragraph("GST",ST["sum_l"]),Paragraph(_money(tax_total),ST["sum_v"])],["",""] ,[Paragraph("Grand Total",ST["sum_l"]),Paragraph(_money(grand),ST["sum_v"]) ]],colWidths=[150,84])
+    summary_tax_label = "GST (CGST + SGST)" if tax_mode == "CGST+SGST" else "GST (IGST)"
+    summary = Table([[Paragraph("Price Summary:",ST["label"]),""],[Paragraph("Subtotal",ST["sum_l"]),Paragraph(_money(subtotal),ST["sum_v"])],[Paragraph("Shipping",ST["sum_l"]),Paragraph(_money(shipping_cost) if shipping_cost else "FREE",ST["sum_v"])],[Paragraph(summary_tax_label,ST["sum_l"]),Paragraph(_money(tax_total),ST["sum_v"])],["",""] ,[Paragraph("Grand Total",ST["sum_l"]),Paragraph(_money(grand),ST["sum_v"]) ]],colWidths=[150,84])
     summary.setStyle(TableStyle([("LINEABOVE",(0,-1),(-1,-1),.8,BORDER),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2)]))
 
     sign_name = _s(seller.get("authorised_signatory_name"))
