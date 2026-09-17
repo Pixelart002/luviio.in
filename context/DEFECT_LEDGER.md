@@ -74,6 +74,11 @@
 **Root cause:** when `user_action_controls` could not be loaded, `is_action_enabled()` defaulted to `True`. A persisted disabled action could therefore become enabled during a storage failure.
 **Fix:** action-control reads now fail closed when the policy state is unavailable. Existing explicit rows still control normal behavior.
 
+### D-021 — User action-control deletion could self-unlock an admin
+**Status:** fixed in code; CI verification pending on latest main.
+**Root cause:** `DELETE /rbac/users/{user_id}/actions/{action}` had `MANAGE_ROLES` authorization but did not apply the self-lockout guard. Removing a self-deny override restores the default enabled state, so an admin could potentially delete a disabled action control on their own account and regain that capability.
+**Fix:** the delete endpoint now requires the strict actor ID and applies `RbacPolicy.assert_not_self_lockout(..., enabled=False)` before removing the override. Other-user controls remain manageable by authorized staff. A targeted policy test covers the self-action boundary.
+
 ## P2 / operations
 
 ### D-011 — Auth leaked-password protection disabled
