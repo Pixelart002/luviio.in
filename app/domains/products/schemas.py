@@ -42,6 +42,7 @@ class ProductCreate(BaseModel):
     attributes: Optional[Dict[str, Any]] = Field(default_factory=dict)
     hsn_code: str = Field(..., min_length=1, max_length=20)
     gst_percentage: int = Field(...)
+    country_of_origin: Optional[str] = Field(default=None, min_length=2, max_length=100)
     seo_title: Optional[str] = Field(default=None, max_length=70)
     seo_description: Optional[str] = Field(default=None, max_length=170)
     seo_keywords: Optional[str] = Field(default=None, max_length=500)
@@ -62,6 +63,14 @@ class ProductCreate(BaseModel):
         if v not in ProductRules.LEGAL_GST_SLABS:
             raise ValueError(ProductSecurityMessages.INVALID_GST_SLAB)
         return v
+
+    @field_validator("country_of_origin")
+    @classmethod
+    def validate_country_of_origin(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        value = v.strip()
+        return value or None
 
     @model_validator(mode="after")
     def compare_must_exceed_price(self):
@@ -86,6 +95,7 @@ class ProductUpdate(BaseModel):
     category_id: Optional[str] = None
     hsn_code: Optional[str] = Field(default=None, min_length=1, max_length=20)
     gst_percentage: Optional[int] = None
+    country_of_origin: Optional[str] = Field(default=None, min_length=2, max_length=100)
     seo_title: Optional[str] = Field(default=None, max_length=70)
     seo_description: Optional[str] = Field(default=None, max_length=170)
     seo_keywords: Optional[str] = Field(default=None, max_length=500)
@@ -108,6 +118,14 @@ class ProductUpdate(BaseModel):
         if v is not None and v not in ProductRules.LEGAL_GST_SLABS:
             raise ValueError(ProductSecurityMessages.INVALID_GST_SLAB)
         return v
+
+    @field_validator("country_of_origin")
+    @classmethod
+    def validate_country_of_origin(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        value = v.strip()
+        return value or None
 
     @model_validator(mode="after")
     def compare_must_exceed_price(self):
