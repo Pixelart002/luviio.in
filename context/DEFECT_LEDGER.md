@@ -1,5 +1,9 @@
 # Backend Defect Ledger
 
+**Last verified:** 2026-09-17
+
+This ledger distinguishes verified application fixes from external release gates. A green CI result does not close provider, statutory, or hosted-configuration gates.
+
 ## P0 / integrity
 
 ### D-001 — Direct client mutation of server-owned tables
@@ -46,7 +50,7 @@
 
 ### D-010 — CI static/type gate
 **Status:** fixed and currently green.
-**Verification:** latest payment-test PR #69 passed compile, Ruff, Mypy, dependency audit, and pytest+coverage before merge.
+**Verification:** PR #69 passed compile, Ruff, Mypy, dependency audit, and pytest+coverage before merge. The current documentation branch also passed Backend CI run #685.
 
 ### D-017 — Admin could self-escalate through role permission overrides
 **Status:** fixed and CI-verified.
@@ -80,7 +84,7 @@
 
 ### D-011 — Auth leaked-password protection disabled
 **Status:** production configuration item — still open.
-**Verification:** Supabase security advisor currently reports this warning. It must be enabled in the Supabase Auth configuration UI; the available database connector cannot change this Auth setting.
+**Verification:** Supabase security advisor reports this warning. It must be enabled in the Supabase Auth configuration UI; the available database connector cannot change this Auth setting.
 
 ### D-012 — Business asset storage orphaning
 **Status:** functionally fixed in code.
@@ -113,6 +117,8 @@
 - Notification provider delivery smoke.
 - Current p50/p95/p99 performance baseline for documented hot paths.
 - Final seller GST/legal configuration verification.
+- Supabase Auth leaked-password protection enablement.
+- Merge of the current documentation/audit PR #70 after CI verification.
 
 ## Index advisory policy
 
