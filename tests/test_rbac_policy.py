@@ -152,3 +152,18 @@ def test_inventory_permissions_are_present_for_expected_roles():
     assert inventory_reads.issubset(manager)
     assert inventory_reads.issubset(support)
     assert inventory_mutations.isdisjoint(support)
+
+
+def test_abandoned_cart_permissions_are_present_for_admin_and_manager():
+    admin = get_static_role_permissions(UserRole.ADMIN)
+    manager = get_static_role_permissions(UserRole.MANAGER)
+    support = get_static_role_permissions(UserRole.SUPPORT)
+
+    cart_admin_permissions = {
+        "cart:view_abandoned",
+        "cart:manage_reminders",
+    }
+
+    assert cart_admin_permissions.issubset(admin)
+    assert cart_admin_permissions.issubset(manager)
+    assert cart_admin_permissions.isdisjoint(support)
