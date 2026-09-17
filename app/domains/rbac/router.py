@@ -58,10 +58,15 @@ async def toggle_role_permission(
 
 @router.delete(
     "/permissions/{role}/{permission}",
-    dependencies=[Depends(require_permission(AdminPermissions.MANAGE_ROLES))],
     status_code=status.HTTP_200_OK,
 )
-async def remove_role_permission(role: str, permission: str):
+async def remove_role_permission(
+    role: str,
+    permission: str,
+    current_user=Depends(require_permission(AdminPermissions.MANAGE_ROLES)),
+):
+    actor_role = (current_user.get("profile") or {}).get("role", "admin")
+    RbacPolicy.assert_role_manageable(actor_role, role)
     result = await _permission_svc.remove_override(role, permission)
     return success_response(data=result, message=RbacMessages.OVERRIDE_DELETED)
 
