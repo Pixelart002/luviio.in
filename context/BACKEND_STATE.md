@@ -10,7 +10,7 @@ Production database: Supabase project `enqcujmzxtrbfkaungpm`
 
 The backend core commerce domains have completed the current hardening pass. Payment race-test isolation was merged as PR #69 (`54a7b6cdac2c0ae5e8335f33c3b8156825a2d04c`) and its Backend CI was green before merge.
 
-The current documentation/audit synchronization is carried by PR #70, head `adb5387ce6173d59fe16e2e2c2d531b8054e8d3c`. PR #70 is open, mergeable, and its Backend CI run #685 completed successfully. This PR has not yet been merged; therefore its documentation changes must be treated as pending until merge.
+The current documentation/audit synchronization is carried by PR #70. PR #70 is open and currently being kept in sync with the latest documentation commits; its latest CI status must be checked against the current PR head before merge.
 
 ### Security / integrity protections verified
 - Direct `anon` / `authenticated` table privileges removed from `users`, `addresses`, `carts`, `cart_items`, and `orders`.
@@ -34,11 +34,11 @@ The current documentation/audit synchronization is carried by PR #70, head `adb5
 
 ## Current CI state
 
-Latest verified Backend CI pipeline is green:
+The verified Backend CI pipeline is:
 
 `compile -> Ruff -> Mypy -> pip-audit -> pytest + coverage`
 
-PR #70 head `adb5387ce6173d59fe16e2e2c2d531b8054e8d3c` passed Backend CI run #685. No known P0/P1 application defect is currently open in the defect ledger.
+The previously verified PR #70 CI run #685 passed for its earlier head. Because documentation commits have since advanced the branch, CI must be re-checked for the latest head before merge. No known P0/P1 application defect is currently open in the defect ledger.
 
 ## Remaining external / operational gates
 
@@ -50,7 +50,7 @@ These are not unresolved core application defects:
 4. **Performance baseline:** collect current p50/p95/p99 for the documented hot paths before further optimization.
 5. **Dependency modernization:** older Supabase/httpx/Pydantic/HTTP-status dependency warnings remain a separate controlled upgrade task; do not upgrade blindly without lockfile + CI verification.
 6. **Storage GC:** failed storage deletion can leave an unreachable object; the setting reference remains correct. A periodic garbage-collection sweep is an operational enhancement.
-7. **Documentation merge:** PR #70 contains this audit synchronization and remains pending merge despite green CI.
+7. **Documentation merge:** PR #70 contains this audit synchronization and remains pending merge until its latest head is CI-verified and accepted.
 
 ## Index policy
 
