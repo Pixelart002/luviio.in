@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 _CACHE_TTL_SECONDS = 15
 _cached_enabled = False
 _cached_at = 0.0
+_last_db_failure_at = 0.0
+_DB_FAILURE_LOG_COOLDOWN_SECONDS = 60
 
 # These routes must remain available while the system is in maintenance mode.
 _BYPASS_PATHS = {
@@ -28,7 +30,7 @@ _BYPASS_PATHS = {
 
 async def maintenance_enabled() -> bool:
     """Read the runtime flag from Supabase with a short process-local cache."""
-    global _cached_enabled, _cached_at
+    global _cached_enabled, _cached_at, _last_db_failure_at
     now = time.monotonic()
     if now - _cached_at < _CACHE_TTL_SECONDS:
         return _cached_enabled
@@ -48,10 +50,16 @@ async def maintenance_enabled() -> bool:
             value = value.strip().lower() in {"1", "true", "yes", "on"}
         _cached_enabled = bool(value)
         _cached_at = now
-    except Exception:
-        # A settings/database outage must not accidentally take the shop offline.
-        logger.exception("Could not read maintenance_mode; failing open")
-        _cached_enabled = False
+        _last_db_failure_at = 0.0
+    except Exception as exc:
+        # A transient settings/DB outage must not accidentally take the shop
+        # offline. Keep the last known value rather than turning maintenance on.
+        if _last_db_failure_at == 0.0 or now - _last_db_failure_at >= _DB_FAILURE_LOG_COOLDOWN_SECONDS:
+            logger.warning(
+                "Could not read maintenance_mode; using last known value | error_type=%s",
+                type(exc).__name__,
+            )
+            _last_db_failure_at = now
         _cached_at = now
 
     return _cached_enabled
