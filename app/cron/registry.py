@@ -51,12 +51,20 @@ def cron_task(trigger: str = "interval", **kwargs: Any):
     """Register a scheduled job with cross-worker execution protection."""
     def decorator(func: Callable) -> Callable:
         leased_func = _leased_job(func)
+        job_kwargs = dict(kwargs)
+        if trigger == "interval" and "seconds" in job_kwargs:
+            # Prevent every Uvicorn worker from waking on the same scheduler
+            # tick. The PostgreSQL lease remains the execution authority.
+            job_kwargs.setdefault("jitter", min(5, max(1, int(job_kwargs["seconds"] // 3))))
+            job_kwargs.setdefault("coalesce", True)
+            job_kwargs.setdefault("max_instances", 1)
+            job_kwargs.setdefault("misfire_grace_time", 30)
         CRON_JOBS.append({
             "func": leased_func,
             "trigger": trigger,
             "id": func.__name__,
             "replace_existing": True,
-            **kwargs,
+            **job_kwargs,
         })
         logger.debug("[CRON REGISTRY] Registered task: %s", func.__name__)
         return leased_func
