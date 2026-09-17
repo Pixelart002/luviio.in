@@ -3,21 +3,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.utils.documents.invoice_pdf_renderer_v3 import build_snapshot_invoice_pdf as _render
+from reportlab.graphics.barcode.qr import QrCodeWidget
+from reportlab.graphics.shapes import Drawing
+
+from app.utils.documents import invoice_pdf_renderer_v3 as _renderer
 
 
-def build_snapshot_invoice_pdf(
-    invoice_order: dict[str, Any],
-    customer: dict[str, Any],
-    seller_snapshot: dict[str, Any],
-    billing_snapshot: dict[str, Any],
-    shipping_snapshot: dict[str, Any],
-) -> bytes:
-    """Render strictly from the frozen invoice snapshots."""
-    return _render(
-        invoice_order,
-        customer,
-        seller_snapshot,
-        billing_snapshot,
-        shipping_snapshot,
-    )
+def _safe_qr(data: str, size: float = 68) -> Drawing:
+    widget = QrCodeWidget(data or "LUVIIO")
+    x1, y1, x2, y2 = widget.getBounds()
+    drawing = Drawing(size, size, transform=[size / (x2-x1), 0, 0, size / (y2-y1), 0, 0])
+    drawing.add(widget)
+    return drawing
+
+
+_renderer._qr = _safe_qr
+build_snapshot_invoice_pdf = _renderer.build_snapshot_invoice_pdf
