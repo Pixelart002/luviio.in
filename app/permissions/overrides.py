@@ -96,6 +96,7 @@ def static_descriptions() -> dict[str, Any]:
     from app.enums.roles import UserRole
     from app.permissions import (
         admin,
+        cart,
         coupons,
         orders,
         payments,
@@ -113,6 +114,7 @@ def static_descriptions() -> dict[str, Any]:
         ("settings", settings.SettingsPermissions, "System settings"),
         ("admin", admin.AdminPermissions, "Admin console"),
         ("coupons", coupons.CouponPermissions, "Discount coupons"),
+        ("cart", cart.CartPermissions, "Abandoned-cart recovery"),
         ("shipping", shipping.ShippingPermissions, "Shipping methods"),
         ("subscriptions", subscriptions.SubscriptionPermissions, "Subscription plans & tiers"),
         (
