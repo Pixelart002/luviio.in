@@ -15,8 +15,9 @@ without a redeploy. The source of truth for the DEFAULT matrix stays in
 The ``super_admin`` wildcard ("*") can never be narrowed from the DB — God
 Mode stays absolute.
 
-Cache is TTL-based (in-memory) and shared process-wide. If the table is missing/unreachable this module degrades gracefully to the static matrix so
-the app always boots.
+Cache is TTL-based (in-memory). If the override table is unavailable, normal
+roles fail closed rather than silently falling back to static permissions,
+because a stored DB deny could otherwise become an accidental grant.
 """
 from __future__ import annotations
 
@@ -59,10 +60,10 @@ async def _reload_overrides() -> bool:
         _loaded = True
         return True
     except Exception as exc:
-        logger.warning("[RBAC:OVERRIDES] Could not load role_permissions (%s). Using static matrix.", exc)
+        logger.warning("[RBAC:OVERRIDES] Could not load role_permissions (%s). Failing closed.", exc)
         _override_cache = {}
         _cache_ts = time.time()
-        _loaded = True
+        _loaded = False
         return False
 
 
@@ -74,7 +75,9 @@ async def get_effective_permissions(role: str, static_base: set[str]) -> set[str
     if "*" in static_base:
         return {"*"}  # super_admin God-Mode is absolute — cannot be narrowed.
 
-    await _reload_overrides()
+    loaded = await _reload_overrides()
+    if not loaded:
+        return set()
 
     effective = set(static_base)
     for (r, perm), enabled in _override_cache.items():
