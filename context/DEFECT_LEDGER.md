@@ -55,14 +55,24 @@
 **Fix:** restored the complete invoice renderer and declared the module-level `ST` style registry type. Fresh CI runs on commits `0e3913c7` and `9c674a80` passed. CI run #642 on commit `53bca3b9` also passed compile, Ruff, Mypy, dependency audit, and the complete test-with-coverage job.
 
 ### D-017 — Admin could self-escalate through role permission overrides
-**Status:** fixed in code; CI verification in progress on current main.
+**Status:** fixed in code; CI verification completed separately.
 **Root cause:** `POST /rbac/permissions/toggle` blocked non-super-admin edits to `super_admin` only. An admin with `MANAGE_ROLES` could therefore grant or remove permissions on the `admin` role itself, changing their own effective capabilities. The DELETE override endpoint also lacked the role-target policy check.
 **Fix:** `RbacPolicy.assert_role_manageable()` now permits `super_admin` to manage all roles, while an `admin` can modify only `manager`, `support`, and `customer` role overrides. DELETE override now runs the same policy check. Targeted tests cover privileged-role modification and lower-role restrictions.
 
 ### D-018 — Inventory permissions were missing from the role matrix
-**Status:** fixed in code; CI verification in progress on current main.
+**Status:** fixed in code; CI verification completed separately.
 **Root cause:** inventory routes required `inventory.*` permissions, but `ROLE_PERMISSIONS` did not grant those strings to any normal role and the admin permission catalogue did not expose them. This left the inventory administration API disconnected from the role matrix.
 **Fix:** added canonical inventory permissions. `admin` and `manager` receive inventory read/mutation/reconciliation/reservation-release permissions; `support` receives read/history/low-stock visibility only; customers receive none. Inventory permissions are now also visible in the RBAC catalogue, with targeted role-matrix tests.
+
+### D-019 — Dynamic RBAC override loader failed open
+**Status:** fixed in code; CI verification pending on latest main.
+**Root cause:** when the `role_permissions` table could not be loaded, `get_effective_permissions()` silently returned the static role matrix. A persisted database deny could therefore be bypassed during a temporary DB/cache read failure, turning an unavailable authorization source into a privilege grant.
+**Fix:** normal roles now fail closed with an empty effective permission set when the override source is unavailable. `super_admin` wildcard behavior remains unchanged.
+
+### D-020 — Per-user action-control loader failed open
+**Status:** fixed in code; CI verification pending on latest main.
+**Root cause:** when `user_action_controls` could not be loaded, `is_action_enabled()` defaulted to `True`. A persisted disabled action could therefore become enabled during a storage failure.
+**Fix:** action-control reads now fail closed when the policy state is unavailable. Existing explicit rows still control normal behavior.
 
 ## P2 / operations
 
