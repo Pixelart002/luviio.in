@@ -33,6 +33,15 @@ class RolePermissionService:
     def roles() -> List[str]:
         return [r.value if hasattr(r, "value") else str(r) for r in UserRole]
 
+    @staticmethod
+    def _known_permissions() -> set[str]:
+        catalogue = static_descriptions()
+        return {
+            value
+            for category in catalogue["categories"].values()
+            for value in category["permissions"].values()
+        }
+
     async def effective_matrix(self) -> Dict[str, List[str]]:
         matrix: Dict[str, List[str]] = {}
         for role in self.roles():
@@ -47,11 +56,17 @@ class RolePermissionService:
     async def set_override(self, role: str, permission: str, enabled: bool) -> Dict[str, Any]:
         if role not in self.roles():
             raise ValueError(f"Unknown role: {role}")
+        permission = permission.strip()
+        if not permission or permission == "*" or permission not in self._known_permissions():
+            raise ValueError(f"Unknown permission: {permission}")
         saved = await self.repo.upsert_role_override(role, permission, enabled)
         invalidate_overrides_cache()
         return {"role": role, "permission": permission, "enabled": enabled, "saved": bool(saved)}
 
     async def remove_override(self, role: str, permission: str) -> Dict[str, Any]:
+        permission = permission.strip()
+        if not permission or permission == "*" or permission not in self._known_permissions():
+            raise ValueError(f"Unknown permission: {permission}")
         await self.repo.delete_role_override(role, permission)
         invalidate_overrides_cache()
         return {"role": role, "permission": permission, "overridden": False}
