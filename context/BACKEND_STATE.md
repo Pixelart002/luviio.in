@@ -4,9 +4,13 @@
 Repository: `Pixelart002/luviio.in`
 Production database: Supabase project `enqcujmzxtrbfkaungpm`
 
+**Last documentation verification:** 2026-09-17 (current repository/CI state).
+
 ## Current production-hardening state
 
-The backend core commerce domains have completed the current hardening pass. The latest payment race test isolation was merged as PR #69 (`54a7b6cdac2c0ae5e8335f33c3b8156825a2d04c`) and its Backend CI was green before merge.
+The backend core commerce domains have completed the current hardening pass. Payment race-test isolation was merged as PR #69 (`54a7b6cdac2c0ae5e8335f33c3b8156825a2d04c`) and its Backend CI was green before merge.
+
+The current documentation/audit synchronization is carried by PR #70, head `adb5387ce6173d59fe16e2e2c2d531b8054e8d3c`. PR #70 is open, mergeable, and its Backend CI run #685 completed successfully. This PR has not yet been merged; therefore its documentation changes must be treated as pending until merge.
 
 ### Security / integrity protections verified
 - Direct `anon` / `authenticated` table privileges removed from `users`, `addresses`, `carts`, `cart_items`, and `orders`.
@@ -30,11 +34,11 @@ The backend core commerce domains have completed the current hardening pass. The
 
 ## Current CI state
 
-Latest merged payment-test change passed the complete Backend CI pipeline:
+Latest verified Backend CI pipeline is green:
 
 `compile -> Ruff -> Mypy -> pip-audit -> pytest + coverage`
 
-No known P0/P1 application defect is currently open in the defect ledger.
+PR #70 head `adb5387ce6173d59fe16e2e2c2d531b8054e8d3c` passed Backend CI run #685. No known P0/P1 application defect is currently open in the defect ledger.
 
 ## Remaining external / operational gates
 
@@ -45,8 +49,8 @@ These are not unresolved core application defects:
 3. **Statutory configuration:** seller GST/legal identity, state, GSTIN and invoice configuration must match the actual registered business before statutory invoicing.
 4. **Performance baseline:** collect current p50/p95/p99 for the documented hot paths before further optimization.
 5. **Dependency modernization:** older Supabase/httpx/Pydantic/HTTP-status dependency warnings remain a separate controlled upgrade task; do not upgrade blindly without lockfile + CI verification.
-6. **Storage GC:** failed storage deletion can leave an unreachable object; the canonical setting reference remains correct. A periodic garbage-collection sweep is an operational enhancement.
-7. **Documentation:** this file is now the authoritative current state; historical commit references in older documents should not be treated as current status.
+6. **Storage GC:** failed storage deletion can leave an unreachable object; the setting reference remains correct. A periodic garbage-collection sweep is an operational enhancement.
+7. **Documentation merge:** PR #70 contains this audit synchronization and remains pending merge despite green CI.
 
 ## Index policy
 
