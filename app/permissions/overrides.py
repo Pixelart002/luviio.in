@@ -129,6 +129,7 @@ def static_descriptions() -> dict[str, Any]:
                 "RECONCILE": "inventory.reconcile",
                 "HISTORY_READ": "inventory.history.read",
                 "LOW_STOCK_READ": "inventory.low_stock.read",
+                "LOW_STOCK_SCAN": "inventory.low_stock.scan",
                 "RESERVATION_RELEASE": "inventory.reservation.release",
             },
             "Inventory & stock control",
