@@ -79,6 +79,11 @@
 **Root cause:** `DELETE /rbac/users/{user_id}/actions/{action}` had `MANAGE_ROLES` authorization but did not apply the self-lockout guard. Removing a self-deny override restores the default enabled state, so an admin could potentially delete a disabled action control on their own account and regain that capability.
 **Fix:** the delete endpoint now requires the strict actor ID and applies `RbacPolicy.assert_not_self_lockout(..., enabled=False)` before removing the override. Other-user controls remain manageable by authorized staff. A targeted policy test covers the self-action boundary.
 
+### D-022 — Abandoned-cart permissions missing from role matrix
+**Status:** fixed in code; CI verification pending on latest main.
+**Root cause:** cart administration endpoints required `cart:view_abandoned` and `cart:manage_reminders`, but the static role matrix did not grant those permissions and the RBAC catalogue did not expose the cart permission group. This caused the intended admin/manager cart-recovery controls to be unavailable through normal PBAC.
+**Fix:** added both canonical cart permissions to `admin` and `manager`, kept them absent from `support` and `customer`, exposed the cart permission group in the RBAC catalogue, and added a targeted role-matrix test.
+
 ## P2 / operations
 
 ### D-011 — Auth leaked-password protection disabled
