@@ -12,9 +12,8 @@ This audit covers the backend application, database security boundaries, domain 
 
 - PR #69 (payment test isolation) was merged into `main` as `54a7b6cdac2c0ae5e8335f33c3b8156825a2d04c` after green CI.
 - PR #70 (`docs: complete backend production audit state`) contains the current documentation synchronization.
-- PR #70 head: `adb5387ce6173d59fe16e2e2c2d531b8054e8d3c`.
-- PR #70 is currently **open and mergeable**; it has **not yet been merged**.
-- Backend CI run #685 for the PR #70 head completed successfully.
+- PR #70 is currently **open** and has not yet been merged.
+- The PR branch has received documentation-only synchronization commits after the initial CI run; therefore CI must be checked against the latest PR head before merge.
 - Verified pipeline: `compile -> Ruff -> Mypy -> pip-audit -> pytest + coverage`.
 
 ## Domain status
@@ -111,7 +110,7 @@ These are **not unresolved core application defects**:
 9. Perform controlled dependency modernization with lockfile + CI verification.
 10. Maintain critical security/concurrency test depth and perform production failure-injection verification where safe.
 11. Consider periodic storage orphan-object garbage collection as an operational enhancement.
-12. Merge PR #70 after the current green CI state is accepted.
+12. Merge PR #70 after its latest head is CI-verified and accepted.
 
 ## Release decision
 
