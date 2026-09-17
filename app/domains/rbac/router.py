@@ -128,6 +128,7 @@ async def get_user_control(user_id: str, action: str):
 @router.delete(
     "/users/{user_id}/actions/{action}",
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_permission(AdminPermissions.MANAGE_ROLES))],
 )
 async def remove_user_control(
     user_id: str,
