@@ -54,6 +54,16 @@
 **Status:** fixed and verified on current main.
 **Fix:** restored the complete invoice renderer and declared the module-level `ST` style registry type. Fresh CI runs on commits `0e3913c7` and `9c674a80` passed. CI run #642 on commit `53bca3b9` also passed compile, Ruff, Mypy, dependency audit, and the complete test-with-coverage job.
 
+### D-017 — Admin could self-escalate through role permission overrides
+**Status:** fixed in code; CI verification in progress on current main.
+**Root cause:** `POST /rbac/permissions/toggle` blocked non-super-admin edits to `super_admin` only. An admin with `MANAGE_ROLES` could therefore grant or remove permissions on the `admin` role itself, changing their own effective capabilities. The DELETE override endpoint also lacked the role-target policy check.
+**Fix:** `RbacPolicy.assert_role_manageable()` now permits `super_admin` to manage all roles, while an `admin` can modify only `manager`, `support`, and `customer` role overrides. DELETE override now runs the same policy check. Targeted tests cover privileged-role modification and lower-role restrictions.
+
+### D-018 — Inventory permissions were missing from the role matrix
+**Status:** fixed in code; CI verification in progress on current main.
+**Root cause:** inventory routes required `inventory.*` permissions, but `ROLE_PERMISSIONS` did not grant those strings to any normal role and the admin permission catalogue did not expose them. This left the inventory administration API disconnected from the role matrix.
+**Fix:** added canonical inventory permissions. `admin` and `manager` receive inventory read/mutation/reconciliation/reservation-release permissions; `support` receives read/history/low-stock visibility only; customers receive none. Inventory permissions are now also visible in the RBAC catalogue, with targeted role-matrix tests.
+
 ## P2 / operations
 
 ### D-011 — Auth leaked-password protection disabled
@@ -84,5 +94,5 @@
 
 ### D-016 — Test coverage depth
 **Status:** partially addressed; broader targeted coverage remains open.
-**Added:** rate-limit identity-boundary tests for proxy trust, spoofing resistance, CIDR configuration, invalid headers, and forwarded chains.
+**Added:** rate-limit identity-boundary tests for proxy trust, spoofing resistance, CIDR configuration, invalid headers, and forwarded chains; RBAC role-boundary tests now cover role overrides and inventory access.
 **Required next:** retain/add targeted security/concurrency tests for authorization boundaries, coupon reservation, payment races, and document snapshot immutability; do not mark this complete until the full CI coverage artifact confirms the intended critical-domain depth.
