@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime
 import io
+import os
 from typing import Any
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -135,10 +136,20 @@ def _amount_words(amount: float) -> str:
 
 def _remote_asset(url: str, *, max_bytes: int = 2 * 1024 * 1024) -> bytes | None:
     value = _s(url)
-    if not value: return None
+    if not value:
+        return None
     try:
         parsed = urlparse(value)
-        if parsed.scheme != "https" or "/storage/v1/object/public/business-assets/" not in parsed.path:
+        expected_base = _s(os.getenv("SUPABASE_URL"), "https://enqcujmzxtrbfkaungpm.supabase.co")
+        expected_host = urlparse(expected_base).hostname
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != expected_host
+            or parsed.port not in (None, 443)
+            or parsed.username is not None
+            or parsed.password is not None
+            or not parsed.path.startswith("/storage/v1/object/public/business-assets/")
+        ):
             return None
         response = urlopen(Request(value, headers={"User-Agent": "Luviio-Invoice/1.0"}), timeout=4)
         data = response.read(max_bytes + 1)
