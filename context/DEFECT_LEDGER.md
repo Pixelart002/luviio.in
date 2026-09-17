@@ -84,6 +84,11 @@
 **Root cause:** cart administration endpoints required `cart:view_abandoned` and `cart:manage_reminders`, but the static role matrix did not grant those permissions and the RBAC catalogue did not expose the cart permission group. This caused the intended admin/manager cart-recovery controls to be unavailable through normal PBAC.
 **Fix:** added both canonical cart permissions to `admin` and `manager`, kept them absent from `support` and `customer`, exposed the cart permission group in the RBAC catalogue, and added a targeted role-matrix test.
 
+### D-023 — Low-stock scan used a read permission for a mutating action
+**Status:** fixed in code; CI verification pending on latest main.
+**Root cause:** `POST /inventory/low-stock/scan` triggered alert publication but was protected only by `inventory.low_stock.read`, allowing support users with read access to invoke a side-effecting operation.
+**Fix:** introduced `inventory.low_stock.scan`; only `admin` and `manager` receive it. The read endpoint remains `inventory.low_stock.read`, while the scan endpoint now requires the dedicated mutation permission and the RBAC catalogue exposes it. Targeted role-matrix coverage was extended accordingly.
+
 ## P2 / operations
 
 ### D-011 — Auth leaked-password protection disabled
