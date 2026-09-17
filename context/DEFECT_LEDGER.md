@@ -18,18 +18,15 @@
 
 ### D-003 — Worker-local auth brute-force state
 **Status:** fixed.
-**Root cause:** in-memory dictionaries differed across workers and reset on process restart.
 **Fix:** shared Postgres throttle table + service-role RPCs; AuthPolicy is async and fail-closed on throttle infrastructure failure.
 
 ### D-004 — Transactional outbox functions client-executable
 **Status:** fixed in production DB.
-**Root cause:** three SECURITY DEFINER trigger functions retained EXECUTE for anon/authenticated.
 **Fix:** revoke public/client execution; service_role only.
 
 ### D-005 — Abandoned-cart push API mismatch
 **Status:** fixed in code.
-**Root cause:** cart service called an older `send_push_to_user()` signature and did not await it.
-**Fix:** call the current async contract directly.
+**Fix:** current async `send_push_to_user()` contract is awaited directly.
 
 ### D-006 — Six unindexed foreign keys
 **Status:** fixed in production DB.
@@ -37,87 +34,86 @@
 
 ### D-007 — Stale RBAC/profile cache
 **Status:** fixed in code.
-**Fix:** profile cache TTL reduced to 60 seconds and explicit invalidation added after administrative user mutations. Sensitive authorization still uses server-side profile state.
+**Fix:** profile cache TTL reduced to 60 seconds and explicit invalidation added after administrative user mutations. Sensitive authorization remains server-side.
 
 ### D-008 — Process-local global rate limit / proxy IP ambiguity
-**Status:** fixed for the global API ceiling; endpoint-specific SlowAPI limits remain process-local.
-**Fixed:** forwarded client-IP headers are no longer trusted from arbitrary peers. `TRUSTED_PROXY_IPS` explicitly defines trusted proxy IPs/CIDRs; invalid entries never grant trust, and the direct peer is the fallback identity.
-**Distributed enforcement:** `/api/v1` HTTP traffic is additionally protected by a service-role-only Postgres-backed global rate-limit RPC, so the global ceiling is shared across Koyeb workers rather than maintained independently in each Python process. SlowAPI remains available for endpoint-specific limits and is intentionally separate from the shared global ceiling.
-**Verification:** targeted tests cover untrusted spoofing, trusted Cloudflare IPs, invalid forwarded values, CIDR configuration, invalid proxy configuration, and forwarded-chain parsing. The shared database gate was live-verified for allowed/blocked behavior and client-role execution denial.
+**Status:** fixed for the global API ceiling.
+**Fix:** explicit trusted proxy IP/CIDR handling plus service-role-only Postgres-backed global rate-limit state. Endpoint-specific SlowAPI limits remain intentionally separate and process-local.
 
 ### D-009 — Stripe intent may exist without a persisted pending order
 **Status:** mitigated with durable compensation + reconciliation.
-**Fixed:** a service-role-only durable checkout attempt is created before provider creation and tracks provider/order lifecycle. Provider creation failures close the attempt. Atomic order-persistence failures trigger provider cancellation; cancellation failures become `orphan_risk`.
-**Reconciliation:** a 15-minute sweep checks expired durable attempts; cancelled/nonexistent provider objects are closed, cancellable provider objects are cancelled, and succeeded provider objects without a Luviio order are refunded and marked completed when refund succeeds. Provider/order correlation uses persisted payment identifiers, with idempotency retained for retry safety.
+**Fix:** durable checkout attempts, provider cancellation compensation, orphan-risk state, and scheduled reconciliation/refund handling are implemented.
 
 ### D-010 — CI static/type gate
-**Status:** fixed and verified on current main.
-**Fix:** restored the complete invoice renderer and declared the module-level `ST` style registry type. Fresh CI runs on commits `0e3913c7` and `9c674a80` passed. CI run #642 on commit `53bca3b9` also passed compile, Ruff, Mypy, dependency audit, and the complete test-with-coverage job.
+**Status:** fixed and currently green.
+**Verification:** latest payment-test PR #69 passed compile, Ruff, Mypy, dependency audit, and pytest+coverage before merge.
 
 ### D-017 — Admin could self-escalate through role permission overrides
-**Status:** fixed in code; CI verification completed separately.
-**Root cause:** `POST /rbac/permissions/toggle` blocked non-super-admin edits to `super_admin` only. An admin with `MANAGE_ROLES` could therefore grant or remove permissions on the `admin` role itself, changing their own effective capabilities. The DELETE override endpoint also lacked the role-target policy check.
-**Fix:** `RbacPolicy.assert_role_manageable()` now permits `super_admin` to manage all roles, while an `admin` can modify only `manager`, `support`, and `customer` role overrides. DELETE override now runs the same policy check. Targeted tests cover privileged-role modification and lower-role restrictions.
+**Status:** fixed and CI-verified.
+**Fix:** role-target management policy prevents admins from editing the admin/super_admin roles; DELETE uses the same policy.
 
 ### D-018 — Inventory permissions were missing from the role matrix
-**Status:** fixed in code; CI verification completed separately.
-**Root cause:** inventory routes required `inventory.*` permissions, but `ROLE_PERMISSIONS` did not grant those strings to any normal role and the admin permission catalogue did not expose them. This left the inventory administration API disconnected from the role matrix.
-**Fix:** added canonical inventory permissions. `admin` and `manager` receive inventory read/mutation/reconciliation/reservation-release permissions; `support` receives read/history/low-stock visibility only; customers receive none. Inventory permissions are now also visible in the RBAC catalogue, with targeted role-matrix tests.
+**Status:** fixed and CI-verified.
+**Fix:** canonical inventory permissions are granted by role and exposed through the RBAC catalogue with targeted role-matrix coverage.
 
 ### D-019 — Dynamic RBAC override loader failed open
-**Status:** fixed in code; CI verification pending on latest main.
-**Root cause:** when the `role_permissions` table could not be loaded, `get_effective_permissions()` silently returned the static role matrix. A persisted database deny could therefore be bypassed during a temporary DB/cache read failure, turning an unavailable authorization source into a privilege grant.
-**Fix:** normal roles now fail closed with an empty effective permission set when the override source is unavailable. `super_admin` wildcard behavior remains unchanged.
+**Status:** fixed and CI-verified.
+**Fix:** normal roles receive an empty effective permission set when the override source is unavailable; super_admin wildcard behavior remains unchanged.
 
 ### D-020 — Per-user action-control loader failed open
-**Status:** fixed in code; CI verification pending on latest main.
-**Root cause:** when `user_action_controls` could not be loaded, `is_action_enabled()` defaulted to `True`. A persisted disabled action could therefore become enabled during a storage failure.
-**Fix:** action-control reads now fail closed when the policy state is unavailable. Existing explicit rows still control normal behavior.
+**Status:** fixed and CI-verified.
+**Fix:** action-control reads fail closed when policy state is unavailable.
 
 ### D-021 — User action-control deletion could self-unlock an admin
-**Status:** fixed in code; CI verification pending on latest main.
-**Root cause:** `DELETE /rbac/users/{user_id}/actions/{action}` had `MANAGE_ROLES` authorization but did not apply the self-lockout guard. Removing a self-deny override restores the default enabled state, so an admin could potentially delete a disabled action control on their own account and regain that capability.
-**Fix:** the delete endpoint now requires the strict actor ID and applies `RbacPolicy.assert_not_self_lockout(..., enabled=False)` before removing the override. Other-user controls remain manageable by authorized staff. A targeted policy test covers the self-action boundary.
+**Status:** fixed and CI-verified.
+**Fix:** delete applies the strict actor-ID/self-lockout policy before removing an override.
 
 ### D-022 — Abandoned-cart permissions missing from role matrix
-**Status:** fixed in code; CI verification pending on latest main.
-**Root cause:** cart administration endpoints required `cart:view_abandoned` and `cart:manage_reminders`, but the static role matrix did not grant those permissions and the RBAC catalogue did not expose the cart permission group. This caused the intended admin/manager cart-recovery controls to be unavailable through normal PBAC.
-**Fix:** added both canonical cart permissions to `admin` and `manager`, kept them absent from `support` and `customer`, exposed the cart permission group in the RBAC catalogue, and added a targeted role-matrix test.
+**Status:** fixed and CI-verified.
+**Fix:** canonical abandoned-cart permissions are granted to admin/manager and exposed in the RBAC catalogue with targeted tests.
 
 ### D-023 — Low-stock scan used a read permission for a mutating action
-**Status:** fixed in code; CI verification pending on latest main.
-**Root cause:** `POST /inventory/low-stock/scan` triggered alert publication but was protected only by `inventory.low_stock.read`, allowing support users with read access to invoke a side-effecting operation.
-**Fix:** introduced `inventory.low_stock.scan`; only `admin` and `manager` receive it. The read endpoint remains `inventory.low_stock.read`, while the scan endpoint now requires the dedicated mutation permission and the RBAC catalogue exposes it. Targeted role-matrix coverage was extended accordingly.
+**Status:** fixed and CI-verified.
+**Fix:** dedicated `inventory.low_stock.scan` permission is required for the mutating scan endpoint; support retains read-only access.
 
 ## P2 / operations
 
 ### D-011 — Auth leaked-password protection disabled
-**Status:** deferred for test credentials; production go-live configuration item.
+**Status:** production configuration item — still open.
+**Verification:** Supabase security advisor currently reports this warning. It must be enabled in the Supabase Auth configuration UI; the available database connector cannot change this Auth setting.
 
 ### D-012 — Business asset storage orphaning
-**Status:** fixed in code.
-**Root cause:** every business logo/signature upload created a new immutable object; a later settings write could fail, or a successful replacement could leave the previous object indefinitely.
-**Fix:** the API now captures the previous asset reference, deletes the newly uploaded object if the settings mutation fails, and deletes the superseded managed object after the new setting is committed. Resetting a business asset setting also removes the managed object. Cleanup is restricted to canonical HTTPS URLs in the `business-assets` bucket; external URLs are never deleted.
-**Residual:** if Storage deletion itself fails, the reference remains correct and a warning is logged; a future scheduled garbage-collection sweep can remove such unreachable objects.
+**Status:** functionally fixed in code.
+**Residual:** if Storage deletion itself fails, the setting reference remains correct and a warning is logged. Periodic garbage collection can remove unreachable objects later.
 
 ### D-013 — Settings mutations are chatty
-**Status:** fixed in code.
-**Root cause:** repeated writes of an already-current setting still performed a database UPDATE, cache invalidation, and SettingUpdatedEvent dispatch.
-**Fix:** settings mutations now short-circuit identical values; resets also short-circuit when the setting already equals its default. Real changes retain the existing persistence, cache invalidation, and event behavior.
-**Verification:** targeted async tests cover identical update, real update, and no-op reset semantics.
+**Status:** fixed and targeted-test verified.
+**Fix:** identical updates and no-op resets short-circuit without unnecessary persistence/cache/event work.
 
 ### D-014 — Push circuit breaker / limiter is process-local
-**Status:** fixed with shared Postgres state.
-**Root cause:** circuit and per-endpoint rate state lived in Python process memory, so separate Koyeb workers could independently exceed the intended limits and circuit state disappeared on restart.
-**Fix:** added service-role-only `private.push_delivery_state` plus atomic `push_delivery_guard`, `push_delivery_record_success`, and `push_delivery_record_failure` RPCs. Push delivery now uses the shared guard and fails closed if the guard storage is unavailable. The policy remains 3 attempts per endpoint per second, trips after 5 consecutive terminal failures, and resets after 60 seconds or a successful delivery.
-**Verification:** live production SQL verified the table and function privileges (`anon`/`authenticated` denied; `service_role` allowed). A live database assertion verified the 3-per-window rate gate, 5-failure circuit trip, and fresh-state recovery. Targeted unit tests cover the service-role RPC boundary and fail-closed behavior.
+**Status:** fixed with shared Postgres state and live DB verification.
+**Fix:** shared delivery state, atomic guard/success/failure RPCs, and fail-closed behavior.
 
 ### D-015 — Dependency/framework deprecation warnings
-**Status:** partially addressed; full dependency modernization remains open.
-**Fixed:** removed Luviio's direct `gotrue.AsyncMemoryStorage` import. Supabase client creation now uses its default in-memory auth storage, preserving the existing stateless-session behavior without a direct dependency on the deprecated package name.
-**Remaining:** the project still pins the older Supabase client line, and dependency-level Starlette/httpx, Pydantic field-extra, and deprecated HTTP-status warnings require a separately verified upgrade because dependency resolution must remain green.
+**Status:** partially addressed; controlled modernization remains open.
+**Fixed:** removed direct `gotrue.AsyncMemoryStorage` import.
+**Remaining:** older Supabase client line and dependency-level Starlette/httpx, Pydantic field-extra, and deprecated HTTP-status warnings require a separately verified lockfile upgrade.
 
 ### D-016 — Test coverage depth
-**Status:** partially addressed; broader targeted coverage remains open.
-**Added:** rate-limit identity-boundary tests for proxy trust, spoofing resistance, CIDR configuration, invalid headers, and forwarded chains; RBAC role-boundary tests now cover role overrides and inventory access.
-**Required next:** retain/add targeted security/concurrency tests for authorization boundaries, coupon reservation, payment races, and document snapshot immutability; do not mark this complete until the full CI coverage artifact confirms the intended critical-domain depth.
+**Status:** substantially expanded; operationally open for continuous depth validation.
+**Added/verified:** rate-limit identity-boundary tests, RBAC role boundaries, inventory permissions, payment race coverage, and checkout action-control isolation. Latest CI completed successfully.
+**Remaining:** maintain targeted security/concurrency coverage and verify critical-domain coverage thresholds from the CI artifact rather than treating generic test count as completeness.
+
+## Production verification gates (not application defects)
+
+- Stripe test payment + webhook end-to-end smoke.
+- COD checkout smoke.
+- Coupon reserve/apply/redeem smoke.
+- Invoice PDF generation and statutory field verification.
+- Notification provider delivery smoke.
+- Current p50/p95/p99 performance baseline for documented hot paths.
+- Final seller GST/legal configuration verification.
+
+## Index advisory policy
+
+Supabase currently reports ten indexes as unused. This is not sufficient evidence for deletion. The six FK indexes added during hardening and newer operational indexes must not be removed solely from the advisory; representative workload/query-plan evidence is required first.
