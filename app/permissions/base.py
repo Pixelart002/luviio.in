@@ -10,6 +10,18 @@ from app.permissions.shipping import ShippingPermissions as ShipP
 from app.permissions.subscriptions import SubscriptionPermissions as SubP
 from app.permissions.users import UserPermissions as UP
 
+# Inventory uses canonical permission strings because its endpoints are domain-specific.
+INVENTORY_READ = "inventory.read"
+INVENTORY_ADJUST = "inventory.adjust"
+INVENTORY_RECEIVE = "inventory.receive"
+INVENTORY_RETURN = "inventory.return"
+INVENTORY_DAMAGE = "inventory.damage"
+INVENTORY_WASTAGE = "inventory.wastage"
+INVENTORY_RECONCILE = "inventory.reconcile"
+INVENTORY_HISTORY_READ = "inventory.history.read"
+INVENTORY_LOW_STOCK_READ = "inventory.low_stock.read"
+INVENTORY_RESERVATION_RELEASE = "inventory.reservation.release"
+
 # Master Role-to-Permission Mapping. DB role_permissions is an override layer.
 ROLE_PERMISSIONS = {
     UserRole.SUPER_ADMIN: ["*"],
@@ -25,6 +37,9 @@ ROLE_PERMISSIONS = {
         ShipP.READ, ShipP.UPDATE, ShipP.DELETE,
         SubP.READ_PLANS, SubP.READ_MINE, SubP.MANAGE, SubP.MANAGE_USERS,
         RP.MODERATE,
+        INVENTORY_READ, INVENTORY_ADJUST, INVENTORY_RECEIVE, INVENTORY_RETURN,
+        INVENTORY_DAMAGE, INVENTORY_WASTAGE, INVENTORY_RECONCILE,
+        INVENTORY_HISTORY_READ, INVENTORY_LOW_STOCK_READ, INVENTORY_RESERVATION_RELEASE,
     ],
     UserRole.MANAGER: [
         AP.ACCESS_CONSOLE,
@@ -37,6 +52,9 @@ ROLE_PERMISSIONS = {
         ShipP.READ, ShipP.UPDATE,
         SubP.READ_PLANS, SubP.MANAGE_USERS,
         RP.MODERATE,
+        INVENTORY_READ, INVENTORY_ADJUST, INVENTORY_RECEIVE, INVENTORY_RETURN,
+        INVENTORY_DAMAGE, INVENTORY_WASTAGE, INVENTORY_RECONCILE,
+        INVENTORY_HISTORY_READ, INVENTORY_LOW_STOCK_READ, INVENTORY_RESERVATION_RELEASE,
     ],
     UserRole.SUPPORT: [
         AP.ACCESS_CONSOLE,
@@ -47,6 +65,7 @@ ROLE_PERMISSIONS = {
         CP.READ, CP.APPLY,
         ShipP.READ,
         SubP.READ_PLANS, SubP.READ_MINE,
+        INVENTORY_READ, INVENTORY_HISTORY_READ, INVENTORY_LOW_STOCK_READ,
     ],
     UserRole.CUSTOMER: [
         CP.APPLY,
