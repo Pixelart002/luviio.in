@@ -128,9 +128,15 @@ async def get_user_control(user_id: str, action: str):
 @router.delete(
     "/users/{user_id}/actions/{action}",
     status_code=status.HTTP_200_OK,
-    dependencies=[Depends(require_permission(AdminPermissions.MANAGE_ROLES))],
 )
-async def remove_user_control(user_id: str, action: str):
+async def remove_user_control(
+    user_id: str,
+    action: str,
+    actor_id: str = Depends(get_user_id_strict),
+):
+    # Removing a self-deny override restores the default enabled state, so it
+    # must use the same self-lockout guard as an explicit enable=True/False write.
+    RbacPolicy.assert_not_self_lockout(actor_id, user_id, action, enabled=False)
     result = await _action_svc.remove_for_user(user_id, action)
     return success_response(data=result, message=RbacMessages.USER_CONTROL_DELETED)
 
