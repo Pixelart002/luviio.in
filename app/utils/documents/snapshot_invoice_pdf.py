@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.utils.documents.invoice_pdf_renderer_v2 import build_snapshot_invoice_pdf as _render
+from app.utils.documents.invoice_pdf_renderer_v3 import build_snapshot_invoice_pdf as _render
 
 
 def build_snapshot_invoice_pdf(
