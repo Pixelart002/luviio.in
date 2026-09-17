@@ -110,6 +110,22 @@ def test_lower_staff_roles_cannot_modify_rbac_overrides():
         assert exc.value.status_code == 403
 
 
+def test_self_action_disable_is_blocked():
+    with pytest.raises(HTTPException) as exc:
+        RbacPolicy.assert_not_self_lockout("admin-1", "admin-1", "checkout", False)
+    assert exc.value.status_code == 400
+
+
+def test_self_action_override_removal_is_blocked():
+    with pytest.raises(HTTPException) as exc:
+        RbacPolicy.assert_not_self_lockout("admin-1", "admin-1", "checkout", False)
+    assert exc.value.status_code == 400
+
+
+def test_other_user_action_control_can_be_changed():
+    RbacPolicy.assert_not_self_lockout("admin-1", "user-2", "checkout", False)
+
+
 def test_inventory_permissions_are_present_for_expected_roles():
     admin = get_static_role_permissions(UserRole.ADMIN)
     manager = get_static_role_permissions(UserRole.MANAGER)
