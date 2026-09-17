@@ -3,6 +3,7 @@ from fastapi import HTTPException
 
 from app.domains.rbac.policy import RbacPolicy
 from app.enums.roles import UserRole
+from app.permissions.base import get_static_role_permissions
 from app.permissions.policies.user_policies import UserPolicy
 
 
@@ -107,3 +108,31 @@ def test_lower_staff_roles_cannot_modify_rbac_overrides():
         with pytest.raises(HTTPException) as exc:
             RbacPolicy.assert_role_manageable(actor.value, UserRole.CUSTOMER.value)
         assert exc.value.status_code == 403
+
+
+def test_inventory_permissions_are_present_for_expected_roles():
+    admin = get_static_role_permissions(UserRole.ADMIN)
+    manager = get_static_role_permissions(UserRole.MANAGER)
+    support = get_static_role_permissions(UserRole.SUPPORT)
+
+    inventory_mutations = {
+        "inventory.adjust",
+        "inventory.receive",
+        "inventory.return",
+        "inventory.damage",
+        "inventory.wastage",
+        "inventory.reconcile",
+        "inventory.reservation.release",
+    }
+    inventory_reads = {
+        "inventory.read",
+        "inventory.history.read",
+        "inventory.low_stock.read",
+    }
+
+    assert inventory_mutations.issubset(admin)
+    assert inventory_mutations.issubset(manager)
+    assert inventory_reads.issubset(admin)
+    assert inventory_reads.issubset(manager)
+    assert inventory_reads.issubset(support)
+    assert inventory_mutations.isdisjoint(support)
