@@ -1,5 +1,6 @@
 from app.enums.roles import UserRole
 from app.permissions.admin import AdminPermissions as AP
+from app.permissions.cart import CartPermissions as CartP
 from app.permissions.coupons import CouponPermissions as CP
 from app.permissions.orders import OrderPermissions as OP
 from app.permissions.payments import PaymentPermissions as PayP
@@ -34,6 +35,7 @@ ROLE_PERMISSIONS = {
         AP.VIEW_ANALYTICS, AP.MANAGE_SETTINGS, AP.MANAGE_ROLES,
         SP.READ, SP.UPDATE, SP.RESET,
         CP.CREATE, CP.READ, CP.UPDATE, CP.DELETE, CP.APPLY,
+        CartP.VIEW_ABANDONED, CartP.MANAGE_REMINDERS,
         ShipP.READ, ShipP.UPDATE, ShipP.DELETE,
         SubP.READ_PLANS, SubP.READ_MINE, SubP.MANAGE, SubP.MANAGE_USERS,
         RP.MODERATE,
@@ -49,6 +51,7 @@ ROLE_PERMISSIONS = {
         PayP.READ,
         AP.VIEW_ANALYTICS,
         CP.CREATE, CP.READ, CP.UPDATE,
+        CartP.VIEW_ABANDONED, CartP.MANAGE_REMINDERS,
         ShipP.READ, ShipP.UPDATE,
         SubP.READ_PLANS, SubP.MANAGE_USERS,
         RP.MODERATE,
