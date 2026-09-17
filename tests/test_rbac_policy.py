@@ -139,6 +139,7 @@ def test_inventory_permissions_are_present_for_expected_roles():
         "inventory.wastage",
         "inventory.reconcile",
         "inventory.reservation.release",
+        "inventory.low_stock.scan",
     }
     inventory_reads = {
         "inventory.read",
