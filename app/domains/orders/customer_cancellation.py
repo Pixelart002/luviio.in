@@ -7,6 +7,7 @@ from typing import Any, Dict
 from fastapi import HTTPException, status
 
 from app.constants.order_messages import OrderMessages, OrderSecurityMessages
+from app.domains.inventory.customer_cancellation import release_stock_for_customer_cancellation
 from app.domains.orders.payment_port import OrderPaymentPort
 from app.domains.orders.service import OrderService
 from app.enums.order_status import OrderStatus
@@ -32,7 +33,7 @@ async def cancel_customer_order(
     old_status = current_status
 
     if current_status == OrderStatus.PENDING.value:
-        result = await service.inventory.cancel_order_with_stock_restoration(str(raw_order["id"]), user_id)
+        result = await release_stock_for_customer_cancellation(str(raw_order["id"]), user_id, "cancelled")
         target_status = OrderStatus.CANCELLED.value
     elif current_status in {OrderStatus.PAID.value, OrderStatus.PROCESSING.value}:
         payment_intent = str(raw_order.get("stripe_payment_intent") or "").strip()
@@ -47,15 +48,10 @@ async def cancel_customer_order(
         if refunded is False:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=OrderSecurityMessages.REFUND_FAILED)
 
-        result = await service.inventory.cancel_order_with_stock_restoration(str(raw_order["id"]), user_id)
+        result = await release_stock_for_customer_cancellation(str(raw_order["id"]), user_id, "refunded")
         if not result:
-            logger.error("Refund succeeded but inventory/order cancellation failed for order %s", raw_order.get("order_number", order_identifier))
+            logger.error("Refund succeeded but refunded inventory settlement failed for order %s", raw_order.get("order_number", order_identifier))
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment was refunded, but order settlement is still pending reconciliation.")
-
-        result = await service.repo.update_order_status_safe(str(raw_order["id"]), {"status": OrderStatus.REFUNDED.value}, OrderStatus.CANCELLED.value)
-        if not result:
-            logger.error("Refund and stock restoration succeeded but refunded status update failed for order %s", raw_order.get("order_number", order_identifier))
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment was refunded and stock restored; order status is pending reconciliation.")
         target_status = OrderStatus.REFUNDED.value
     else:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.INVALID_CANCEL_STATE)
