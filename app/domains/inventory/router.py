@@ -98,7 +98,7 @@ async def get_low_stock_alerts(request: Request) -> Dict[str, Any]:
     return success_response(data=alerts)
 
 
-@router.post("/low-stock/scan", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission("inventory.low_stock.read"))])
+@router.post("/low-stock/scan", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission("inventory.low_stock.scan"))])
 async def trigger_low_stock_scan(request: Request) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append("Triggering low-stock scan and publishing alerts")
