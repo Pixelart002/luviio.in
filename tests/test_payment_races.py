@@ -242,6 +242,10 @@ async def test_retry_and_webhook_same_payment_intent_converge(monkeypatch):
 @pytest.mark.asyncio
 async def test_create_intent_persistence_failure_compensates_provider_intent(monkeypatch):
     service, provider = build_service(monkeypatch)
+    monkeypatch.setattr(
+        "app.permissions.action_control.assert_action_enabled",
+        AsyncMock(),
+    )
     service.repo.get_order_by_idempotency_key = AsyncMock(return_value=None)
     service.repo.get_cart_items_for_checkout = AsyncMock(return_value=[{
         "product_id": "prod-1", "quantity": 1, "price_snapshot": 100,
