@@ -1,36 +1,67 @@
-# Backend State — 2026-09-16
+# Backend State — 2026-09-17
 
 ## Audit baseline
 Repository: `Pixelart002/luviio.in`
-Database: Supabase production project `enqcujmzxtrbfkaungpm`
+Production database: Supabase project `enqcujmzxtrbfkaungpm`
 
-## Completed in this hardening pass
-- Removed direct `anon` / `authenticated` table privileges for `users`, `addresses`, `carts`, `cart_items`, and `orders`.
-- Restricted transactional event-outbox trigger functions to `service_role`.
-- Added six missing foreign-key indexes reported by Supabase advisors.
-- Added shared database-backed authentication throttle state and service-role RPCs.
-- Switched auth policy/service calls to asynchronous shared throttling.
-- Fixed abandoned-cart push delivery to use the current async `send_push_to_user()` contract.
+**Last documentation verification:** 2026-09-17 (current repository/CI state).
 
-## Existing protections verified before this pass
-- Payment settlement RPCs are generally service-role-only.
+## Current production-hardening state
+
+The backend core commerce domains have completed the current hardening pass. Payment race-test isolation was merged as PR #69 (`54a7b6cdac2c0ae5e8335f33c3b8156825a2d04c`) and its Backend CI was green before merge.
+
+The current documentation/audit synchronization is carried by PR #70. PR #70 is open and currently being kept in sync with the latest documentation commits; its latest CI status must be checked against the current PR head before merge.
+
+### Security / integrity protections verified
+- Direct `anon` / `authenticated` table privileges removed from `users`, `addresses`, `carts`, `cart_items`, and `orders`.
+- Transactional event-outbox trigger functions restricted to `service_role`.
+- Payment settlement RPCs are service-role-only.
 - Coupon reserve/redeem functions are service-role-only.
 - Inventory mutation RPCs are service-role-only.
 - Sensitive payment/invoice/outbox tables have RLS and deny-client policies.
 - Coupon reservation is part of pending-order creation transaction.
 - Customer order numbers are unique.
+- Shared DB-backed authentication throttling is enabled.
+- Global API rate-limit state is shared through Postgres; trusted-proxy handling is explicit and fail-safe.
+- RBAC dynamic override reads fail closed.
+- Per-user action-control reads fail closed.
+- Admin role-management boundaries prevent self-escalation.
+- Inventory, abandoned-cart, and low-stock permissions are represented in the canonical role matrix.
+- PaymentIntent orphan-risk compensation/reconciliation is implemented.
+- Push delivery limiter/circuit state is shared through Postgres.
+- Business-asset replacement rollback/cleanup is implemented.
+- Six FK indexes previously reported by Supabase advisors were added.
 
-## Remaining tracked items
-1. CI currently has Ruff I001/E702 failures; source formatting must be cleaned and CI rerun through the test stage.
-2. Supabase Auth leaked-password protection must be enabled in the Supabase Auth configuration UI; this cannot be changed by the available database connector.
-3. Profile/RBAC cache invalidation should be tied to admin role/is_active mutation or replaced with a short-lived authoritative lookup for sensitive permissions.
-4. Global HTTP rate limiting should use a shared store and trusted proxy/IP handling rather than process-local buckets.
-5. PaymentIntent creation vs pending-order persistence still needs orphan-intent recovery/idempotent compensation.
-6. Business asset replacement should garbage-collect superseded storage objects.
+## Current CI state
+
+The verified Backend CI pipeline is:
+
+`compile -> Ruff -> Mypy -> pip-audit -> pytest + coverage`
+
+The previously verified PR #70 CI run #685 passed for its earlier head. Because documentation commits have since advanced the branch, CI must be re-checked for the latest head before merge. No known P0/P1 application defect is currently open in the defect ledger.
+
+## Remaining external / operational gates
+
+These are not unresolved core application defects:
+
+1. **Supabase Auth leaked-password protection:** Supabase security advisor still reports this as disabled. It must be enabled in the Supabase Auth configuration UI; the available database connector cannot change this Auth setting.
+2. **Live provider smoke:** Stripe test checkout/webhook, COD, coupon, notification provider, and invoice PDF should be exercised against the deployed environment as a release smoke suite.
+3. **Statutory configuration:** seller GST/legal identity, state, GSTIN and invoice configuration must match the actual registered business before statutory invoicing.
+4. **Performance baseline:** collect current p50/p95/p99 for the documented hot paths before further optimization.
+5. **Dependency modernization:** older Supabase/httpx/Pydantic/HTTP-status dependency warnings remain a separate controlled upgrade task; do not upgrade blindly without lockfile + CI verification.
+6. **Storage GC:** failed storage deletion can leave an unreachable object; the setting reference remains correct. A periodic garbage-collection sweep is an operational enhancement.
+7. **Documentation merge:** PR #70 contains this audit synchronization and remains pending merge until its latest head is CI-verified and accepted.
+
+## Index policy
+
+Supabase currently reports ten indexes as unused. This is advisory information, not proof that they are safe to remove. The indexes include the six recently-added FK indexes and newer operational indexes. Do not delete them solely from the unused-index advisory; removal requires query-plan/usage evidence over a representative production workload.
 
 ## Verification policy
-Never mark an item fixed because code exists. Mark it fixed only after one of:
+
+Never mark an item fixed because code merely exists. Mark it fixed only after one or more of:
 - live database verification,
 - CI execution,
 - targeted automated test,
-- deployment/runtime log verification.
+- deployment/runtime verification.
+
+External configuration or provider tests must be labelled as such rather than represented as completed application code work.
