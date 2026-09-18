@@ -3,6 +3,7 @@ Order Domain Service — Enterprise Business Logic & State Machine.
 """
 import logging
 from typing import Any, Dict, List, Tuple
+from uuid import uuid4
 
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
@@ -140,21 +141,57 @@ class OrderService:
                 if self.payment_port is None:
                     logger.error("Order refund requested without a configured payment port")
                     raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=OrderSecurityMessages.REFUND_FAILED)
+                provider_key = str(current_res.get("payment_provider") or "stripe").strip().lower()
+                provider_payment_id = str(current_res.get("provider_payment_id") or current_res.get("stripe_payment_intent") or "").strip()
+                if not provider_payment_id:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.REFUND_FAILED)
+                refund_amount = float(current_res.get("total_amount") or 0)
                 try:
-                    await self.payment_port.refund_payment_intent(current_res["stripe_payment_intent"])
-                    accounting_result = await self.payment_repo.record_refund_accounting(
+                    refund_attempt = await self.payment_repo.create_refund_attempt(
                         order_id=internal_order_id,
-                        provider=str(current_res.get("payment_provider") or "stripe"),
-                        provider_payment_id=str(current_res["stripe_payment_intent"]),
-                        amount=float(current_res.get("total_amount") or 0),
+                        provider=provider_key,
+                        provider_payment_id=provider_payment_id,
+                        amount=refund_amount,
                         currency=str(current_res.get("currency") or "INR"),
-                        reference=str(current_res["stripe_payment_intent"]),
+                        idempotency_key=f"luviio-admin-refund-{uuid4()}",
+                        reference=str(current_res.get("order_number") or internal_order_id),
                         metadata={"source": "admin_order_refund"},
                     )
-                    if accounting_result != "REFUNDED_ACCOUNTED":
-                        raise RuntimeError(f"Unexpected refund accounting result: {accounting_result}")
+                    refund_attempt_id = str(refund_attempt["id"])
+                    refunded = await self.payment_port.refund_payment_intent(
+                        provider_payment_id,
+                        amount_paise=int(round(refund_amount * 100)),
+                        idempotency_key=str(refund_attempt["idempotency_key"]),
+                    )
+                    provider_refund_id = refunded.get("id") if isinstance(refunded, dict) else None
+                    provider_refund_status = str(refunded.get("status") or "succeeded").lower() if isinstance(refunded, dict) else "succeeded"
+                    if provider_refund_status not in {"succeeded", "pending"}:
+                        raise RuntimeError(f"Unexpected refund provider status: {provider_refund_status}")
+                    completed = await self.payment_repo.complete_refund_attempt(
+                        refund_attempt_id,
+                        provider_refund_status,
+                        provider_refund_id=provider_refund_id,
+                        metadata={"source": "admin_order_refund", "provider_status": provider_refund_status},
+                    )
+                    if provider_refund_status == "pending" or str(completed.get("status")) != "succeeded":
+                        raise HTTPException(
+                            status_code=status.HTTP_202_ACCEPTED,
+                            detail="Refund is pending with the payment provider. The order will be settled after provider confirmation.",
+                        )
+                except HTTPException:
+                    raise
                 except Exception as e:
                     logger.error(f"Stripe refund/accounting execution failed: {e}", exc_info=True)
+                    try:
+                        if 'refund_attempt_id' in locals():
+                            await self.payment_repo.complete_refund_attempt(
+                                refund_attempt_id,
+                                "failed",
+                                failure_code=str(getattr(e, "code", None) or type(e).__name__),
+                                failure_message=str(e)[:1000],
+                            )
+                    except Exception:
+                        logger.critical("Failed to persist admin refund failure", exc_info=True)
                     raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=OrderSecurityMessages.REFUND_FAILED)
             if target_status_enum == OrderStatus.CANCELLED:
                 result = await self.inventory.cancel_order_with_stock_restoration(internal_order_id)
