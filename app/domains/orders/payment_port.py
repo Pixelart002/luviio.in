@@ -5,7 +5,7 @@ payments implementation directly. Runtime wiring is supplied by the router.
 """
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Optional, Protocol
 
 
 class OrderPaymentPort(Protocol):
