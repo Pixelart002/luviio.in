@@ -213,9 +213,6 @@ class PaymentService:
             checkout_attempt_id = await self.repo.create_checkout_payment_attempt(
                 user_id, clean_idem_key, amount_paise, "inr"
             )
-            await self.repo.update_checkout_payment_attempt(
-                checkout_attempt_id, status="provider_pending"
-            )
         except Exception as exc:
             logger.error("[PAYMENT ERROR] Durable checkout-attempt creation failed: %s", exc, exc_info=True)
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
