@@ -11,6 +11,7 @@ from app.constants.order_messages import OrderMessages, OrderSecurityMessages
 from app.domains.inventory.service import InventoryService
 from app.domains.orders.exceptions import OrderRepositoryError
 from app.domains.orders.payment_port import OrderPaymentPort
+from app.domains.payments.repository import AsyncPaymentRepository
 from app.domains.orders.repository import AsyncOrderRepository
 from app.domains.users.repository import AsyncUserRepository
 from app.enums.order_status import OrderStatus
@@ -40,6 +41,7 @@ class OrderService:
         self.user_repo = AsyncUserRepository()
         self.inventory = InventoryService()
         self.payment_port = payment_port
+        self.payment_repo = AsyncPaymentRepository()
 
     def _sanitize(self, order: Dict[str, Any]) -> Dict[str, Any]:
         if not order:
@@ -140,8 +142,19 @@ class OrderService:
                     raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=OrderSecurityMessages.REFUND_FAILED)
                 try:
                     await self.payment_port.refund_payment_intent(current_res["stripe_payment_intent"])
+                    accounting_result = await self.payment_repo.record_refund_accounting(
+                        order_id=internal_order_id,
+                        provider=str(current_res.get("payment_provider") or "stripe"),
+                        provider_payment_id=str(current_res["stripe_payment_intent"]),
+                        amount=float(current_res.get("total_amount") or 0),
+                        currency=str(current_res.get("currency") or "INR"),
+                        reference=str(current_res["stripe_payment_intent"]),
+                        metadata={"source": "admin_order_refund"},
+                    )
+                    if accounting_result != "REFUNDED_ACCOUNTED":
+                        raise RuntimeError(f"Unexpected refund accounting result: {accounting_result}")
                 except Exception as e:
-                    logger.error(f"Stripe refund execution failed: {e}")
+                    logger.error(f"Stripe refund/accounting execution failed: {e}", exc_info=True)
                     raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=OrderSecurityMessages.REFUND_FAILED)
             if target_status_enum == OrderStatus.CANCELLED:
                 result = await self.inventory.cancel_order_with_stock_restoration(internal_order_id)
