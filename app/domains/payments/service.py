@@ -210,11 +210,10 @@ class PaymentService:
                 )
 
         try:
+            # create_checkout_payment_attempt() defaults to provider_pending,
+            # so avoid a redundant DB round-trip immediately after creation.
             checkout_attempt_id = await self.repo.create_checkout_payment_attempt(
                 user_id, clean_idem_key, amount_paise, "inr"
-            )
-            await self.repo.update_checkout_payment_attempt(
-                checkout_attempt_id, status="provider_pending"
             )
         except Exception as exc:
             logger.error("[PAYMENT ERROR] Durable checkout-attempt creation failed: %s", exc, exc_info=True)
