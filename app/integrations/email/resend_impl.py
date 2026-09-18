@@ -7,19 +7,17 @@ Path: app/integrations/email/resend_impl.py
 import base64
 import logging
 import os
+from html import escape
 
 import resend
 from starlette.concurrency import run_in_threadpool
-
-# 🔥 IMPORT ADDED FOR INVOICE PDF ATTACHMENT
-from app.utils.documents.pdf_invoice import build_invoice_pdf
 
 logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 resend.api_key = os.environ.get("RESEND_API_KEY", "")
 
-FROM = os.environ.get("FROM_EMAIL", "Luviio <onboarding@resend.dev>")
+FROM = os.environ.get("FROM_EMAIL", "Luviio <orders@luviio.in>")
 APP  = os.environ.get("APP_NAME", "Luviio")
 BASE_URL = os.environ.get("APP_URL", "https://luviio.in")
 
@@ -30,6 +28,26 @@ GOLD       = "#c9a55e"
 TEXT       = "#f0ece4"
 TEXT_MUTED = "#7a7368"
 BORDER     = "#1e1c18"
+
+def _esc(value: object, default: str = "") -> str:
+    """HTML-escape values that originate from customer/order/product data."""
+    if value is None:
+        value = default
+    return escape(str(value))
+
+
+def _money(value: object) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _order_ref(order: dict) -> str:
+    """Use the public order number in customer-facing email copy."""
+    return str(order.get("order_number") or order.get("id") or "UNKNOWN").strip().upper()[:40]
+
+
 DEFAULT_HERO_GIF = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExcGZ4bHhkM2M5bndkZnJ5a3gxeThwbWxnNnc4c2h1bnV4ZHl4b3V4eSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7aCRZYNerX4ovPwI/giphy.gif"
 
 def _email_template(title: str, content: str, preheader: str = "", hero_image: str = "") -> str:
@@ -72,7 +90,7 @@ def _email_template(title: str, content: str, preheader: str = "", hero_image: s
                 LUVIIO
               </h1>
               <p style="color: {TEXT_MUTED}; font-size: 11px; margin: 6px 0 0; letter-spacing: 2px; text-transform: uppercase;">
-                Premium Bath & Sanitation
+                Hardware • Sanitary • Drainage
               </p>
             </td>
           </tr>
@@ -119,9 +137,10 @@ async def _async_safe_send(params: dict, log_context: str) -> bool:
 
 async def send_welcome_email(to: str, name: str) -> None:
     name = (name or "there").strip()
+    safe_name = _esc(name)
     content = f"""
-      <p style="color:{TEXT_MUTED};line-height:1.8;font-size:14px;margin:0 0 20px;">Hi <strong style="color:{TEXT};">{name}</strong>, welcome to Luviio! 👋</p>
-      <p style="color:{TEXT_MUTED};line-height:1.8;font-size:14px;margin:0 0 20px;">Your account has been created successfully. Explore our curated collection of premium bath and sanitation products — crafted for those who appreciate quality.</p>
+      <p style="color:{TEXT_MUTED};line-height:1.8;font-size:14px;margin:0 0 20px;">Hi <strong style="color:{TEXT};">{safe_name}</strong>, welcome to Luviio.</p>
+      <p style="color:{TEXT_MUTED};line-height:1.8;font-size:14px;margin:0 0 20px;">Your Luviio account is ready. Explore hardware, sanitary and drainage essentials selected for everyday projects and professional requirements.</p>
       <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
         <tr>
           <td align="center" style="padding: 28px 0;">
@@ -131,9 +150,9 @@ async def send_welcome_email(to: str, name: str) -> None:
       </table>
       <div style="background-color:{BG_DARK};border-radius:10px;padding:16px 20px;margin:20px 0;">
         <p style="color:{TEXT_MUTED};font-size:12px;margin:0;line-height:1.6;">
-          <strong style="color:{GOLD};">✨ Free Shipping</strong> on orders above ₹999<br>
-          <strong style="color:{GOLD};">🔒 Secure Checkout</strong> via Stripe<br>
-          <strong style="color:{GOLD};">🚚 Pan-India Delivery</strong> in 3-5 business days
+          <strong style="color:{GOLD};">Secure Checkout</strong> with trusted payment processing<br>
+          <strong style="color:{GOLD};">Order Updates</strong> by email and notifications<br>
+          <strong style="color:{GOLD};">Pan-India Delivery</strong> where available
         </p>
       </div>
       <p style="color:{TEXT_MUTED};font-size:11px;margin:24px 0 0;line-height:1.6;">If you didn't create this account, you can safely ignore this email.</p>
@@ -141,14 +160,14 @@ async def send_welcome_email(to: str, name: str) -> None:
     params: resend.Emails.SendParams = {
         "from": FROM, 
         "to": [to], 
-        "subject": f"Welcome to {APP}, {name}! 🎉", 
-        "html": _email_template(title=f"Welcome, {name}!", content=content, preheader=f"Your {APP} account is ready — start shopping premium bath products", hero_image=DEFAULT_HERO_GIF)
+        "subject": f"Welcome to {APP}, {name}", 
+        "html": _email_template(title=f"Welcome, {name}!", content=content, preheader=f"Your {APP} account is ready — explore hardware, sanitary and drainage products", hero_image="")
     }
     await _async_safe_send(params, f"welcome to={to}")
 
 async def send_order_confirmation(to: str, order: dict | None) -> None:
     order = order or {}
-    oid = str(order.get("id", ""))[:8].upper()
+    oid = _order_ref(order)
     total = order.get("total_amount", 0)
     status = str(order.get("status", "pending")).capitalize()
     location_parts = [p for p in [order.get("shipping_city", ""), order.get("shipping_state", ""), order.get("shipping_country", "IN")] if p]
@@ -161,7 +180,7 @@ async def send_order_confirmation(to: str, order: dict | None) -> None:
     content = f"""
       <p style="color:{TEXT_MUTED};line-height:1.8;font-size:14px;margin:0 0 20px;">Your order has been confirmed and is being processed.</p>
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:{BG_DARK};border-radius:10px;margin:20px 0;"><tr><td style="padding:20px 24px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-        <tr><td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;width:100px;">Order ID</td><td style="padding:6px 0;color:{TEXT};font-size:14px;font-weight:700;font-family:monospace;">#{oid}</td></tr>
+        <tr><td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;width:100px;">Order No.</td><td style="padding:6px 0;color:{TEXT};font-size:14px;font-weight:700;font-family:monospace;">#{oid}</td></tr>
         <tr><td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;">Status</td><td style="padding:6px 0;color:{GOLD};font-size:13px;font-weight:600;">{status}</td></tr>
         <tr><td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;">Ships to</td><td style="padding:6px 0;color:{TEXT};font-size:13px;">{location}</td></tr>
         <tr><td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;">Total</td><td style="padding:6px 0;color:{GOLD};font-size:18px;font-weight:700;">₹{float(total):,.2f}</td></tr>
@@ -174,14 +193,14 @@ async def send_order_confirmation(to: str, order: dict | None) -> None:
     params: resend.Emails.SendParams = {
         "from": FROM, 
         "to": [to], 
-        "subject": f"Order #{oid} Confirmed — {APP} ✓", 
-        "html": _email_template(title="Order Confirmed ✓", content=content, preheader=f"Order #{oid} — ₹{float(total):,.2f} — Status: {status}")
+        "subject": f"Order {oid} confirmed — {APP}", 
+        "html": _email_template(title="Order Confirmed", content=content, preheader=f"Order #{oid} — ₹{float(total):,.2f} — Status: {status}")
     }
     await _async_safe_send(params, f"order_confirmation to={to} order={oid}")
 
 async def send_order_shipped(to: str, order: dict | None, tracking_number: str | None) -> None:
     order = order or {}
-    oid = str(order.get("id", ""))[:8].upper()
+    oid = _order_ref(order)
     tracking = tracking_number or "Will be updated soon"
     tracking_section = f"""<div style="background-color:{BG_DARK};border:1px solid {GOLD};border-radius:10px;padding:20px 24px;margin:20px 0;text-align:center;"><p style="color:{TEXT_MUTED};font-size:11px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">Tracking Number</p><p style="color:{GOLD};font-size:20px;font-weight:700;margin:0;font-family:monospace;letter-spacing:2px;">{tracking}</p></div>""" if tracking_number else ""
     content = f"""
@@ -198,46 +217,143 @@ async def send_order_shipped(to: str, order: dict | None, tracking_number: str |
     }
     await _async_safe_send(params, f"shipped to={to} order={oid}")
 
-async def send_payment_success(to: str, order: dict | None) -> None:
+async def send_payment_success(
+    to: str,
+    order: dict | None,
+    invoice_pdf: bytes | None = None,
+    invoice_number: str | None = None,
+) -> None:
     order = order or {}
-    oid = str(order.get("id", ""))[:8].upper()
-    total = order.get("total_amount", 0)
+    oid = _order_ref(order)
+    total = _money(order.get("total_amount"))
+    invoice_no = str(invoice_number or order.get("invoice_number") or "").strip()
+    customer_name = _esc(
+        order.get("shipping_name")
+        or order.get("billing_name")
+        or "Customer"
+    )
+
+    item_rows = ""
+    for item in order.get("order_items") or []:
+        product_name = _esc(
+            item.get("product_name")
+            or item.get("name")
+            or "Product"
+        )
+        qty = max(1, int(_money(item.get("quantity")) or 1))
+        line_total = _money(
+            item.get("line_total")
+            if item.get("line_total") is not None
+            else item.get("subtotal")
+        )
+        item_rows += f"""
+          <tr>
+            <td style="padding:11px 0;border-bottom:1px solid {BORDER};color:{TEXT};font-size:13px;">
+              {product_name}
+              <span style="color:{TEXT_MUTED};font-size:11px;"> × {qty}</span>
+            </td>
+            <td align="right" style="padding:11px 0;border-bottom:1px solid {BORDER};color:{GOLD};font-size:13px;font-weight:700;">
+              ₹{line_total:,.2f}
+            </td>
+          </tr>
+        """
+
+    if not item_rows:
+        item_rows = f"""
+          <tr>
+            <td colspan="2" style="padding:12px 0;color:{TEXT_MUTED};font-size:12px;">
+              Your purchased items are listed in the attached invoice PDF.
+            </td>
+          </tr>
+        """
+
+    invoice_row = (
+        f'<tr><td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;">Invoice No.</td>'
+        f'<td style="padding:6px 0;color:{TEXT};font-size:13px;font-weight:700;font-family:monospace;">{_esc(invoice_no or "—")}</td></tr>'
+    )
+    attachment_note = (
+        '<div style="margin:18px 0 0;padding:12px 14px;background-color:#12100d;border:1px solid #2b251d;border-radius:10px;'
+        f'color:{TEXT_MUTED};font-size:12px;line-height:1.6;">Your invoice PDF is attached to this email.</div>'
+        if invoice_pdf
+        else
+        '<div style="margin:18px 0 0;padding:12px 14px;background-color:#12100d;border:1px solid #2b251d;border-radius:10px;'
+        f'color:{TEXT_MUTED};font-size:12px;line-height:1.6;">Your order has been recorded successfully. Your invoice is also available from your order details.</div>'
+    )
 
     content = f"""
-      <p style="color:{TEXT_MUTED};line-height:1.8;font-size:14px;margin:0 0 20px;">Your payment was successful and your order is now confirmed. 🎉</p>
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:{BG_DARK};border-radius:10px;margin:20px 0;"><tr><td style="padding:20px 24px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-        <tr><td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;width:100px;">Order ID</td><td style="padding:6px 0;color:{TEXT};font-size:14px;font-weight:700;font-family:monospace;">#{oid}</td></tr>
-        <tr><td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;">Amount Paid</td><td style="padding:6px 0;color:{GOLD};font-size:18px;font-weight:700;">₹{float(total):,.2f}</td></tr>
-        <tr><td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;">Status</td><td style="padding:6px 0;color:{GOLD};font-size:13px;font-weight:600;">Paid ✓</td></tr>
-      </table></td></tr></table>
-      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding: 28px 0 0;"><a href="{BASE_URL}/orders.html" style="display:inline-block;padding:12px 28px;background-color:{GOLD};color:{BG_DARK};border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">View Your Order →</a></td></tr></table>
-      <p style="color:{TEXT_MUTED};font-size:11px;margin:24px 0 0;line-height:1.6;">You'll receive another email once your order ships. For any queries, contact <a href="mailto:support@luviio.in" style="color:{GOLD};text-decoration:none;">support@luviio.in</a></p>
+      <p style="color:{TEXT_MUTED};line-height:1.8;font-size:14px;margin:0 0 18px;">
+        Hi <strong style="color:{TEXT};">{customer_name}</strong>, your payment has been received and your order is confirmed.
+      </p>
+
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+             style="background-color:{BG_DARK};border:1px solid {BORDER};border-radius:12px;margin:0 0 20px;">
+        <tr>
+          <td style="padding:20px 22px;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+              <tr>
+                <td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;width:110px;">Order No.</td>
+                <td style="padding:6px 0;color:{TEXT};font-size:14px;font-weight:700;font-family:monospace;">{_esc(oid)}</td>
+              </tr>
+              {invoice_row}
+              <tr>
+                <td style="padding:6px 0;color:{TEXT_MUTED};font-size:12px;">Payment</td>
+                <td style="padding:6px 0;color:{GOLD};font-size:13px;font-weight:700;">Paid</td>
+              </tr>
+              <tr>
+                <td style="padding:8px 0 0;color:{TEXT_MUTED};font-size:12px;">Amount</td>
+                <td style="padding:8px 0 0;color:{GOLD};font-size:20px;font-weight:700;">₹{total:,.2f}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <h3 style="color:{TEXT};font-size:12px;margin:0 0 9px;text-transform:uppercase;letter-spacing:1.4px;">Items in your order</h3>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+        {item_rows}
+      </table>
+
+      {attachment_note}
+
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+          <td align="center" style="padding:26px 0 4px;">
+            <a href="{BASE_URL}/orders.html"
+               style="display:inline-block;padding:13px 30px;background-color:{GOLD};color:{BG_DARK};border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">
+              View Order
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <p style="color:{TEXT_MUTED};font-size:11px;margin:18px 0 0;line-height:1.7;">
+        Need help? Contact <a href="mailto:support@luviio.in" style="color:{GOLD};text-decoration:none;">support@luviio.in</a>.
+      </p>
     """
-    
-    # ── 📄 Generate PDF and Attach it via Threadpool ───────────────────────────
+
     attachments = []
-    try:
-        dummy_customer = {"full_name": "Customer", "email": to}
-        # 🔥 FIX: Threadpool for heavy CPU-bound PDF Generation
-        pdf_bytes = await run_in_threadpool(build_invoice_pdf, order, dummy_customer)
-        pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-        
+    if invoice_pdf:
         attachments.append({
-            "filename": f"Luviio_Invoice_{oid}.pdf",
-            "content": pdf_b64
+            "filename": f"Luviio_Invoice_{str(invoice_no or oid).replace("/", "-")}.pdf",
+            "content": base64.b64encode(invoice_pdf).decode("ascii"),
         })
-    except Exception as e:
-        logger.error(f"[EMAIL] Failed to generate PDF attachment for order {oid}: {e}")
-    # ──────────────────────────────────────────────────────────────────────────
 
     params: resend.Emails.SendParams = {
-        "from": FROM, 
-        "to": [to], 
-        "subject": f"Payment Confirmed — {APP} Order #{oid} ✓", 
-        "html": _email_template(title="Payment Successful ✓", content=content, preheader=f"Payment of ₹{float(total):,.2f} received for order #{oid}"),
-        "attachments": attachments  # 🔥 Attachment added safely here!
+        "from": FROM,
+        "to": [to],
+        "subject": f"Payment confirmed • Order {oid} — {APP}",
+        "html": _email_template(
+            title="Payment confirmed",
+            content=content,
+            preheader=f"Order {oid} is confirmed — ₹{total:,.2f} paid successfully",
+            hero_image="",
+        ),
     }
-    await _async_safe_send(params, f"payment_success to={to} order={oid}")
+    if attachments:
+        params["attachments"] = attachments
+
+    await _async_safe_send(params, f"payment_success to={to} order={oid} attachment={'yes' if attachments else 'no'}")
+
 
 async def send_cart_reminder_email(to: str, name: str, items: list) -> None:
     name = (name or "there").strip()
