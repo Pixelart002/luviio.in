@@ -28,6 +28,26 @@ GOLD       = "#c9a55e"
 TEXT       = "#f0ece4"
 TEXT_MUTED = "#7a7368"
 BORDER     = "#1e1c18"
+
+def _esc(value: object, default: str = "") -> str:
+    """HTML-escape values that originate from customer/order/product data."""
+    if value is None:
+        value = default
+    return escape(str(value))
+
+
+def _money(value: object) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _order_ref(order: dict) -> str:
+    """Use the public order number in customer-facing email copy."""
+    return str(order.get("order_number") or order.get("id") or "UNKNOWN").strip().upper()[:40]
+
+
 DEFAULT_HERO_GIF = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExcGZ4bHhkM2M5bndkZnJ5a3gxeThwbWxnNnc4c2h1bnV4ZHl4b3V4eSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7aCRZYNerX4ovPwI/giphy.gif"
 
 def _email_template(title: str, content: str, preheader: str = "", hero_image: str = "") -> str:
@@ -180,7 +200,7 @@ async def send_order_confirmation(to: str, order: dict | None) -> None:
 
 async def send_order_shipped(to: str, order: dict | None, tracking_number: str | None) -> None:
     order = order or {}
-    oid = str(order.get("id", ""))[:8].upper()
+    oid = _order_ref(order)
     tracking = tracking_number or "Will be updated soon"
     tracking_section = f"""<div style="background-color:{BG_DARK};border:1px solid {GOLD};border-radius:10px;padding:20px 24px;margin:20px 0;text-align:center;"><p style="color:{TEXT_MUTED};font-size:11px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">Tracking Number</p><p style="color:{GOLD};font-size:20px;font-weight:700;margin:0;font-family:monospace;letter-spacing:2px;">{tracking}</p></div>""" if tracking_number else ""
     content = f"""
@@ -314,7 +334,7 @@ async def send_payment_success(
     attachments = []
     if invoice_pdf:
         attachments.append({
-            "filename": f"Luviio_Invoice_{invoice_no or oid}.pdf",
+            "filename": f"Luviio_Invoice_{str(invoice_no or oid).replace("/", "-")}.pdf",
             "content": base64.b64encode(invoice_pdf).decode("ascii"),
         })
 
