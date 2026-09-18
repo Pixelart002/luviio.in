@@ -197,11 +197,14 @@ class InventoryRepository:
             raise ValueError("minutes_old must be positive")
         admin_sb = await get_async_admin_supabase()
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes_old)
+        # Abandoned-order cleanup is for provider-backed checkouts only.
+        # COD/offline pending orders must never enter the online-payment sweeper.
         res = await (
             admin_sb.table("orders")
             .select("id, created_at, customer_id, payment_provider, provider_payment_id, stripe_payment_intent")
             .eq("status", "pending")
             .lt("created_at", cutoff.isoformat())
+            .or_("provider_payment_id.not.is.null,stripe_payment_intent.not.is.null")
             .execute()
         )
         return getattr(res, "data", None) or []
