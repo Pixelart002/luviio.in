@@ -10,6 +10,7 @@ existing endpoint-specific limits.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from ipaddress import ip_address, ip_network
@@ -24,6 +25,7 @@ from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 ASGIApp = Callable[[dict[str, Any], Callable[..., Awaitable[Any]], Callable[..., Awaitable[Any]]], Awaitable[None]]
+_RATE_LIMIT_RPC_TIMEOUT_SECONDS = 0.75
 
 
 def _peer_is_trusted(request: Request) -> bool:
@@ -89,7 +91,12 @@ class SharedRateLimitMiddleware:
         self.limit = settings.RATE_LIMIT_PER_MINUTE
         self.window_seconds = 60
 
-    async def __call__(self, scope: dict[str, Any], receive: Callable[..., Awaitable[Any]], send: Callable[..., Awaitable[Any]]) -> None:
+    async def __call__(
+        self,
+        scope: dict[str, Any],
+        receive: Callable[..., Awaitable[Any]],
+        send: Callable[..., Awaitable[Any]],
+    ) -> None:
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
             return
@@ -106,14 +113,17 @@ class SharedRateLimitMiddleware:
 
         try:
             sb = await get_async_admin_supabase()
-            result = await sb.rpc(
-                "consume_http_rate_limit",
-                {
-                    "p_rate_key": key,
-                    "p_limit": self.limit,
-                    "p_window_seconds": self.window_seconds,
-                },
-            ).execute()
+            result = await asyncio.wait_for(
+                sb.rpc(
+                    "consume_http_rate_limit",
+                    {
+                        "p_rate_key": key,
+                        "p_limit": self.limit,
+                        "p_window_seconds": self.window_seconds,
+                    },
+                ).execute(),
+                timeout=_RATE_LIMIT_RPC_TIMEOUT_SECONDS,
+            )
             data = result.data
             if isinstance(data, list):
                 data = data[0] if data else None
@@ -130,18 +140,21 @@ class SharedRateLimitMiddleware:
                 )
                 await response(scope, receive, send)
                 return
-        except Exception:
-            logger.exception("Shared rate-limit state unavailable")
-            response = JSONResponse(
-                status_code=503,
-                content={
-                    "success": False,
-                    "error": "rate_limit_unavailable",
-                    "message": "Request protection is temporarily unavailable.",
-                },
-                headers={"Retry-After": "5"},
+        except asyncio.TimeoutError:
+            # Rate limiting is a protection layer, not a dependency of the
+            # shop itself. Do not let a slow Supabase RPC turn every request
+            # into a multi-second/503 outage.
+            logger.warning(
+                "Shared rate-limit RPC timed out; allowing request | timeout_s=%s",
+                _RATE_LIMIT_RPC_TIMEOUT_SECONDS,
             )
-            await response(scope, receive, send)
-            return
+        except Exception as exc:
+            # The endpoint-specific SlowAPI limits remain active. Failing open
+            # here keeps the application available when the shared limiter's
+            # database connection is unhealthy.
+            logger.warning(
+                "Shared rate-limit state unavailable; allowing request | error_type=%s",
+                type(exc).__name__,
+            )
 
         await self.app(scope, receive, send)
