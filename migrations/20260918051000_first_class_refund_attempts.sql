@@ -281,7 +281,7 @@ begin
                 'refund_attempt_number', v_refund.refund_attempt_number
             )
         )
-        on conflict (provider, provider_payment_id, entry_type, reference) do nothing;
+        on conflict do nothing;
     end if;
 
     return jsonb_build_object(
@@ -438,7 +438,7 @@ begin
             coalesce(v_refund.gateway_metadata, '{}'::jsonb)
                 || jsonb_build_object('source','provider_webhook','refund_attempt_id',v_refund.id)
         )
-        on conflict (provider, provider_payment_id, entry_type, reference) do nothing;
+        on conflict do nothing;
     end if;
 
     return jsonb_build_object(
