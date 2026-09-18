@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from app.constants.order_messages import OrderMessages, OrderSecurityMessages
 from app.domains.inventory.customer_cancellation import release_stock_for_customer_cancellation
 from app.domains.orders.payment_port import OrderPaymentPort
+from app.domains.payments.repository import AsyncPaymentRepository
 from app.domains.orders.service import OrderService
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderStatusChangedEvent, get_event_bus
@@ -24,6 +25,7 @@ async def cancel_customer_order(
 ) -> Dict[str, Any]:
     """Cancel a customer order safely; paid/processing orders are refunded first."""
     service = OrderService()
+    payment_repo = AsyncPaymentRepository()
     raw_order = await service.repo.get_order_by_id(order_identifier)
     if not raw_order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=OrderSecurityMessages.ORDER_NOT_FOUND)
@@ -74,6 +76,28 @@ async def cancel_customer_order(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=OrderSecurityMessages.REFUND_FAILED,
                 )
+
+            try:
+                await payment_repo.record_refund_accounting(
+                    order_id=str(raw_order["id"]),
+                    provider=payment_provider,
+                    provider_payment_id=payment_intent,
+                    amount=float(raw_order.get("total_amount") or 0),
+                    currency=str(raw_order.get("currency") or "INR"),
+                    reference=payment_intent,
+                    metadata={"source": "customer_cancellation"},
+                )
+            except Exception as exc:
+                logger.error(
+                    "Provider refund succeeded but payment accounting failed for order %s: %s",
+                    raw_order.get("order_number", order_identifier),
+                    exc,
+                    exc_info=True,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Payment was refunded by the provider, but internal payment accounting is pending reconciliation.",
+                ) from exc
 
             result = await release_stock_for_customer_cancellation(
                 str(raw_order["id"]), user_id, "refunded"
