@@ -36,23 +36,58 @@ async def cancel_customer_order(
         result = await release_stock_for_customer_cancellation(str(raw_order["id"]), user_id, "cancelled")
         target_status = OrderStatus.CANCELLED.value
     elif current_status in {OrderStatus.PAID.value, OrderStatus.PROCESSING.value}:
-        payment_intent = str(raw_order.get("stripe_payment_intent") or "").strip()
-        if not payment_intent:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Paid order cannot be cancelled because its payment reference is missing.")
+        payment_method = str(raw_order.get("payment_method") or "").strip().lower()
+        payment_provider = str(raw_order.get("payment_provider") or "").strip().lower()
+        is_cod = payment_method == "cod" or payment_provider == "cod"
 
-        try:
-            refunded = await payment_port.refund_payment_intent(payment_intent)
-        except Exception as exc:
-            logger.error("Customer cancellation refund failed for order %s: %s", raw_order.get("order_number", order_identifier), exc, exc_info=True)
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=OrderSecurityMessages.REFUND_FAILED) from exc
-        if refunded is False:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=OrderSecurityMessages.REFUND_FAILED)
+        if is_cod:
+            # COD is an offline payment method; there is no Stripe PaymentIntent to refund.
+            # Cancellation therefore releases the reserved stock without invoking the
+            # Stripe refund port. Any cash already collected is handled outside Stripe.
+            result = await release_stock_for_customer_cancellation(
+                str(raw_order["id"]), user_id, "cancelled"
+            )
+            target_status = OrderStatus.CANCELLED.value
+        else:
+            payment_intent = str(raw_order.get("stripe_payment_intent") or "").strip()
+            if not payment_intent:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Paid order cannot be cancelled because its payment reference is missing.",
+                )
 
-        result = await release_stock_for_customer_cancellation(str(raw_order["id"]), user_id, "refunded")
-        if not result:
-            logger.error("Refund succeeded but refunded inventory settlement failed for order %s", raw_order.get("order_number", order_identifier))
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment was refunded, but order settlement is still pending reconciliation.")
-        target_status = OrderStatus.REFUNDED.value
+            try:
+                refunded = await payment_port.refund_payment_intent(payment_intent)
+            except Exception as exc:
+                logger.error(
+                    "Customer cancellation refund failed for order %s: %s",
+                    raw_order.get("order_number", order_identifier),
+                    exc,
+                    exc_info=True,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=OrderSecurityMessages.REFUND_FAILED,
+                ) from exc
+            if refunded is False:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=OrderSecurityMessages.REFUND_FAILED,
+                )
+
+            result = await release_stock_for_customer_cancellation(
+                str(raw_order["id"]), user_id, "refunded"
+            )
+            if not result:
+                logger.error(
+                    "Refund succeeded but refunded inventory settlement failed for order %s",
+                    raw_order.get("order_number", order_identifier),
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Payment was refunded, but order settlement is still pending reconciliation.",
+                )
+            target_status = OrderStatus.REFUNDED.value
     else:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.INVALID_CANCEL_STATE)
 
