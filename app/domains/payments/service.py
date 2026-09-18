@@ -581,7 +581,7 @@ class PaymentService:
                     except Exception:
                         logger.error("[WEBHOOK] Failed to publish refund status event", exc_info=True)
                 elif refund_status == "succeeded" and current_status in {OrderStatus.SHIPPED.value, OrderStatus.DELIVERED.value}:
-                    updated = await self.repo.update_order_status_via_rpc(
+                    await self.repo.update_order_status_via_rpc(
                         order_id,
                         OrderStatus.REFUNDED.value,
                         f"Webhook Auto-Update: {event_type}",
@@ -589,7 +589,7 @@ class PaymentService:
                     try:
                         get_event_bus().publish(
                             OrderStatusChangedEvent(
-                                order=updated or order,
+                                order=order,
                                 customer_id=customer_id,
                                 old_status=current_status,
                                 new_status=OrderStatus.REFUNDED.value,
