@@ -38,6 +38,22 @@ def test_orders_repository_no_longer_owns_stock_cancellation():
     assert "cancel_order_and_restore_stock" not in source
 
 
+def test_refunded_orders_cannot_download_invoice():
+    with pytest.raises(HTTPException) as exc:
+        OrderPolicy.assert_can_download_invoice(
+            {"customer_id": "user-1", "status": OrderStatus.REFUNDED.value},
+            "user-1",
+        )
+    assert exc.value.status_code == 409
+
+
+def test_processing_orders_can_download_invoice():
+    OrderPolicy.assert_can_download_invoice(
+        {"customer_id": "user-1", "status": OrderStatus.PROCESSING.value},
+        "user-1",
+    )
+
+
 def test_order_service_routes_cancellation_to_inventory_domain():
     source = (REPO_ROOT / "app/domains/orders/service.py").read_text(encoding="utf-8")
     assert "InventoryService" in source
