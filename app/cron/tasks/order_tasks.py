@@ -105,15 +105,18 @@ async def cleanup_abandoned_orders() -> None:
 
     for order in stale_orders:
         order_id = order["id"]
-        provider_key = str(order.get("payment_provider") or "stripe").strip().lower()
+        provider_key = str(order.get("payment_provider") or "").strip().lower()
         provider_payment_id = str(
             order.get("provider_payment_id") or order.get("stripe_payment_intent") or ""
         ).strip()
         customer_id = order.get("customer_id")
 
         try:
-            if not provider_payment_id:
-                logger.info("[CRON] Skipping non-provider pending order %s.", order_id[:8])
+            if not provider_key or not provider_payment_id:
+                # Repository query already excludes non-provider orders. Keep this
+                # defensive guard for malformed historical rows without treating
+                # them as actionable abandoned online checkouts.
+                logger.warning("[CRON] Provider identity missing for pending order %s.", order_id[:8])
                 continue
 
             provider = get_payment_provider(provider_key)

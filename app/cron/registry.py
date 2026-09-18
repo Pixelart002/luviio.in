@@ -52,10 +52,15 @@ def cron_task(trigger: str = "interval", **kwargs: Any):
     def decorator(func: Callable) -> Callable:
         leased_func = _leased_job(func)
         job_kwargs = dict(kwargs)
-        if trigger == "interval" and "seconds" in job_kwargs:
-            # Prevent every Uvicorn worker from waking on the same scheduler
-            # tick. The PostgreSQL lease remains the execution authority.
-            job_kwargs.setdefault("jitter", min(5, max(1, int(job_kwargs["seconds"] // 3))))
+        if trigger == "interval" and any(key in job_kwargs for key in ("seconds", "minutes", "hours")):
+            # Prevent worker-local scheduler overlap for every interval unit.
+            # The PostgreSQL lease remains the cross-worker execution authority.
+            interval_seconds = int(
+                job_kwargs.get("seconds")
+                or job_kwargs.get("minutes", 0) * 60
+                or job_kwargs.get("hours", 0) * 3600
+            )
+            job_kwargs.setdefault("jitter", min(5, max(1, interval_seconds // 3)))
             job_kwargs.setdefault("coalesce", True)
             job_kwargs.setdefault("max_instances", 1)
             job_kwargs.setdefault("misfire_grace_time", 30)

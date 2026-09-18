@@ -17,11 +17,15 @@ async def retry_notification_dlq(limit: int = 50) -> int:
     sb = await get_async_admin_supabase()
     now = datetime.now(timezone.utc)
 
+    # Only fetch failed deliveries that are actually due for another retry.
+    # Legacy exhausted rows with next_retry_at=NULL are intentionally left alone.
     result = await (
         sb.table("notification_dlq")
         .select("*")
         .eq("status", "failed")
-        .order("created_at")
+        .lt("attempt_count", _MAX_ATTEMPTS)
+        .lte("next_retry_at", now.isoformat())
+        .order("next_retry_at")
         .limit(limit)
         .execute()
     )
@@ -30,16 +34,8 @@ async def retry_notification_dlq(limit: int = 50) -> int:
 
     for row in rows:
         attempt_count = int(row.get("attempt_count") or 0)
-        next_retry_raw = row.get("next_retry_at")
         if attempt_count >= _MAX_ATTEMPTS:
             continue
-        if next_retry_raw:
-            try:
-                next_retry = datetime.fromisoformat(str(next_retry_raw).replace("Z", "+00:00"))
-                if next_retry > now:
-                    continue
-            except ValueError:
-                logger.warning("Ignoring malformed notification retry timestamp | id=%s", row.get("id"))
 
         row_id = str(row.get("id"))
         attempt = attempt_count + 1
