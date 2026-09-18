@@ -3,6 +3,7 @@ Payment Service -- Enterprise Orchestration (With Atomic GST & HSN Snapshots)
 =============================================================================
 Path: app/domains/payments/service.py
 """
+import asyncio
 import logging
 import time
 from decimal import ROUND_HALF_UP, Decimal
@@ -149,33 +150,62 @@ class PaymentService:
         goods_subtotal = subtotal
         if coupon_code:
             from app.domains.coupons.service import CouponService
-            resolved = await CouponService().resolve_discount_for_checkout(coupon_code, float(goods_subtotal), user_id)
+            resolved, addr = await asyncio.gather(
+                CouponService().resolve_discount_for_checkout(
+                    coupon_code,
+                    float(goods_subtotal),
+                    user_id,
+                ),
+                self.repo.get_shipping_address(address_id, user_id),
+            )
             coupon_discount = Decimal(str(resolved.get("discount") or 0))
             coupon_id = resolved.get("coupon_id")
             coupon_code_resolved = resolved.get("code")
-            if coupon_discount > 0:
-                amount_paise = self._paise(max(breakdown.total - coupon_discount, Decimal("0")))
-                PaymentPolicy.assert_minimum_amount(amount_paise)
+        else:
+            addr = await self.repo.get_shipping_address(address_id, user_id)
 
-        addr = await self.repo.get_shipping_address(address_id, user_id)
         if not addr:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND,
+            )
         try:
             validate_email(addr.get("email") or "", check_deliverability=False)
         except EmailNotValidError:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING,
+            )
+
+        if coupon_discount > 0:
+            amount_paise = self._paise(
+                max(breakdown.total - coupon_discount, Decimal("0"))
+            )
+            PaymentPolicy.assert_minimum_amount(amount_paise)
 
         billing_addr = addr
         is_same_as_shipping = True
         if billing_address_id and billing_address_id != address_id:
-            billing_addr = await self.repo.get_shipping_address(billing_address_id, user_id)
+            billing_addr = await self.repo.get_shipping_address(
+                billing_address_id,
+                user_id,
+            )
             if not billing_addr:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND,
+                )
             is_same_as_shipping = False
             try:
-                validate_email(billing_addr.get("email") or "", check_deliverability=False)
+                validate_email(
+                    billing_addr.get("email") or "",
+                    check_deliverability=False,
+                )
             except EmailNotValidError:
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING,
+                )
 
         try:
             checkout_attempt_id = await self.repo.create_checkout_payment_attempt(
@@ -259,18 +289,46 @@ class PaymentService:
         await self.repo.update_checkout_payment_attempt(
             checkout_attempt_id, provider_payment_id=intent["id"], status="order_created"
         )
-        await run_in_threadpool(self.provider.update_intent_metadata, intent["id"], {"order_id": pending_order["id"], "user_id": user_id})
-        await self.repo.record_payment_attempt(pending_order["id"], user_id, intent["id"], amount_paise / 100, status="requires_payment_method", ip_address=client_ip, user_agent=user_agent)
-        try:
-            from app.domains.cart.service import CartService
-            await CartService().clear_cart(user_id)
-        except Exception as cart_exc:
-            logger.error("Failed to clear cart after successful order reservation: %s", cart_exc)
-        try:
-            customer_email = await self.repo.get_customer_email(user_id)
-            get_event_bus().publish(OrderCreatedEvent(order=pending_order, customer_email=customer_email, customer_id=user_id))
-        except Exception as event_exc:
-            logger.error("Failed to publish OrderCreatedEvent: %s", event_exc)
+
+        metadata_result, attempt_result, email_result = await asyncio.gather(
+            run_in_threadpool(
+                self.provider.update_intent_metadata,
+                intent["id"],
+                {"order_id": pending_order["id"], "user_id": user_id},
+            ),
+            self.repo.record_payment_attempt(
+                pending_order["id"],
+                user_id,
+                intent["id"],
+                amount_paise / 100,
+                status="requires_payment_method",
+                ip_address=client_ip,
+                user_agent=user_agent,
+            ),
+            self.repo.get_customer_email(user_id),
+            return_exceptions=True,
+        )
+        if isinstance(metadata_result, Exception):
+            raise metadata_result
+        if isinstance(attempt_result, Exception):
+            raise attempt_result
+
+        if isinstance(email_result, Exception):
+            logger.error(
+                "Failed to load customer email for OrderCreatedEvent: %s",
+                email_result,
+            )
+        else:
+            try:
+                get_event_bus().publish(
+                    OrderCreatedEvent(
+                        order=pending_order,
+                        customer_email=email_result,
+                        customer_id=user_id,
+                    )
+                )
+            except Exception as event_exc:
+                logger.error("Failed to publish OrderCreatedEvent: %s", event_exc)
         return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": pending_order["id"], "order_number": order_number}
 
     async def confirm_payment(self, user_id: str, client_ip: str, pi_id: str, email: str) -> Dict[str, Any]:
