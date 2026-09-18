@@ -92,7 +92,6 @@ async def test_paid_stripe_order_still_requires_and_refunds_payment_intent(monke
                 "payment_method": "card",
                 "payment_provider": "stripe",
                 "stripe_payment_intent": "pi_test_123",
-                "payment_provider": "stripe",
                 "provider_payment_id": "pi_test_123",
                 "total_amount": 100.0,
                 "currency": "INR",
