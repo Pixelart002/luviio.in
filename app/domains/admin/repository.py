@@ -1,5 +1,4 @@
 """Admin domain repository — async Supabase persistence."""
-import asyncio
 import logging
 import time
 from typing import Any, Dict, Optional
@@ -30,38 +29,24 @@ class AsyncAdminRepository:
         return profile
 
     async def get_dashboard_stats(self) -> Dict[str, Any]:
-        stats: Dict[str, Any] = {}
+        """Fetch dashboard counters/revenue with one DB round trip."""
+        sb = await get_async_admin_supabase()
+        res = await sb.rpc("admin_dashboard_metrics").execute()
+        data = getattr(res, "data", None)
 
-        async def products() -> None:
-            sb = await get_async_admin_supabase()
-            res = await sb.table("products").select("id", count="exact").eq("is_active", True).limit(1).execute()
-            stats["products"] = res.count or 0
+        if not isinstance(data, dict):
+            raise RuntimeError("Unable to load complete dashboard telemetry")
 
-        async def orders() -> None:
-            sb = await get_async_admin_supabase()
-            res = await sb.table("orders").select("id", count="exact").limit(1).execute()
-            stats["orders"] = res.count or 0
-
-        async def pending() -> None:
-            sb = await get_async_admin_supabase()
-            res = await sb.table("orders").select("id", count="exact").eq("status", "pending").limit(1).execute()
-            stats["pending_orders"] = res.count or 0
-
-        async def users() -> None:
-            sb = await get_async_admin_supabase()
-            res = await sb.table("users").select("id", count="exact").limit(1).execute()
-            stats["users"] = res.count or 0
-
-        async def revenue() -> None:
-            sb = await get_async_admin_supabase()
-            res = await sb.table("orders").select("total_amount").in_("status", ["paid", "processing", "shipped", "delivered"]).execute()
-            stats["revenue"] = round(sum(float(row.get("total_amount") or 0) for row in (getattr(res, "data", None) or [])), 2)
-
-        results = await asyncio.gather(products(), orders(), pending(), users(), revenue(), return_exceptions=True)
-        failures = [result for result in results if isinstance(result, Exception)]
-        if failures:
-            raise RuntimeError("Unable to load complete dashboard telemetry") from failures[0]
-        return stats
+        try:
+            return {
+                "products": int(data.get("products") or 0),
+                "orders": int(data.get("orders") or 0),
+                "pending_orders": int(data.get("pending_orders") or 0),
+                "users": int(data.get("users") or 0),
+                "revenue": round(float(data.get("revenue") or 0), 2),
+            }
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("Unable to normalize dashboard telemetry") from exc
 
     async def get_report_summary(self) -> Dict[str, Any]:
         sb = await get_async_admin_supabase()
