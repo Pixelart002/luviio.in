@@ -48,7 +48,6 @@ async def retry_notification_dlq(limit: int = 50) -> int:
             .update({"status": "retrying", "attempt_count": attempt})
             .eq("id", row_id)
             .eq("status", "failed")
-            .select("id")
             .execute()
         )
         if not getattr(claim, "data", None):
