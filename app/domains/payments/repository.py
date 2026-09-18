@@ -256,6 +256,45 @@ class AsyncPaymentRepository:
         data = getattr(res, "data", None)
         return str(data) if data else "FAILED"
 
+    async def record_refund_accounting(
+        self,
+        order_id: str,
+        provider: str,
+        provider_payment_id: str,
+        amount: float,
+        currency: str = "INR",
+        reference: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Persist provider refund state and an idempotent refund ledger entry."""
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await admin_sb.rpc(
+                "record_payment_refund",
+                {
+                    "p_order_id": order_id,
+                    "p_provider": provider,
+                    "p_provider_payment_id": provider_payment_id,
+                    "p_amount": amount,
+                    "p_currency": currency,
+                    "p_reference": reference,
+                    "p_metadata": metadata or {},
+                },
+            ).execute()
+            data = getattr(res, "data", None)
+            result = str(data) if data is not None else "FAILED"
+            if result != "REFUNDED_ACCOUNTED":
+                raise RuntimeError(f"Refund accounting RPC returned {result}")
+            return result
+        except Exception as exc:
+            logger.error(
+                "DB Error recording refund accounting for order %s: %s",
+                order_id,
+                exc,
+                exc_info=True,
+            )
+            raise RuntimeError("Unable to persist refund accounting") from exc
+
     async def update_order_payment_intent(self, order_id: str, new_pi_id: str) -> bool:
         admin_sb = await get_async_admin_supabase()
         provider = get_current_provider_key()
