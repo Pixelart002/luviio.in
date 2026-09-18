@@ -4,6 +4,7 @@ Cart Domain Service — canonical business logic.
 import asyncio
 import datetime
 import logging
+import time
 from decimal import Decimal
 from typing import Any, Dict
 
@@ -24,9 +25,12 @@ class CartService:
         self.repo = AsyncCartRepository()
 
     async def _calculate_cart_pricing(self, cart_id: str) -> Dict[str, Any]:
+        started = time.perf_counter()
         config, raw_items = await asyncio.gather(self.repo.get_pricing_config(), self.repo.get_cart_items_with_products(cart_id))
+        fetch_ms = (time.perf_counter() - started) * 1000
         pricing_engine = get_pricing_from_config(config)
         if not raw_items:
+            logger.info("Cart pricing completed | cart_id=%s items=0 fetch_ms=%.2f total_ms=%.2f", cart_id, fetch_ms, (time.perf_counter() - started) * 1000)
             return {"items": [], "item_count": 0, "subtotal": 0.0, "shipping_cost": 0.0, "tax_amount": 0.0, "total_amount": 0.0, "free_shipping_eligible": False, "amount_to_free_shipping": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0, "free_shipping_threshold": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0, "has_unavailable_items": False, "currency": "INR"}
         enriched = []
         subtotal = Decimal("0")
@@ -71,11 +75,16 @@ class CartService:
         amount_to_free = 0.0
         if pricing_engine.shipping_enabled and subtotal < pricing_engine.shipping_threshold:
             amount_to_free = round(max(0.0, float(pricing_engine.shipping_threshold) - float(subtotal)), 2)
+        logger.info("Cart pricing completed | cart_id=%s items=%d fetch_ms=%.2f total_ms=%.2f", cart_id, len(raw_items), fetch_ms, (time.perf_counter() - started) * 1000)
         return {"items": enriched, "item_count": total_item_count, **pricing_dict, "free_shipping_eligible": breakdown.shipping == Decimal("0") and subtotal > Decimal("0"), "amount_to_free_shipping": amount_to_free, "free_shipping_threshold": float(pricing_engine.shipping_threshold), "has_unavailable_items": has_unavailable, "currency": breakdown.currency}
 
     async def get_cart(self, user_id: str) -> Dict[str, Any]:
+        started = time.perf_counter()
         cart = await self.repo.get_or_create_cart(user_id)
-        return await self._calculate_cart_pricing(cart["id"])
+        cart_lookup_ms = (time.perf_counter() - started) * 1000
+        result = await self._calculate_cart_pricing(cart["id"])
+        logger.info("Cart request completed | user_id=%s cart_lookup_ms=%.2f total_ms=%.2f", user_id, cart_lookup_ms, (time.perf_counter() - started) * 1000)
+        return result
 
     async def add_item(self, user_id: str, product_id: str, quantity: int) -> Dict[str, Any]:
         prod, cart = await asyncio.gather(
