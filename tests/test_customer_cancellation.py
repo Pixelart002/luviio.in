@@ -33,10 +33,17 @@ class FakePaymentPort:
         self.refund_payment_intent = AsyncMock(return_value=True)
 
 
+class FakePaymentRepo:
+    def __init__(self):
+        self.record_refund_accounting = AsyncMock(return_value="REFUNDED_ACCOUNTED")
+
+
 @pytest.mark.asyncio
 async def test_paid_cod_order_cancels_without_stripe_payment_reference(monkeypatch):
     payment_port = FakePaymentPort()
+    payment_repo = FakePaymentRepo()
     event_bus = FakeEventBus()
+    monkeypatch.setattr(customer_cancellation, "AsyncPaymentRepository", lambda: payment_repo)
     monkeypatch.setattr(customer_cancellation, "OrderService", FakeOrderService)
     monkeypatch.setattr(
         customer_cancellation.OrderPolicy,
@@ -65,7 +72,9 @@ async def test_paid_cod_order_cancels_without_stripe_payment_reference(monkeypat
 @pytest.mark.asyncio
 async def test_paid_stripe_order_still_requires_and_refunds_payment_intent(monkeypatch):
     payment_port = FakePaymentPort()
+    payment_repo = FakePaymentRepo()
     event_bus = FakeEventBus()
+    monkeypatch.setattr(customer_cancellation, "AsyncPaymentRepository", lambda: payment_repo)
 
     class StripeOrderRepo:
         async def get_order_by_id(self, _order_identifier):
@@ -104,3 +113,4 @@ async def test_paid_stripe_order_still_requires_and_refunds_payment_intent(monke
 
     assert result["status"] == "refunded"
     payment_port.refund_payment_intent.assert_awaited_once_with("pi_test_123")
+    payment_repo.record_refund_accounting.assert_awaited_once()
