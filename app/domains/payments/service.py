@@ -564,15 +564,22 @@ class PaymentService:
                     },
                 )
 
-                if refund_status == "succeeded" and current_status not in [OrderStatus.CANCELLED.value, OrderStatus.REFUNDED.value]:
-                    updated = await self.inventory.release_reservation(order_id, reason=f"stripe_event:{event_type}") if current_status == OrderStatus.PENDING.value else None
-                    if current_status in {OrderStatus.PAID.value, OrderStatus.PROCESSING.value}:
-                        from app.domains.inventory.customer_cancellation import release_stock_for_customer_cancellation
-                        updated = await release_stock_for_customer_cancellation(order_id, customer_id, "refunded")
-                    if current_status == OrderStatus.PENDING.value and updated:
-                        logger.info("[WEBHOOK] Refunded pending order %s settled after provider refund", order_id[:8])
-                    elif current_status in {OrderStatus.PAID.value, OrderStatus.PROCESSING.value} and not updated:
+                if refund_status == "succeeded" and current_status in {OrderStatus.PAID.value, OrderStatus.PROCESSING.value}:
+                    from app.domains.inventory.customer_cancellation import release_stock_for_customer_cancellation
+                    updated = await release_stock_for_customer_cancellation(order_id, customer_id, "refunded")
+                    if not updated:
                         raise RuntimeError("Refund succeeded but inventory settlement failed")
+                    try:
+                        get_event_bus().publish(
+                            OrderStatusChangedEvent(
+                                order=updated,
+                                customer_id=customer_id,
+                                old_status=current_status,
+                                new_status=OrderStatus.REFUNDED.value,
+                            )
+                        )
+                    except Exception:
+                        logger.error("[WEBHOOK] Failed to publish refund status event", exc_info=True)
                 logger.info(
                     "[WEBHOOK] Refund reconciled order=%s refund=%s status=%s",
                     order_id[:8],
