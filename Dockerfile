@@ -13,7 +13,6 @@ COPY app ./app
 
 EXPOSE 8000
 
-# Preload the application once, then fork 4 async workers. This keeps the
-# required 4-worker deployment while avoiding four independent full imports
-# of the application and its heavy dependencies during startup.
-CMD ["sh", "-c", "exec uv run --no-dev gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --workers 4 --preload --access-logfile - --error-logfile - --timeout 120"]
+# Keep the web process memory-bounded. WEB_CONCURRENCY can be increased on a
+# larger instance without changing the image; default is intentionally 2.
+CMD ["sh", "-c", "exec uv run --no-dev gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --workers ${WEB_CONCURRENCY:-2} --preload --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile - --timeout 120"]
