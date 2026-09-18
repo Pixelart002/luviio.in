@@ -19,8 +19,8 @@ from app.events.bus import (
     OrderStatusChangedEvent,
 )
 from app.integrations.email.registry import get_email_provider
-from app.utils.documents.invoice_pdf_renderer import build_snapshot_invoice_pdf
 from app.integrations.push.webpush_impl import broadcast_push_to_admins, send_push_to_user
+from app.utils.documents.invoice_pdf_renderer import build_snapshot_invoice_pdf
 
 logger = logging.getLogger(__name__)
 
