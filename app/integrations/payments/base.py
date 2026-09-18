@@ -29,7 +29,13 @@ class PaymentProvider(ABC):
         pass
 
     @abstractmethod
-    def process_refund(self, payment_intent_id: str) -> bool:
+    def process_refund(
+        self,
+        payment_intent_id: str,
+        amount_paise: Optional[int] = None,
+        idempotency_key: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
         pass
 
     @abstractmethod

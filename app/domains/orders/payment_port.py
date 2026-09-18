@@ -5,10 +5,16 @@ payments implementation directly. Runtime wiring is supplied by the router.
 """
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Optional, Protocol
 
 
 class OrderPaymentPort(Protocol):
-    async def refund_payment_intent(self, payment_intent_id: str) -> object:
+    async def refund_payment_intent(
+        self,
+        payment_intent_id: str,
+        amount_paise: Optional[int] = None,
+        idempotency_key: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> object:
         """Refund a captured payment for an order lifecycle operation."""
         ...

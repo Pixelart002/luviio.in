@@ -82,8 +82,19 @@ class ConfiguredPaymentProvider(PaymentProvider):
     def verify_webhook(self, payload: bytes, sig_header: str) -> Dict[str, Any]:
         return self.provider.verify_webhook(payload, sig_header)
 
-    def process_refund(self, payment_intent_id: str) -> bool:
-        return self.provider.process_refund(payment_intent_id)
+    def process_refund(
+        self,
+        payment_intent_id: str,
+        amount_paise: int | None = None,
+        idempotency_key: str | None = None,
+        reason: str | None = None,
+    ) -> Dict[str, Any]:
+        return self.provider.process_refund(
+            payment_intent_id,
+            amount_paise=amount_paise,
+            idempotency_key=idempotency_key,
+            reason=reason,
+        )
 
     def cancel_intent(self, payment_intent_id: str) -> Dict[str, Any]:
         return self.provider.cancel_intent(payment_intent_id)

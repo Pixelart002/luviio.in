@@ -256,6 +256,114 @@ class AsyncPaymentRepository:
         data = getattr(res, "data", None)
         return str(data) if data else "FAILED"
 
+    async def create_refund_attempt(
+        self,
+        order_id: str,
+        provider: str,
+        provider_payment_id: str,
+        amount: float,
+        currency: str,
+        idempotency_key: str,
+        reason: Optional[str] = None,
+        reference: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await admin_sb.rpc(
+                "create_payment_refund_attempt",
+                {
+                    "p_order_id": order_id,
+                    "p_provider": provider,
+                    "p_provider_payment_id": provider_payment_id,
+                    "p_amount": amount,
+                    "p_currency": currency,
+                    "p_idempotency_key": idempotency_key,
+                    "p_reason": reason,
+                    "p_reference": reference,
+                    "p_metadata": metadata or {},
+                },
+            ).execute()
+            data = getattr(res, "data", None)
+            if not data:
+                raise RuntimeError("Refund-attempt RPC returned no data")
+            return data
+        except Exception as exc:
+            logger.error("DB Error creating refund attempt for order %s: %s", order_id, exc, exc_info=True)
+            raise RuntimeError("Unable to create refund attempt") from exc
+
+    async def complete_refund_attempt(
+        self,
+        refund_attempt_id: str,
+        status: str,
+        provider_refund_id: Optional[str] = None,
+        failure_code: Optional[str] = None,
+        failure_message: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await admin_sb.rpc(
+                "complete_payment_refund_attempt",
+                {
+                    "p_refund_id": refund_attempt_id,
+                    "p_status": status,
+                    "p_provider_refund_id": provider_refund_id,
+                    "p_failure_code": failure_code,
+                    "p_failure_message": failure_message,
+                    "p_metadata": metadata or {},
+                },
+            ).execute()
+            data = getattr(res, "data", None)
+            if not data:
+                raise RuntimeError("Refund-attempt completion RPC returned no data")
+            return data
+        except Exception as exc:
+            logger.error("DB Error completing refund attempt %s: %s", refund_attempt_id, exc, exc_info=True)
+            raise RuntimeError("Unable to complete refund attempt") from exc
+
+    async def record_provider_refund_event(
+        self,
+        order_id: str,
+        provider: str,
+        provider_payment_id: str,
+        provider_refund_id: str,
+        amount: float,
+        currency: str = "INR",
+        status: str = "succeeded",
+        reason: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await admin_sb.rpc(
+                "record_provider_refund_event",
+                {
+                    "p_order_id": order_id,
+                    "p_provider": provider,
+                    "p_provider_payment_id": provider_payment_id,
+                    "p_provider_refund_id": provider_refund_id,
+                    "p_amount": amount,
+                    "p_currency": currency,
+                    "p_status": status,
+                    "p_reason": reason,
+                    "p_metadata": metadata or {},
+                },
+            ).execute()
+            data = getattr(res, "data", None)
+            if not data:
+                raise RuntimeError("Provider refund event RPC returned no data")
+            return data
+        except Exception as exc:
+            logger.error(
+                "DB Error reconciling provider refund %s for order %s: %s",
+                provider_refund_id,
+                order_id,
+                exc,
+                exc_info=True,
+            )
+            raise RuntimeError("Unable to reconcile provider refund event") from exc
+
     async def record_refund_accounting(
         self,
         order_id: str,

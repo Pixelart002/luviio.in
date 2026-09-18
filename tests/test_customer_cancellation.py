@@ -30,12 +30,18 @@ class FakeEventBus:
 
 class FakePaymentPort:
     def __init__(self):
-        self.refund_payment_intent = AsyncMock(return_value=True)
+        self.refund_payment_intent = AsyncMock(return_value={"id": "re_test_123", "status": "succeeded"})
 
 
 class FakePaymentRepo:
     def __init__(self):
         self.record_refund_accounting = AsyncMock(return_value="REFUNDED_ACCOUNTED")
+        self.create_refund_attempt = AsyncMock(
+            return_value={"id": "refund-attempt-1", "idempotency_key": "refund-key-1"}
+        )
+        self.complete_refund_attempt = AsyncMock(
+            return_value={"id": "refund-attempt-1", "status": "succeeded"}
+        )
 
 
 @pytest.mark.asyncio
@@ -86,6 +92,9 @@ async def test_paid_stripe_order_still_requires_and_refunds_payment_intent(monke
                 "payment_method": "card",
                 "payment_provider": "stripe",
                 "stripe_payment_intent": "pi_test_123",
+                "provider_payment_id": "pi_test_123",
+                "total_amount": 100.0,
+                "currency": "INR",
             }
 
     class StripeOrderService:
@@ -112,5 +121,16 @@ async def test_paid_stripe_order_still_requires_and_refunds_payment_intent(monke
     )
 
     assert result["status"] == "refunded"
-    payment_port.refund_payment_intent.assert_awaited_once_with("pi_test_123")
-    payment_repo.record_refund_accounting.assert_awaited_once()
+    payment_port.refund_payment_intent.assert_awaited_once_with(
+        "pi_test_123",
+        amount_paise=10000,
+        idempotency_key="refund-key-1",
+        reason="requested_by_customer",
+    )
+    payment_repo.create_refund_attempt.assert_awaited_once()
+    payment_repo.complete_refund_attempt.assert_awaited_once_with(
+        "refund-attempt-1",
+        "succeeded",
+        provider_refund_id="re_test_123",
+        metadata={"source": "customer_cancellation", "provider_status": "succeeded"},
+    )
