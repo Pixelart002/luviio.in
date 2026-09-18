@@ -28,8 +28,19 @@ class ResendAdapter:
     async def send_cart_reminder_email(self, to: str, name: str, items: list) -> None:
         await send_cart_reminder_email(to, name, items)
 
-    async def send_payment_success(self, to: str, order: dict) -> None:
-        await send_payment_success(to, order)
+    async def send_payment_success(
+        self,
+        to: str,
+        order: dict,
+        invoice_pdf: bytes | None = None,
+        invoice_number: str | None = None,
+    ) -> None:
+        await send_payment_success(
+            to,
+            order,
+            invoice_pdf=invoice_pdf,
+            invoice_number=invoice_number,
+        )
 
 # The Registry Dictionary
 EMAIL_REGISTRY = {
