@@ -77,13 +77,34 @@ class StripeProvider(PaymentProvider):
             logger.error("Webhook signature verification failed: %s", e)
             raise ValueError("Invalid Stripe Signature") from e
 
-    def process_refund(self, payment_intent_id: str) -> bool:
+    def process_refund(
+        self,
+        payment_intent_id: str,
+        amount_paise: Optional[int] = None,
+        idempotency_key: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
         try:
-            refund = stripe.Refund.create(payment_intent=payment_intent_id)
-            return refund.status in {"succeeded", "pending"}
+            params: Dict[str, Any] = {"payment_intent": payment_intent_id}
+            if amount_paise is not None:
+                params["amount"] = amount_paise
+            if reason:
+                params["reason"] = reason
+            request_kwargs: Dict[str, Any] = {}
+            if idempotency_key:
+                request_kwargs["idempotency_key"] = idempotency_key
+            refund = stripe.Refund.create(**params, **request_kwargs)
+            return {
+                "id": refund.id,
+                "status": refund.status,
+                "amount": refund.amount,
+                "currency": refund.currency,
+                "payment_intent": refund.payment_intent,
+                "failure_reason": getattr(refund, "failure_reason", None),
+            }
         except stripe.error.StripeError as e:
             logger.error("Stripe Refund failed: %s", e)
-            return False
+            raise
 
     def cancel_intent(self, payment_intent_id: str) -> Dict[str, Any]:
         try:
