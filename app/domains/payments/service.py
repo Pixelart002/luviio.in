@@ -304,7 +304,6 @@ class PaymentService:
                 ip_address=client_ip,
                 user_agent=user_agent,
             ),
-            self.repo.get_customer_email(user_id),
             return_exceptions=True,
         )
         if isinstance(metadata_result, Exception):
