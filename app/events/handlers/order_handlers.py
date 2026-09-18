@@ -35,9 +35,9 @@ class _Icon:
 
 
 class _Copy:
-    URL_ORDERS = "/orders.html"
-    URL_CART = "/cart.html"
-    URL_ADMIN = "/admin.html"
+    URL_ORDERS = "/orders"
+    URL_CART = "/cart"
+    URL_ADMIN = "/admin"
 
     ADMIN_ORDER_TITLE = "New order received"
     ADMIN_ORDER_BODY = "₹{amt} order #{oid} is ready for processing."
