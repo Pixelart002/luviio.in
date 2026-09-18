@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict
+from uuid import uuid4
 
 from fastapi import HTTPException, status
 
@@ -58,9 +59,37 @@ async def cancel_customer_order(
                     detail="Paid order cannot be cancelled because its payment reference is missing.",
                 )
 
+            refund_amount = float(raw_order.get("total_amount") or 0)
+            refund_attempt = await payment_repo.create_refund_attempt(
+                order_id=str(raw_order["id"]),
+                provider=payment_provider,
+                provider_payment_id=payment_intent,
+                amount=refund_amount,
+                currency=str(raw_order.get("currency") or "INR"),
+                idempotency_key=f"luviio-refund-{uuid4()}",
+                reason="requested_by_customer",
+                reference=str(raw_order.get("order_number") or order_identifier),
+                metadata={"source": "customer_cancellation"},
+            )
+            refund_attempt_id = str(refund_attempt["id"])
+            refund_idempotency_key = str(refund_attempt["idempotency_key"])
             try:
-                refunded = await payment_port.refund_payment_intent(payment_intent)
+                refunded = await payment_port.refund_payment_intent(
+                    payment_intent,
+                    amount_paise=int(round(refund_amount * 100)),
+                    idempotency_key=refund_idempotency_key,
+                    reason="requested_by_customer",
+                )
             except Exception as exc:
+                try:
+                    await payment_repo.complete_refund_attempt(
+                        refund_attempt_id,
+                        "failed",
+                        failure_code=str(getattr(exc, "code", None) or type(exc).__name__),
+                        failure_message=str(exc)[:1000],
+                    )
+                except Exception:
+                    logger.critical("Failed to persist refund failure for attempt %s", refund_attempt_id, exc_info=True)
                 logger.error(
                     "Customer cancellation refund failed for order %s: %s",
                     raw_order.get("order_number", order_identifier),
@@ -71,33 +100,50 @@ async def cancel_customer_order(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=OrderSecurityMessages.REFUND_FAILED,
                 ) from exc
+
             if refunded is False:
+                await payment_repo.complete_refund_attempt(
+                    refund_attempt_id,
+                    "failed",
+                    failure_code="PROVIDER_REFUND_FAILED",
+                    failure_message="Payment provider returned a negative refund result.",
+                )
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=OrderSecurityMessages.REFUND_FAILED,
                 )
 
-            try:
-                await payment_repo.record_refund_accounting(
-                    order_id=str(raw_order["id"]),
-                    provider=payment_provider,
-                    provider_payment_id=payment_intent,
-                    amount=float(raw_order.get("total_amount") or 0),
-                    currency=str(raw_order.get("currency") or "INR"),
-                    reference=payment_intent,
-                    metadata={"source": "customer_cancellation"},
-                )
-            except Exception as exc:
-                logger.error(
-                    "Provider refund succeeded but payment accounting failed for order %s: %s",
-                    raw_order.get("order_number", order_identifier),
-                    exc,
-                    exc_info=True,
+            provider_refund_id = refunded.get("id") if isinstance(refunded, dict) else None
+            provider_refund_status = str(refunded.get("status") or "succeeded").lower() if isinstance(refunded, dict) else "succeeded"
+            if provider_refund_status not in {"succeeded", "pending"}:
+                await payment_repo.complete_refund_attempt(
+                    refund_attempt_id,
+                    "failed",
+                    provider_refund_id=provider_refund_id,
+                    failure_code="PROVIDER_REFUND_UNEXPECTED_STATUS",
+                    failure_message=provider_refund_status,
                 )
                 raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=OrderSecurityMessages.REFUND_FAILED,
+                )
+
+            completed_refund = await payment_repo.complete_refund_attempt(
+                refund_attempt_id,
+                provider_refund_status,
+                provider_refund_id=provider_refund_id,
+                metadata={"source": "customer_cancellation", "provider_status": provider_refund_status},
+            )
+            if provider_refund_status != "succeeded":
+                raise HTTPException(
+                    status_code=status.HTTP_202_ACCEPTED,
+                    detail="Refund is pending with the payment provider. The order will be settled after provider confirmation.",
+                )
+            if str(completed_refund.get("status")) != "succeeded":
+                raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Payment was refunded by the provider, but internal payment accounting is pending reconciliation.",
-                ) from exc
+                    detail="Refund was created but internal refund accounting is pending reconciliation.",
+                )
 
             result = await release_stock_for_customer_cancellation(
                 str(raw_order["id"]), user_id, "refunded"
