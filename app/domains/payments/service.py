@@ -213,9 +213,6 @@ class PaymentService:
             checkout_attempt_id = await self.repo.create_checkout_payment_attempt(
                 user_id, clean_idem_key, amount_paise, "inr"
             )
-            await self.repo.update_checkout_payment_attempt(
-                checkout_attempt_id, status="provider_pending"
-            )
         except Exception as exc:
             logger.error("[PAYMENT ERROR] Durable checkout-attempt creation failed: %s", exc, exc_info=True)
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
@@ -292,7 +289,7 @@ class PaymentService:
             checkout_attempt_id, provider_payment_id=intent["id"], status="order_created"
         )
 
-        metadata_result, attempt_result, email_result = await asyncio.gather(
+        metadata_result, attempt_result = await asyncio.gather(
             run_in_threadpool(
                 self.provider.update_intent_metadata,
                 intent["id"],
@@ -307,7 +304,6 @@ class PaymentService:
                 ip_address=client_ip,
                 user_agent=user_agent,
             ),
-            self.repo.get_customer_email(user_id),
             return_exceptions=True,
         )
         if isinstance(metadata_result, Exception):
@@ -315,22 +311,16 @@ class PaymentService:
         if isinstance(attempt_result, Exception):
             raise attempt_result
 
-        if isinstance(email_result, Exception):
-            logger.error(
-                "Failed to load customer email for OrderCreatedEvent: %s",
-                email_result,
-            )
-        else:
-            try:
-                get_event_bus().publish(
-                    OrderCreatedEvent(
-                        order=pending_order,
-                        customer_email=email_result,
-                        customer_id=user_id,
-                    )
+        try:
+            get_event_bus().publish(
+                OrderCreatedEvent(
+                    order=pending_order,
+                    customer_email=str(addr.get("email") or "").strip(),
+                    customer_id=user_id,
                 )
-            except Exception as event_exc:
-                logger.error("Failed to publish OrderCreatedEvent: %s", event_exc)
+            )
+        except Exception as event_exc:
+            logger.error("Failed to publish OrderCreatedEvent: %s", event_exc)
         return {"client_secret": intent["client_secret"], "payment_intent_id": intent["id"], "order_id": pending_order["id"], "order_number": order_number}
 
     async def confirm_payment(self, user_id: str, client_ip: str, pi_id: str, email: str) -> Dict[str, Any]:
