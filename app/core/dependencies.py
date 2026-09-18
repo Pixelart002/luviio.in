@@ -4,8 +4,12 @@ Dependencies — Async Hardened Production Grade (Luviio SSOT)
 Path: app/core/dependencies.py
 """
 import base64
+import hashlib
+import hmac
 import json
 import logging
+import time
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional
 
 from cachetools import TTLCache
@@ -13,6 +17,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from gotrue.errors import AuthApiError
 
+from app.core.config import settings
 from app.core.exceptions import UnauthenticatedUser, UnauthorizedAction
 from app.core.supabase import get_async_admin_supabase
 from app.domains.users.repository import AsyncUserRepository
@@ -43,20 +48,90 @@ def _extract_token(request: Request, credentials: Optional[HTTPAuthorizationCred
     raise UnauthenticatedUser("Authentication credentials missing.")
 
 
+def _b64url_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
 def _extract_jwt_payload(token: str) -> dict:
     try:
-        parts = token.split('.')
+        parts = token.split(".")
         if len(parts) != 3:
             return {}
-        payload_b64 = parts[1] + '=' * (-len(parts[1]) % 4)
-        return json.loads(base64.urlsafe_b64decode(payload_b64))
+        return json.loads(_b64url_decode(parts[1]))
     except Exception:
         return {}
+
+
+def _validate_token_locally(token: str) -> Optional[Any]:
+    """
+    Validate legacy Supabase HS256 access tokens without a network round-trip.
+
+    Returns None for tokens that cannot be locally verified (for example RS256),
+    so the existing native Supabase Auth validation remains the compatibility
+    fallback for asymmetric/project configurations.
+    """
+    secret = settings.SUPABASE_JWT_SECRET
+    if not secret:
+        return None
+
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise UnauthenticatedUser("Token is invalid or expired.")
+
+    try:
+        header = json.loads(_b64url_decode(parts[0]))
+        if header.get("alg") != "HS256":
+            return None
+
+        signing_input = f"{parts[0]}.{parts[1]}".encode("ascii")
+        supplied_signature = _b64url_decode(parts[2])
+        expected_signature = hmac.new(
+            secret.encode("utf-8"),
+            signing_input,
+            hashlib.sha256,
+        ).digest()
+
+        if not hmac.compare_digest(supplied_signature, expected_signature):
+            raise UnauthenticatedUser("Token is invalid or expired.")
+
+        claims = json.loads(_b64url_decode(parts[1]))
+        subject = str(claims.get("sub") or "")
+        if not subject:
+            raise UnauthenticatedUser("Token subject is missing.")
+
+        expires_at = claims.get("exp")
+        if expires_at is None or float(expires_at) <= time.time():
+            raise UnauthenticatedUser("Token is invalid or expired.")
+
+        not_before = claims.get("nbf")
+        if not_before is not None and float(not_before) > time.time():
+            raise UnauthenticatedUser("Token is not active yet.")
+
+        audience = claims.get("aud")
+        if audience not in (None, "authenticated", ["authenticated"]):
+            raise UnauthenticatedUser("Token audience is invalid.")
+
+        return SimpleNamespace(
+            id=subject,
+            email=str(claims.get("email") or ""),
+            user_metadata=claims.get("user_metadata") or {},
+        )
+    except UnauthenticatedUser:
+        raise
+    except (TypeError, ValueError, KeyError, json.JSONDecodeError, UnicodeError) as exc:
+        logger.debug("Local JWT validation failed structurally: %s", exc)
+        raise UnauthenticatedUser("Token is invalid or expired.") from exc
 
 
 async def _validate_token_natively(token: str) -> Any:
     if token in _token_cache:
         return _token_cache[token]
+
+    local_user = _validate_token_locally(token)
+    if local_user is not None:
+        _token_cache[token] = local_user
+        return local_user
+
     sb = await get_async_admin_supabase()
     try:
         result = await sb.auth.get_user(token)
@@ -106,7 +181,7 @@ async def get_current_user(
     if profile and not profile.get("is_active", True):
         raise UnauthorizedAction("Account has been deactivated.")
     request.state.user_id = user_id
-    request.state.user_name = profile.get("full_name") or email.split('@')[0] if email else "User"
+    request.state.user_name = profile.get("full_name") or email.split("@")[0] if email else "User"
     return {
         "sub": user_id,
         "email": email,
@@ -132,7 +207,10 @@ def get_order_payment_port():
 
 def require_permission(required_perm: str) -> Callable:
     async def permission_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
-        role = current_user.get("profile", {}).get("role", UserRole.CUSTOMER.value if hasattr(UserRole.CUSTOMER, "value") else "customer")
+        role = current_user.get("profile", {}).get(
+            "role",
+            UserRole.CUSTOMER.value if hasattr(UserRole.CUSTOMER, "value") else "customer",
+        )
         static_base = get_static_role_permissions(role)
         user_perms = await get_effective_permissions(role, static_base)
         if "*" in user_perms:
