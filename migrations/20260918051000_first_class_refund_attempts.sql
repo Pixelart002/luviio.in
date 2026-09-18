@@ -74,6 +74,7 @@ declare
     v_provider_payment_id text;
     v_currency text;
     v_idempotency_key text;
+    v_requested_key text;
     v_payment public.payments%rowtype;
     v_refund public.payment_refunds%rowtype;
     v_next_attempt integer;
@@ -84,35 +85,31 @@ begin
     v_provider := lower(nullif(trim(p_provider), ''));
     v_provider_payment_id := nullif(trim(p_provider_payment_id), '');
     v_currency := upper(coalesce(nullif(trim(p_currency), ''), 'INR'));
-    v_idempotency_key := nullif(trim(p_idempotency_key), '');
+    v_requested_key := nullif(trim(p_idempotency_key), '');
 
     if p_order_id is null
        or v_provider is null
        or v_provider_payment_id is null
        or p_amount is null
        or p_amount <= 0
-       or v_idempotency_key is null then
+       or v_requested_key is null then
         raise exception 'REFUND_ATTEMPT_DATA_INVALID';
     end if;
 
     select *
       into v_refund
       from public.payment_refunds
-     where idempotency_key = v_idempotency_key
+     where idempotency_key = v_requested_key
      for update;
 
-    if found then
+    if found and v_refund.status in ('requested', 'pending', 'succeeded') then
         return jsonb_build_object(
-            'id', v_refund.id,
-            'payment_id', v_refund.payment_id,
-            'order_id', v_refund.order_id,
+            'id', v_refund.id, 'payment_id', v_refund.payment_id, 'order_id', v_refund.order_id,
             'refund_attempt_number', v_refund.refund_attempt_number,
             'provider_refund_id', v_refund.provider_refund_id,
             'idempotency_key', v_refund.idempotency_key,
-            'amount', v_refund.amount,
-            'amount_paise', v_refund.amount_paise,
-            'currency', v_refund.currency,
-            'status', v_refund.status
+            'amount', v_refund.amount, 'amount_paise', v_refund.amount_paise,
+            'currency', v_refund.currency, 'status', v_refund.status
         );
     end if;
 
@@ -130,17 +127,26 @@ begin
         raise exception 'PAYMENT_NOT_FOUND';
     end if;
 
+    select coalesce(max(refund_attempt_number), 0) + 1
+      into v_next_attempt
+      from public.payment_refunds
+     where payment_id = v_payment.id;
+
+    if v_refund.status in ('failed', 'canceled') then
+        v_idempotency_key := v_requested_key || ':' || v_next_attempt::text;
+    else
+        v_idempotency_key := v_requested_key;
+    end if;
+
     select coalesce(sum(amount), 0)
       into v_refunded
       from public.payment_refunds
-     where payment_id = v_payment.id
-       and status = 'succeeded';
+     where payment_id = v_payment.id and status = 'succeeded';
 
     select coalesce(sum(amount), 0)
       into v_reserved
       from public.payment_refunds
-     where payment_id = v_payment.id
-       and status in ('requested', 'pending');
+     where payment_id = v_payment.id and status in ('requested', 'pending');
 
     v_remaining := round(v_payment.amount, 2) - round(v_refunded, 2) - round(v_reserved, 2);
 
@@ -148,37 +154,27 @@ begin
         raise exception 'REFUND_AMOUNT_EXCEEDS_REMAINING';
     end if;
 
-    select coalesce(max(refund_attempt_number), 0) + 1
-      into v_next_attempt
-      from public.payment_refunds
-     where payment_id = v_payment.id;
-
     insert into public.payment_refunds(
-        payment_id, order_id, refund_attempt_number,
-        payment_provider, provider_payment_id, idempotency_key,
-        amount, amount_paise, currency, status, reason, reference,
-        gateway_metadata
+        payment_id, order_id, refund_attempt_number, payment_provider,
+        provider_payment_id, idempotency_key, amount, amount_paise,
+        currency, status, reason, reference, gateway_metadata
     )
     values(
-        v_payment.id, p_order_id, v_next_attempt,
-        v_provider, v_provider_payment_id, v_idempotency_key,
-        round(p_amount, 2), round(p_amount * 100)::bigint, v_currency,
-        'requested', nullif(trim(p_reason), ''), nullif(trim(p_reference), ''),
+        v_payment.id, p_order_id, v_next_attempt, v_provider,
+        v_provider_payment_id, v_idempotency_key, round(p_amount, 2),
+        round(p_amount * 100)::bigint, v_currency, 'requested',
+        nullif(trim(p_reason), ''), nullif(trim(p_reference), ''),
         coalesce(p_metadata, '{}'::jsonb)
     )
     returning * into v_refund;
 
     return jsonb_build_object(
-        'id', v_refund.id,
-        'payment_id', v_refund.payment_id,
-        'order_id', v_refund.order_id,
+        'id', v_refund.id, 'payment_id', v_refund.payment_id, 'order_id', v_refund.order_id,
         'refund_attempt_number', v_refund.refund_attempt_number,
         'provider_refund_id', v_refund.provider_refund_id,
         'idempotency_key', v_refund.idempotency_key,
-        'amount', v_refund.amount,
-        'amount_paise', v_refund.amount_paise,
-        'currency', v_refund.currency,
-        'status', v_refund.status
+        'amount', v_refund.amount, 'amount_paise', v_refund.amount_paise,
+        'currency', v_refund.currency, 'status', v_refund.status
     );
 end;
 $function$;
