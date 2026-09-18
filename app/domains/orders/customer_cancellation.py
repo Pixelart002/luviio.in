@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict
-from uuid import uuid4
 
 from fastapi import HTTPException, status
 
@@ -66,7 +65,7 @@ async def cancel_customer_order(
                 provider_payment_id=payment_intent,
                 amount=refund_amount,
                 currency=str(raw_order.get("currency") or "INR"),
-                idempotency_key=f"luviio-refund-{uuid4()}",
+                idempotency_key=f"luviio-refund-customer-{raw_order['id']}",
                 reason="requested_by_customer",
                 reference=str(raw_order.get("order_number") or order_identifier),
                 metadata={"source": "customer_cancellation"},
