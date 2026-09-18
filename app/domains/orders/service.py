@@ -3,7 +3,6 @@ Order Domain Service — Enterprise Business Logic & State Machine.
 """
 import logging
 from typing import Any, Dict, List, Tuple
-from uuid import uuid4
 
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
@@ -153,7 +152,7 @@ class OrderService:
                         provider_payment_id=provider_payment_id,
                         amount=refund_amount,
                         currency=str(current_res.get("currency") or "INR"),
-                        idempotency_key=f"luviio-admin-refund-{uuid4()}",
+                        idempotency_key=f"luviio-admin-refund-{internal_order_id}",
                         reference=str(current_res.get("order_number") or internal_order_id),
                         metadata={"source": "admin_order_refund"},
                     )
