@@ -6,7 +6,8 @@ Path: app/repositories/cart_repo.py
 Architecture & Fixes:
   - Defensive null guards for cart reads and mutations.
   - Explicit product fields for predictable payloads.
-  - Cart timestamp updates on line-item mutations.
+  - Cart timestamp updates on line-item mutations are handled by a
+    database trigger so mutation requests avoid an extra network round trip.
   - Read path avoids an unnecessary cart upsert/write.
 """
 import logging
@@ -24,14 +25,6 @@ logger = logging.getLogger(__name__)
 class AsyncCartRepository:
     def __init__(self):
         pass
-
-    async def _touch_cart_timestamp(self, cart_id: str) -> None:
-        try:
-            admin_sb = await get_async_admin_supabase()
-            now_iso = datetime.now(timezone.utc).isoformat()
-            await admin_sb.table("carts").update({"updated_at": now_iso}).eq("id", cart_id).execute()
-        except Exception as exc:
-            logger.warning("Failed to touch cart timestamp for cart %s: %s", cart_id, exc)
 
     async def get_pricing_config(self) -> dict[str, Any]:
         """Load pricing configuration exclusively from canonical system settings."""
@@ -98,7 +91,6 @@ class AsyncCartRepository:
         admin_sb = await get_async_admin_supabase()
         try:
             await admin_sb.table("cart_items").insert({"cart_id": cart_id, "product_id": product_id, "quantity": quantity, "price_snapshot": price_snapshot}).execute()
-            await self._touch_cart_timestamp(cart_id)
         except Exception as exc:
             logger.error("DB Error adding item to cart %s: %s", cart_id, exc, exc_info=True)
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=CartSecurityMessages.DB_OPERATION_FAILED) from exc
@@ -107,9 +99,6 @@ class AsyncCartRepository:
         admin_sb = await get_async_admin_supabase()
         try:
             await admin_sb.table("cart_items").update({"quantity": quantity}).eq("id", cart_item_id).execute()
-            res = await admin_sb.table("cart_items").select("cart_id").eq("id", cart_item_id).limit(1).execute()
-            if res.data and len(res.data) > 0:
-                await self._touch_cart_timestamp(res.data[0]["cart_id"])
         except Exception as exc:
             logger.error("DB Error updating cart item %s: %s", cart_item_id, exc, exc_info=True)
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=CartSecurityMessages.DB_OPERATION_FAILED) from exc
@@ -118,7 +107,6 @@ class AsyncCartRepository:
         admin_sb = await get_async_admin_supabase()
         try:
             res = await admin_sb.table("cart_items").update({"quantity": quantity}).eq("cart_id", cart_id).eq("product_id", product_id).execute()
-            await self._touch_cart_timestamp(cart_id)
             return bool(getattr(res, "data", None))
         except Exception as exc:
             logger.error("DB Error updating product %s in cart %s: %s", product_id, cart_id, exc, exc_info=True)
@@ -128,7 +116,6 @@ class AsyncCartRepository:
         admin_sb = await get_async_admin_supabase()
         try:
             await admin_sb.table("cart_items").delete().eq("cart_id", cart_id).eq("product_id", product_id).execute()
-            await self._touch_cart_timestamp(cart_id)
         except Exception as exc:
             logger.error("DB Error removing product %s from cart %s: %s", product_id, cart_id, exc, exc_info=True)
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=CartSecurityMessages.DB_OPERATION_FAILED) from exc
@@ -137,7 +124,6 @@ class AsyncCartRepository:
         admin_sb = await get_async_admin_supabase()
         try:
             await admin_sb.table("cart_items").delete().eq("cart_id", cart_id).execute()
-            await self._touch_cart_timestamp(cart_id)
         except Exception as exc:
             logger.error("DB Error clearing cart %s: %s", cart_id, exc, exc_info=True)
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=CartSecurityMessages.DB_OPERATION_FAILED) from exc
