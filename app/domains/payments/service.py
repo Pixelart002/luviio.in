@@ -533,8 +533,52 @@ class PaymentService:
                         reason=f"stripe_event:{event_type}",
                     )
             elif event_type == "charge.refunded":
-                if current_status not in [OrderStatus.CANCELLED.value, OrderStatus.REFUNDED.value]:
-                    await self.repo.update_order_status_via_rpc(order_id, OrderStatus.REFUNDED.value, f"Webhook Auto-Update: {event_type}")
+                refund_rows = ((obj.get("refunds") or {}).get("data") or [])
+                latest_refund = max(
+                    refund_rows,
+                    key=lambda row: int(row.get("created") or 0),
+                    default=None,
+                )
+                if not latest_refund:
+                    raise RuntimeError("charge.refunded webhook missing refund object")
+
+                provider_refund_id = str(latest_refund.get("id") or "").strip()
+                refund_amount = float(latest_refund.get("amount") or 0) / 100
+                refund_status = str(latest_refund.get("status") or "succeeded").lower()
+                if not provider_refund_id or refund_amount <= 0:
+                    raise RuntimeError("charge.refunded webhook missing refund identity/amount")
+
+                refund_record = await self.repo.record_provider_refund_event(
+                    order_id=order_id,
+                    provider="stripe",
+                    provider_payment_id=pi_id,
+                    provider_refund_id=provider_refund_id,
+                    amount=refund_amount,
+                    currency=str(latest_refund.get("currency") or obj.get("currency") or "INR"),
+                    status=refund_status,
+                    reason=latest_refund.get("reason"),
+                    metadata={
+                        "source": "stripe_webhook",
+                        "event_id": event_id,
+                        "charge_id": obj.get("id"),
+                    },
+                )
+
+                if refund_status == "succeeded" and current_status not in [OrderStatus.CANCELLED.value, OrderStatus.REFUNDED.value]:
+                    updated = await self.inventory.release_reservation(order_id, reason=f"stripe_event:{event_type}") if current_status == OrderStatus.PENDING.value else None
+                    if current_status in {OrderStatus.PAID.value, OrderStatus.PROCESSING.value}:
+                        from app.domains.inventory.customer_cancellation import release_stock_for_customer_cancellation
+                        updated = await release_stock_for_customer_cancellation(order_id, customer_id, "refunded")
+                    if current_status == OrderStatus.PENDING.value and updated:
+                        logger.info("[WEBHOOK] Refunded pending order %s settled after provider refund", order_id[:8])
+                    elif current_status in {OrderStatus.PAID.value, OrderStatus.PROCESSING.value} and not updated:
+                        raise RuntimeError("Refund succeeded but inventory settlement failed")
+                logger.info(
+                    "[WEBHOOK] Refund reconciled order=%s refund=%s status=%s",
+                    order_id[:8],
+                    provider_refund_id,
+                    refund_record.get("status"),
+                )
             elif event_type == "charge.dispute.created":
                 amount_disputed = obj.get('amount', 0) / 100
                 await self.repo.update_order_status_via_rpc(order_id, current_status, f"Dispute created: Rs. {amount_disputed}")
