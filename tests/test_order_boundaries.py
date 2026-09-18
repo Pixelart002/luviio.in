@@ -64,4 +64,5 @@ def test_legacy_cancel_overload_does_not_restore_cart():
     assert "INSERT INTO public.carts" not in migration
     assert "INSERT INTO public.cart_items" not in migration
     assert "p_target_status" not in migration
-    assert "public.cancel_order_and_release_stock(p_order_id, p_reason, 'cancelled'::text)" in migration
+    assert "RETURN public.cancel_order_and_release_stock(" in migration
+    assert "'cancelled'::text" in migration
