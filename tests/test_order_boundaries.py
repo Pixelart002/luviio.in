@@ -58,3 +58,11 @@ def test_order_service_routes_cancellation_to_inventory_domain():
     source = (REPO_ROOT / "app/domains/orders/service.py").read_text(encoding="utf-8")
     assert "InventoryService" in source
     assert "self.inventory.cancel_order_with_stock_restoration" in source
+
+def test_legacy_cancel_overload_does_not_restore_cart():
+    migration = (REPO_ROOT / "migrations/20260918033000_remove_legacy_cancel_cart_restore.sql").read_text(encoding="utf-8")
+    assert "INSERT INTO public.carts" not in migration
+    assert "INSERT INTO public.cart_items" not in migration
+    assert "p_target_status" not in migration
+    assert "RETURN public.cancel_order_and_release_stock(" in migration
+    assert "'cancelled'::text" in migration
