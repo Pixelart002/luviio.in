@@ -21,7 +21,7 @@ from app.domains.inventory.service import InventoryService
 from app.domains.payments.repository import AsyncPaymentRepository
 from app.domains.pricing.service import get_pricing_from_config
 from app.enums.order_status import OrderStatus
-from app.events.bus import OrderCreatedEvent, OrderFailedEvent, OrderPaidEvent, get_event_bus
+from app.events.bus import OrderCreatedEvent, OrderFailedEvent, OrderPaidEvent, OrderStatusChangedEvent, get_event_bus
 from app.integrations.payments.registry import get_payment_provider
 from app.permissions.policies.payment_policies import PaymentPolicy
 
