@@ -149,33 +149,62 @@ class PaymentService:
         goods_subtotal = subtotal
         if coupon_code:
             from app.domains.coupons.service import CouponService
-            resolved = await CouponService().resolve_discount_for_checkout(coupon_code, float(goods_subtotal), user_id)
+            resolved, addr = await asyncio.gather(
+                CouponService().resolve_discount_for_checkout(
+                    coupon_code,
+                    float(goods_subtotal),
+                    user_id,
+                ),
+                self.repo.get_shipping_address(address_id, user_id),
+            )
             coupon_discount = Decimal(str(resolved.get("discount") or 0))
             coupon_id = resolved.get("coupon_id")
             coupon_code_resolved = resolved.get("code")
-            if coupon_discount > 0:
-                amount_paise = self._paise(max(breakdown.total - coupon_discount, Decimal("0")))
-                PaymentPolicy.assert_minimum_amount(amount_paise)
+        else:
+            addr = await self.repo.get_shipping_address(address_id, user_id)
 
-        addr = await self.repo.get_shipping_address(address_id, user_id)
         if not addr:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND,
+            )
         try:
             validate_email(addr.get("email") or "", check_deliverability=False)
         except EmailNotValidError:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING,
+            )
+
+        if coupon_discount > 0:
+            amount_paise = self._paise(
+                max(breakdown.total - coupon_discount, Decimal("0"))
+            )
+            PaymentPolicy.assert_minimum_amount(amount_paise)
 
         billing_addr = addr
         is_same_as_shipping = True
         if billing_address_id and billing_address_id != address_id:
-            billing_addr = await self.repo.get_shipping_address(billing_address_id, user_id)
+            billing_addr = await self.repo.get_shipping_address(
+                billing_address_id,
+                user_id,
+            )
             if not billing_addr:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND,
+                )
             is_same_as_shipping = False
             try:
-                validate_email(billing_addr.get("email") or "", check_deliverability=False)
+                validate_email(
+                    billing_addr.get("email") or "",
+                    check_deliverability=False,
+                )
             except EmailNotValidError:
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING,
+                )
 
         try:
             checkout_attempt_id = await self.repo.create_checkout_payment_attempt(
