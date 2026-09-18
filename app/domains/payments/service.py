@@ -113,7 +113,10 @@ class PaymentService:
 
         from app.permissions.action_control import assert_action_enabled
         await assert_action_enabled(user_id, "checkout", "Checkout is currently disabled for your account.")
-        cart_items = await self.repo.get_cart_items_for_checkout(user_id)
+        cart_items, config = await asyncio.gather(
+            self.repo.get_cart_items_for_checkout(user_id),
+            self.repo.get_pricing_config(),
+        )
         PaymentPolicy.assert_valid_cart(cart_items)
         subtotal = Decimal("0")
         items_to_deduct: List[Dict[str, Any]] = []
@@ -141,7 +144,6 @@ class PaymentService:
             gst_percentage = int(gst_raw)
             items_to_deduct.append({"product_id": item["product_id"], "product_name": prod.get("name", "Item"), "hsn_code": hsn_code, "gst_percentage": gst_percentage, "unit_price": float(locked_price), "compare_price": float(prod.get("compare_price") or 0.0), "quantity": item["quantity"], "subtotal": float(lt)})
 
-        config = await self.repo.get_pricing_config()
         breakdown = get_pricing_from_config(config).calculate(items=items_to_deduct)
         amount_paise = self._paise(breakdown.total)
         PaymentPolicy.assert_minimum_amount(amount_paise)
