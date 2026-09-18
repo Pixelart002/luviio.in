@@ -30,7 +30,7 @@ class FakeEventBus:
 
 class FakePaymentPort:
     def __init__(self):
-        self.refund_payment_intent = AsyncMock(return_value=True)
+        self.refund_payment_intent = AsyncMock(return_value={"id": "re_test_123", "status": "succeeded"})
 
 
 class FakePaymentRepo:
@@ -132,6 +132,6 @@ async def test_paid_stripe_order_still_requires_and_refunds_payment_intent(monke
     payment_repo.complete_refund_attempt.assert_awaited_once_with(
         "refund-attempt-1",
         "succeeded",
-        provider_refund_id=None,
+        provider_refund_id="re_test_123",
         metadata={"source": "customer_cancellation", "provider_status": "succeeded"},
     )
