@@ -154,13 +154,14 @@ class OrderPolicy:
 
         current_status = str(order.get("status", "")).lower()
 
-        # 🔥 FIX: Added PROCESSING so users can download invoice during warehouse packing
+        # Invoice remains available only while the order is fulfilled or in
+        # fulfilment. A refunded order is no longer offered an invoice download
+        # from the customer order flow.
         valid_invoice_states = {
             OrderStatus.PAID.value,
             OrderStatus.PROCESSING.value,
             OrderStatus.SHIPPED.value,
             OrderStatus.DELIVERED.value,
-            OrderStatus.REFUNDED.value
         }
 
         if current_status not in valid_invoice_states:
