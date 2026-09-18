@@ -7,6 +7,9 @@ import logging
 import os
 from typing import Any
 
+from starlette.concurrency import run_in_threadpool
+
+from app.domains.orders.repository import AsyncOrderRepository
 from app.events.bus import (
     LowStockEvent,
     OrderCreatedEvent,
@@ -16,6 +19,7 @@ from app.events.bus import (
     OrderStatusChangedEvent,
 )
 from app.integrations.email.registry import get_email_provider
+from app.utils.documents.invoice_pdf_renderer import build_snapshot_invoice_pdf
 from app.integrations.push.webpush_impl import broadcast_push_to_admins, send_push_to_user
 
 logger = logging.getLogger(__name__)
@@ -91,6 +95,64 @@ async def handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
     )
 
 
+async def _prepare_paid_email_invoice(
+    event: OrderPaidEvent,
+) -> tuple[dict[str, Any], bytes | None, str | None]:
+    """Load the immutable invoice snapshot so paid emails contain the real line items."""
+    order = dict(event.order or {})
+    order_id = str(order.get("id") or "").strip()
+    if not order_id:
+        logger.warning("[EMAIL] paid event has no internal order id; skipping invoice attachment")
+        return order, None, None
+
+    invoice = await AsyncOrderRepository().get_invoice_snapshot(order_id)
+    if not invoice:
+        logger.warning("[EMAIL] invoice snapshot missing | order=%s", _safe_oid(order))
+        return order, None, None
+
+    invoice_items = invoice.get("invoice_items") or []
+    seller_snapshot = invoice.get("seller_snapshot") or {}
+    if not invoice_items or not seller_snapshot:
+        logger.warning(
+            "[EMAIL] invoice snapshot incomplete | order=%s items=%s seller=%s",
+            _safe_oid(order),
+            len(invoice_items),
+            bool(seller_snapshot),
+        )
+        return order, None, str(invoice.get("invoice_number") or "") or None
+
+    billing_snapshot = invoice.get("billing_snapshot") or {}
+    shipping_snapshot = invoice.get("shipping_snapshot") or {}
+
+    invoice_order = dict(order)
+    invoice_order["invoice_number"] = invoice.get("invoice_number") or order.get("invoice_number")
+    invoice_order["issued_at"] = invoice.get("issued_at")
+    invoice_order["currency"] = invoice.get("currency") or order.get("currency")
+    invoice_order["tax_type"] = invoice.get("tax_type") or order.get("tax_type")
+    invoice_order["qr_payload"] = invoice.get("qr_payload")
+    invoice_order["order_items"] = invoice_items
+    invoice_order.update(invoice.get("totals_snapshot") or {})
+
+    customer = {
+        "full_name": (
+            order.get("shipping_name")
+            or order.get("billing_name")
+            or "Customer"
+        ),
+        "email": event.customer_email,
+    }
+
+    pdf_bytes = await run_in_threadpool(
+        build_snapshot_invoice_pdf,
+        invoice_order,
+        customer,
+        seller_snapshot,
+        billing_snapshot,
+        shipping_snapshot,
+    )
+    return invoice_order, pdf_bytes, invoice_order.get("invoice_number")
+
+
 async def handle_paid_email(event: OrderPaidEvent) -> None:
     if not event.customer_email or not event.order:
         return
@@ -99,8 +161,19 @@ async def handle_paid_email(event: OrderPaidEvent) -> None:
     email = _safe_email(event.customer_email)
     email_provider = get_email_provider("resend")
     try:
-        await email_provider.send_payment_success(event.customer_email, event.order)
-        logger.info("[EMAIL] payment_success sent | order=%s recipient=%s", oid, email)
+        email_order, invoice_pdf, invoice_number = await _prepare_paid_email_invoice(event)
+        await email_provider.send_payment_success(
+            event.customer_email,
+            email_order,
+            invoice_pdf=invoice_pdf,
+            invoice_number=invoice_number,
+        )
+        logger.info(
+            "[EMAIL] payment_success sent | order=%s recipient=%s invoice_attachment=%s",
+            oid,
+            email,
+            bool(invoice_pdf),
+        )
     except Exception:
         logger.exception("[EMAIL] payment_success failed | order=%s recipient=%s", oid, email)
         raise
