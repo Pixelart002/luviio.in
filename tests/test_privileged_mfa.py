@@ -20,16 +20,19 @@ def test_mfa_provider_error_falls_back_to_http_status_and_body():
 
 
 @pytest.mark.asyncio
-async def test_list_factors_uses_rest_endpoint_and_normalizes_response():
+async def test_list_factors_uses_user_endpoint_and_normalizes_response():
     client = SimpleNamespace(
         get=AsyncMock(
             return_value=SimpleNamespace(
                 status_code=200,
-                text="[]",
-                json=lambda: [
-                    {"id": "totp-1", "factor_type": "totp", "status": "verified"},
-                    {"id": "phone-1", "factor_type": "phone", "status": "unverified"},
-                ],
+                text="{}",
+                json=lambda: {
+                    "id": "user-1",
+                    "factors": [
+                        {"id": "totp-1", "factor_type": "totp", "status": "verified"},
+                        {"id": "phone-1", "factor_type": "phone", "status": "unverified"},
+                    ],
+                },
             )
         )
     )
@@ -40,8 +43,8 @@ async def test_list_factors_uses_rest_endpoint_and_normalizes_response():
     assert result["totp"] == [{"id": "totp-1", "factor_type": "totp", "status": "verified"}]
     client.get.assert_awaited_once()
     call = client.get.await_args
-    assert call.args[0].endswith("/rest/v1/auth/factors")
-    assert call.kwargs["params"]["select"] == "id,factor_type,status,friendly_name,created_at"
+    assert call.args[0].endswith("/auth/v1/user")
+    assert "params" not in call.kwargs
 
 
 @pytest.mark.asyncio
