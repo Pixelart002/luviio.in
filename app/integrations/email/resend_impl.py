@@ -206,7 +206,7 @@ async def send_order_shipped(to: str, order: dict | None, tracking_number: str |
     content = f"""
       <p style="color:{TEXT_MUTED};line-height:1.8;font-size:14px;margin:0 0 20px;">Great news! Your order <strong style="color:{TEXT};">#{oid}</strong> is on its way to you! 🚚</p>
       {tracking_section}
-      <div style="background-color:{BG_DARK};border-radius:10px;padding:16px 20px;margin:20px 0;"><p style="color:{TEXT_MUTED};font-size:12px;margin:0;line-height:1.8;"><strong style="color:{GOLD};">📦 Estimated Delivery:</strong> 3-5 business days<br><strong style="color:{GOLD};">📍 Shipping to:</strong> {order.get('shipping_city', '—')}, {order.get('shipping_country', 'IN')}</p></div>
+      <div style="background-color:{BG_DARK};border-radius:10px;padding:16px 20px;margin:20px 0;"><p style="color:{TEXT_MUTED};font-size:12px;margin:0;line-height:1.8;"><strong style="color:{GOLD};">📦 Delivery:</strong> Follow the tracking link in your order details for the latest courier estimate<br><strong style="color:{GOLD};">📍 Shipping to:</strong> {order.get('shipping_city', '—')}, {order.get('shipping_country', 'IN')}</p></div>
       <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding: 28px 0 0;"><a href="{BASE_URL}/orders.html" style="display:inline-block;padding:12px 28px;background-color:{GOLD};color:{BG_DARK};border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">View Order Status →</a></td></tr></table>
     """
     params: resend.Emails.SendParams = {
