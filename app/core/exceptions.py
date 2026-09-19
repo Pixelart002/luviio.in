@@ -37,6 +37,12 @@ class UnauthenticatedUser(LuviioException):
     def __init__(self, message: str = ErrorMessages.INVALID_TOKEN):
         super().__init__(message, "UNAUTHENTICATED", status.HTTP_401_UNAUTHORIZED)
 
+
+class MFARequired(LuviioException):
+    """Privileged action requires an AAL2-authenticated session."""
+    def __init__(self, message: str = "MFA verification required for privileged access."):
+        super().__init__(message, "MFA_REQUIRED", status.HTTP_403_FORBIDDEN)
+
 class ProductNotFound(LuviioException):
     def __init__(self, item_id: str):
         super().__init__(f"Product '{item_id}' not found.", "PRODUCT_NOT_FOUND", status.HTTP_404_NOT_FOUND)
