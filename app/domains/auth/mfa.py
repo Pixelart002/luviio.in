@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
+import logging
 
 import httpx
 
@@ -9,8 +10,21 @@ from app.core.config import settings
 from app.domains.auth.http_client import get_auth_http_client
 
 
+logger = logging.getLogger(__name__)
+
+
 class MFAError(RuntimeError):
     """Supabase MFA operation failed."""
+
+
+def _provider_error_message(response: httpx.Response, data: dict[str, Any]) -> str:
+    """Return a useful, bounded provider error without exposing tokens/secrets."""
+    for key in ("msg", "message", "error_description", "error"):
+        value = data.get(key)
+        if value:
+            return str(value)[:500]
+    body = (response.text or "").strip().replace("\n", " ")
+    return f"Supabase Auth MFA request failed (HTTP {response.status_code}): {body[:300] or 'empty response'}"
 
 
 def _headers(access_token: str) -> dict[str, str]:
@@ -45,8 +59,10 @@ async def _request(
         data = {}
 
     if response.status_code >= 400:
-        message = data.get("msg") or data.get("message") or data.get("error_description")
-        raise MFAError(str(message or "MFA operation rejected."))
+        message = _provider_error_message(response, data)
+        logger = __import__("logging").getLogger(__name__)
+        logger.warning("Supabase MFA provider rejected request: status=%s message=%s", response.status_code, message)
+        raise MFAError(message)
     return data if isinstance(data, dict) else {}
 
 
