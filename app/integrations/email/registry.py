@@ -4,6 +4,7 @@ Path: app/integrations/email/registry.py
 """
 import logging
 
+from .followups import send_delivery_care_followup, send_review_followup
 from .resend_impl import (
     send_cart_reminder_email,
     send_order_confirmation,
@@ -27,6 +28,12 @@ class ResendAdapter:
         
     async def send_cart_reminder_email(self, to: str, name: str, items: list) -> None:
         await send_cart_reminder_email(to, name, items)
+
+    async def send_review_followup(self, to: str, order_number: str, product_name: str | None = None) -> bool:
+        return await send_review_followup(to, order_number, product_name)
+
+    async def send_delivery_care_followup(self, to: str, order_number: str) -> bool:
+        return await send_delivery_care_followup(to, order_number)
 
     async def send_payment_success(
         self,
