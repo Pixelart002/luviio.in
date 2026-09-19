@@ -133,10 +133,11 @@ class ShippingProviderService:
             raise HTTPException(status_code=502, detail="Unable to assign courier/AWB.") from exc
         awb = _find(response, "awb_code", "awb", "tracking_number")
         courier = _find(response, "courier_name", "courier")
+        tracking_url = _find(response, "tracking_url", "track_url")
         if not awb:
             raise HTTPException(status_code=502, detail="Courier provider returned no AWB.")
         updated = await self.repo.update(shipment_id, {
-            "tracking_number": str(awb), "courier_name": str(courier) if courier else row.get("courier_name"),
+            "tracking_number": str(awb), "courier_name": str(courier) if courier else row.get("courier_name"), "tracking_url": str(tracking_url) if tracking_url else row.get("tracking_url"),
             "status": "awb_assigned", "provider_status": "awb_assigned", "metadata": {**(row.get("metadata") or {}), "awb_assignment": response},
             "updated_at": _now(),
         })
