@@ -8,17 +8,27 @@ async def test_checkout_attempt_uses_table_fallback_when_rpc_fails(monkeypatch):
     from app.domains.payments.repository import AsyncPaymentRepository
 
     class _Response:
-        data = [{"id": "attempt-fallback"}]
+        def __init__(self, data):
+            self.data = data
 
     rpc = MagicMock()
     rpc.return_value.execute = AsyncMock(side_effect=RuntimeError("function not found"))
 
-    upsert = MagicMock()
-    upsert.return_value.execute = AsyncMock(return_value=_Response())
+    existing = MagicMock()
+    existing.return_value.execute = AsyncMock(return_value=_Response(None))
+
+    insert = MagicMock()
+    insert.return_value.execute = AsyncMock(
+        return_value=_Response([{"id": "attempt-fallback"}])
+    )
+
+    table = MagicMock()
+    table.return_value.select.return_value.eq.return_value.eq.return_value.maybe_single = existing
+    table.return_value.insert = insert
 
     admin = MagicMock()
     admin.rpc = rpc
-    admin.table.return_value.upsert = upsert
+    admin.table = table
 
     monkeypatch.setattr(
         "app.domains.payments.repository.get_async_admin_supabase",
@@ -44,13 +54,12 @@ async def test_checkout_attempt_uses_table_fallback_when_rpc_fails(monkeypatch):
             "p_currency": "inr",
         },
     )
-    upsert.assert_called_once_with(
+    insert.assert_called_once_with(
         {
             "customer_id": "user-1",
             "idempotency_key": "11111111-1111-4111-8111-111111111111",
             "payment_provider": "stripe",
             "amount_paise": 15900,
             "currency": "inr",
-        },
-        on_conflict="customer_id,idempotency_key",
+        }
     )
