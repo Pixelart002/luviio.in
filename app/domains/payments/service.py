@@ -214,6 +214,8 @@ class PaymentService:
                 )
 
         try:
+            # create_checkout_payment_attempt() defaults to provider_pending,
+            # so avoid a redundant DB round-trip immediately after creation.
             checkout_attempt_id = await self.repo.create_checkout_payment_attempt(
                 user_id, clean_idem_key, amount_paise, "inr"
             )
