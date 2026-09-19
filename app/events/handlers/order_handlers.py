@@ -84,6 +84,17 @@ def _safe_email(email: str) -> str:
     return f"{local[:2]}***@{domain}"
 
 
+async def handle_created_email(event: OrderCreatedEvent) -> None:
+    """Send an order confirmation only for COD orders; online orders receive the paid email after settlement."""
+    order = event.order or {}
+    if str(order.get("payment_method") or "").lower() not in {"cod", "cash_on_delivery"}:
+        return
+    if not event.customer_email:
+        return
+    provider = get_email_provider("resend")
+    await provider.send_order_confirmation(event.customer_email, order)
+
+
 async def handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
     oid = _safe_oid(event.order or {})
     amt = (event.order or {}).get("total_amount", 0)
