@@ -13,9 +13,13 @@ def _extract_gst_rates(results: list[dict[str, Any]]) -> list[int]:
     rates: set[int] = set()
     for item in results:
         raw = item.get("gst_rate")
-        values = [raw] if isinstance(raw, (int, float, str)) else []
+        values: list[Any] = [raw] if isinstance(raw, (int, float, str)) else []
         for value in values:
-            tokens = value.replace("%", "").replace(",", "/").split("/") if isinstance(value, str) else [value]
+            tokens = (
+                value.replace("%", "").replace(",", "/").split("/")
+                if isinstance(value, str)
+                else [value]
+            )
             for token in tokens:
                 try:
                     number = float(str(token).strip())
