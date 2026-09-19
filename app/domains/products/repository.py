@@ -59,7 +59,7 @@ class AsyncProductRepository:
         # Listing cards only need these fields. Keep detail-only tax/SEO/image
         # relations out of the hot catalogue query to reduce DB work and payload.
         q = admin_sb.table("products").select(
-            "id, name, slug, short_description, price, compare_price, stock, image_url, is_active, created_at, categories(name, slug)",
+            "id, name, slug, description, short_description, sku, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, is_active, created_at, hsn_code, gst_percentage, attributes, seo_title, seo_description, seo_keywords, canonical_url, country_of_origin, categories(name, slug)",
             count="exact",
         ).eq("is_active", True)
         if category_slug:
