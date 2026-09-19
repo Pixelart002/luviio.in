@@ -9,14 +9,15 @@ server-header hardening, and security response headers.
 import gzip
 import io
 import logging
+import re
 
-from app.core.logging_config import correlation_id_ctx, request_id_ctx, safe_id
+from app.core.logging_config import correlation_id_ctx, new_id, request_id_ctx, safe_id, span_id_ctx, trace_id_ctx
 
 logger = logging.getLogger(__name__)
 
 
 class RequestIDMiddleware:
-    """Generate a server-owned request ID and expose it to the application/client."""
+    """Generate request/correlation/trace context and expose it safely."""
 
     def __init__(self, app) -> None:
         self.app = app
@@ -28,15 +29,33 @@ class RequestIDMiddleware:
 
         incoming_request_id = next((value.decode("latin-1") for key, value in scope.get("headers", []) if key.lower() == b"x-request-id"), None)
         incoming_correlation_id = next((value.decode("latin-1") for key, value in scope.get("headers", []) if key.lower() == b"x-correlation-id"), None)
+        incoming_trace_id = next((value.decode("latin-1") for key, value in scope.get("headers", []) if key.lower() in (b"x-trace-id", b"trace-id")), None)
+        incoming_traceparent = next((value.decode("latin-1") for key, value in scope.get("headers", []) if key.lower() == b"traceparent"), None)
         request_id = safe_id(incoming_request_id)
         correlation_id = safe_id(incoming_correlation_id) if incoming_correlation_id else request_id
+        trace_id = None
+        if incoming_traceparent:
+            match = re.fullmatch(r"00-([0-9a-fA-F]{32})-([0-9a-fA-F]{16})-[0-9a-fA-F]{2}", incoming_traceparent.strip())
+            if match and match.group(1) != "0" * 32 and match.group(2) != "0" * 16:
+                trace_id = match.group(1).lower()
+        if trace_id is None and incoming_trace_id:
+            candidate = incoming_trace_id.strip().lower()
+            if re.fullmatch(r"[0-9a-f]{32}", candidate) and candidate != "0" * 32:
+                trace_id = candidate
+        if trace_id is None:
+            trace_id = new_id().replace("-", "")
+        span_id = new_id().replace("-", "")[:16]
         request_token = request_id_ctx.set(request_id)
         correlation_token = correlation_id_ctx.set(correlation_id)
+        trace_token = trace_id_ctx.set(trace_id)
+        span_token = span_id_ctx.set(span_id)
         headers = [
             (k, v) for k, v in scope.get("headers", [])
-            if k.lower() != b"x-request-id"
+            if k.lower() not in (b"x-request-id", b"x-trace-id", b"x-span-id")
         ]
         headers.append((b"x-request-id", request_id.encode()))
+        headers.append((b"x-trace-id", trace_id.encode()))
+        headers.append((b"x-span-id", span_id.encode()))
         scope = {**scope, "headers": headers}
 
         async def send_with_id(message):
@@ -47,6 +66,8 @@ class RequestIDMiddleware:
                 ]
                 response_headers.append((b"x-request-id", request_id.encode()))
                 response_headers.append((b"x-correlation-id", correlation_id.encode()))
+                response_headers.append((b"x-trace-id", trace_id.encode()))
+                response_headers.append((b"x-span-id", span_id.encode()))
                 message = {**message, "headers": response_headers}
             await send(message)
 
@@ -55,6 +76,8 @@ class RequestIDMiddleware:
         finally:
             request_id_ctx.reset(request_token)
             correlation_id_ctx.reset(correlation_token)
+            trace_id_ctx.reset(trace_token)
+            span_id_ctx.reset(span_token)
 
 
 class MaxBodySizeMiddleware:
