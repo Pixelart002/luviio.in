@@ -158,8 +158,45 @@ class AsyncPaymentRepository:
             row = data[0] if isinstance(data, list) else data
             return str(row.get("id") if isinstance(row, dict) else row)
         except Exception as exc:
-            logger.error("DB Error creating checkout payment attempt: %s", exc, exc_info=True)
-            raise RuntimeError("Unable to create durable checkout payment attempt") from exc
+            # PostgREST can temporarily miss a newly-created SECURITY DEFINER RPC
+            # while its schema cache is stale. The service-role client is already
+            # the trusted persistence boundary, so fall back to an idempotent table
+            # upsert rather than turning every checkout into a 503.
+            logger.warning(
+                "Checkout-attempt RPC failed; using service-role table fallback: %s",
+                exc,
+                exc_info=True,
+            )
+            try:
+                fallback = await (
+                    admin_sb.table("checkout_payment_attempts")
+                    .upsert(
+                        {
+                            "customer_id": customer_id,
+                            "idempotency_key": idempotency_key,
+                            "payment_provider": provider,
+                            "amount_paise": amount_paise,
+                            "currency": currency.lower(),
+                        },
+                        on_conflict="customer_id,idempotency_key",
+                    )
+                    .execute()
+                )
+                fallback_data = getattr(fallback, "data", None)
+                if not fallback_data:
+                    raise RuntimeError("Checkout payment attempt fallback returned no row")
+                row = fallback_data[0] if isinstance(fallback_data, list) else fallback_data
+                attempt_id = row.get("id") if isinstance(row, dict) else row
+                if not attempt_id:
+                    raise RuntimeError("Checkout payment attempt fallback returned no id")
+                return str(attempt_id)
+            except Exception as fallback_exc:
+                logger.error(
+                    "DB Error creating checkout payment attempt via fallback: %s",
+                    fallback_exc,
+                    exc_info=True,
+                )
+                raise RuntimeError("Unable to create durable checkout payment attempt") from fallback_exc
 
     async def update_checkout_payment_attempt(
         self, attempt_id: str, provider_payment_id: Optional[str] = None,
