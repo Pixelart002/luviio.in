@@ -66,39 +66,31 @@ async def _request(
 
 
 async def list_factors(access_token: str) -> dict[str, Any]:
-    """List the current user's MFA factors through Supabase's REST exposure.
+    """List the current user's MFA factors through Supabase Auth.
 
-    Supabase's current MFA documentation exposes the factor list through
-    PostgREST at /rest/v1/auth/factors. The Auth /auth/v1/factors route is
-    used for factor mutation/challenge operations and returns 405 for GET
-    on the current hosted Auth service.
+    Supabase's Auth user endpoint returns the same factor collection used by
+    the official client-side listFactors() API. The PostgREST
+    /rest/v1/auth/factors path is deployment-dependent and returns PGRST125
+    on this hosted project, so factor discovery stays on the Auth API.
     """
-    client = await get_auth_http_client()
-    try:
-        response = await client.get(
-            f"{settings.SB_URL}/rest/v1/auth/factors",
-            headers={**_headers(access_token), "Accept": "application/json"},
-            params={"select": "id,factor_type,status,friendly_name,created_at"},
+    data = await _request("GET", "/auth/v1/user", access_token)
+    raw_factors = data.get("factors", []) if isinstance(data, dict) else []
+    factors = []
+    for factor in raw_factors if isinstance(raw_factors, list) else []:
+        if not isinstance(factor, dict):
+            continue
+        factors.append(
+            {
+                key: factor[key]
+                for key in ("id", "factor_type", "status", "friendly_name", "created_at")
+                if key in factor
+            }
         )
-    except httpx.RequestError as exc:
-        raise MFAError("Authentication service currently unreachable.") from exc
 
-    try:
-        data = response.json()
-    except ValueError:
-        data = {}
-
-    if response.status_code >= 400:
-        message = _provider_error_message(response, data if isinstance(data, dict) else {})
-        logger.warning("Supabase MFA factor-list provider rejected request: status=%s message=%s", response.status_code, message)
-        raise MFAError(message)
-
-    factors = data if isinstance(data, list) else []
     return {
         "all": factors,
         "totp": [factor for factor in factors if factor.get("factor_type") == "totp"],
     }
-
 
 async def enroll_totp(access_token: str, friendly_name: str = "Luviio Admin") -> dict[str, Any]:
     return await _request(
