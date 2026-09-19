@@ -440,30 +440,114 @@ class PaymentService:
             return await self._create_and_link_replacement_intent(user_id, order_id, amount_paise, ip_address=client_ip, user_agent=user_agent)
 
     async def _create_and_link_replacement_intent(self, user_id: str, order_id: str, amount_paise: int, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> Dict[str, Any]:
-        attempt_count = await self.repo.get_attempt_count(order_id)
-        if attempt_count >= PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS:
-            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=PaymentSecurityMessages.TOO_MANY_ATTEMPTS)
+        # Reserve the retry slot before touching Stripe. The reservation is
+        # bound to the newly-created PaymentIntent only after Stripe succeeds,
+        # closing the concurrent replacement-intent race.
+        admin_sb = await get_async_admin_supabase()
         try:
-            new_intent = await run_in_threadpool(self.provider.create_payment_intent, amount_paise, "inr", "AOT_RETRY", user_id, f"retry_pi_{order_id}_{int(time.time())}")
+            reserved = await admin_sb.rpc(
+                "reserve_payment_retry_replacement",
+                {
+                    "p_order_id": order_id,
+                    "p_user_id": user_id,
+                    "p_window_seconds": PaymentRules.BRUTE_FORCE_WINDOW_SEC,
+                    "p_max_attempts": PaymentRules.BRUTE_FORCE_MAX_ATTEMPTS,
+                },
+            ).execute()
+            data = getattr(reserved, "data", None)
+            if not data:
+                raise RuntimeError("Replacement retry reservation returned no data")
+            reservation = data[0] if isinstance(data, list) else data
+            reservation_id = str(reservation["reservation_id"])
+        except Exception as exc:
+            if "PAYMENT_RETRY_LIMIT:" in str(exc):
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=PaymentSecurityMessages.TOO_MANY_ATTEMPTS,
+                ) from exc
+            if "PAYMENT_ALREADY_SUCCEEDED" in str(exc):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=PaymentSecurityMessages.ALREADY_PAID,
+                ) from exc
+            logger.error("[PAYMENT RETRY] Unable to reserve replacement retry slot for order %s", order_id[:8], exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to verify payment retry availability.",
+            ) from exc
+
+        try:
+            new_intent = await run_in_threadpool(
+                self.provider.create_payment_intent,
+                amount_paise,
+                "inr",
+                "AOT_RETRY",
+                user_id,
+                f"retry_slot_{reservation_id}",
+            )
+
+            bound = await admin_sb.rpc(
+                "bind_payment_retry_reservation",
+                {
+                    "p_reservation_id": reservation_id,
+                    "p_provider": "stripe",
+                    "p_provider_payment_id": new_intent["id"],
+                },
+            ).execute()
+            if not bool(getattr(bound, "data", False)):
+                try:
+                    await run_in_threadpool(self.provider.cancel_intent, new_intent["id"])
+                except Exception:
+                    logger.error("[PAYMENT RETRY] Replacement intent cancellation failed for order %s", order_id[:8], exc_info=True)
+                await admin_sb.rpc(
+                    "release_payment_retry_reservation",
+                    {"p_reservation_id": reservation_id},
+                ).execute()
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
+
             linked = await self.repo.update_order_payment_intent(order_id, new_intent["id"])
             if not linked:
                 try:
                     await run_in_threadpool(self.provider.cancel_intent, new_intent["id"])
                 except Exception:
                     logger.error("[PAYMENT RETRY] Replacement intent cancellation failed for order %s", order_id[:8], exc_info=True)
+                await admin_sb.rpc(
+                    "release_payment_retry_reservation",
+                    {"p_reservation_id": reservation_id},
+                ).execute()
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ORDER_NO_LONGER_RETRYABLE)
-            await run_in_threadpool(self.provider.update_intent_metadata, new_intent["id"], {"order_id": order_id, "user_id": user_id})
-            await self.repo.record_payment_attempt(order_id, user_id, new_intent["id"], amount_paise / 100, status="requires_payment_method", ip_address=ip_address, user_agent=user_agent)
+
+            await run_in_threadpool(
+                self.provider.update_intent_metadata,
+                new_intent["id"],
+                {"order_id": order_id, "user_id": user_id},
+            )
+            await self.repo.record_payment_attempt(
+                order_id,
+                user_id,
+                new_intent["id"],
+                amount_paise / 100,
+                status="requires_payment_method",
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
             return {"client_secret": new_intent.get("client_secret"), "payment_intent_id": new_intent.get("id"), "order_id": order_id}
         except HTTPException:
             raise
         except Exception as exc:
+            try:
+                await admin_sb.rpc(
+                    "release_payment_retry_reservation",
+                    {"p_reservation_id": reservation_id},
+                ).execute()
+            except Exception:
+                logger.critical("[PAYMENT RETRY] Failed to release retry reservation %s", reservation_id, exc_info=True)
             logger.error("[PAYMENT RETRY] Critical failure creating replacement intent: %s", exc, exc_info=True)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
 
-    async def record_client_reported_failure(self, pi_id: str, reason: str) -> None:
+    async def record_client_reported_failure(self, user_id: str, pi_id: str, reason: str) -> None:
         order = await self.repo.get_order_by_payment_intent(pi_id)
-        if not order:
+        if not order or str(order.get("customer_id")) != str(user_id):
             return
         await self.repo.record_payment_attempt(order["id"], order.get("customer_id"), pi_id, float(order.get("total_amount") or 0), status="failed", error_message=reason or "Client-reported failure")
 
@@ -566,11 +650,12 @@ class PaymentService:
                     },
                 )
 
-                if refund_status == "succeeded" and current_status in {OrderStatus.PAID.value, OrderStatus.PROCESSING.value}:
+                fully_refunded = bool(refund_record.get("fully_refunded"))
+                if refund_status == "succeeded" and fully_refunded and current_status in {OrderStatus.PAID.value, OrderStatus.PROCESSING.value}:
                     from app.domains.inventory.customer_cancellation import release_stock_for_customer_cancellation
                     updated = await release_stock_for_customer_cancellation(order_id, customer_id, "refunded")
                     if not updated:
-                        raise RuntimeError("Refund succeeded but inventory settlement failed")
+                        raise RuntimeError("Full refund succeeded but inventory settlement failed")
                     try:
                         get_event_bus().publish(
                             OrderStatusChangedEvent(
@@ -582,7 +667,7 @@ class PaymentService:
                         )
                     except Exception:
                         logger.error("[WEBHOOK] Failed to publish refund status event", exc_info=True)
-                elif refund_status == "succeeded" and current_status in {OrderStatus.SHIPPED.value, OrderStatus.DELIVERED.value}:
+                elif refund_status == "succeeded" and fully_refunded and current_status in {OrderStatus.SHIPPED.value, OrderStatus.DELIVERED.value}:
                     await self.repo.update_order_status_via_rpc(
                         order_id,
                         OrderStatus.REFUNDED.value,
@@ -599,6 +684,13 @@ class PaymentService:
                         )
                     except Exception:
                         logger.error("[WEBHOOK] Failed to publish refund status event", exc_info=True)
+                elif refund_status == "succeeded":
+                    logger.info(
+                        "[WEBHOOK] Partial refund retained order state: order=%s refund=%s total_refunded=%s",
+                        order_id[:8],
+                        provider_refund_id,
+                        refund_record.get("total_refunded"),
+                    )
                 logger.info(
                     "[WEBHOOK] Refund reconciled order=%s refund=%s status=%s",
                     order_id[:8],
