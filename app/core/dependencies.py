@@ -18,7 +18,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from gotrue.errors import AuthApiError
 
 from app.core.config import settings
-from app.core.exceptions import UnauthenticatedUser, UnauthorizedAction
+from app.core.exceptions import MFARequired, UnauthenticatedUser, UnauthorizedAction
 from app.core.supabase import get_async_admin_supabase
 from app.domains.users.repository import AsyncUserRepository
 from app.enums.roles import UserRole
@@ -223,7 +223,7 @@ def require_permission(required_perm: str) -> Callable:
                 required_perm,
                 current_user.get("aal", "aal1"),
             )
-            raise UnauthorizedAction("MFA verification required for privileged access.")
+            raise MFARequired()
         if "*" in user_perms:
             return current_user
         if required_perm not in user_perms:
