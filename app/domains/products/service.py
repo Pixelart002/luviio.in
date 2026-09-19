@@ -102,8 +102,10 @@ class ProductService:
         data["slug"] = slug
 
         data["price"] = float(data["price"])
-        if data.get("compare_price"):
+        if data.get("compare_price") is not None:
             data["compare_price"] = float(data["compare_price"])
+        if data.get("compare_price") is not None and data["compare_price"] <= data["price"]:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ProductSecurityMessages.INVALID_COMPARE_PRICE)
         images = data.get("images") or []
         if not images and data.get("image_url"):
             images = [data["image_url"]]
@@ -180,6 +182,14 @@ class ProductService:
             data["price"] = float(data["price"])
         if "compare_price" in data and data["compare_price"] is not None:
             data["compare_price"] = float(data["compare_price"])
+        if "price" in data or "compare_price" in data:
+            current_price_row = await self.repo.get_product_by_id(product_id)
+            if not current_price_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
+            effective_price = float(data["price"]) if data.get("price") is not None else float(current_price_row.get("price") or 0)
+            effective_compare = data["compare_price"] if "compare_price" in data else current_price_row.get("compare_price")
+            if effective_compare is not None and float(effective_compare) <= effective_price:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ProductSecurityMessages.INVALID_COMPARE_PRICE)
 
         if "hsn_code" in data or "gst_percentage" in data:
             current = await self.repo.get_product_by_id(product_id)
