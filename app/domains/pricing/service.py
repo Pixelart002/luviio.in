@@ -1,10 +1,4 @@
-"""
-Pricing Service — SSOT Architecture (STRICT MODE & ZERO FALLBACKS)
-==================================================================
-Pricing is authoritative for checkout totals. Configuration is supplied by
-system_settings through the canonical backend configuration path; missing
-financial configuration must fail closed rather than silently inventing a rate.
-"""
+"""Pricing Service — SSOT Architecture (STRICT MODE & ZERO FALLBACKS)."""
 from __future__ import annotations
 
 import logging
@@ -27,11 +21,13 @@ class PriceBreakdown:
     tax: Decimal
     total: Decimal
     currency: str
+    shipping_tax: Decimal = Decimal("0.00")
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "subtotal": float(round(self.subtotal, 2)),
             "shipping_cost": float(round(self.shipping, 2)),
+            "shipping_tax_amount": float(round(self.shipping_tax, 2)),
             "tax_amount": float(round(self.tax, 2)),
             "total_amount": float(round(self.total, 2)),
             "currency": self.currency,
@@ -91,6 +87,39 @@ def _validated_gst(value: Any) -> Decimal:
     return gst
 
 
+def _shipping_tax(items: List[dict[str, Any]], shipping: Decimal, subtotal: Decimal) -> Decimal:
+    """Allocate charged freight across taxable lines and apply each line's GST rate.
+
+    CGST Act section 15(2)(c) includes incidental expenses charged in
+    connection with a supply. CBIC also treats ancillary transport/cartage as
+    part of a composite supply when supplied with the goods. Allocation by
+    taxable line value keeps mixed-GST carts auditable.
+    """
+    if shipping <= 0 or subtotal <= 0:
+        return Decimal("0.00")
+
+    tax = Decimal("0")
+    for item in items:
+        prod_data = item.get("products") or item
+        qty = _validated_quantity(item)
+        price = _validated_price(
+            item.get("price_snapshot")
+            if item.get("price_snapshot") is not None
+            else item.get("unit_price")
+            if item.get("unit_price") is not None
+            else prod_data.get("price")
+        )
+        gst_value = prod_data.get("gst_percentage")
+        if gst_value is None:
+            gst_value = item.get("gst_percentage")
+        gst = _validated_gst(gst_value)
+        line_value = price * qty
+        allocated_shipping = shipping * line_value / subtotal
+        tax += allocated_shipping * gst / Decimal("100")
+
+    return tax.quantize(Decimal("0.01"))
+
+
 class StandardPricing(PricingStrategy):
     def __init__(self, shipping_threshold: Decimal, shipping_flat: Decimal, currency: str) -> None:
         self._threshold = shipping_threshold
@@ -113,15 +142,15 @@ class StandardPricing(PricingStrategy):
         if not items:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cart cannot be empty.")
         calc_subtotal = Decimal("0")
-        calc_tax = Decimal("0")
+        product_tax = Decimal("0")
         for item in items:
             prod_data = item.get("products") or item
             item_qty = _validated_quantity(item)
-            if "price_snapshot" in item and item["price_snapshot"] is not None:
+            if item.get("price_snapshot") is not None:
                 price_val = item["price_snapshot"]
-            elif "unit_price" in item and item["unit_price"] is not None:
+            elif item.get("unit_price") is not None:
                 price_val = item["unit_price"]
-            elif "price" in prod_data and prod_data["price"] is not None:
+            elif prod_data.get("price") is not None:
                 price_val = prod_data["price"]
             else:
                 raise HTTPException(status_code=500, detail="Pricing data is incomplete.")
@@ -137,7 +166,7 @@ class StandardPricing(PricingStrategy):
             item["gst_percentage_snapshot"] = float(gst_percentage)
             item_sub = item_price * item_qty
             calc_subtotal += item_sub
-            calc_tax += item_sub * (gst_percentage / Decimal("100"))
+            product_tax += item_sub * (gst_percentage / Decimal("100"))
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
         shipping = calculate_settings_shipping(
@@ -146,7 +175,16 @@ class StandardPricing(PricingStrategy):
             threshold=self._threshold,
             flat_rate=self._flat,
         )
-        return PriceBreakdown(subtotal=calc_subtotal, shipping=shipping, tax=calc_tax, total=calc_subtotal + shipping + calc_tax, currency=self._currency)
+        shipping_tax = _shipping_tax(items, shipping, calc_subtotal)
+        total_tax = product_tax + shipping_tax
+        return PriceBreakdown(
+            subtotal=calc_subtotal,
+            shipping=shipping,
+            tax=total_tax,
+            total=calc_subtotal + shipping + total_tax,
+            currency=self._currency,
+            shipping_tax=shipping_tax,
+        )
 
 
 class ZeroTaxPricing(PricingStrategy):
@@ -174,11 +212,11 @@ class ZeroTaxPricing(PricingStrategy):
         for item in items:
             prod_data = item.get("products") or item
             item_qty = _validated_quantity(item)
-            if "price_snapshot" in item and item["price_snapshot"] is not None:
+            if item.get("price_snapshot") is not None:
                 price_val = item["price_snapshot"]
-            elif "unit_price" in item and item["unit_price"] is not None:
+            elif item.get("unit_price") is not None:
                 price_val = item["unit_price"]
-            elif "price" in prod_data and prod_data["price"] is not None:
+            elif prod_data.get("price") is not None:
                 price_val = prod_data["price"]
             else:
                 raise HTTPException(status_code=500, detail="Pricing data is incomplete.")
@@ -194,7 +232,13 @@ class ZeroTaxPricing(PricingStrategy):
             threshold=self._threshold,
             flat_rate=self._flat,
         )
-        return PriceBreakdown(subtotal=calc_subtotal, shipping=shipping, tax=Decimal("0"), total=calc_subtotal + shipping, currency=self._currency)
+        return PriceBreakdown(
+            subtotal=calc_subtotal,
+            shipping=shipping,
+            tax=Decimal("0"),
+            total=calc_subtotal + shipping,
+            currency=self._currency,
+        )
 
 
 class FreeShippingPricing(PricingStrategy):
@@ -217,7 +261,14 @@ class FreeShippingPricing(PricingStrategy):
         original = self._base.calculate(items=items)
         if original.subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), original.currency)
-        return PriceBreakdown(subtotal=original.subtotal, shipping=Decimal("0"), tax=original.tax, total=original.subtotal + original.tax, currency=original.currency)
+        return PriceBreakdown(
+            subtotal=original.subtotal,
+            shipping=Decimal("0"),
+            tax=original.tax,
+            total=original.subtotal + original.tax,
+            currency=original.currency,
+            shipping_tax=Decimal("0"),
+        )
 
 
 def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
@@ -248,8 +299,16 @@ def get_pricing_from_config(config: dict[str, Any] | None) -> PricingStrategy:
         logger.error("Unsupported checkout currency: %s", currency)
         raise HTTPException(status_code=503, detail="Pricing service temporarily unavailable. Please try again.")
     if not tax_enabled:
-        return ZeroTaxPricing(shipping_threshold=shipping_threshold if shipping_enabled else Decimal("0"), shipping_flat=shipping_flat if shipping_enabled else Decimal("0"), currency=currency)
-    return StandardPricing(shipping_threshold=shipping_threshold if shipping_enabled else Decimal("0"), shipping_flat=shipping_flat if shipping_enabled else Decimal("0"), currency=currency)
+        return ZeroTaxPricing(
+            shipping_threshold=shipping_threshold if shipping_enabled else Decimal("0"),
+            shipping_flat=shipping_flat if shipping_enabled else Decimal("0"),
+            currency=currency,
+        )
+    return StandardPricing(
+        shipping_threshold=shipping_threshold if shipping_enabled else Decimal("0"),
+        shipping_flat=shipping_flat if shipping_enabled else Decimal("0"),
+        currency=currency,
+    )
 
 
 def get_pricing_for_user(user: dict[str, Any], config: dict[str, Any] | None) -> PricingStrategy:
