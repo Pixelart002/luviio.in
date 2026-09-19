@@ -97,6 +97,10 @@ async def provider_webhook(provider: str, payload: dict[str, Any], x_luviio_ship
 
 @router.get("/my/{order_number}", status_code=200)
 async def my_shipment(order_number: str, user_id: str = Depends(get_user_id_strict)):
-    order = await _order_service.get_order(order_number, user_id, is_admin=False)
-    row = await _provider_repo.get_by_order(str(order.get("id")), "shiprocket")
+    sb = await __import__("app.core.supabase", fromlist=["get_async_admin_supabase"]).get_async_admin_supabase()
+    order_res = await sb.table("orders").select("id,order_number,customer_id").eq("order_number", order_number.strip()).eq("customer_id", user_id).maybe_single().execute()
+    order = order_res.data if order_res else None
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found.")
+    row = await _provider_repo.get_by_order(str(order["id"]), "shiprocket")
     return success_response(data=row or {"status": "not_booked"}, message="Shipment status fetched.")
