@@ -55,6 +55,8 @@ class ProductCreate(BaseModel):
         value = v.strip()
         if not value:
             raise ValueError("HSN code is required for every product.")
+        if not value.isdigit() or not 4 <= len(value) <= 8:
+            raise ValueError("HSN code must contain 4-8 digits.")
         return value
 
     @field_validator("country_of_origin")
@@ -103,6 +105,8 @@ class ProductUpdate(BaseModel):
         value = v.strip()
         if not value:
             raise ValueError("HSN code cannot be empty.")
+        if not value.isdigit() or not 4 <= len(value) <= 8:
+            raise ValueError("HSN code must contain 4-8 digits.")
         return value
 
     @field_validator("country_of_origin")
