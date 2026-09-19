@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.constants.product_messages import ProductRules, ProductSecurityMessages
 from app.domains.products.repository import AsyncProductRepository
+from app.domains.products.taxonomy import validate_product_tax
 from app.permissions.policies.product_policies import ProductPolicy
 from app.utils.image import delete_product_image, upload_multiple_images
 
@@ -86,15 +87,9 @@ class ProductService:
         return self._enrich_discount(product)
 
     async def _prepare_product_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        # New products are active by default. An explicit is_active=False from
-        # the admin workflow still remains respected.
         data.setdefault("is_active", True)
         sku = data.get("sku")
         requested_slug = data.get("slug")
-
-        # SKU collision and slug generation are independent DB reads. Run them
-        # concurrently so product creation does not pay two network round trips
-        # in sequence.
         if sku:
             sku_exists, slug = await asyncio.gather(
                 self.repo.check_sku_exists(sku),
@@ -114,6 +109,7 @@ class ProductService:
             images = [data["image_url"]]
         data["images"] = images
         data["image_url"] = images[0] if images else None
+
         hsn_code = str(data.get("hsn_code") or "").strip()
         if not hsn_code:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="HSN code is required for every product.")
@@ -121,6 +117,11 @@ class ProductService:
         if data.get("gst_percentage") is None:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="GST percentage is required for every product.")
         data["gst_percentage"] = int(data["gst_percentage"])
+
+        # The provider is the source for HSN/GST validation; there is no
+        # hardcoded GST slab allowlist in the application.
+        await validate_product_tax(data["hsn_code"], data["gst_percentage"])
+
         data["attributes"] = data.get("attributes") or {}
         data["seo_title"] = str(data.get("seo_title") or data.get("name", "")).strip()[:70] or None
         data["seo_description"] = str(data.get("seo_description") or data.get("short_description") or data.get("description") or "").strip()[:170] or None
@@ -151,8 +152,6 @@ class ProductService:
             if files:
                 uploaded = await run_in_threadpool(upload_multiple_images, files, res["id"], max_images=ProductRules.MAX_IMAGES_PER_PRODUCT - len(existing))
             all_images = existing + uploaded
-            # The product row and relational image projection are independent
-            # once all image URLs are known, so update them concurrently.
             await asyncio.gather(
                 self.repo.update_product(res["id"], {"images": all_images, "image_url": all_images[0] if all_images else None}),
                 self.repo.sync_product_images_table(res["id"], all_images),
@@ -181,10 +180,17 @@ class ProductService:
             data["price"] = float(data["price"])
         if "compare_price" in data and data["compare_price"] is not None:
             data["compare_price"] = float(data["compare_price"])
-        if "gst_percentage" in data and data["gst_percentage"] is not None:
-            data["gst_percentage"] = int(data["gst_percentage"])
-        if "hsn_code" in data and data["hsn_code"]:
-            data["hsn_code"] = str(data["hsn_code"]).strip()
+
+        if "hsn_code" in data or "gst_percentage" in data:
+            current = await self.repo.get_product_by_id(product_id)
+            if not current:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
+            hsn_code = str(data.get("hsn_code") or current.get("hsn_code") or "").strip()
+            gst_percentage = int(data.get("gst_percentage") if data.get("gst_percentage") is not None else current.get("gst_percentage"))
+            data["hsn_code"] = hsn_code
+            data["gst_percentage"] = gst_percentage
+            await validate_product_tax(hsn_code, gst_percentage)
+
         if "seo_title" in data and data["seo_title"] is not None:
             data["seo_title"] = str(data["seo_title"]).strip()[:70] or None
         if "seo_description" in data and data["seo_description"] is not None:
