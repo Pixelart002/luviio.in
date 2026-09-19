@@ -66,13 +66,7 @@ async def _request(
 
 
 async def list_factors(access_token: str) -> dict[str, Any]:
-    """List the current user's MFA factors through Supabase Auth.
-
-    Supabase's Auth user endpoint returns the same factor collection used by
-    the official client-side listFactors() API. The PostgREST
-    /rest/v1/auth/factors path is deployment-dependent and returns PGRST125
-    on this hosted project, so factor discovery stays on the Auth API.
-    """
+    """List the current user's MFA factors through Supabase Auth."""
     data = await _request("GET", "/auth/v1/user", access_token)
     raw_factors = data.get("factors", []) if isinstance(data, dict) else []
     factors = []
@@ -91,6 +85,7 @@ async def list_factors(access_token: str) -> dict[str, Any]:
         "all": factors,
         "totp": [factor for factor in factors if factor.get("factor_type") == "totp"],
     }
+
 
 async def enroll_totp(access_token: str, friendly_name: str = "Luviio Admin") -> dict[str, Any]:
     return await _request(
@@ -130,3 +125,25 @@ async def unenroll(access_token: str, factor_id: str) -> dict[str, Any]:
         f"/auth/v1/factors/{factor_id}",
         access_token,
     )
+
+
+async def reset_pending_totp(access_token: str, factor_id: str) -> dict[str, Any]:
+    """Remove only an unverified TOTP factor so enrollment can be restarted.
+
+    A verified factor is never removable through this recovery path; removing
+    an active MFA factor still requires the existing AAL2-protected endpoint.
+    """
+    factors = await list_factors(access_token)
+    factor = next(
+        (
+            item
+            for item in factors.get("totp", [])
+            if item.get("id") == factor_id
+        ),
+        None,
+    )
+    if not factor:
+        raise MFAError("MFA factor not found.")
+    if factor.get("status") == "verified":
+        raise MFAError("Verified MFA factors require AAL2 verification before removal.")
+    return await unenroll(access_token, factor_id)
