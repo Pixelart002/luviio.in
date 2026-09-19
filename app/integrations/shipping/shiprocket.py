@@ -1,19 +1,9 @@
-"""Shiprocket API adapter.
-
-Credentials are read only from server-side environment variables:
-SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD.
-"""
+"""Shiprocket API adapter."""
 from __future__ import annotations
-
-import asyncio
-import os
-import time
+import asyncio, os, time
 from typing import Any
-
 import httpx
-
 from app.integrations.shipping.base import ShippingProvider
-
 
 class ShiprocketProvider(ShippingProvider):
     key = "shiprocket"
@@ -38,18 +28,13 @@ class ShiprocketProvider(ShippingProvider):
             if self._token and time.time() < self._token_expires_at:
                 return self._token
             async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
-                response = await client.post(
-                    f"{self.base_url}/auth/login",
-                    json={"email": self.email, "password": self.password},
-                )
+                response = await client.post(f"{self.base_url}/auth/login", json={"email": self.email, "password": self.password})
                 response.raise_for_status()
                 data = response.json()
             token = str(data.get("token") or "").strip()
             if not token:
                 raise RuntimeError("Shiprocket authentication returned no token.")
             self._token = token
-            # Shiprocket documents a 240-hour token validity. Refresh earlier
-            # so clock skew or provider-side rotation does not hit checkout.
             self._token_expires_at = time.time() + (9 * 24 * 60 * 60)
             return token
 
@@ -71,19 +56,34 @@ class ShiprocketProvider(ShippingProvider):
             return data if isinstance(data, dict) else {"data": data}
 
     async def serviceability(self, *, pickup_postcode: str, delivery_postcode: str, weight_kg: float, cod: bool) -> dict[str, Any]:
-        params = {
-            "pickup_postcode": pickup_postcode,
-            "delivery_postcode": delivery_postcode,
-            "weight": weight_kg,
-            "cod": 1 if cod else 0,
-        }
-        return await self._request("GET", "/courier/serviceability/", params=params)
+        return await self._request("GET", "/courier/serviceability/", params={
+            "pickup_postcode": pickup_postcode, "delivery_postcode": delivery_postcode,
+            "weight": weight_kg, "cod": 1 if cod else 0,
+        })
 
     async def create_shipment(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request("POST", "/orders/create/adhoc", json=payload)
+
+    async def assign_awb(self, *, shipment_id: str, courier_id: int | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"shipment_id": int(shipment_id)}
+        if courier_id is not None:
+            body["courier_id"] = int(courier_id)
+        return await self._request("POST", "/courier/assign/awb", json=body)
+
+    async def generate_pickup(self, *, shipment_id: str) -> dict[str, Any]:
+        return await self._request("POST", "/courier/generate/pickup", json={"shipment_id": [int(shipment_id)]})
+
+    async def generate_label(self, *, shipment_id: str) -> dict[str, Any]:
+        return await self._request("POST", "/courier/generate/label", json={"shipment_id": [int(shipment_id)]})
+
+    async def generate_manifest(self, *, shipment_id: str) -> dict[str, Any]:
+        return await self._request("POST", "/manifests/generate", json={"shipment_id": [int(shipment_id)]})
+
+    async def print_invoice(self, *, shipment_id: str) -> dict[str, Any]:
+        return await self._request("POST", "/orders/print/invoice", json={"ids": [int(shipment_id)]})
 
     async def track(self, tracking_number: str) -> dict[str, Any]:
         return await self._request("GET", f"/courier/track/awb/{tracking_number}")
 
     async def cancel_shipment(self, shipment_id: str) -> dict[str, Any]:
-        return await self._request("POST", "/orders/cancel", json={"ids": [shipment_id]})
+        return await self._request("POST", "/orders/cancel", json={"ids": [int(shipment_id)]})
