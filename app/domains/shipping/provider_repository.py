@@ -34,19 +34,13 @@ class ShippingProviderRepository:
 
     async def record_event(self, shipment_id: str, provider_event_id: str, provider_status: str, payload: dict[str, Any], occurred_at: str | None = None) -> bool:
         sb = await get_async_admin_supabase()
-        data = {
-            "shipment_id": shipment_id,
-            "provider_event_id": provider_event_id,
-            "provider_status": provider_status,
-            "payload": payload,
-        }
+        data = {"shipment_id": shipment_id, "provider_event_id": provider_event_id, "provider_status": provider_status, "payload": payload}
         if occurred_at:
             data["occurred_at"] = occurred_at
         try:
             await sb.table("shipping_shipment_events").insert(data).execute()
             return True
         except Exception as exc:
-            # Unique provider_event_id makes webhook delivery idempotent.
             if "duplicate" in str(exc).lower() or "unique" in str(exc).lower():
                 return False
             raise
