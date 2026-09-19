@@ -198,7 +198,10 @@ class AsyncPaymentRepository:
             raise RuntimeError("Unable to load stale checkout payment attempts") from exc
 
     async def create_pending_order_with_reservation(
-        self, order_data: Dict[str, Any], items: List[Dict[str, Any]]
+        self,
+        order_data: Dict[str, Any],
+        items: List[Dict[str, Any]],
+        checkout_attempt_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         admin_sb = await get_async_admin_supabase()
         provider = get_current_provider_key()
@@ -216,8 +219,12 @@ class AsyncPaymentRepository:
 
         try:
             res = await admin_sb.rpc(
-                "create_pending_order_with_payment",
-                {"p_order_data": payload, "p_items": items},
+                "create_pending_order_with_payment_v2",
+                {
+                    "p_order_data": payload,
+                    "p_items": items,
+                    "p_checkout_attempt_id": checkout_attempt_id,
+                },
             ).execute()
             data = getattr(res, "data", None)
             if not data:
