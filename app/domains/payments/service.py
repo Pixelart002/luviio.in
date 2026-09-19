@@ -113,9 +113,10 @@ class PaymentService:
 
         from app.permissions.action_control import assert_action_enabled
         await assert_action_enabled(user_id, "checkout", "Checkout is currently disabled for your account.")
-        cart_items, config = await asyncio.gather(
+        cart_items, config, addr = await asyncio.gather(
             self.repo.get_cart_items_for_checkout(user_id),
             self.repo.get_pricing_config(),
+            self.repo.get_shipping_address(address_id, user_id),
         )
         PaymentPolicy.assert_valid_cart(cart_items)
         subtotal = Decimal("0")
@@ -152,20 +153,14 @@ class PaymentService:
         goods_subtotal = subtotal
         if coupon_code:
             from app.domains.coupons.service import CouponService
-            resolved, addr = await asyncio.gather(
-                CouponService().resolve_discount_for_checkout(
-                    coupon_code,
-                    float(goods_subtotal),
-                    user_id,
-                ),
-                self.repo.get_shipping_address(address_id, user_id),
+            resolved = await CouponService().resolve_discount_for_checkout(
+                coupon_code,
+                float(goods_subtotal),
+                user_id,
             )
             coupon_discount = Decimal(str(resolved.get("discount") or 0))
             coupon_id = resolved.get("coupon_id")
             coupon_code_resolved = resolved.get("code")
-        else:
-            addr = await self.repo.get_shipping_address(address_id, user_id)
-
         if not addr:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -212,9 +207,6 @@ class PaymentService:
         try:
             checkout_attempt_id = await self.repo.create_checkout_payment_attempt(
                 user_id, clean_idem_key, amount_paise, "inr"
-            )
-            await self.repo.update_checkout_payment_attempt(
-                checkout_attempt_id, status="provider_pending"
             )
         except Exception as exc:
             logger.error("[PAYMENT ERROR] Durable checkout-attempt creation failed: %s", exc, exc_info=True)
@@ -288,11 +280,10 @@ class PaymentService:
                     logger.critical("[PAYMENT ORPHAN RISK] Durable checkout attempt update also failed for %s", checkout_attempt_id, exc_info=True)
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION) from exc
 
-        await self.repo.update_checkout_payment_attempt(
-            checkout_attempt_id, provider_payment_id=intent["id"], status="order_created"
-        )
-
-        metadata_result, attempt_result, email_result = await asyncio.gather(
+        checkout_status_result, metadata_result, attempt_result, email_result = await asyncio.gather(
+            self.repo.update_checkout_payment_attempt(
+                checkout_attempt_id, provider_payment_id=intent["id"], status="order_created"
+            ),
             run_in_threadpool(
                 self.provider.update_intent_metadata,
                 intent["id"],
@@ -310,6 +301,8 @@ class PaymentService:
             self.repo.get_customer_email(user_id),
             return_exceptions=True,
         )
+        if isinstance(checkout_status_result, Exception):
+            raise checkout_status_result
         if isinstance(metadata_result, Exception):
             raise metadata_result
         if isinstance(attempt_result, Exception):
