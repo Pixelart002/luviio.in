@@ -21,9 +21,23 @@ def test_calculates_gst_and_shipping(pricing):
     )
 
     assert result.subtotal == Decimal("200")
-    assert result.tax == Decimal("36")
     assert result.shipping == Decimal("45.90")
-    assert result.total == Decimal("281.90")
+    assert result.shipping_tax == Decimal("8.26")
+    assert result.tax == Decimal("44.26")
+    assert result.total == Decimal("290.16")
+
+
+def test_shipping_tax_uses_each_gst_rate_for_mixed_cart(pricing):
+    result = pricing.calculate(
+        [
+            {"quantity": 1, "price_snapshot": "100", "products": {"gst_percentage": "18"}},
+            {"quantity": 1, "price_snapshot": "100", "products": {"gst_percentage": "12"}},
+        ]
+    )
+
+    assert result.shipping == Decimal("45.90")
+    assert result.shipping_tax == Decimal("6.89")
+    assert result.tax == Decimal("36.89")
 
 
 def test_free_shipping_threshold(pricing):
@@ -32,6 +46,7 @@ def test_free_shipping_threshold(pricing):
     )
 
     assert result.shipping == Decimal("0")
+    assert result.shipping_tax == Decimal("0.00")
 
 
 def test_rejects_missing_gst(pricing):
