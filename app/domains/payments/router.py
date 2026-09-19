@@ -3,6 +3,7 @@ Payments Router
 ===============
 Path: app/domains/payments/router.py
 """
+import logging
 from typing import Any, Dict
 from uuid import UUID
 
@@ -24,6 +25,8 @@ from app.integrations.payments.context import payment_provider_context
 from app.integrations.payments.manager import PaymentPluginManager
 from app.utils.response import success_response
 
+logger = logging.getLogger("app.payments")
+
 
 def get_real_ip(request: Request) -> str:
     forwarded = request.headers.get("X-Forwarded-For")
@@ -44,10 +47,31 @@ def _require_public_order_number(value: str) -> str:
 
 
 async def _require_provider_enabled(provider_key: str = "stripe") -> None:
+    logger.info("Payment provider check start | provider=%s", provider_key)
     try:
         await PaymentPluginManager().get_active_provider(provider_key)
+        logger.info("Payment provider check passed | provider=%s", provider_key)
     except ValueError as exc:
+        logger.error(
+            "Payment provider check failed | provider=%s error_type=%s detail=%s",
+            provider_key,
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "Payment provider check crashed | provider=%s error_type=%s detail=%s",
+            provider_key,
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Payment provider configuration could not be verified.",
+        ) from exc
 
 
 async def _public_payment_data(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -75,16 +99,42 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
     client_ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "")
     billing_id = str(payload.billing_address_id) if payload.billing_address_id else None
-    with payment_provider_context(provider_key):
-        data = await PaymentService().create_intent(
-            user_id,
-            client_ip,
-            payload.idempotency_key,
-            str(payload.shipping_address_id),
-            billing_id,
-            user_agent=user_agent,
-            coupon_code=payload.coupon_code,
+    logger.info(
+        "Create-intent start | provider=%s user=%s idem=%s",
+        provider_key,
+        str(user_id)[:8],
+        payload.idempotency_key,
+    )
+    try:
+        with payment_provider_context(provider_key):
+            data = await PaymentService().create_intent(
+                user_id,
+                client_ip,
+                payload.idempotency_key,
+                str(payload.shipping_address_id),
+                billing_id,
+                user_agent=user_agent,
+                coupon_code=payload.coupon_code,
+            )
+    except HTTPException as exc:
+        logger.error(
+            "Create-intent failed | provider=%s status=%s detail=%s",
+            provider_key,
+            exc.status_code,
+            exc.detail,
+            exc_info=True,
         )
+        raise
+    except Exception as exc:
+        logger.error(
+            "Create-intent unhandled exception | provider=%s error_type=%s detail=%s",
+            provider_key,
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
+        raise
+    logger.info("Create-intent success | provider=%s user=%s", provider_key, str(user_id)[:8])
     data["payment_provider"] = provider_key
     return success_response(data=await _public_payment_data(data))
 
