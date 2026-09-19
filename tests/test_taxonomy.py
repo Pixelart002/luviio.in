@@ -20,3 +20,19 @@ async def test_product_tax_validation_can_be_enforced_without_hardcoded_slabs():
     ) as mocked:
         await validate_product_tax("7318", 18)
     mocked.assert_awaited_once_with("7318", 18)
+
+
+@pytest.mark.asyncio
+async def test_hsn_lookup_rejects_non_hsn_values():
+    from app.domains.products.taxonomy import lookup_hsn
+
+    with pytest.raises(Exception):
+        await lookup_hsn("Demo")
+
+
+@pytest.mark.asyncio
+async def test_hsn_lookup_rejects_short_codes():
+    from app.domains.products.taxonomy import lookup_hsn
+
+    with pytest.raises(Exception):
+        await lookup_hsn("731")
