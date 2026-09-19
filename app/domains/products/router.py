@@ -13,6 +13,7 @@ from app.core.dependencies import require_permission
 from app.core.logging_config import request_id_ctx
 from app.domains.products.schemas import CategoryCreate, ProductCreate, ProductUpdate
 from app.domains.products.service import ProductService
+from app.domains.products.taxonomy import lookup_hsn, search_hsn
 from app.permissions.products import ProductPermissions
 from app.utils.pagination import paginate
 from app.utils.response import success_response
@@ -56,6 +57,24 @@ async def list_products(request: Request, page: int = Query(1, ge=1), page_size:
     return paginate(items, total, page, page_size)
 
 
+@router.get("/products/taxonomy/hsn-search", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.READ))])
+async def hsn_search(
+    request: Request,
+    q: str = Query(..., min_length=2, max_length=120),
+    limit: int = Query(8, ge=1, le=20),
+) -> Dict[str, Any]:
+    """Return live HSN candidates and their provider-supplied GST rates for admin product entry."""
+    results = await search_hsn(q, limit)
+    return success_response(data={"query": q, "results": results, "source": "external_taxonomy_provider"})
+
+
+@router.get("/products/taxonomy/hsn/{code}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.READ))])
+async def hsn_lookup(request: Request, code: str) -> Dict[str, Any]:
+    """Return live HSN details/rates without a local hardcoded HSN table."""
+    results = await lookup_hsn(code)
+    return success_response(data={"code": code, "results": results, "source": "external_taxonomy_provider"})
+
+
 @router.get("/products/{slug}", status_code=status.HTTP_200_OK)
 async def get_product(request: Request, slug: str) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
@@ -86,12 +105,7 @@ async def create_product(request: Request) -> Dict[str, Any]:
             for value in form.getlist("files"):
                 if isinstance(value, UploadFile):
                     image_files.append((await value.read(), value.filename or "unknown"))
-            logger.info(
-                "product.create.payload request_id=%s sku=%s images=%s",
-                request_id,
-                payload.sku or "Auto",
-                len(image_files),
-            )
+            logger.info("product.create.payload request_id=%s sku=%s images=%s", request_id, payload.sku or "Auto", len(image_files))
             result = await ProductService().create_product_with_images(payload.model_dump(), image_files)
         else:
             try:
@@ -103,12 +117,7 @@ async def create_product(request: Request) -> Dict[str, Any]:
             logger.info("product.create.payload request_id=%s sku=%s images=0", request_id, payload.sku or "Auto")
             result = await ProductService().create_product(payload.model_dump())
     except HTTPException as exc:
-        logger.warning(
-            "product.create.http_error request_id=%s status=%s detail=%s",
-            request_id,
-            exc.status_code,
-            str(exc.detail)[:300],
-        )
+        logger.warning("product.create.http_error request_id=%s status=%s detail=%s", request_id, exc.status_code, str(exc.detail)[:300])
         raise
     except Exception as exc:
         logger.exception("product.create.error request_id=%s error=%s", request_id, str(exc)[:300])
@@ -118,12 +127,7 @@ async def create_product(request: Request) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin inserting new product -> SKU: {payload.sku or 'Auto'}")
     product_id = result.get("id") if isinstance(result, dict) else None
-    logger.info(
-        "product.create.success request_id=%s product_id=%s sku=%s",
-        request_id,
-        product_id or "-",
-        payload.sku or "Auto",
-    )
+    logger.info("product.create.success request_id=%s product_id=%s sku=%s", request_id, product_id or "-", payload.sku or "Auto")
     return success_response(data=result, message=ProductMessages.PRODUCT_CREATED)
 
 
