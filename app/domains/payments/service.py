@@ -87,7 +87,18 @@ class PaymentService:
         except ValueError:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PaymentSecurityMessages.INVALID_IDEMPOTENCY_KEY)
 
-        existing = await self.repo.get_order_by_idempotency_key(user_id, clean_idem_key)
+        from app.permissions.action_control import assert_action_enabled
+
+        # These checks are independent. Running them together removes one
+        # serialized DB/network round-trip from the new-checkout critical path.
+        existing, _ = await asyncio.gather(
+            self.repo.get_order_by_idempotency_key(user_id, clean_idem_key),
+            assert_action_enabled(
+                user_id,
+                "checkout",
+                "Checkout is currently disabled for your account.",
+            ),
+        )
         if existing:
             if existing.get("status") == OrderStatus.PENDING.value:
                 existing_pi = existing.get("stripe_payment_intent")
@@ -111,8 +122,6 @@ class PaymentService:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.ALREADY_PAID)
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.DUPLICATE_ORDER)
 
-        from app.permissions.action_control import assert_action_enabled
-        await assert_action_enabled(user_id, "checkout", "Checkout is currently disabled for your account.")
         cart_items, config, addr = await asyncio.gather(
             self.repo.get_cart_items_for_checkout(user_id),
             self.repo.get_pricing_config(),
