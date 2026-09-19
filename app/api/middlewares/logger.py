@@ -13,7 +13,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.logger import current_request_ctx
 
-logger = logging.getLogger("uvicorn.error")
+# Use an application logger so request telemetry always goes through Luviio's
+# structured JSON handler instead of Uvicorn/Gunicorn's plain error formatter.
+logger = logging.getLogger("app.request")
 
 
 class PureWindowLoggerMiddleware(BaseHTTPMiddleware):
