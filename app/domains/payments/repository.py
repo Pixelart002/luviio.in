@@ -168,31 +168,67 @@ class AsyncPaymentRepository:
                 exc_info=True,
             )
             try:
-                fallback = await (
+                payload = {
+                    "customer_id": customer_id,
+                    "idempotency_key": idempotency_key,
+                    "payment_provider": provider,
+                    "amount_paise": amount_paise,
+                    "currency": currency.lower(),
+                }
+
+                # Do not depend on PostgREST upsert/on_conflict representation here.
+                # The RPC is the canonical path; this is a narrow service-role
+                # recovery path for transient RPC/schema-cache failures. First reuse
+                # an existing attempt, then insert, and finally read the row back.
+                existing = await (
                     admin_sb.table("checkout_payment_attempts")
-                    .upsert(
-                        {
-                            "customer_id": customer_id,
-                            "idempotency_key": idempotency_key,
-                            "payment_provider": provider,
-                            "amount_paise": amount_paise,
-                            "currency": currency.lower(),
-                        },
-                        on_conflict="customer_id,idempotency_key",
-                    )
+                    .select("id")
+                    .eq("customer_id", customer_id)
+                    .eq("idempotency_key", idempotency_key)
+                    .maybe_single()
                     .execute()
                 )
-                fallback_data = getattr(fallback, "data", None)
-                if not fallback_data:
-                    raise RuntimeError("Checkout payment attempt fallback returned no row")
-                row = fallback_data[0] if isinstance(fallback_data, list) else fallback_data
-                attempt_id = row.get("id") if isinstance(row, dict) else row
-                if not attempt_id:
-                    raise RuntimeError("Checkout payment attempt fallback returned no id")
-                return str(attempt_id)
+                existing_data = getattr(existing, "data", None)
+                if existing_data and existing_data.get("id"):
+                    return str(existing_data["id"])
+
+                try:
+                    inserted = await (
+                        admin_sb.table("checkout_payment_attempts")
+                        .insert(payload)
+                        .execute()
+                    )
+                    inserted_data = getattr(inserted, "data", None)
+                    row = inserted_data[0] if isinstance(inserted_data, list) else inserted_data
+                    if isinstance(row, dict) and row.get("id"):
+                        return str(row["id"])
+                except Exception as insert_exc:
+                    # A concurrent request may have won the unique
+                    # (customer_id, idempotency_key) race. Re-read below.
+                    logger.warning(
+                        "Checkout-attempt fallback insert did not return a row: %s",
+                        insert_exc,
+                        exc_info=True,
+                    )
+
+                recovered = await (
+                    admin_sb.table("checkout_payment_attempts")
+                    .select("id")
+                    .eq("customer_id", customer_id)
+                    .eq("idempotency_key", idempotency_key)
+                    .maybe_single()
+                    .execute()
+                )
+                recovered_data = getattr(recovered, "data", None)
+                if recovered_data and recovered_data.get("id"):
+                    return str(recovered_data["id"])
+
+                raise RuntimeError("Checkout payment attempt fallback could not recover a row")
             except Exception as fallback_exc:
                 logger.error(
-                    "DB Error creating checkout payment attempt via fallback: %s",
+                    "DB Error creating checkout payment attempt via table fallback: "
+                    "type=%s detail=%s",
+                    type(fallback_exc).__name__,
                     fallback_exc,
                     exc_info=True,
                 )
