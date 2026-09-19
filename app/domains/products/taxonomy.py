@@ -19,8 +19,8 @@ async def search_hsn(query: str, limit: int = 8) -> list[dict[str, Any]]:
 
 
 async def lookup_hsn(code: str) -> list[dict[str, Any]]:
-    if not code.strip().isdigit() or not 2 <= len(code.strip()) <= 8:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="HSN code must contain 2-8 digits.")
+    if not code.strip().isdigit() or not 4 <= len(code.strip()) <= 8:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="HSN code must contain 4-8 digits.")
     try:
         return await hsn_gst_client.lookup(code)
     except TaxonomyProviderError as exc:
