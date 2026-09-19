@@ -274,7 +274,7 @@ class ProductService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
         if "images" in data:
             await self.repo.sync_product_images_table(product_id, res.get("images") or [])
-        return self._enrich_discount(res)
+        return self._project_product(self._enrich_discount(res))
 
     async def delete_product(self, product_id: str) -> None:
         if not await self.repo.soft_delete_product(product_id):
