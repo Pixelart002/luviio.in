@@ -29,7 +29,7 @@ class ProductSpecifications(BaseModel):
     adding dozens of nullable columns to the products table.
     """
 
-    model_config = ConfigDict(extra="allow", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="allow", str_strip_whitespace=True, protected_namespaces=())
 
     brand: Optional[str] = Field(default=None, max_length=120)
     manufacturer: Optional[str] = Field(default=None, max_length=160)
