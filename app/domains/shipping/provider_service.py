@@ -218,6 +218,8 @@ class ShippingProviderService:
             "updated_at": now,
         }
         if awb: updates["tracking_number"] = awb
+        tracking_url = _find(payload, "tracking_url", "track_url")
+        if tracking_url: updates["tracking_url"] = str(tracking_url)
         courier = _find(payload, "courier_name", "courier")
         if courier: updates["courier_name"] = str(courier)
         if provider_status in _SHIPPED_PROVIDER_STATUSES and not row.get("shipped_at"):
