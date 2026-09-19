@@ -255,6 +255,29 @@ class ShippingProviderService:
             except Exception:
                 logger.exception("Failed to send out-for-delivery push")
 
+        if uid and provider_status in {"ndr", "ndr_action_required", "delivery_attempt_failed"}:
+            try:
+                await send_push_to_user(
+                    uid,
+                    title="Delivery needs your attention",
+                    body=f"Courier reported a delivery issue for order #{order.get('order_number')}.",
+                    icon="/icons/ri-alert.png",
+                    url=f"/orders/{order.get('order_number')}",
+                )
+            except Exception:
+                logger.exception("Failed to send NDR push")
+        if uid and provider_status in {"rto", "rto_initiated", "rto_delivered"}:
+            try:
+                await send_push_to_user(
+                    uid,
+                    title="Delivery exception update",
+                    body=f"Courier reported an RTO update for order #{order.get('order_number')}.",
+                    icon="/icons/ri-arrow-go-back-line.png",
+                    url=f"/orders/{order.get('order_number')}",
+                )
+            except Exception:
+                logger.exception("Failed to send RTO push")
+
         return updated
 
     async def handle_webhook(self, provider_key: str, payload: dict[str, Any]) -> dict[str, Any]:
