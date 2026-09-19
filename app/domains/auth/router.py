@@ -163,14 +163,36 @@ async def mfa_unenroll_endpoint(
     payload: MFAUnenrollRequest,
     current: dict[str, Any] = Depends(get_current_user),
 ):
-    if current.get("aal", "aal1") != "aal2":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="AAL2 verification required to remove MFA.")
+    # A pending/unverified enrollment is not an active second factor, so an
+    # authenticated privileged user may discard it and restart setup. A
+    # verified factor remains protected by the existing AAL2 requirement.
+    try:
+        factors = await list_factors(current["access_token"])
+    except MFAError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+    factor = next(
+        (item for item in factors.get("all", []) if item.get("id") == payload.factor_id),
+        None,
+    )
+    if not factor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MFA factor not found.")
+
+    is_verified = factor.get("status") == "verified"
+    if is_verified and current.get("aal", "aal1") != "aal2":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="AAL2 verification required to remove a verified MFA factor.",
+        )
+
     try:
         data = await mfa_unenroll(current["access_token"], payload.factor_id)
     except MFAError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
     if hasattr(request.state, "actions"):
-        request.state.actions.append("Privileged MFA factor unenrolled after AAL2 verification")
+        action = "Privileged MFA factor unenrolled after AAL2 verification" if is_verified else "Pending privileged MFA enrollment reset"
+        request.state.actions.append(action)
     return success_response(data=data, message="MFA factor removed.")
 
 
