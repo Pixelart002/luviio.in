@@ -58,13 +58,19 @@ class HsnGstClient:
         for item in results:
             raw = item.get("gst_rate")
             if isinstance(raw, (int, float)):
-                rates.add(int(raw))
+                value = float(raw)
+                if 0 <= value <= 100 and value.is_integer():
+                    rates.add(int(value))
             elif isinstance(raw, str):
                 for token in raw.replace("%", "").replace(",", "/").split("/"):
                     try:
-                        rates.add(int(float(token.strip())))
+                        value = float(token.strip())
+                        if 0 <= value <= 100 and value.is_integer():
+                            rates.add(int(value))
                     except ValueError:
                         continue
+        if not rates:
+            raise TaxonomyProviderError(f"HSN code {hsn_code} returned no usable GST rate from the configured provider")
         if gst_percentage not in rates:
             raise TaxonomyProviderError(
                 f"GST {gst_percentage}% does not match provider data for HSN {hsn_code}; available rates: {sorted(rates)}"
