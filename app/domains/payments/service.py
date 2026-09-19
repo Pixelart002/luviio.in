@@ -233,14 +233,14 @@ class PaymentService:
                 logger.critical("[PAYMENT ORPHAN RISK] Could not close durable checkout attempt %s", checkout_attempt_id, exc_info=True)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
 
-        await self.repo.update_checkout_payment_attempt(
-            checkout_attempt_id, provider_payment_id=intent["id"], status="provider_created"
-        )
-
         order_number = self._generate_clean_order_number()
         order_data = {"customer_id": user_id, "status": OrderStatus.PENDING.value, "order_number": order_number, "idempotency_key": clean_idem_key, "stripe_payment_intent": intent["id"], "coupon_id": coupon_id, "coupon_code": coupon_code_resolved, "discount_amount": float(coupon_discount), **breakdown.as_dict(), "total_amount": float(max(breakdown.total - coupon_discount, Decimal("0"))), "shipping_address_id": address_id, "shipping_name": addr.get("full_name"), "shipping_phone": addr.get("phone"), "shipping_email": addr.get("email"), "shipping_line1": addr.get("line1"), "shipping_line2": addr.get("line2"), "shipping_landmark": addr.get("landmark"), "shipping_city": addr.get("city"), "shipping_state": addr.get("state"), "shipping_postal_code": addr.get("postal_code"), "shipping_country": addr.get("country", "IN"), "shipping_company_name": addr.get("company_name"), "shipping_gstin": addr.get("gstin"), "billing_same_as_shipping": is_same_as_shipping, "billing_address_id": billing_addr.get("id"), "billing_name": billing_addr.get("full_name"), "billing_phone": billing_addr.get("phone"), "billing_email": billing_addr.get("email"), "billing_line1": billing_addr.get("line1"), "billing_line2": billing_addr.get("line2"), "billing_landmark": billing_addr.get("landmark"), "billing_city": billing_addr.get("city"), "billing_state": billing_addr.get("state"), "billing_postal_code": billing_addr.get("postal_code"), "billing_country": billing_addr.get("country", "IN"), "billing_company_name": billing_addr.get("company_name"), "billing_gstin": billing_addr.get("gstin")}
         try:
-            pending_order = await self.repo.create_pending_order_with_reservation(order_data, items_to_deduct)
+            pending_order = await self.repo.create_pending_order_with_reservation(
+                order_data,
+                items_to_deduct,
+                checkout_attempt_id=checkout_attempt_id,
+            )
         except Exception as exc:
             raced = await self.repo.get_order_by_idempotency_key(user_id, clean_idem_key)
             if raced and raced.get("status") == OrderStatus.PENDING.value and raced.get("stripe_payment_intent"):
@@ -289,10 +289,7 @@ class PaymentService:
                     logger.critical("[PAYMENT ORPHAN RISK] Durable checkout attempt update also failed for %s", checkout_attempt_id, exc_info=True)
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PaymentSecurityMessages.RACE_CONDITION) from exc
 
-        checkout_status_result, metadata_result, attempt_result, email_result = await asyncio.gather(
-            self.repo.update_checkout_payment_attempt(
-                checkout_attempt_id, provider_payment_id=intent["id"], status="order_created"
-            ),
+        metadata_result, attempt_result, email_result = await asyncio.gather(
             run_in_threadpool(
                 self.provider.update_intent_metadata,
                 intent["id"],
@@ -310,8 +307,6 @@ class PaymentService:
             self.repo.get_customer_email(user_id),
             return_exceptions=True,
         )
-        if isinstance(checkout_status_result, Exception):
-            raise checkout_status_result
         if isinstance(metadata_result, Exception):
             raise metadata_result
         if isinstance(attempt_result, Exception):
