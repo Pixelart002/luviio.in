@@ -6,7 +6,7 @@ Shared auth throttling is awaited so it works consistently across all workers.
 import logging
 from typing import Any, Dict
 
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks, HTTPException, status
 from starlette.concurrency import run_in_threadpool
 from supabase import AuthApiError
 
@@ -47,14 +47,28 @@ class AuthService:
             logger.warning("Welcome email dispatch failed for %s: %s", email, exc)
         return True
 
-    async def login_user(self, email: str, password: str, client_ip: str) -> Dict[str, Any]:
+    async def login_user(
+        self,
+        email: str,
+        password: str,
+        client_ip: str,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> Dict[str, Any]:
+        # Throttle check remains synchronous because it is a security gate.
         await AuthPolicy.assert_safe_attempt(client_ip, email)
         try:
             session_data = await self.auth_repo.sign_in(email, password)
             if not session_data:
                 await AuthPolicy.record_failed_attempt(client_ip, email)
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.INVALID_CREDENTIALS)
-            await AuthPolicy.reset_attempts(client_ip, email)
+
+            # Reset is cleanup, not part of credential verification. Schedule it
+            # after the response so the successful login path avoids a third
+            # auth/database round trip in its critical latency budget.
+            if background_tasks is not None:
+                background_tasks.add_task(AuthPolicy.reset_attempts, client_ip, email)
+            else:
+                await AuthPolicy.reset_attempts(client_ip, email)
             return session_data
         except AuthApiError as exc:
             await AuthPolicy.record_failed_attempt(client_ip, email)
