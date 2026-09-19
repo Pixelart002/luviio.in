@@ -10,7 +10,10 @@ from app.core.config import settings
 from app.domains.auth.http_client import get_auth_http_client
 
 
-logger = logging.getLogger(__name__)\n\n\nclass MFAError(RuntimeError):
+logger = logging.getLogger(__name__)
+
+
+class MFAError(RuntimeError):
     """Supabase MFA operation failed."""
 
 
