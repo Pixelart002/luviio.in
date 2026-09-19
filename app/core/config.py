@@ -37,11 +37,15 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in"
 
     RATE_LIMIT_PER_MINUTE: int = 60
-    # Forwarded client-IP headers are ignored unless the immediate peer is
-    # explicitly trusted. Set comma-separated proxy IPs/CIDRs in production.
     TRUSTED_PROXY_IPS: str = ""
     SENTRY_DSN: str = ""
     APP_VERSION: str = "unknown"
+
+    # External HSN/GST taxonomy provider. No GST slab table is maintained in code.
+    TAXONOMY_API_BASE_URL: str = "https://hsn.krakelabsindia.com"
+    TAXONOMY_API_KEY: str = ""
+    TAXONOMY_API_TIMEOUT_SECONDS: float = 3.0
+    TAXONOMY_ENFORCE_PRODUCT_TAX: bool = True
 
     @field_validator(
         "SB_URL", "SB_KEY", "SB_SERVICE_ROLE_KEY",
