@@ -1,1 +1,1 @@
-web: gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --workers ${WEB_CONCURRENCY:-2} --preload --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile - --timeout 120
+web: gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --workers ${WEB_CONCURRENCY:-2} --preload --max-requests 1000 --max-requests-jitter 100 --log-level warning --error-logfile - --timeout 120
