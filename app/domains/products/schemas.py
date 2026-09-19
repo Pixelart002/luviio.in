@@ -1,10 +1,10 @@
 """Product HTTP schemas owned by the Products domain."""
-from decimal import Decimal
 from typing import Any, Dict, List, Optional
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.constants.product_messages import ProductRules, ProductSecurityMessages
+from app.constants.product_messages import ProductSecurityMessages
 
 
 class CategoryCreate(BaseModel):
@@ -41,7 +41,7 @@ class ProductCreate(BaseModel):
     images: List[str] = Field(default_factory=list)
     attributes: Optional[Dict[str, Any]] = Field(default_factory=dict)
     hsn_code: str = Field(..., min_length=1, max_length=20)
-    gst_percentage: int = Field(...)
+    gst_percentage: int = Field(..., ge=0, le=100)
     country_of_origin: Optional[str] = Field(default=None, min_length=2, max_length=100)
     seo_title: Optional[str] = Field(default=None, max_length=70)
     seo_description: Optional[str] = Field(default=None, max_length=170)
@@ -56,13 +56,6 @@ class ProductCreate(BaseModel):
         if not value:
             raise ValueError("HSN code is required for every product.")
         return value
-
-    @field_validator("gst_percentage")
-    @classmethod
-    def validate_gst(cls, v: int) -> int:
-        if v not in ProductRules.LEGAL_GST_SLABS:
-            raise ValueError(ProductSecurityMessages.INVALID_GST_SLAB)
-        return v
 
     @field_validator("country_of_origin")
     @classmethod
@@ -94,7 +87,7 @@ class ProductUpdate(BaseModel):
     attributes: Optional[Dict[str, Any]] = None
     category_id: Optional[str] = None
     hsn_code: Optional[str] = Field(default=None, min_length=1, max_length=20)
-    gst_percentage: Optional[int] = None
+    gst_percentage: Optional[int] = Field(default=None, ge=0, le=100)
     country_of_origin: Optional[str] = Field(default=None, min_length=2, max_length=100)
     seo_title: Optional[str] = Field(default=None, max_length=70)
     seo_description: Optional[str] = Field(default=None, max_length=170)
@@ -111,13 +104,6 @@ class ProductUpdate(BaseModel):
         if not value:
             raise ValueError("HSN code cannot be empty.")
         return value
-
-    @field_validator("gst_percentage")
-    @classmethod
-    def validate_gst(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None and v not in ProductRules.LEGAL_GST_SLABS:
-            raise ValueError(ProductSecurityMessages.INVALID_GST_SLAB)
-        return v
 
     @field_validator("country_of_origin")
     @classmethod
