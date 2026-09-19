@@ -216,7 +216,7 @@ class OrderService:
                         tracking_number=payload_data.get("tracking_number"),
                     )
                 )
-        elif target_status_str in (OrderStatus.DELIVERED.value, OrderStatus.REFUNDED.value, OrderStatus.CANCELLED.value):
+        elif target_status_str in (OrderStatus.PROCESSING.value, OrderStatus.DELIVERED.value, OrderStatus.REFUNDED.value, OrderStatus.CANCELLED.value):
             await get_event_bus().publish_durable(
                 OrderStatusChangedEvent(
                     order=result,
