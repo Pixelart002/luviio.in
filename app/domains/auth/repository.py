@@ -6,6 +6,8 @@ Path: app/domains/auth/repository.py
 import logging
 from typing import Any, Dict, Optional
 
+import httpx
+
 from app.core.config import settings
 from app.core.supabase import get_async_supabase
 from app.domains.auth.http_client import get_auth_http_client
@@ -70,13 +72,9 @@ class AsyncAuthRepository:
                 "refresh_token": data["refresh_token"],
                 "expires_in": data.get("expires_in"),
             }
-        except Exception as exc:
-            import httpx
-
-            if isinstance(exc, httpx.RequestError):
-                logger.error("Network error during token refresh: %s", exc)
-                raise RuntimeError("Authentication server currently unreachable.") from exc
-            raise
+        except httpx.RequestError as exc:
+            logger.error("Network error during token refresh: %s", exc)
+            raise RuntimeError("Authentication server currently unreachable.") from exc
 
     async def sign_out_with_token(self, refresh_token: str) -> None:
         url = f"{settings.SB_URL}/auth/v1/logout"
@@ -87,13 +85,8 @@ class AsyncAuthRepository:
         client = await get_auth_http_client()
         try:
             await client.post(url, headers=headers, json={"refresh_token": refresh_token})
-        except Exception as exc:
-            import httpx
-
-            if isinstance(exc, httpx.RequestError):
-                logger.warning("Network timeout while invalidating token: %s", exc)
-                return
-            raise
+        except httpx.RequestError as exc:
+            logger.warning("Network timeout while invalidating token: %s", exc)
 
     async def reset_password_email(self, email: str) -> None:
         sb = await get_async_supabase()
@@ -119,10 +112,6 @@ class AsyncAuthRepository:
                 msg = data.get("error_description") or data.get("msg") or "Token is invalid or expired."
                 logger.warning("Password reset update rejected: %s", msg)
                 raise ValueError(msg)
-        except Exception as exc:
-            import httpx
-
-            if isinstance(exc, httpx.RequestError):
-                logger.error("Network error during password update: %s", exc)
-                raise RuntimeError("Authentication server currently unreachable.") from exc
-            raise
+        except httpx.RequestError as exc:
+            logger.error("Network error during password update: %s", exc)
+            raise RuntimeError("Authentication server currently unreachable.") from exc
