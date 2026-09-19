@@ -223,7 +223,11 @@ async def notify_payment_failed(request: Request, payload: NotifyFailedRequest, 
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Intercepted client-side drop -> provider: {provider_key}")
     with payment_provider_context(provider_key):
-        await PaymentService().record_client_reported_failure(payload.payment_intent_id, payload.error_message or "Client reported failure")
+        await PaymentService().record_client_reported_failure(
+            str(current.get("sub") or ""),
+            payload.payment_intent_id,
+            payload.error_message or "Client reported failure",
+        )
     return success_response(message="Failure logged. You can safely retry.")
 
 
