@@ -181,6 +181,7 @@ async def get_current_user(
     if profile and not profile.get("is_active", True):
         raise UnauthorizedAction("Account has been deactivated.")
     request.state.user_id = user_id
+    request.state.access_token = token
     request.state.user_name = profile.get("full_name") or email.split("@")[0] if email else "User"
     return {
         "sub": user_id,
@@ -188,6 +189,8 @@ async def get_current_user(
         "profile": profile,
         "jwt_role": profile.get("role", "customer"),
         "exp": ts_to_iso(payload.get("exp")),
+        "aal": str(payload.get("aal") or "aal1"),
+        "access_token": token,
         "auth_user": auth_user
     }
 
@@ -213,6 +216,14 @@ def require_permission(required_perm: str) -> Callable:
         )
         static_base = get_static_role_permissions(role)
         user_perms = await get_effective_permissions(role, static_base)
+        if role != UserRole.CUSTOMER.value and current_user.get("aal", "aal1") != "aal2":
+            logger.warning(
+                "MFA Block | Privileged user %s attempted %s at %s",
+                current_user.get("sub"),
+                required_perm,
+                current_user.get("aal", "aal1"),
+            )
+            raise UnauthorizedAction("MFA verification required for privileged access.")
         if "*" in user_perms:
             return current_user
         if required_perm not in user_perms:

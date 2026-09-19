@@ -12,6 +12,8 @@ from slowapi.util import get_remote_address
 
 from app.constants.auth_messages import AuthMessages, AuthSecurityMessages
 from app.core.dependencies import get_current_user
+from app.domains.auth.mfa import MFAError, challenge as mfa_challenge, enroll_totp, list_factors, unenroll as mfa_unenroll, verify as mfa_verify
+from app.domains.auth.mfa_schemas import MFAEnrollRequest, MFAUnenrollRequest, MFAVerifyRequest
 from app.domains.auth.schemas import (
     ForgotPasswordRequest,
     LoginRequest,
@@ -76,6 +78,101 @@ async def refresh(request: Request, response: Response, refresh_token: str | Non
     response.set_cookie(**_REFRESH_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=_REFRESH_COOKIE_MAX_AGE)
     response.set_cookie(**_ACCESS_COOKIE_KWARGS, value=session_data["access_token"], max_age=_ACCESS_COOKIE_MAX_AGE)
     return success_response(data={"access_token": session_data["access_token"], "token_type": "bearer", "expires_in": session_data["expires_in"]})
+
+@router.get("/mfa/status", status_code=status.HTTP_200_OK)
+async def mfa_status(current: dict[str, Any] = Depends(get_current_user)):
+    try:
+        factors = await list_factors(current["access_token"])
+    except MFAError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    return success_response(
+        data={
+            "aal": current.get("aal", "aal1"),
+            "factors": factors,
+            "privileged_mfa_required": (current.get("profile") or {}).get("role") != "customer",
+        },
+        message="MFA status retrieved.",
+    )
+
+
+@router.post("/mfa/enroll", status_code=status.HTTP_200_OK)
+@limiter.limit("3/minute")
+async def mfa_enroll(
+    request: Request,
+    payload: MFAEnrollRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+):
+    role = (current.get("profile") or {}).get("role", "customer")
+    if role == "customer":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="MFA enrollment is restricted to staff accounts.")
+    try:
+        data = await enroll_totp(current["access_token"], payload.friendly_name)
+    except MFAError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Started TOTP MFA enrollment for privileged account")
+    return success_response(data=data, message="MFA enrollment started. Scan the QR code and verify it.")
+
+
+@router.post("/mfa/verify", status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
+async def mfa_verify_code(
+    request: Request,
+    response: Response,
+    payload: MFAVerifyRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+):
+    try:
+        challenge_data = await mfa_challenge(current["access_token"], payload.factor_id)
+        challenge_id = str(challenge_data.get("id") or "")
+        if not challenge_id:
+            raise MFAError("MFA challenge could not be created.")
+        session_data = await mfa_verify(
+            current["access_token"],
+            payload.factor_id,
+            challenge_id,
+            payload.code,
+        )
+    except MFAError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    access_token = session_data.get("access_token")
+    refresh_token = session_data.get("refresh_token")
+    if access_token:
+        response.set_cookie(**_ACCESS_COOKIE_KWARGS, value=access_token, max_age=_ACCESS_COOKIE_MAX_AGE)
+    if refresh_token:
+        response.set_cookie(**_REFRESH_COOKIE_KWARGS, value=refresh_token, max_age=_REFRESH_COOKIE_MAX_AGE)
+
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Privileged MFA challenge verified -> AAL2 session issued")
+    return success_response(
+        data={
+            "access_token": access_token,
+            "token_type": session_data.get("token_type", "bearer"),
+            "expires_in": session_data.get("expires_in"),
+            "aal": "aal2",
+        },
+        message="MFA verified successfully.",
+    )
+
+
+@router.post("/mfa/unenroll", status_code=status.HTTP_200_OK)
+@limiter.limit("3/minute")
+async def mfa_unenroll_endpoint(
+    request: Request,
+    payload: MFAUnenrollRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+):
+    if current.get("aal", "aal1") != "aal2":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="AAL2 verification required to remove MFA.")
+    try:
+        data = await mfa_unenroll(current["access_token"], payload.factor_id)
+    except MFAError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Privileged MFA factor unenrolled after AAL2 verification")
+    return success_response(data=data, message="MFA factor removed.")
+
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(request: Request, response: Response, refresh_token: str | None = Cookie(None)):
