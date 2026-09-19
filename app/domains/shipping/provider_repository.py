@@ -16,7 +16,7 @@ class ShippingProviderRepository:
 
     async def list_recent(self, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         sb = await get_async_admin_supabase()
-        q = sb.table("shipping_shipments").select("*, orders(order_number,status,customer_id,shipping_name,shipping_city,shipping_postal_code,total_amount,payment_method)").order("created_at", desc=True).limit(min(max(limit, 1), 200))
+        q = sb.table("shipping_shipments").select("*, orders(id,order_number,status,customer_id,shipping_name,shipping_city,shipping_postal_code,total_amount,payment_method)").order("created_at", desc=True).limit(min(max(limit, 1), 200))
         if status:
             q = q.eq("status", status)
         res = await q.execute()
