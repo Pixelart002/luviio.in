@@ -158,7 +158,7 @@ async def mfa_verify_code(
 
 @router.post("/mfa/unenroll", status_code=status.HTTP_200_OK)
 @limiter.limit("3/minute")
-async def mfa_unenroll(
+async def mfa_unenroll_endpoint(
     request: Request,
     payload: MFAUnenrollRequest,
     current: dict[str, Any] = Depends(get_current_user),
