@@ -251,6 +251,7 @@ async def handle_shipped_push(event: OrderShippedEvent) -> None:
 
 async def handle_status_push(event: OrderStatusChangedEvent) -> None:
     config = {
+        "processing": ("Your order is being prepared", "Order #{oid} is now being prepared for dispatch.", _Icon.PAID),
         "delivered": (_Copy.DELIVERED_TITLE, _Copy.DELIVERED_BODY, _Icon.DELIVERED),
         "refunded": (_Copy.REFUNDED_TITLE, _Copy.REFUNDED_BODY, _Icon.REFUNDED),
         "cancelled": (_Copy.CANCEL_PUSH_TITLE, _Copy.CANCEL_PUSH_BODY, _Icon.CANCELLED),
