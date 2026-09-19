@@ -109,7 +109,7 @@ class ProductCreate(BaseModel):
 
 
 class ProductUpdate(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid", protected_namespaces=())
 
     name: Optional[str] = Field(default=None, min_length=2, max_length=255)
     slug: Optional[str] = Field(default=None, min_length=2, max_length=280, pattern=r"^[a-z0-9-]+$")
