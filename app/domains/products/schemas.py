@@ -1,5 +1,6 @@
 """Product HTTP schemas owned by the Products domain."""
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -31,16 +32,16 @@ class ProductCreate(BaseModel):
     description: Optional[str] = None
     short_description: Optional[str] = Field(default=None, max_length=500)
     sku: Optional[str] = Field(default=None, max_length=100)
-    category_id: Optional[str] = None
+    category_id: Optional[UUID] = None
     price: Decimal = Field(..., gt=0, decimal_places=2)
     compare_price: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
     stock: int = Field(default=0, ge=0)
     low_stock_threshold: int = Field(default=10, ge=0)
     weight_grams: Optional[int] = Field(default=None, ge=0)
-    image_url: Optional[str] = None
-    images: List[str] = Field(default_factory=list)
+    image_url: Optional[str] = Field(default=None, max_length=2048)
+    images: List[str] = Field(default_factory=list, max_length=10)
     attributes: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    hsn_code: str = Field(..., min_length=1, max_length=20)
+    hsn_code: str = Field(..., min_length=4, max_length=8, pattern=r"^\d{4,8}$")
     gst_percentage: int = Field(..., ge=0, le=100)
     country_of_origin: Optional[str] = Field(default=None, min_length=2, max_length=100)
     seo_title: Optional[str] = Field(default=None, max_length=70)
@@ -77,6 +78,8 @@ class ProductCreate(BaseModel):
 class ProductUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     name: Optional[str] = Field(default=None, min_length=2, max_length=255)
+    slug: Optional[str] = Field(default=None, min_length=2, max_length=280, pattern=r"^[a-z0-9-]+$")
+    sku: Optional[str] = Field(default=None, max_length=100, pattern=r"^\S(?:.*\S)?$")
     description: Optional[str] = None
     short_description: Optional[str] = Field(default=None, max_length=500)
     price: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
@@ -84,11 +87,11 @@ class ProductUpdate(BaseModel):
     stock: Optional[int] = Field(default=None, ge=0)
     low_stock_threshold: Optional[int] = Field(default=None, ge=0)
     weight_grams: Optional[int] = Field(default=None, ge=0)
-    image_url: Optional[str] = None
-    images: Optional[List[str]] = None
+    image_url: Optional[str] = Field(default=None, max_length=2048)
+    images: Optional[List[str]] = Field(default=None, max_length=10)
     attributes: Optional[Dict[str, Any]] = None
     category_id: Optional[str] = None
-    hsn_code: Optional[str] = Field(default=None, min_length=1, max_length=20)
+    hsn_code: Optional[str] = Field(default=None, min_length=4, max_length=8, pattern=r"^\d{4,8}$")
     gst_percentage: Optional[int] = Field(default=None, ge=0, le=100)
     country_of_origin: Optional[str] = Field(default=None, min_length=2, max_length=100)
     seo_title: Optional[str] = Field(default=None, max_length=70)
