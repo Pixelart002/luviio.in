@@ -1,15 +1,14 @@
-"""Shipping Domain — Router."""
-
-from fastapi import APIRouter, Depends, status
-
+"""Shipping domain routes: checkout rates plus complete fulfillment lifecycle."""
+from __future__ import annotations
+import os
+from typing import Any
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from app.constants.shipping_messages import ShippingMessages
-from app.core.dependencies import require_permission
+from app.core.dependencies import get_user_id_strict, require_permission
+from app.domains.orders.service import OrderService
 from app.domains.shipping.provider_service import ShippingProviderService
-from app.domains.shipping.schemas import (
-    ShippingMethodCreate,
-    ShippingMethodUpdate,
-    ShippingRateRequest,
-)
+from app.domains.shipping.provider_repository import ShippingProviderRepository
+from app.domains.shipping.schemas import ShippingMethodCreate, ShippingMethodUpdate, ShippingRateRequest
 from app.domains.shipping.service import ShippingService
 from app.permissions.shipping import ShippingPermissions
 from app.utils.response import success_response
@@ -17,120 +16,87 @@ from app.utils.response import success_response
 router = APIRouter(prefix="/shipping", tags=["Shipping"])
 _service = ShippingService()
 _provider_service = ShippingProviderService()
+_provider_repo = ShippingProviderRepository()
+_order_service = OrderService()
 
-
-@router.get(
-    "/methods",
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(require_permission(ShippingPermissions.READ))],
-)
+@router.get("/methods", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
 async def list_methods(active_only: bool = True):
     data = await _service.list_methods(active_only)
     return success_response(data={"items": data}, message=ShippingMessages.METHODS_FETCHED)
 
-
-@router.post(
-    "/rate",
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(require_permission(ShippingPermissions.READ))],
-)
+@router.post("/rate", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
 async def compute_rate(payload: ShippingRateRequest):
-    data = await _service.compute_rate(
-        subtotal=payload.cart_subtotal,
-        item_count=payload.item_count,
-        weight_kg=payload.total_weight_kg,
-        method_id=payload.method_id,
-        pincode=payload.pincode,
-    )
+    data = await _service.compute_rate(subtotal=payload.cart_subtotal, item_count=payload.item_count, weight_kg=payload.total_weight_kg, method_id=payload.method_id, pincode=payload.pincode)
     return success_response(data=data, message=ShippingMessages.RATE_COMPUTED)
 
-
-@router.post(
-    "/manage",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))],
-)
+@router.post("/manage", status_code=201, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
 async def create_method(payload: ShippingMethodCreate):
-    data = await _service.create(payload.model_dump())
-    return success_response(data=data, message=ShippingMessages.METHOD_CREATED)
+    return success_response(data=await _service.create(payload.model_dump()), message=ShippingMessages.METHOD_CREATED)
 
-
-@router.patch(
-    "/manage/{method_id}",
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))],
-)
+@router.patch("/manage/{method_id}", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
 async def update_method(method_id: str, payload: ShippingMethodUpdate):
-    data = await _service.update(method_id, payload.model_dump(exclude_unset=True))
-    return success_response(data=data, message=ShippingMessages.METHOD_UPDATED)
+    return success_response(data=await _service.update(method_id, payload.model_dump(exclude_unset=True)), message=ShippingMessages.METHOD_UPDATED)
 
-
-@router.post(
-    "/manage/{method_id}/activate",
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))],
-)
+@router.post("/manage/{method_id}/activate", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
 async def activate_method(method_id: str):
-    data = await _service.activate(method_id)
-    return success_response(data=data, message="Shipping method activated successfully.")
+    return success_response(data=await _service.activate(method_id), message="Shipping method activated successfully.")
 
-
-@router.get(
-    "/provider/serviceability",
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(require_permission(ShippingPermissions.READ))],
-)
-async def provider_serviceability(
-    pickup_postcode: str,
-    delivery_postcode: str,
-    weight_kg: float = 0.5,
-    cod: bool = False,
-    provider: str = "shiprocket",
-):
-    data = await _provider_service.serviceability(
-        provider_key=provider,
-        pickup_postcode=pickup_postcode,
-        delivery_postcode=delivery_postcode,
-        weight_kg=weight_kg,
-        cod=cod,
-    )
+@router.get("/provider/serviceability", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
+async def provider_serviceability(pickup_postcode: str, delivery_postcode: str, weight_kg: float = 0.5, cod: bool = False, provider: str = "shiprocket"):
+    data = await _provider_service.serviceability(provider, pickup_postcode, delivery_postcode, weight_kg, cod)
     return success_response(data=data, message="Shipping provider serviceability fetched.")
 
+@router.get("/provider/shipments", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
+async def list_provider_shipments(status_filter: str | None = None, limit: int = 100):
+    return success_response(data={"items": await _provider_repo.list_recent(status_filter, limit)}, message="Fulfillment shipments fetched.")
 
-@router.post(
-    "/provider/orders/{order_id}",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))],
-)
-async def create_provider_shipment(
-    order_id: str,
-    pickup_location: str,
-    weight_kg: float,
-    length_cm: float,
-    breadth_cm: float,
-    height_cm: float,
-    provider: str = "shiprocket",
-):
-    data = await _provider_service.create_for_order(
-        order_id=order_id,
-        provider_key=provider,
-        pickup_location=pickup_location,
-        weight_kg=weight_kg,
-        length_cm=length_cm,
-        breadth_cm=breadth_cm,
-        height_cm=height_cm,
-    )
+@router.post("/provider/orders/{order_id}", status_code=201, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
+async def create_provider_shipment(order_id: str, pickup_location: str, weight_kg: float, length_cm: float, breadth_cm: float, height_cm: float, provider: str = "shiprocket"):
+    data = await _provider_service.create_for_order(order_id, provider, pickup_location, weight_kg, length_cm, breadth_cm, height_cm)
     return success_response(data=data, message="Shipment created with provider.")
 
+@router.post("/provider/shipments/{shipment_id}/awb", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
+async def assign_awb(shipment_id: str, courier_id: int | None = None):
+    return success_response(data=await _provider_service.assign_awb(shipment_id, courier_id), message="Courier/AWB assigned.")
 
-@router.get(
-    "/provider/track/{tracking_number}",
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(require_permission(ShippingPermissions.READ))],
-)
-async def provider_tracking(
-    tracking_number: str,
-    provider: str = "shiprocket",
-):
-    data = await _provider_service.track(provider, tracking_number)
-    return success_response(data=data, message="Shipment tracking fetched.")
+@router.post("/provider/shipments/{shipment_id}/pickup", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
+async def schedule_pickup(shipment_id: str):
+    return success_response(data=await _provider_service.schedule_pickup(shipment_id), message="Pickup scheduled.")
+
+@router.post("/provider/shipments/{shipment_id}/label", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
+async def generate_label(shipment_id: str):
+    return success_response(data=await _provider_service.generate_label(shipment_id), message="Shipping label generated.")
+
+@router.post("/provider/shipments/{shipment_id}/manifest", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
+async def generate_manifest(shipment_id: str):
+    return success_response(data=await _provider_service.generate_manifest(shipment_id), message="Manifest generated.")
+
+@router.post("/provider/shipments/{shipment_id}/invoice", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
+async def generate_provider_invoice(shipment_id: str):
+    return success_response(data=await _provider_service.print_invoice(shipment_id), message="Courier invoice generated.")
+
+@router.post("/provider/shipments/{shipment_id}/sync", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
+async def sync_tracking(shipment_id: str):
+    return success_response(data=await _provider_service.sync_tracking(shipment_id), message="Shipment tracking synchronized.")
+
+@router.post("/provider/shipments/{shipment_id}/cancel", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
+async def cancel_provider_shipment(shipment_id: str):
+    return success_response(data=await _provider_service.cancel(shipment_id), message="Provider shipment cancelled.")
+
+@router.get("/provider/track/{tracking_number}", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
+async def provider_tracking(tracking_number: str, provider: str = "shiprocket"):
+    return success_response(data=await _provider_service.track(provider, tracking_number), message="Shipping provider tracking fetched.")
+
+@router.post("/provider/webhook/{provider}", status_code=200)
+async def provider_webhook(provider: str, payload: dict[str, Any], x_luviio_shipping_secret: str | None = Header(default=None)):
+    expected = os.getenv("LUVII0_SHIPPING_WEBHOOK_SECRET") or os.getenv("LUVII0_SHIPPING_WEBHOOK_SECRET")
+    if not expected or not x_luviio_shipping_secret or x_luviio_shipping_secret != expected:
+        raise HTTPException(status_code=401, detail="Invalid shipping webhook signature.")
+    data = await _provider_service.handle_webhook(provider, payload)
+    return success_response(data=data, message="Shipping webhook processed.")
+
+@router.get("/my/{order_number}", status_code=200)
+async def my_shipment(order_number: str, user_id: str = Depends(get_user_id_strict)):
+    order = await _order_service.get_order(order_number, user_id, is_admin=False)
+    row = await _provider_repo.get_by_order(str(order.get("id")), "shiprocket")
+    return success_response(data=row or {"status": "not_booked"}, message="Shipment status fetched.")
