@@ -6,7 +6,7 @@ Path: app/domains/auth/router.py
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request, Response, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -43,11 +43,11 @@ async def register(request: Request, payload: RegisterRequest):
 
 @router.post("/login", status_code=status.HTTP_200_OK)
 @limiter.limit("5/minute")
-async def login(request: Request, response: Response, payload: LoginRequest):
+async def login(request: Request, response: Response, payload: LoginRequest, background_tasks: BackgroundTasks):
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Authenticating credentials for: {payload.email}")
     client_ip = get_remote_address(request) or "0.0.0.0"
-    session_data = await AuthService().login_user(payload.email, payload.password, client_ip)
+    session_data = await AuthService().login_user(payload.email, payload.password, client_ip, background_tasks=background_tasks)
     if hasattr(request.state, "actions"):
         request.state.actions.extend([f"Identity verified -> UID: {session_data['user_id'][:8]}...", "Issued secure HttpOnly auth cookies"])
     response.set_cookie(**_REFRESH_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=_REFRESH_COOKIE_MAX_AGE)
