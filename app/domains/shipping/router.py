@@ -89,7 +89,7 @@ async def provider_tracking(tracking_number: str, provider: str = "shiprocket"):
 
 @router.post("/provider/webhook/{provider}", status_code=200)
 async def provider_webhook(provider: str, payload: dict[str, Any], x_luviio_shipping_secret: str | None = Header(default=None)):
-    expected = os.getenv("LUVII0_SHIPPING_WEBHOOK_SECRET") or os.getenv("LUVII0_SHIPPING_WEBHOOK_SECRET")
+    expected = os.getenv("LUVIIO_SHIPPING_WEBHOOK_SECRET") or os.getenv("LUVIIO_SHIPPING_WEBHOOK_SECRET")
     if not expected or not x_luviio_shipping_secret or x_luviio_shipping_secret != expected:
         raise HTTPException(status_code=401, detail="Invalid shipping webhook signature.")
     data = await _provider_service.handle_webhook(provider, payload)
