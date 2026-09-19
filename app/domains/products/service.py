@@ -23,6 +23,57 @@ logger = logging.getLogger(__name__)
 
 
 class ProductService:
+    _SPEC_FIELDS = (
+        "brand", "manufacturer", "model_number", "gtin", "ean",
+        "part_number", "key_features", "material", "finish", "color",
+        "size", "dimensions", "warranty",
+    )
+
+    @classmethod
+    def _pack_product_specifications(cls, data: Dict[str, Any]) -> None:
+        attrs = dict(data.get("attributes") or {})
+        specs = dict(data.get("specifications") or {})
+        for field in cls._SPEC_FIELDS:
+            if field in data:
+                value = data.pop(field)
+                if value is not None:
+                    attrs[field] = value
+        if specs:
+            attrs["specifications"] = specs
+        data["attributes"] = attrs
+
+    @classmethod
+    def _project_product(cls, product: Dict[str, Any]) -> Dict[str, Any]:
+        if not product:
+            return product
+        result = dict(product)
+        attrs = result.pop("attributes", {}) or {}
+        nested = attrs.get("specifications") if isinstance(attrs.get("specifications"), dict) else {}
+        aliases = {
+            "brand": ("brand", "Brand"),
+            "manufacturer": ("manufacturer", "Manufacturer"),
+            "model_number": ("model_number", "Model Number"),
+            "gtin": ("gtin", "GTIN"),
+            "ean": ("ean", "EAN"),
+            "part_number": ("part_number", "Part Number"),
+            "key_features": ("key_features", "Key Features"),
+            "material": ("material", "Material"),
+            "finish": ("finish", "Finish", "Finish Type"),
+            "color": ("color", "Color"),
+            "size": ("size", "Size"),
+            "dimensions": ("dimensions", "Dimensions"),
+            "warranty": ("warranty", "Warranty"),
+        }
+        for field, keys in aliases.items():
+            value = next((attrs.get(key) for key in keys if attrs.get(key) is not None), None)
+            result[field] = value
+        result["specifications"] = nested
+        for field in ("low_stock_threshold", "seo_title", "seo_description", "seo_keywords",
+                      "canonical_url", "discount_amount", "discount_percentage", "created_at"):
+            result.pop(field, None)
+        result.pop("categories", None)
+        return result
+
     def __init__(self) -> None:
         self.repo = AsyncProductRepository()
 
@@ -77,14 +128,14 @@ class ProductService:
 
     async def get_products(self, page: int, page_size: int, category: str, search: str, min_p: float, max_p: float, in_stock: bool) -> Tuple[List[Dict[str, Any]], int]:
         products, total = await self.repo.get_products(page, page_size, category, search, min_p, max_p, in_stock)
-        return [self._enrich_discount(p) for p in products], total
+        return [self._project_product(self._enrich_discount(p)) for p in products], total
 
     async def get_product(self, slug: str) -> Dict[str, Any]:
         product = await self.repo.get_product_by_slug(slug)
         if not product:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
         product["images"] = product.get("images") or []
-        return self._enrich_discount(product)
+        return self._project_product(self._enrich_discount(product))
 
     async def _prepare_product_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         data.setdefault("is_active", True)
@@ -124,11 +175,7 @@ class ProductService:
         # hardcoded GST slab allowlist in the application.
         await validate_product_tax(data["hsn_code"], data["gst_percentage"])
 
-        data["attributes"] = data.get("attributes") or {}
-        data["seo_title"] = str(data.get("seo_title") or data.get("name", "")).strip()[:70] or None
-        data["seo_description"] = str(data.get("seo_description") or data.get("short_description") or data.get("description") or "").strip()[:170] or None
-        data["seo_keywords"] = str(data.get("seo_keywords") or "").strip()[:500] or None
-        data["canonical_url"] = str(data.get("canonical_url") or "").strip()[:2048] or None
+        self._pack_product_specifications(data)
         return data
 
     async def create_product(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -137,7 +184,7 @@ class ProductService:
         if not res:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
         await self.repo.sync_product_images_table(res["id"], res.get("images") or [])
-        return self._enrich_discount(res)
+        return self._project_product(self._enrich_discount(res))
 
     async def create_product_with_images(self, data: Dict[str, Any], files: List[tuple[bytes, str]]) -> Dict[str, Any]:
         data = await self._prepare_product_data(data)
@@ -160,7 +207,7 @@ class ProductService:
             )
             res["images"] = all_images
             res["image_url"] = all_images[0] if all_images else None
-            return self._enrich_discount(res)
+            return self._project_product(self._enrich_discount(res))
         except Exception as exc:
             logger.error("Product creation image upload failed for %s: %s", res.get("id"), exc, exc_info=True)
             try:
@@ -201,14 +248,22 @@ class ProductService:
             data["gst_percentage"] = gst_percentage
             await validate_product_tax(hsn_code, gst_percentage)
 
-        if "seo_title" in data and data["seo_title"] is not None:
-            data["seo_title"] = str(data["seo_title"]).strip()[:70] or None
-        if "seo_description" in data and data["seo_description"] is not None:
-            data["seo_description"] = str(data["seo_description"]).strip()[:170] or None
-        if "seo_keywords" in data and data["seo_keywords"] is not None:
-            data["seo_keywords"] = str(data["seo_keywords"]).strip()[:500] or None
-        if "canonical_url" in data and data["canonical_url"] is not None:
-            data["canonical_url"] = str(data["canonical_url"]).strip()[:2048] or None
+        if any(field in data for field in self._SPEC_FIELDS) or "specifications" in data:
+            current = await self.repo.get_product_by_id(product_id)
+            if not current:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
+            current_attrs = dict(current.get("attributes") or {})
+            current_specs = current_attrs.get("specifications") if isinstance(current_attrs.get("specifications"), dict) else {}
+            for field in self._SPEC_FIELDS:
+                if field in data:
+                    current_attrs[field] = data.pop(field)
+            if "specifications" in data:
+                incoming_specs = data.pop("specifications") or {}
+                current_specs.update(incoming_specs)
+            if current_specs:
+                current_attrs["specifications"] = current_specs
+            data["attributes"] = current_attrs
+
         if "images" in data:
             imgs = data["images"] or []
             data["images"], data["image_url"] = imgs, imgs[0] if imgs else None
