@@ -62,8 +62,12 @@ class ShippingProviderService:
         order = res.data if res else None
         if not order:
             raise HTTPException(status_code=404, detail="Order not found.")
-        if str(order.get("status") or "").lower() in {"cancelled", "refunded"}:
+        order_status = str(order.get("status") or "").lower()
+        payment_method = str(order.get("payment_method") or "").lower()
+        if order_status in {"cancelled", "refunded"}:
             raise HTTPException(status_code=409, detail="Cancelled/refunded orders cannot be shipped.")
+        if payment_method not in {"cod", "cash_on_delivery"} and order_status not in {"paid", "processing", "shipped"}:
+            raise HTTPException(status_code=409, detail="Online orders must be paid before courier booking.")
 
         items = order.get("order_items") or []
         payment_method = str(order.get("payment_method") or "").upper()
