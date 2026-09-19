@@ -22,6 +22,7 @@ from app.core.monitoring import init_sentry
 from app.core.setup_middlewares import apply_middlewares
 from app.cron.registry import CRON_JOBS
 from app.cron.scheduler import start_cron_jobs, stop_cron_jobs
+from app.domains.auth.http_client import close_auth_http_client, init_auth_http_client
 from app.events.registry import register_all_event_handlers
 from app.infrastructure.health.router import router as health_router
 from app.infrastructure.social_share.router import router as social_share_router
@@ -34,6 +35,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Application startup | service=%s env=%s", settings.APP_NAME, settings.APP_ENV)
+    await init_auth_http_client()
+    logger.info("Auth HTTP client ready | pooled=true keep_alive=true")
     register_all_event_handlers()
     logger.info("Event bus ready | durable_outbox=true")
     scheduler_started = start_cron_jobs()
@@ -46,6 +49,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         yield
     finally:
         stop_cron_jobs()
+        await close_auth_http_client()
         logger.info("Application shutdown | service=%s", settings.APP_NAME)
 
 
