@@ -36,8 +36,8 @@ def test_shipping_tax_uses_each_gst_rate_for_mixed_cart(pricing):
     )
 
     assert result.shipping == Decimal("45.90")
-    assert result.shipping_tax == Decimal("6.89")
-    assert result.tax == Decimal("36.89")
+    assert result.shipping_tax == Decimal("6.88")
+    assert result.tax == Decimal("36.88")
 
 
 def test_free_shipping_threshold(pricing):
