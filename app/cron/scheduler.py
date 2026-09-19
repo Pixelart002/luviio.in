@@ -9,6 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import app.cron.tasks.coupon_tasks  # noqa: F401,E402
 import app.cron.tasks.event_tasks  # noqa: F401,E402
 import app.cron.tasks.order_tasks  # noqa: F401,E402
+import app.cron.tasks.shipping_tasks  # noqa: F401,E402
 from app.cron.registry import CRON_JOBS
 
 logger = logging.getLogger(__name__)
