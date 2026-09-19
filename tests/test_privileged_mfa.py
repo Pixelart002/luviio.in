@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.core.dependencies import require_permission
-from app.core.exceptions import UnauthorizedAction
+from app.core.exceptions import MFARequired, UnauthorizedAction
 
 
 @pytest.mark.asyncio
@@ -18,7 +18,7 @@ async def test_privileged_permission_requires_aal2():
         "app.core.dependencies.get_effective_permissions",
         new=AsyncMock(return_value={"admin.access_console"}),
     ):
-        with pytest.raises(UnauthorizedAction, match="MFA verification required") as exc_info:
+        with pytest.raises(MFARequired, match="MFA verification required") as exc_info:
             await checker(current)
     assert exc_info.value.code == "MFA_REQUIRED"
 
