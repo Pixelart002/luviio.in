@@ -5,6 +5,7 @@ Checkout authorization and invariant validation lives here; payment services
 must not silently manufacture financial/legal values when source data is absent.
 """
 import logging
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
@@ -35,12 +36,22 @@ class PaymentPolicy:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Product pricing data is unavailable. Checkout cannot continue.")
         if hsn_code is None or str(hsn_code).strip() == "":
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Product HSN data is unavailable. Checkout cannot continue.")
+        normalized_hsn = str(hsn_code).strip()
+        if not re.fullmatch(r"\d{4,8}", normalized_hsn):
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Product HSN data is invalid. Checkout cannot continue.")
         if gst_percentage is None:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Product GST data is unavailable. Checkout cannot continue.")
         try:
             price_decimal = Decimal(str(price))
             gst_decimal = Decimal(str(gst_percentage))
-            if not price_decimal.is_finite() or price_decimal < 0 or not gst_decimal.is_finite() or gst_decimal < 0:
+            if (
+                not price_decimal.is_finite()
+                or price_decimal < 0
+                or not gst_decimal.is_finite()
+                or gst_decimal < 0
+                or gst_decimal > 100
+                or gst_decimal != gst_decimal.to_integral_value()
+            ):
                 raise InvalidOperation
         except (InvalidOperation, ValueError, TypeError):
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Product financial data is invalid. Checkout cannot continue.")
