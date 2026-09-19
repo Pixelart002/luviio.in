@@ -13,7 +13,7 @@ from app.integrations.push.webpush_impl import send_push_to_user
 
 logger = logging.getLogger(__name__)
 
-_SHIPPED_PROVIDER_STATUSES = {"pickup_scheduled", "picked_up", "in_transit", "out_for_delivery", "shipped", "dispatched"}
+_SHIPPED_PROVIDER_STATUSES = {"picked_up", "in_transit", "out_for_delivery", "shipped", "dispatched"}
 _DELIVERED_PROVIDER_STATUSES = {"delivered"}
 _TERMINAL_PROVIDER_STATUSES = {"delivered", "cancelled", "canceled", "rto_delivered", "rto"}
 
