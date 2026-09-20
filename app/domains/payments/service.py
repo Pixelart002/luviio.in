@@ -5,6 +5,7 @@ Path: app/domains/payments/service.py
 """
 import asyncio
 import logging
+import os
 import time
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Dict, List, Optional
@@ -19,7 +20,8 @@ from app.constants.payment_messages import PaymentMessages, PaymentRules, Paymen
 from app.core.supabase import get_async_admin_supabase
 from app.domains.inventory.service import InventoryService
 from app.domains.payments.repository import AsyncPaymentRepository
-from app.domains.pricing.service import get_pricing_from_config
+from app.domains.shipping.provider_service import ShippingProviderService
+from app.domains.pricing.service import get_pricing_from_config, _shipping_tax, PriceBreakdown
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderCreatedEvent, OrderFailedEvent, OrderPaidEvent, OrderStatusChangedEvent, get_event_bus
 from app.integrations.payments.registry import get_payment_provider
@@ -162,6 +164,42 @@ class PaymentService:
         except EmailNotValidError:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
 
+        total_weight = Decimal("0")
+        for item in cart_items:
+            product = item.get("products") or {}
+            raw_weight = product.get("weight")
+            if raw_weight is None:
+                continue
+            try:
+                weight = Decimal(str(raw_weight))
+                if str(product.get("weight_unit") or "g").lower() == "g":
+                    weight /= Decimal("1000")
+                if weight > 0:
+                    total_weight += weight * int(item.get("quantity") or 0)
+            except (ArithmeticError, ValueError, TypeError):
+                raise HTTPException(status_code=409, detail="Product shipping weight is invalid.")
+        if total_weight <= 0:
+            try:
+                total_weight = Decimal(str(os.getenv("SHIPROCKET_RATE_DEFAULT_WEIGHT_KG", "0.5")))
+            except (ArithmeticError, ValueError, TypeError):
+                raise HTTPException(status_code=503, detail="Shiprocket default rate weight is misconfigured.")
+        quote = await ShippingProviderService().quote_for_checkout(
+            delivery_postcode=str(addr.get("postal_code") or ""),
+            weight_kg=float(total_weight),
+            cod=False,
+            declared_value=float(subtotal),
+        )
+        provider_shipping = Decimal(str(quote["selected"]["shipping_cost"]))
+        product_tax = breakdown.tax - breakdown.shipping_tax
+        provider_shipping_tax = _shipping_tax(items_to_deduct, provider_shipping, subtotal)
+        breakdown = PriceBreakdown(
+            subtotal=breakdown.subtotal,
+            shipping=provider_shipping,
+            tax=product_tax + provider_shipping_tax,
+            total=breakdown.subtotal + provider_shipping + product_tax + provider_shipping_tax,
+            currency=breakdown.currency,
+            shipping_tax=provider_shipping_tax,
+        )
         amount_paise = self._paise(breakdown.total)
         PaymentPolicy.assert_minimum_amount(amount_paise)
         coupon_id, coupon_code_resolved = None, coupon_code
