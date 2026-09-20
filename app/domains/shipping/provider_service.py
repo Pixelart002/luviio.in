@@ -280,13 +280,36 @@ class ShippingProviderService:
         if not billing["name"] or not billing["address"] or not billing["city"] or not billing["state"] or not billing["pincode"]:
             raise HTTPException(status_code=422, detail="Order billing address is incomplete.")
 
+        # Shiprocket expects an Indian customer phone number; do not send an
+        # invalid 11-digit value and rely on its opaque 400 response.
+        for label, address in (("shipping", shipping), ("billing", billing)):
+            phone = "".join(ch for ch in str(address.get("phone") or "") if ch.isdigit())
+            if len(phone) != 10:
+                raise HTTPException(status_code=422, detail=f"Order {label} phone number must contain exactly 10 digits.")
+            address["phone"] = phone
+
         shipping_first, *shipping_last = (shipping["name"] or "Customer").split()
         billing_first, *billing_last = (billing["name"] or "Customer").split()
 
         # Shiprocket's custom-order contract treats shipping fields as
         # conditional when shipping_is_billing=true. Keep the payload aligned
         # with that contract instead of duplicating the shipping address.
-        shipping_payload = {} if billing_same_as_shipping else {
+        # Shiprocket's public examples include the shipping keys even when
+        # shipping_is_billing=true. Keep those keys present with empty values;
+        # omitting them can trigger the generic "Please add billing/shipping
+        # address first" response on some sandbox accounts.
+        shipping_payload = {
+            "shipping_customer_name": "",
+            "shipping_last_name": "",
+            "shipping_address": "",
+            "shipping_address_2": "",
+            "shipping_city": "",
+            "shipping_pincode": "",
+            "shipping_state": "",
+            "shipping_country": "",
+            "shipping_email": "",
+            "shipping_phone": "",
+        } if billing_same_as_shipping else {
             "shipping_customer_name": shipping_first,
             "shipping_last_name": " ".join(shipping_last),
             "shipping_address": shipping["address"],
