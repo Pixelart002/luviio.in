@@ -53,6 +53,89 @@ class ShippingProviderService:
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Shipping provider unavailable: {provider_key}.") from exc
 
+    async def quote_for_checkout(self, delivery_postcode: str, weight_kg: float, cod: bool, declared_value: float | None = None) -> dict[str, Any]:
+        """Return live Shiprocket courier rates for checkout; never use the store flat-rate setting."""
+        import os
+
+        pickup_postcode = str(os.getenv("SHIPROCKET_PICKUP_POSTCODE") or "").strip()
+        if not pickup_postcode:
+            raise HTTPException(status_code=503, detail="Shiprocket pickup postcode is not configured.")
+        delivery_postcode = str(delivery_postcode or "").strip()
+        if not delivery_postcode.isdigit() or len(delivery_postcode) != 6:
+            raise HTTPException(status_code=422, detail="A valid 6-digit delivery PIN code is required.")
+        try:
+            weight = float(weight_kg)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="Shipment weight is invalid.")
+        if weight <= 0:
+            raise HTTPException(status_code=422, detail="Shipment weight must be greater than zero.")
+
+        try:
+            response = await get_shipping_provider("shiprocket").serviceability(
+                pickup_postcode=pickup_postcode,
+                delivery_postcode=delivery_postcode,
+                weight_kg=weight,
+                cod=cod,
+            )
+        except Exception as exc:
+            logger.error("[SHIPROCKET] Serviceability failed", exc_info=True)
+            raise HTTPException(status_code=502, detail="Shiprocket could not calculate shipping for this address.") from exc
+
+        data = response.get("data") if isinstance(response, dict) else None
+        couriers = data.get("available_courier_companies", []) if isinstance(data, dict) else data
+        if not isinstance(couriers, list) or not couriers:
+            raise HTTPException(status_code=422, detail="No Shiprocket courier is serviceable for this address.")
+
+        quotes = []
+        for courier in couriers:
+            if not isinstance(courier, dict) or courier.get("blocked"):
+                continue
+            raw_rate = courier.get("rate")
+            if isinstance(raw_rate, dict):
+                raw_rate = raw_rate.get("rate") or raw_rate.get("total")
+            try:
+                rate = float(raw_rate)
+            except (TypeError, ValueError):
+                rate = 0.0
+            if rate <= 0:
+                try:
+                    rate = float(courier.get("freight_charge") or 0) + float(courier.get("cod_charges") or 0) + float(courier.get("other_charges") or 0)
+                except (TypeError, ValueError):
+                    rate = 0.0
+            if rate <= 0:
+                continue
+            try:
+                discount = float(courier.get("discount") or 0)
+            except (TypeError, ValueError):
+                discount = 0.0
+            quotes.append({
+                "courier_id": courier.get("courier_company_id") or courier.get("id"),
+                "courier_name": courier.get("courier_name") or "Shiprocket courier",
+                "shipping_cost": round(rate, 2),
+                "discount": round(discount, 2),
+                "freight_charge": float(courier.get("freight_charge") or rate),
+                "cod_charge": float(courier.get("cod_charges") or 0),
+                "other_charges": float(courier.get("other_charges") or 0),
+                "chargeable_weight_kg": courier.get("charge_weight"),
+                "estimated_delivery_days": courier.get("estimated_delivery_days"),
+                "etd": courier.get("etd"),
+                "rating": courier.get("rating"),
+            })
+        if not quotes:
+            raise HTTPException(status_code=422, detail="Shiprocket returned no usable courier rate.")
+        quotes.sort(key=lambda q: (q["shipping_cost"], str(q["courier_name"])))
+        selected = quotes[0]
+        return {
+            "provider": "shiprocket",
+            "pickup_postcode": pickup_postcode,
+            "delivery_postcode": delivery_postcode,
+            "weight_kg": weight,
+            "cod": cod,
+            "declared_value": declared_value,
+            "selected": selected,
+            "couriers": quotes,
+        }
+
     async def create_for_order(self, order_id: str, provider_key: str, pickup_location: str, weight_kg: float, length_cm: float, breadth_cm: float, height_cm: float) -> dict[str, Any]:
         existing = await self.repo.get_by_order(order_id, provider_key)
         if existing:
