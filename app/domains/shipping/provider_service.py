@@ -266,7 +266,11 @@ class ShippingProviderService:
         # prefer the profile brand/legal name and verify it against Shiprocket.
         profile_rows = await sb.table("system_settings").select("key,value").in_(
             "key",
-            [\n                "business_brand_name", "business_legal_name", "business_email",\n                "business_phone", "seller_address_line1", "seller_address_line2",\n                "seller_city", "seller_state", "seller_country", "seller_pincode",\n            ],
+            [
+                "business_brand_name", "business_legal_name", "business_email",
+                "business_phone", "seller_address_line1", "seller_address_line2",
+                "seller_city", "seller_state", "seller_country", "seller_pincode",
+            ],
         ).execute()
         profile = {
             str(row.get("key")): row.get("value")
