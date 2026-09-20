@@ -24,7 +24,7 @@ async def list_methods(active_only: bool = True):
     data = await _service.list_methods(active_only)
     return success_response(data={"items": data}, message=ShippingMessages.METHODS_FETCHED)
 
-@router.post("/rate", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
+@router.post("/rate", status_code=200)
 async def compute_rate(payload: ShippingRateRequest):
     # Legacy flat-rate calculation is no longer a checkout source of truth.
     # Keep this endpoint compatible for existing callers, but route it to the
@@ -67,7 +67,7 @@ async def provider_serviceability(pickup_postcode: str, delivery_postcode: str, 
     data = await _provider_service.serviceability(provider, pickup_postcode, delivery_postcode, weight_kg, cod, declared_value)
     return success_response(data=data, message="Shipping provider serviceability fetched.")
 
-@router.get("/provider/rate", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
+@router.get("/provider/rate", status_code=200)
 async def provider_rate(delivery_postcode: str, weight_kg: float = 0.5, cod: bool = False, declared_value: float | None = None, user_id: str = Depends(get_user_id_strict)):
     # Customer checkout endpoint: authentication only. Do not require the
     # privileged shipping.read/MFA permission used by admin fulfillment APIs.
