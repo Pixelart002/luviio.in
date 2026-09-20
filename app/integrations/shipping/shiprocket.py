@@ -138,10 +138,22 @@ class ShiprocketProvider(ShippingProvider):
         )
 
     async def list_pickup_locations(self) -> list[dict[str, Any]]:
-        """Return pickup locations registered on the authenticated Shiprocket account."""
+        """Return pickup locations registered on the authenticated Shiprocket account.
+
+        Shiprocket returns them under data.shipping_address. Keep parsing strict so
+        an unexpected provider response cannot silently look like "no pickup".
+        """
         response = await self._request("GET", "/settings/company/pickup")
-        data = response.get("data") if isinstance(response, dict) else None
-        locations = data.get("shipping_address", []) if isinstance(data, dict) else []
+        if not isinstance(response, dict):
+            raise RuntimeError("Shiprocket pickup API returned an invalid response.")
+        data = response.get("data")
+        if not isinstance(data, dict):
+            raise RuntimeError("Shiprocket pickup API returned no data object.")
+        locations = data.get("shipping_address")
+        if locations is None:
+            raise RuntimeError("Shiprocket pickup API response is missing shipping_address.")
+        if not isinstance(locations, list):
+            raise RuntimeError("Shiprocket pickup API returned invalid shipping_address.")
         return [item for item in locations if isinstance(item, dict)]
 
     async def create_shipment(self, payload: dict[str, Any]) -> dict[str, Any]:
