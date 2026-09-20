@@ -137,6 +137,13 @@ class ShiprocketProvider(ShippingProvider):
             base_url=self.serviceability_base_url,
         )
 
+    async def list_pickup_locations(self) -> list[dict[str, Any]]:
+        """Return pickup locations registered on the authenticated Shiprocket account."""
+        response = await self._request("GET", "/settings/company/pickup")
+        data = response.get("data") if isinstance(response, dict) else None
+        locations = data.get("shipping_address", []) if isinstance(data, dict) else []
+        return [item for item in locations if isinstance(item, dict)]
+
     async def create_shipment(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request("POST", "/orders/create/adhoc", json=payload)
 
