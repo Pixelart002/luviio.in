@@ -109,7 +109,7 @@ class ShiprocketProvider(ShippingProvider):
             params["declared_value"] = declared_value
         return await self._request(
             "GET",
-            "/courier/serviceability/",
+            "/courier/serviceability",
             params=params,
             base_url=self.serviceability_base_url,
         )
