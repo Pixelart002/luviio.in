@@ -77,6 +77,14 @@ class ProductCreate(BaseModel):
     color: Optional[str] = Field(default=None, max_length=80)
     size: Optional[str] = Field(default=None, max_length=120)
     dimensions: Optional[str] = Field(default=None, max_length=160)
+    volume: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    volume_unit: Optional[Literal["ml", "L"]] = None
+    length: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    width: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    height: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    dimension_unit: Optional[Literal["mm", "cm", "m", "in", "ft"]] = None
+    quantity: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    quantity_unit: Optional[Literal["piece", "pack", "set", "pair", "box"]] = None
     specifications: Dict[str, Any] = Field(default_factory=dict)
     warranty: Optional[str] = Field(default=None, max_length=500)
 
@@ -156,6 +164,14 @@ class ProductUpdate(BaseModel):
     color: Optional[str] = Field(default=None, max_length=80)
     size: Optional[str] = Field(default=None, max_length=120)
     dimensions: Optional[str] = Field(default=None, max_length=160)
+    volume: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    volume_unit: Optional[Literal["ml", "L"]] = None
+    length: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    width: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    height: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    dimension_unit: Optional[Literal["mm", "cm", "m", "in", "ft"]] = None
+    quantity: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    quantity_unit: Optional[Literal["piece", "pack", "set", "pair", "box"]] = None
     specifications: Optional[Dict[str, Any]] = None
     warranty: Optional[str] = Field(default=None, max_length=500)
 
