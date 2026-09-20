@@ -37,12 +37,22 @@ Stable snake_case names are used at the HTTP boundary.
 | compare_price | decimal/null | optional | optional | MRP/compare-at price; must exceed price |
 | stock | integer | default 0 | optional | Available stock; >= 0 |
 | weight | decimal/null | optional | optional | Product weight value; up to 3 decimal places |\n| weight_unit | string/null | optional | optional | Weight scale: `g` or `kg`; required when `weight` is provided |
+| volume | decimal/null | optional | optional | Capacity/volume value; up to 3 decimal places |
+| volume_unit | string/null | optional | optional | `ml` or `L`; required when `volume` is provided |
+| length / width / height | decimal/null | optional | optional | Physical dimensions; up to 3 decimal places |
+| dimension_unit | string/null | optional | optional | `mm`, `cm`, `m`, `in`, or `ft`; required when a dimension is provided |
+| quantity | decimal/null | optional | optional | Selling quantity value |
+| quantity_unit | string/null | optional | optional | `piece`, `pack`, `set`, `pair`, or `box`; required when `quantity` is provided |
 | image_url | string/null | optional | optional | Primary image URL |
 | images | string[] | optional | optional | Up to 10 images; first is primary |
 | hsn_code | string | required | optional | 4-8 numeric digits |
 | gst_percentage | integer | required | optional | 0-100; provider validated |
 | country_of_origin | string/null | optional | optional | Country of origin |
 | is_active | boolean | default true | optional | Catalogue visibility |
+
+## Measurement scales
+
+Physical measurements are separate from free-form specifications. Weight supports `g`/`kg`; volume supports `ml`/`L`; dimensions support `mm`/`cm`/`m`/`in`/`ft`; selling quantity supports `piece`/`pack`/`set`/`pair`/`box`. Measurement values are stored with their selected scale under the existing structured product attributes storage.
 
 ## Hardware specifications
 
