@@ -203,9 +203,60 @@ class ShippingProviderService:
             "couriers": quotes,
         }
 
+    async def _mark_paid_order_processing(self, order_id: str, order: dict[str, Any]) -> None:
+        """Atomically move a paid order into fulfillment processing after shipment creation."""
+        try:
+            res = await (
+                (await get_async_admin_supabase())
+                .table("orders")
+                .update({"status": "processing", "updated_at": _now()})
+                .eq("id", order_id)
+                .eq("status", "paid")
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            if not rows:
+                return
+            updated = rows[0] if isinstance(rows, list) else rows
+            event_order = dict(order)
+            event_order.update(updated)
+            customer_id = str(event_order.get("customer_id") or "")
+            if customer_id:
+                await get_event_bus().publish_durable(
+                    OrderStatusChangedEvent(
+                        order=event_order,
+                        customer_id=customer_id,
+                        old_status="paid",
+                        new_status="processing",
+                    )
+                )
+            logger.info("[SHIPMENT] Order moved paid->processing after shipment creation | order=%s", order_id[:8])
+        except Exception as exc:
+            logger.error(
+                "[SHIPMENT] Failed to move paid order to processing | order=%s",
+                order_id[:8],
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Shipment was created, but the order status could not be updated to processing.",
+            ) from exc
+
     async def create_for_order(self, order_id: str, provider_key: str, pickup_location: str | None = None, weight_kg: float | None = None, length_cm: float | None = None, breadth_cm: float | None = None, height_cm: float | None = None) -> dict[str, Any]:
         existing = await self.repo.get_by_order(order_id, provider_key)
         if existing:
+            sb_existing = await get_async_admin_supabase()
+            res_existing = await (
+                sb_existing.table("orders")
+                .select("*")
+                .eq("id", order_id)
+                .maybe_single()
+                .execute()
+            )
+            existing_order = res_existing.data if res_existing else None
+            if existing_order and str(existing_order.get("status") or "").lower() == "paid":
+                await self._mark_paid_order_processing(order_id, existing_order)
+                existing["order_status"] = "processing"
             return existing
         sb = await get_async_admin_supabase()
         res = await (sb.table("orders").select("*, order_items(*, products(name, sku, hsn_code, weight, weight_unit))").eq("id", order_id).maybe_single().execute())
@@ -595,12 +646,16 @@ class ShippingProviderService:
         external_shipment_id = _find(response, "shipment_id", "shipmentid", "id")
         if external_shipment_id is None:
             raise HTTPException(status_code=502, detail="Courier provider created no shipment identifier.")
-        return await self.repo.create({
+        shipment = await self.repo.create({
             "order_id": order_id, "provider_key": provider_key,
             "external_order_id": str(external_order_id) if external_order_id else None,
             "external_shipment_id": str(external_shipment_id),
             "status": "created", "provider_status": "created", "metadata": response,
         })
+        if order_status == "paid":
+            await self._mark_paid_order_processing(order_id, order)
+            shipment["order_status"] = "processing"
+        return shipment
 
     async def _get_provider_row(self, shipment_id: str) -> dict[str, Any]:
         row = await self.repo.get(shipment_id)
