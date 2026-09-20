@@ -240,7 +240,70 @@ class ShippingProviderService:
         length_cm = float(length_cm) if length_cm and float(length_cm) > 0 else _parcel_dimension("SHIPROCKET_DEFAULT_LENGTH_CM")
         breadth_cm = float(breadth_cm) if breadth_cm and float(breadth_cm) > 0 else _parcel_dimension("SHIPROCKET_DEFAULT_BREADTH_CM")
         height_cm = float(height_cm) if height_cm and float(height_cm) > 0 else _parcel_dimension("SHIPROCKET_DEFAULT_HEIGHT_CM")
+        # Shiprocket custom orders must use an existing seller pickup location.
+        # Resolve the configured name against Shiprocket itself so we never send a
+        # stale/typo pickup name and then receive its generic address error.
         pickup_location = (pickup_location or os.getenv("SHIPROCKET_PICKUP_LOCATION") or "").strip()
+        if provider_key == "shiprocket":
+            provider = get_shipping_provider("shiprocket")
+            try:
+                pickup_locations = await provider.list_pickup_locations()
+            except Exception as exc:
+                logger.error(
+                    "[SHIPROCKET] Could not read pickup locations | env=%s",
+                    getattr(provider, "environment", "unknown"),
+                    exc_info=True,
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail="Shiprocket pickup locations could not be verified.",
+                ) from exc
+
+            usable_locations = [
+                item for item in pickup_locations
+                if str(item.get("pickup_location") or "").strip()
+                and str(item.get("status") or "1").lower() not in {"0", "inactive", "disabled"}
+            ]
+            if not usable_locations:
+                raise HTTPException(
+                    status_code=503,
+                    detail="No active Shiprocket pickup location is configured for this account.",
+                )
+
+            if pickup_location:
+                requested = pickup_location.casefold()
+                matched = next(
+                    (
+                        item for item in usable_locations
+                        if str(item.get("pickup_location") or "").strip().casefold() == requested
+                    ),
+                    None,
+                )
+                if matched is None:
+                    available = ", ".join(
+                        str(item.get("pickup_location")).strip()
+                        for item in usable_locations[:10]
+                    )
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"Configured Shiprocket pickup location was not found in the account. Available: {available}",
+                    )
+                # Use Shiprocket's canonical spelling/casing.
+                pickup_location = str(matched["pickup_location"]).strip()
+            else:
+                # If no env override is supplied, use the account's primary
+                # pickup location. Shiprocket exposes is_primary_location on
+                # the pickup-location resource.
+                primary = next(
+                    (item for item in usable_locations if item.get("is_primary_location") in (1, True, "1", "true")),
+                    usable_locations[0],
+                )
+                pickup_location = str(primary["pickup_location"]).strip()
+                logger.info(
+                    "[SHIPROCKET] Auto-selected primary pickup location | env=%s configured=%s",
+                    getattr(provider, "environment", "unknown"),
+                    bool(os.getenv("SHIPROCKET_PICKUP_LOCATION")),
+                )
         provider_items = [{
             "name": item.get("product_name") or (item.get("products") or {}).get("name") or "Product",
             "sku": item.get("sku") or (item.get("products") or {}).get("sku") or str(item.get("product_id")),
@@ -321,9 +384,18 @@ class ShippingProviderService:
             "shipping_email": shipping["email"],
             "shipping_phone": shipping["phone"],
         }
+        raw_order_date = order.get("created_at")
+        order_date = raw_order_date
+        if raw_order_date:
+            try:
+                order_date = datetime.fromisoformat(str(raw_order_date).replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M")
+            except (TypeError, ValueError):
+                order_date = str(raw_order_date)
+
         payload = {
-            "order_id": order.get("order_number") or str(order_id), "order_date": order.get("created_at"),
-            **({"pickup_location": pickup_location} if pickup_location else {}),
+            "order_id": order.get("order_number") or str(order_id),
+            "order_date": order_date,
+            "pickup_location": pickup_location,
             "billing_customer_name": billing_first, "billing_last_name": " ".join(billing_last),
             "billing_address": billing["address"], "billing_address_2": billing["address_2"],
             "billing_city": billing["city"], "billing_pincode": billing["pincode"], "billing_state": billing["state"],
