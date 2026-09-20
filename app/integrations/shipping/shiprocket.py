@@ -13,12 +13,17 @@ class ShiprocketProvider(ShippingProvider):
 
     def __init__(self) -> None:
         self.environment = os.getenv("SHIPROCKET_ENV", "production").strip().lower()
+        if self.environment == "sandbox":
+            self.environment = "test"
         if self.environment not in {"test", "production"}:
-            raise RuntimeError("SHIPROCKET_ENV must be 'test' or 'production'.")
+            raise RuntimeError("SHIPROCKET_ENV must be 'test' or 'production' (sandbox is accepted as an alias for test).")
 
         if self.environment == "test":
-            self.email = os.getenv("SHIPROCKET_TEST_EMAIL", "").strip()
-            self.password = os.getenv("SHIPROCKET_TEST_PASSWORD", "").strip()
+            # Accept the generic credentials as a compatibility fallback because
+            # some deployments store sandbox/API-user credentials in the generic
+            # SHIPROCKET_EMAIL/PASSWORD variables.
+            self.email = (os.getenv("SHIPROCKET_TEST_EMAIL") or os.getenv("SHIPROCKET_EMAIL") or "").strip()
+            self.password = (os.getenv("SHIPROCKET_TEST_PASSWORD") or os.getenv("SHIPROCKET_PASSWORD") or "").strip()
         else:
             self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
             self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
@@ -43,8 +48,20 @@ class ShiprocketProvider(ShippingProvider):
             if self._token and time.time() < self._token_expires_at:
                 return self._token
             async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
-                response = await client.post(f"{self.base_url}/auth/login", json={"email": self.email, "password": self.password})
-                response.raise_for_status()
+                response = await client.post(
+                    f"{self.base_url}/auth/login",
+                    json={"email": self.email, "password": self.password},
+                )
+                if response.is_error:
+                    # Safe diagnostic only: never log credentials or tokens.
+                    import logging
+                    logging.getLogger(__name__).error(
+                        "[SHIPROCKET] Authentication failed | env=%s status=%s body=%s",
+                        self.environment,
+                        response.status_code,
+                        response.text[:500].replace("\n", " "),
+                    )
+                    response.raise_for_status()
                 data = response.json()
             token = str(data.get("token") or "").strip()
             if not token:
