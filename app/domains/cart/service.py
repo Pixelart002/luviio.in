@@ -67,11 +67,28 @@ class CartService:
                 raise HTTPException(status_code=500, detail="Cart contains a product without GST configuration.")
             enriched.append({"id": str(row["id"]), "product_id": str(row["product_id"]), "name": str(prod.get("name", "")), "slug": str(prod.get("slug", "")), "image_url": prod.get("image_url"), "hsn_code": hsn_code, "gst_percentage": int(gst_raw), "quantity": qty, "unit_price": float(snapshot), "current_unit_price": float(current_price), "compare_price": compare_price, "weight": prod.get("weight"), "weight_unit": prod.get("weight_unit"), "price_snapshot": float(snapshot), "line_total": float(line_total), "stock": int(prod.get("stock", 0)), "in_stock": in_stock, "is_active": prod.get("is_active", True), "price_changed": price_changed, "added_at": str(row["added_at"])})
         breakdown = pricing_engine.calculate(items=enriched)
-        pricing_dict = breakdown.as_dict()
-        amount_to_free = 0.0
-        if pricing_engine.shipping_enabled and subtotal < pricing_engine.shipping_threshold:
-            amount_to_free = round(max(0.0, float(pricing_engine.shipping_threshold) - float(subtotal)), 2)
-        return {"items": enriched, "item_count": total_item_count, **pricing_dict, "free_shipping_eligible": breakdown.shipping == Decimal("0") and subtotal > Decimal("0"), "amount_to_free_shipping": amount_to_free, "free_shipping_threshold": float(pricing_engine.shipping_threshold), "has_unavailable_items": has_unavailable, "currency": breakdown.currency}
+        # Never expose the legacy flat-rate shipping in the cart. Shiprocket
+        # needs the delivery PIN and payment method, so live shipping is resolved
+        # only after the customer enters/selects an address at checkout.
+        product_tax = breakdown.tax - breakdown.shipping_tax
+        pricing_dict = {
+            **breakdown.as_dict(),
+            "shipping_cost": 0.0,
+            "shipping_tax_amount": 0.0,
+            "tax_amount": float(product_tax),
+            "total_amount": float(subtotal + product_tax),
+        }
+        return {
+            "items": enriched,
+            "item_count": total_item_count,
+            **pricing_dict,
+            "free_shipping_eligible": False,
+            "amount_to_free_shipping": 0.0,
+            "free_shipping_threshold": 0.0,
+            "shipping_calculated_at_checkout": True,
+            "has_unavailable_items": has_unavailable,
+            "currency": breakdown.currency,
+        }
 
     async def get_cart(self, user_id: str) -> Dict[str, Any]:
         cart = await self.repo.get_or_create_cart(user_id)
