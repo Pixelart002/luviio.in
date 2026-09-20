@@ -6,6 +6,7 @@ frontend is insulated from provider response-shape changes.
 import logging
 from typing import Any
 from urllib.parse import urlencode
+from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -107,11 +108,18 @@ async def _ola_get(path: str, params: dict[str, Any]) -> dict[str, Any]:
 
     query = {**params, "api_key": settings.OLA_MAPS_API_KEY}
     url = f"{OLA_BASE_URL}{path}?{urlencode(query)}"
+    # Ola Maps examples use a request identifier for API calls. Keep it
+    # per-request and never log the API key.
+    headers = {"X-Request-Id": str(uuid4())}
     async with httpx.AsyncClient(timeout=httpx.Timeout(6.0, connect=3.0)) as client:
-        response = await client.get(url)
+        response = await client.get(url, headers=headers)
 
     if response.status_code == 403:
-        logger.error("Ola Maps authentication rejected | endpoint=%s status=403", path)
+        logger.error(
+            "Ola Maps authentication rejected | endpoint=%s status=403 provider_body=%s",
+            path,
+            response.text[:300].replace("\n", " "),
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Location provider authentication is unavailable",
