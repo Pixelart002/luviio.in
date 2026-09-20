@@ -44,11 +44,11 @@ class ShippingProviderService:
     def __init__(self) -> None:
         self.repo = ShippingProviderRepository()
 
-    async def serviceability(self, provider_key: str, pickup_postcode: str, delivery_postcode: str, weight_kg: float, cod: bool) -> dict[str, Any]:
+    async def serviceability(self, provider_key: str, pickup_postcode: str, delivery_postcode: str, weight_kg: float, cod: bool, declared_value: float | None = None) -> dict[str, Any]:
         try:
             return await get_shipping_provider(provider_key).serviceability(
                 pickup_postcode=pickup_postcode, delivery_postcode=delivery_postcode,
-                weight_kg=weight_kg, cod=cod,
+                weight_kg=weight_kg, cod=cod, declared_value=declared_value,
             )
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Shipping provider unavailable: {provider_key}.") from exc
@@ -76,6 +76,7 @@ class ShippingProviderService:
                 delivery_postcode=delivery_postcode,
                 weight_kg=weight,
                 cod=cod,
+                declared_value=declared_value,
             )
         except Exception as exc:
             logger.error("[SHIPROCKET] Serviceability failed", exc_info=True)
