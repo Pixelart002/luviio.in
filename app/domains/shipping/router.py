@@ -68,7 +68,9 @@ async def provider_serviceability(pickup_postcode: str, delivery_postcode: str, 
     return success_response(data=data, message="Shipping provider serviceability fetched.")
 
 @router.get("/provider/rate", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
-async def provider_rate(delivery_postcode: str, weight_kg: float = 0.5, cod: bool = False, declared_value: float | None = None):
+async def provider_rate(delivery_postcode: str, weight_kg: float = 0.5, cod: bool = False, declared_value: float | None = None, user_id: str = Depends(get_user_id_strict)):
+    # Customer checkout endpoint: authentication only. Do not require the
+    # privileged shipping.read/MFA permission used by admin fulfillment APIs.
     data = await _provider_service.quote_for_checkout(
         delivery_postcode=delivery_postcode,
         weight_kg=weight_kg,
