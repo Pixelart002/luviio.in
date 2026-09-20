@@ -4,6 +4,8 @@ import asyncio, os, time
 from typing import Any
 import httpx
 from app.integrations.shipping.base import ShippingProvider
+from app.core.config import settings
+import logging
 
 class ShiprocketProvider(ShippingProvider):
     key = "shiprocket"
@@ -20,6 +22,15 @@ class ShiprocketProvider(ShippingProvider):
             self.environment = "sandbox"
         if self.environment not in {"sandbox", "production"}:
             raise RuntimeError("SHIPROCKET_ENV must be 'sandbox' (or legacy 'test') or 'production'.")
+        # Never allow a sandbox Shiprocket account to be used by the production
+        # application accidentally. Development/test environments may opt into
+        # sandbox explicitly; production requires production credentials/hosts.
+        allow_sandbox = os.getenv("SHIPROCKET_ALLOW_SANDBOX", "false").strip().lower() == "true"
+        if settings.APP_ENV == "production" and self.environment == "sandbox" and not allow_sandbox:
+            raise RuntimeError(
+                "Shiprocket sandbox is disabled in production. Set SHIPROCKET_ENV=production "
+                "and use production API credentials/hosts."
+            )
 
         if self.environment == "sandbox":
             self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
@@ -96,7 +107,18 @@ class ShiprocketProvider(ShippingProvider):
                 token = await self._token_value()
                 headers["Authorization"] = f"Bearer {token}"
                 response = await client.request(method, f"{request_base_url}{path}", headers=headers, **kwargs)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError:
+                logging.getLogger(__name__).error(
+                    "[SHIPROCKET] API request failed | env=%s status=%s method=%s path=%s body=%s",
+                    self.environment,
+                    response.status_code,
+                    method,
+                    path,
+                    response.text[:2000].replace("\n", " "),
+                )
+                raise
             data = response.json()
             return data if isinstance(data, dict) else {"data": data}
 
