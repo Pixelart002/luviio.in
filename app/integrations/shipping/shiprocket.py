@@ -19,11 +19,8 @@ class ShiprocketProvider(ShippingProvider):
             raise RuntimeError("SHIPROCKET_ENV must be 'test' or 'production' (sandbox is accepted as an alias for test).")
 
         if self.environment == "test":
-            # Accept the generic credentials as a compatibility fallback because
-            # some deployments store sandbox/API-user credentials in the generic
-            # SHIPROCKET_EMAIL/PASSWORD variables.
-            self.email = (os.getenv("SHIPROCKET_TEST_EMAIL") or os.getenv("SHIPROCKET_EMAIL") or "").strip()
-            self.password = (os.getenv("SHIPROCKET_TEST_PASSWORD") or os.getenv("SHIPROCKET_PASSWORD") or "").strip()
+            self.email = os.getenv("SHIPROCKET_TEST_EMAIL", "").strip()
+            self.password = os.getenv("SHIPROCKET_TEST_PASSWORD", "").strip()
         else:
             self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
             self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
