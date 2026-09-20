@@ -43,6 +43,14 @@ class ProductSpecifications(BaseModel):
     color: Optional[str] = Field(default=None, max_length=80)
     size: Optional[str] = Field(default=None, max_length=120)
     dimensions: Optional[str] = Field(default=None, max_length=160)
+    volume: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    volume_unit: Optional[Literal["ml", "L"]] = None
+    length: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    width: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    height: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    dimension_unit: Optional[Literal["mm", "cm", "m", "in", "ft"]] = None
+    quantity: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    quantity_unit: Optional[Literal["piece", "pack", "set", "pair", "box"]] = None
     warranty: Optional[str] = Field(default=None, max_length=500)
 
 
@@ -109,6 +117,16 @@ class ProductCreate(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def validate_measurement_units(self):
+        if self.volume is not None and self.volume_unit is None:
+            raise ValueError("volume_unit is required when volume is provided.")
+        if any(v is not None for v in (self.length, self.width, self.height)) and self.dimension_unit is None:
+            raise ValueError("dimension_unit is required when dimensions are provided.")
+        if self.quantity is not None and self.quantity_unit is None:
+            raise ValueError("quantity_unit is required when quantity is provided.")
+        return self
+
+    @model_validator(mode="after")
     def compare_must_exceed_price(self):
         if self.compare_price and self.compare_price <= self.price:
             raise ValueError(ProductSecurityMessages.INVALID_COMPARE_PRICE)
@@ -172,6 +190,16 @@ class ProductUpdate(BaseModel):
             return None
         value = value.strip()
         return value or None
+
+    @model_validator(mode="after")
+    def validate_measurement_units(self):
+        if self.volume is not None and self.volume_unit is None:
+            raise ValueError("volume_unit is required when volume is provided.")
+        if any(v is not None for v in (self.length, self.width, self.height)) and self.dimension_unit is None:
+            raise ValueError("dimension_unit is required when dimensions are provided.")
+        if self.quantity is not None and self.quantity_unit is None:
+            raise ValueError("quantity_unit is required when quantity is provided.")
+        return self
 
     @model_validator(mode="after")
     def compare_must_exceed_price(self):
