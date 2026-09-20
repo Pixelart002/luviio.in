@@ -19,8 +19,8 @@ class ShiprocketProvider(ShippingProvider):
             raise RuntimeError("SHIPROCKET_ENV must be 'test' or 'production' (sandbox is accepted as an alias for test).")
 
         if self.environment == "test":
-            self.email = os.getenv("SHIPROCKET_TEST_EMAIL", "").strip()
-            self.password = os.getenv("SHIPROCKET_TEST_PASSWORD", "").strip()
+            self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
+            self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
         else:
             self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
             self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
@@ -64,7 +64,7 @@ class ShiprocketProvider(ShippingProvider):
             if not token:
                 raise RuntimeError("Shiprocket authentication returned no token.")
             self._token = token
-            self._token_expires_at = time.time() + (9 * 24 * 60 * 60)
+            self._token_expires_at = time.time() + (240 * 60 * 60) - 300
             return token
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
