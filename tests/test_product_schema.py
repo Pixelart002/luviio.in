@@ -71,7 +71,7 @@ def test_product_create_accepts_hardware_catalog_fields():
             warranty="1 year",
             compare_price=150,
             stock=10,
-            weight_grams=250,
+            weight=250, weight_unit="g",
             image_url="https://example.com/product.webp",
             images=["https://example.com/product.webp"],
             country_of_origin="India",
@@ -82,3 +82,29 @@ def test_product_create_accepts_hardware_catalog_fields():
     assert payload.gst_percentage == 18
     assert payload.specifications["outlet_size"] == "110 mm"
     assert payload.material == "Stainless Steel"
+
+
+
+def test_product_weight_accepts_kg_scale():
+    product = ProductCreate(
+        name="Weighted hardware",
+        price=100,
+        weight=1.25,
+        weight_unit="kg",
+        hsn_code="73249000",
+        gst_percentage=18,
+    )
+    assert product.weight == 1.25
+    assert product.weight_unit == "kg"
+
+
+def test_product_weight_rejects_invalid_unit():
+    with pytest.raises(ValidationError):
+        ProductCreate(
+            name="Weighted hardware",
+            price=100,
+            weight=250,
+            weight_unit="lb",
+            hsn_code="73249000",
+            gst_percentage=18,
+        )
