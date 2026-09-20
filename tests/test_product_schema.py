@@ -108,3 +108,52 @@ def test_product_weight_rejects_invalid_unit():
             hsn_code="73249000",
             gst_percentage=18,
         )
+
+
+
+def test_product_measurement_scales_accept_volume_dimensions_and_quantity():
+    product = ProductCreate(
+        name="Measurement hardware",
+        price=100,
+        volume=1.5,
+        volume_unit="L",
+        length=150,
+        width=100,
+        height=50,
+        dimension_unit="mm",
+        quantity=2,
+        quantity_unit="piece",
+        hsn_code="73249000",
+        gst_percentage=18,
+    )
+    assert product.volume == 1.5
+    assert product.volume_unit == "L"
+    assert product.dimension_unit == "mm"
+    assert product.quantity_unit == "piece"
+
+
+def test_product_measurement_requires_units():
+    with pytest.raises(ValidationError):
+        ProductCreate(
+            name="Missing volume unit",
+            price=100,
+            volume=1,
+            hsn_code="73249000",
+            gst_percentage=18,
+        )
+    with pytest.raises(ValidationError):
+        ProductCreate(
+            name="Missing dimension unit",
+            price=100,
+            length=100,
+            hsn_code="73249000",
+            gst_percentage=18,
+        )
+    with pytest.raises(ValidationError):
+        ProductCreate(
+            name="Missing quantity unit",
+            price=100,
+            quantity=2,
+            hsn_code="73249000",
+            gst_percentage=18,
+        )
