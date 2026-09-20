@@ -42,8 +42,8 @@ async def activate_method(method_id: str):
     return success_response(data=await _service.activate(method_id), message="Shipping method activated successfully.")
 
 @router.get("/provider/serviceability", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
-async def provider_serviceability(pickup_postcode: str, delivery_postcode: str, weight_kg: float = 0.5, cod: bool = False, provider: str = "shiprocket"):
-    data = await _provider_service.serviceability(provider, pickup_postcode, delivery_postcode, weight_kg, cod)
+async def provider_serviceability(pickup_postcode: str, delivery_postcode: str, weight_kg: float = 0.5, cod: bool = False, declared_value: float | None = None, provider: str = "shiprocket"):
+    data = await _provider_service.serviceability(provider, pickup_postcode, delivery_postcode, weight_kg, cod, declared_value)
     return success_response(data=data, message="Shipping provider serviceability fetched.")
 
 @router.get("/provider/rate", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
