@@ -26,7 +26,7 @@ class ProductService:
     _SPEC_FIELDS = (
         "brand", "manufacturer", "model_number", "gtin", "ean",
         "part_number", "key_features", "material", "finish", "color",
-        "size", "dimensions", "warranty",
+        "size", "dimensions", "volume", "volume_unit", "length", "width", "height", "dimension_unit", "quantity", "quantity_unit", "warranty",
     )
 
     @classmethod
@@ -38,6 +38,14 @@ class ProductService:
                 value = data.pop(field)
                 if value is not None:
                     attrs[field] = value
+        measurements = {}
+        for field in ("volume", "volume_unit", "length", "width", "height", "dimension_unit", "quantity", "quantity_unit"):
+            if field in data:
+                value = data.pop(field)
+                if value is not None:
+                    measurements[field] = value
+        if measurements:
+            specs["measurements"] = measurements
         if specs:
             attrs["specifications"] = specs
         data["attributes"] = attrs
@@ -67,6 +75,12 @@ class ProductService:
         for field, keys in aliases.items():
             value = next((attrs.get(key) for key in keys if attrs.get(key) is not None), None)
             result[field] = value
+        measurements = nested.get("measurements") if isinstance(nested.get("measurements"), dict) else attrs.get("measurements")
+        if not isinstance(measurements, dict):
+            measurements = {}
+        for field in ("volume", "volume_unit", "length", "width", "height", "dimension_unit", "quantity", "quantity_unit"):
+            result[field] = measurements.get(field)
+        result["measurements"] = measurements
         result["specifications"] = nested
         for field in ("low_stock_threshold", "seo_title", "seo_description", "seo_keywords",
                       "canonical_url", "discount_amount", "discount_percentage", "created_at"):
