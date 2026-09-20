@@ -36,7 +36,7 @@ Stable snake_case names are used at the HTTP boundary.
 | price | decimal | required | optional | Selling price; > 0 |
 | compare_price | decimal/null | optional | optional | MRP/compare-at price; must exceed price |
 | stock | integer | default 0 | optional | Available stock; >= 0 |
-| weight_grams | integer/null | optional | optional | Product weight |
+| weight / weight_unit | integer/null | optional | optional | Product weight value + unit (`g` or `kg`) |
 | image_url | string/null | optional | optional | Primary image URL |
 | images | string[] | optional | optional | Up to 10 images; first is primary |
 | hsn_code | string | required | optional | 4-8 numeric digits |
