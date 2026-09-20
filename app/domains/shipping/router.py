@@ -84,8 +84,20 @@ async def list_provider_shipments(status_filter: str | None = None, limit: int =
     return success_response(data={"items": await _provider_repo.list_recent(status_filter, limit)}, message="Fulfillment shipments fetched.")
 
 @router.post("/provider/orders/{order_id}", status_code=201, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
-async def create_provider_shipment(order_id: str, pickup_location: str, weight_kg: float, length_cm: float, breadth_cm: float, height_cm: float, provider: str = "shiprocket"):
-    data = await _provider_service.create_for_order(order_id, provider, pickup_location, weight_kg, length_cm, breadth_cm, height_cm)
+async def create_provider_shipment(
+    order_id: str,
+    pickup_location: str | None = None,
+    weight_kg: float | None = None,
+    length_cm: float | None = None,
+    breadth_cm: float | None = None,
+    height_cm: float | None = None,
+    provider: str = "shiprocket",
+):
+    # All values are optional because the backend now derives shipment data
+    # from the saved order/product records and Shiprocket defaults/config.
+    data = await _provider_service.create_for_order(
+        order_id, provider, pickup_location, weight_kg, length_cm, breadth_cm, height_cm
+    )
     return success_response(data=data, message="Shipment created with provider.")
 
 @router.post("/provider/shipments/{shipment_id}/awb", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
