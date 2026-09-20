@@ -184,12 +184,12 @@ class ShippingProviderService:
             "couriers": quotes,
         }
 
-    async def create_for_order(self, order_id: str, provider_key: str, pickup_location: str, weight_kg: float, length_cm: float, breadth_cm: float, height_cm: float) -> dict[str, Any]:
+    async def create_for_order(self, order_id: str, provider_key: str, pickup_location: str | None = None, weight_kg: float | None = None, length_cm: float | None = None, breadth_cm: float | None = None, height_cm: float | None = None) -> dict[str, Any]:
         existing = await self.repo.get_by_order(order_id, provider_key)
         if existing:
             return existing
         sb = await get_async_admin_supabase()
-        res = await (sb.table("orders").select("*, order_items(*, products(name, sku, hsn_code))").eq("id", order_id).maybe_single().execute())
+        res = await (sb.table("orders").select("*, order_items(*, products(name, sku, hsn_code, weight, weight_unit))").eq("id", order_id).maybe_single().execute())
         order = res.data if res else None
         if not order:
             raise HTTPException(status_code=404, detail="Order not found.")
@@ -202,6 +202,45 @@ class ShippingProviderService:
 
         items = order.get("order_items") or []
         payment_method = str(order.get("payment_method") or "").upper()
+
+        # All shipment inputs are order-driven where possible. Do not make the
+        # fulfillment operator re-enter values that already exist on the order.
+        # Shiprocket requires weight/dimensions; weight is calculated from the
+        # product snapshots and dimensions fall back to configured parcel defaults.
+        if weight_kg is None or float(weight_kg) <= 0:
+            from decimal import Decimal
+            total_weight = Decimal("0")
+            for item in items:
+                product = item.get("products") or {}
+                raw_weight = product.get("weight")
+                if raw_weight in (None, ""):
+                    continue
+                try:
+                    item_weight = Decimal(str(raw_weight))
+                    if str(product.get("weight_unit") or "g").lower() == "g":
+                        item_weight /= Decimal("1000")
+                    total_weight += item_weight * int(item.get("quantity") or 0)
+                except (ArithmeticError, TypeError, ValueError):
+                    continue
+            if total_weight > 0:
+                weight_kg = float(total_weight)
+            else:
+                try:
+                    weight_kg = float(os.getenv("SHIPROCKET_RATE_DEFAULT_WEIGHT_KG", "0.5"))
+                except (TypeError, ValueError):
+                    weight_kg = 0.5
+
+        def _parcel_dimension(name: str) -> float:
+            try:
+                value = float(os.getenv(name, "10"))
+                return value if value > 0 else 10.0
+            except (TypeError, ValueError):
+                return 10.0
+
+        length_cm = float(length_cm) if length_cm and float(length_cm) > 0 else _parcel_dimension("SHIPROCKET_DEFAULT_LENGTH_CM")
+        breadth_cm = float(breadth_cm) if breadth_cm and float(breadth_cm) > 0 else _parcel_dimension("SHIPROCKET_DEFAULT_BREADTH_CM")
+        height_cm = float(height_cm) if height_cm and float(height_cm) > 0 else _parcel_dimension("SHIPROCKET_DEFAULT_HEIGHT_CM")
+        pickup_location = (pickup_location or os.getenv("SHIPROCKET_PICKUP_LOCATION") or "").strip()
         provider_items = [{
             "name": item.get("product_name") or (item.get("products") or {}).get("name") or "Product",
             "sku": item.get("sku") or (item.get("products") or {}).get("sku") or str(item.get("product_id")),
@@ -245,7 +284,7 @@ class ShippingProviderService:
         billing_first, *billing_last = (billing["name"] or "Customer").split()
         payload = {
             "order_id": order.get("order_number") or str(order_id), "order_date": order.get("created_at"),
-            "pickup_location": pickup_location,
+            **({"pickup_location": pickup_location} if pickup_location else {}),
             "billing_customer_name": billing_first, "billing_last_name": " ".join(billing_last),
             "billing_address": billing["address"], "billing_address_2": billing["address_2"],
             "billing_city": billing["city"], "billing_pincode": billing["pincode"], "billing_state": billing["state"],
