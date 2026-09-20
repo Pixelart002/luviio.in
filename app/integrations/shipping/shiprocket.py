@@ -70,11 +70,14 @@ class ShiprocketProvider(ShippingProvider):
             data = response.json()
             return data if isinstance(data, dict) else {"data": data}
 
-    async def serviceability(self, *, pickup_postcode: str, delivery_postcode: str, weight_kg: float, cod: bool) -> dict[str, Any]:
-        return await self._request("GET", "/courier/serviceability/", params={
+    async def serviceability(self, *, pickup_postcode: str, delivery_postcode: str, weight_kg: float, cod: bool, declared_value: float | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {
             "pickup_postcode": pickup_postcode, "delivery_postcode": delivery_postcode,
             "weight": weight_kg, "cod": 1 if cod else 0,
-        })
+        }
+        if declared_value is not None:
+            params["declared_value"] = declared_value
+        return await self._request("GET", "/courier/serviceability/", params=params)
 
     async def create_shipment(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request("POST", "/orders/create/adhoc", json=payload)
