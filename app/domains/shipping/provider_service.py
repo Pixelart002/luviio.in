@@ -57,9 +57,27 @@ class ShippingProviderService:
         """Return live Shiprocket courier rates for checkout; never use the store flat-rate setting."""
         import os
 
-        pickup_postcode = str(os.getenv("SHIPROCKET_PICKUP_POSTCODE") or "").strip()
+        # Business Profile is the seller SSOT. Shiprocket pickup postcode must
+        # come from the configured seller/business profile, not a duplicate env value.
+        sb = await get_async_admin_supabase()
+        profile_rows = await sb.table("system_settings").select("key,value").in_(
+            "key",
+            ["seller_pincode", "business_brand_name", "business_legal_name"],
+        ).execute()
+        profile = {
+            str(row.get("key")): row.get("value")
+            for row in (profile_rows.data or [])
+            if isinstance(row, dict)
+        }
+        def _setting_text(key: str) -> str:
+            value = profile.get(key)
+            return value.strip() if isinstance(value, str) else str(value or "").strip()
+
+        pickup_postcode = _setting_text("seller_pincode")
         if not pickup_postcode:
-            raise HTTPException(status_code=503, detail="Shiprocket pickup postcode is not configured.")
+            raise HTTPException(status_code=503, detail="Business Profile seller PIN code is not configured.")
+        if not pickup_postcode.isdigit() or len(pickup_postcode) != 6:
+            raise HTTPException(status_code=503, detail="Business Profile seller PIN code is invalid.")
         delivery_postcode = str(delivery_postcode or "").strip()
         if not delivery_postcode.isdigit() or len(delivery_postcode) != 6:
             raise HTTPException(status_code=422, detail="A valid 6-digit delivery PIN code is required.")
@@ -243,7 +261,24 @@ class ShippingProviderService:
         # Shiprocket custom orders must use an existing seller pickup location.
         # Resolve the configured name against Shiprocket itself so we never send a
         # stale/typo pickup name and then receive its generic address error.
-        pickup_location = (pickup_location or os.getenv("SHIPROCKET_PICKUP_LOCATION") or "").strip()
+        # Business Profile is the seller identity SSOT. An explicit argument is
+        # still allowed for an already-registered Shiprocket pickup name; otherwise
+        # prefer the profile brand/legal name and verify it against Shiprocket.
+        profile_rows = await sb.table("system_settings").select("key,value").in_(
+            "key",
+            ["business_brand_name", "business_legal_name", "seller_pincode"],
+        ).execute()
+        profile = {
+            str(row.get("key")): row.get("value")
+            for row in (profile_rows.data or [])
+            if isinstance(row, dict)
+        }
+        def _profile_text(key: str) -> str:
+            value = profile.get(key)
+            return value.strip() if isinstance(value, str) else str(value or "").strip()
+
+        profile_pickup_name = _profile_text("business_brand_name") or _profile_text("business_legal_name")
+        pickup_location = (pickup_location or profile_pickup_name).strip()
         if provider_key == "shiprocket":
             provider = get_shipping_provider("shiprocket")
             try:
