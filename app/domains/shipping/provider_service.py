@@ -282,18 +282,32 @@ class ShippingProviderService:
 
         shipping_first, *shipping_last = (shipping["name"] or "Customer").split()
         billing_first, *billing_last = (billing["name"] or "Customer").split()
+
+        # Shiprocket's custom-order contract treats shipping fields as
+        # conditional when shipping_is_billing=true. Keep the payload aligned
+        # with that contract instead of duplicating the shipping address.
+        shipping_payload = {} if billing_same_as_shipping else {
+            "shipping_customer_name": shipping_first,
+            "shipping_last_name": " ".join(shipping_last),
+            "shipping_address": shipping["address"],
+            "shipping_address_2": shipping["address_2"],
+            "shipping_city": shipping["city"],
+            "shipping_pincode": shipping["pincode"],
+            "shipping_state": shipping["state"],
+            "shipping_country": shipping["country"],
+            "shipping_email": shipping["email"],
+            "shipping_phone": shipping["phone"],
+        }
         payload = {
             "order_id": order.get("order_number") or str(order_id), "order_date": order.get("created_at"),
             **({"pickup_location": pickup_location} if pickup_location else {}),
             "billing_customer_name": billing_first, "billing_last_name": " ".join(billing_last),
             "billing_address": billing["address"], "billing_address_2": billing["address_2"],
             "billing_city": billing["city"], "billing_pincode": billing["pincode"], "billing_state": billing["state"],
-            "billing_country": billing["country"], "billing_email": billing["email"], "billing_phone": billing["phone"],
+            "billing_country": "India" if str(billing["country"]).upper() in {"IN", "IND"} else billing["country"],
+            "billing_email": billing["email"], "billing_phone": billing["phone"],
             "shipping_is_billing": bool(billing_same_as_shipping),
-            "shipping_customer_name": shipping_first, "shipping_last_name": " ".join(shipping_last),
-            "shipping_address": shipping["address"], "shipping_address_2": shipping["address_2"],
-            "shipping_city": shipping["city"], "shipping_pincode": shipping["pincode"], "shipping_state": shipping["state"],
-            "shipping_country": shipping["country"], "shipping_email": shipping["email"], "shipping_phone": shipping["phone"],
+            **shipping_payload,
             "order_items": provider_items, "payment_method": "COD" if payment_method == "COD" else "Prepaid",
             "shipping_charges": float(order.get("shipping_cost") or 0),
             "giftwrap_charges": 0,
