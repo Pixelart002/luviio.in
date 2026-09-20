@@ -113,7 +113,16 @@ class OrderService:
             items, total = await self.repo.get_all_orders(status_filter, page, page_size)
         except OrderRepositoryError as exc:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-        return [self._sanitize(o) for o in items], total
+        sanitized = []
+        for order in items:
+            row = self._sanitize(order)
+            # Admin-only fulfillment workflows need the internal order UUID to
+            # call provider shipment endpoints. Customer-facing order routes
+            # continue to remove internal IDs.
+            if order.get("id"):
+                row["id"] = order["id"]
+            sanitized.append(row)
+        return sanitized, total
 
     async def admin_update_order(self, order_identifier: str, payload_data: Dict[str, Any]) -> Dict[str, Any]:
         current_order = await self.repo.get_order_by_id(order_identifier)
