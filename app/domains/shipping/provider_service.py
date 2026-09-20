@@ -183,7 +183,12 @@ class ShippingProviderService:
             "shipping_city": shipping["city"], "shipping_pincode": shipping["pincode"], "shipping_state": shipping["state"],
             "shipping_country": shipping["country"], "shipping_email": shipping["email"], "shipping_phone": shipping["phone"],
             "order_items": provider_items, "payment_method": "COD" if payment_method == "COD" else "Prepaid",
-            "sub_total": float(order.get("subtotal") or 0), "length": length_cm, "breadth": breadth_cm,
+            "shipping_charges": float(order.get("shipping_cost") or 0),
+            "giftwrap_charges": 0,
+            "transaction_charges": 0,
+            "total_discount": float(order.get("discount_amount") or 0),
+            "sub_total": max(float(order.get("subtotal") or 0) - float(order.get("discount_amount") or 0), 0),
+            "length": length_cm, "breadth": breadth_cm,
             "height": height_cm, "weight": weight_kg,
         }
         try:
