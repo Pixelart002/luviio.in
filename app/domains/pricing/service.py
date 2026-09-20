@@ -9,8 +9,6 @@ from typing import Any, List
 
 from fastapi import HTTPException, status
 
-from app.domains.shipping.calculator import calculate_settings_shipping
-
 logger = logging.getLogger(__name__)
 
 
@@ -169,13 +167,10 @@ class StandardPricing(PricingStrategy):
             product_tax += item_sub * (gst_percentage / Decimal("100"))
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
-        shipping = calculate_settings_shipping(
-            subtotal=calc_subtotal,
-            shipping_enabled=self.shipping_enabled,
-            threshold=self._threshold,
-            flat_rate=self._flat,
-        )
-        shipping_tax = _shipping_tax(items, shipping, calc_subtotal)
+        # Shipping is resolved only after address/payment context is available.
+        # Shiprocket is the sole checkout shipping source of truth.
+        shipping = Decimal("0.00")
+        shipping_tax = Decimal("0.00")
         total_tax = product_tax + shipping_tax
         return PriceBreakdown(
             subtotal=calc_subtotal,
@@ -226,12 +221,9 @@ class ZeroTaxPricing(PricingStrategy):
             calc_subtotal += item_price * item_qty
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
-        shipping = calculate_settings_shipping(
-            subtotal=calc_subtotal,
-            shipping_enabled=self.shipping_enabled,
-            threshold=self._threshold,
-            flat_rate=self._flat,
-        )
+        # Shipping is resolved only after address/payment context is available.
+        # Shiprocket is the sole checkout shipping source of truth.
+        shipping = Decimal("0.00")
         return PriceBreakdown(
             subtotal=calc_subtotal,
             shipping=shipping,
