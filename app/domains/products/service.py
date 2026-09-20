@@ -268,9 +268,22 @@ class ProductService:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
             current_attrs = dict(current.get("attributes") or {})
             current_specs = current_attrs.get("specifications") if isinstance(current_attrs.get("specifications"), dict) else {}
+            measurement_fields = ("volume", "volume_unit", "length", "width", "height", "dimension_unit", "quantity", "quantity_unit")
+            measurements = dict(current_specs.get("measurements") or {})
             for field in self._SPEC_FIELDS:
                 if field in data:
                     current_attrs[field] = data.pop(field)
+            for field in measurement_fields:
+                if field in data:
+                    value = data.pop(field)
+                    if value is None:
+                        measurements.pop(field, None)
+                    else:
+                        measurements[field] = value
+            if measurements:
+                current_specs["measurements"] = measurements
+            elif "measurements" in current_specs:
+                current_specs.pop("measurements", None)
             if "specifications" in data:
                 incoming_specs = data.pop("specifications") or {}
                 current_specs.update(incoming_specs)
