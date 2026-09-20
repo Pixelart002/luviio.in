@@ -126,6 +126,23 @@ class ShippingProviderService:
             raise HTTPException(status_code=422, detail="Shiprocket returned no usable courier rate.")
         quotes.sort(key=lambda q: (q["shipping_cost"], str(q["courier_name"])))
         selected = quotes[0]
+
+        # Safe rate diagnostics: no credentials/tokens or customer address details.
+        provider = get_shipping_provider("shiprocket")
+        logger.info(
+            "[SHIPROCKET] Checkout quote selected | env=%s delivery=%s weight_kg=%.3f cod=%s courier=%s courier_id=%s rate=%.2f freight=%.2f cod_charge=%.2f other=%.2f discount=%.2f",
+            getattr(provider, "environment", "unknown"),
+            delivery_postcode,
+            weight,
+            cod,
+            selected.get("courier_name"),
+            selected.get("courier_id"),
+            float(selected.get("shipping_cost") or 0),
+            float(selected.get("freight_charge") or 0),
+            float(selected.get("cod_charge") or 0),
+            float(selected.get("other_charges") or 0),
+            float(selected.get("discount") or 0),
+        )
         return {
             "provider": "shiprocket",
             "pickup_postcode": pickup_postcode,
@@ -134,6 +151,7 @@ class ShippingProviderService:
             "cod": cod,
             "declared_value": declared_value,
             "selected": selected,
+            "quotes": quotes,
             "couriers": quotes,
         }
 
@@ -194,6 +212,15 @@ class ShippingProviderService:
         try:
             response = await get_shipping_provider(provider_key).create_shipment(payload)
         except Exception as exc:
+            logger.error(
+                "[SHIPROCKET] Shipment creation failed | provider=%s order_id=%s order_number=%s shipping_charges=%.2f weight_kg=%.3f",
+                provider_key,
+                order_id,
+                order.get("order_number"),
+                float(order.get("shipping_cost") or 0),
+                float(weight_kg),
+                exc_info=True,
+            )
             raise HTTPException(status_code=502, detail="Unable to create shipment with provider.") from exc
         external_order_id = _find(response, "order_id", "orderid")
         external_shipment_id = _find(response, "shipment_id", "shipmentid", "id")
