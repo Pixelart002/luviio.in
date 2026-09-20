@@ -156,6 +156,24 @@ class ShiprocketProvider(ShippingProvider):
             raise RuntimeError("Shiprocket pickup API returned invalid shipping_address.")
         return [item for item in locations if isinstance(item, dict)]
 
+    async def add_pickup_location(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Register a seller pickup location on the authenticated Shiprocket account."""
+        required = (
+            "pickup_location", "name", "email", "phone",
+            "address", "city", "state", "country", "pin_code",
+        )
+        missing = [key for key in required if not str(payload.get(key) or "").strip()]
+        if missing:
+            raise ValueError(
+                "Shiprocket pickup configuration is incomplete: "
+                + ", ".join(missing)
+            )
+        return await self._request(
+            "POST",
+            "/settings/company/addpickup",
+            json=payload,
+        )
+
     async def create_shipment(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request("POST", "/orders/create/adhoc", json=payload)
 
