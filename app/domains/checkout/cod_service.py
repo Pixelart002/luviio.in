@@ -23,6 +23,7 @@ from app.enums.order_status import OrderStatus
 from app.events.bus import OrderCreatedEvent, get_event_bus
 from app.integrations.payments.registry import get_payment_provider
 from app.permissions.policies.payment_policies import PaymentPolicy
+from app.utils.phone import InvalidIndianMobile, normalize_indian_mobile
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +218,15 @@ class CodOrderService:
         except EmailNotValidError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING) from exc
 
+        try:
+            shipping_phone = normalize_indian_mobile(addr.get("phone"))
+            billing_phone = normalize_indian_mobile(billing.get("phone"))
+        except InvalidIndianMobile as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid checkout phone number: {exc}",
+            ) from exc
+
         order_number = self._order_number()
         order_data = {
             "customer_id": user_id,
@@ -231,7 +241,7 @@ class CodOrderService:
             "total_amount": float(total),
             "shipping_address_id": address_id,
             "shipping_name": addr.get("full_name"),
-            "shipping_phone": addr.get("phone"),
+            "shipping_phone": shipping_phone,
             "shipping_email": shipping_email,
             "shipping_line1": addr.get("line1"),
             "shipping_line2": addr.get("line2"),
@@ -245,7 +255,7 @@ class CodOrderService:
             "billing_same_as_shipping": same_billing,
             "billing_address_id": billing.get("id"),
             "billing_name": billing.get("full_name"),
-            "billing_phone": billing.get("phone"),
+            "billing_phone": billing_phone,
             "billing_email": billing_email,
             "billing_line1": billing.get("line1"),
             "billing_line2": billing.get("line2"),
