@@ -7,11 +7,26 @@ from app.integrations.shipping.base import ShippingProvider
 
 class ShiprocketProvider(ShippingProvider):
     key = "shiprocket"
-    base_url = "https://apiv2.shiprocket.in/v1/external"
+    # Shiprocket currently documents the same external API host for API users.
+    # Test credentials are account/environment credentials, not a different URL.
+    default_base_url = "https://apiv2.shiprocket.in/v1/external"
 
     def __init__(self) -> None:
-        self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
-        self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
+        self.environment = os.getenv("SHIPROCKET_ENV", "production").strip().lower()
+        if self.environment not in {"test", "production"}:
+            raise RuntimeError("SHIPROCKET_ENV must be 'test' or 'production'.")
+
+        if self.environment == "test":
+            self.email = os.getenv("SHIPROCKET_TEST_EMAIL", "").strip()
+            self.password = os.getenv("SHIPROCKET_TEST_PASSWORD", "").strip()
+        else:
+            self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
+            self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
+
+        # Allow an explicit endpoint override for a provider-issued environment,
+        # but never invent a sandbox URL. Shiprocket's documented API endpoint is
+        # the external host below for API-user authentication and shipment APIs.
+        self.base_url = os.getenv("SHIPROCKET_BASE_URL", self.default_base_url).strip().rstrip("/")
         self._token: str | None = None
         self._token_expires_at = 0.0
         self._lock = asyncio.Lock()
