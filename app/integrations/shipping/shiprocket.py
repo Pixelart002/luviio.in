@@ -15,13 +15,13 @@ class ShiprocketProvider(ShippingProvider):
 
     def __init__(self) -> None:
         self.environment = os.getenv("SHIPROCKET_ENV", "production").strip().lower()
-        if self.environment == "sandbox":
+        if self.environment == "test":
             # Backward-compatible alias for older deployments; keep the log label explicit.
             self.environment = "sandbox"
         if self.environment not in {"sandbox", "production"}:
             raise RuntimeError("SHIPROCKET_ENV must be 'sandbox' (or legacy 'test') or 'production'.")
 
-        if self.environment == "test":
+        if self.environment == "sandbox":
             self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
             self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
         else:
@@ -32,7 +32,7 @@ class ShiprocketProvider(ShippingProvider):
         # sandbox, default to Shiprocket's sandbox hosts shown by the sandbox API
         # console: api-sandbox for auth/order APIs and the dedicated
         # serviceability-sandbox host for courier serviceability.
-        if self.environment == "test":
+        if self.environment == "sandbox":
             self.base_url = os.getenv("SHIPROCKET_BASE_URL", self.sandbox_base_url).strip().rstrip("/")
             self.serviceability_base_url = os.getenv(
                 "SHIPROCKET_SERVICEABILITY_BASE_URL",
