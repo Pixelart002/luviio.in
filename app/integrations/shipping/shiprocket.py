@@ -10,15 +10,16 @@ class ShiprocketProvider(ShippingProvider):
     # Production and Sandbox use different API hosts in the Shiprocket sandbox
     # console. Keep the URLs explicit so sandbox traffic can never hit production.
     production_base_url = "https://apiv2.shiprocket.in/v1/external"
-    sandbox_base_url = "https://api-sandbox.shiprocket.in"
+    sandbox_base_url = "https://api-sandbox.shiprocket.in/v1/external"
     sandbox_serviceability_url = "https://serviceability-sandbox.shiprocket.in"
 
     def __init__(self) -> None:
         self.environment = os.getenv("SHIPROCKET_ENV", "production").strip().lower()
         if self.environment == "sandbox":
-            self.environment = "test"
-        if self.environment not in {"test", "production"}:
-            raise RuntimeError("SHIPROCKET_ENV must be 'test' or 'production' (sandbox is accepted as an alias for test).")
+            # Backward-compatible alias for older deployments; keep the log label explicit.
+            self.environment = "sandbox"
+        if self.environment not in {"sandbox", "production"}:
+            raise RuntimeError("SHIPROCKET_ENV must be 'sandbox' (or legacy 'test') or 'production'.")
 
         if self.environment == "test":
             self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
