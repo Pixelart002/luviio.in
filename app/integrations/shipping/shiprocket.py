@@ -7,9 +7,11 @@ from app.integrations.shipping.base import ShippingProvider
 
 class ShiprocketProvider(ShippingProvider):
     key = "shiprocket"
-    # Shiprocket currently documents the same external API host for API users.
-    # Test credentials are account/environment credentials, not a different URL.
-    default_base_url = "https://apiv2.shiprocket.in/v1/external"
+    # Production and Sandbox use different API hosts in the Shiprocket sandbox
+    # console. Keep the URLs explicit so sandbox traffic can never hit production.
+    production_base_url = "https://apiv2.shiprocket.in/v1/external"
+    sandbox_base_url = "https://api-sandbox.shiprocket.in"
+    sandbox_serviceability_url = "https://serviceability-sandbox.shiprocket.in"
 
     def __init__(self) -> None:
         self.environment = os.getenv("SHIPROCKET_ENV", "production").strip().lower()
@@ -25,10 +27,22 @@ class ShiprocketProvider(ShippingProvider):
             self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
             self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
 
-        # Allow an explicit endpoint override for a provider-issued environment,
-        # but never invent a sandbox URL. Shiprocket's documented API endpoint is
-        # the external host below for API-user authentication and shipment APIs.
-        self.base_url = os.getenv("SHIPROCKET_BASE_URL", self.default_base_url).strip().rstrip("/")
+        # Explicit override is useful for provider-issued environments. For
+        # sandbox, default to Shiprocket's sandbox hosts shown by the sandbox API
+        # console: api-sandbox for auth/order APIs and the dedicated
+        # serviceability-sandbox host for courier serviceability.
+        if self.environment == "test":
+            self.base_url = os.getenv("SHIPROCKET_BASE_URL", self.sandbox_base_url).strip().rstrip("/")
+            self.serviceability_base_url = os.getenv(
+                "SHIPROCKET_SERVICEABILITY_BASE_URL",
+                self.sandbox_serviceability_url,
+            ).strip().rstrip("/")
+        else:
+            self.base_url = os.getenv("SHIPROCKET_BASE_URL", self.production_base_url).strip().rstrip("/")
+            self.serviceability_base_url = os.getenv(
+                "SHIPROCKET_SERVICEABILITY_BASE_URL",
+                self.base_url,
+            ).strip().rstrip("/")
         self._token: str | None = None
         self._token_expires_at = 0.0
         self._lock = asyncio.Lock()
@@ -67,19 +81,20 @@ class ShiprocketProvider(ShippingProvider):
             self._token_expires_at = time.time() + (240 * 60 * 60) - 300
             return token
 
-    async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    async def _request(self, method: str, path: str, *, base_url: str | None = None, **kwargs: Any) -> dict[str, Any]:
         token = await self._token_value()
+        request_base_url = (base_url or self.base_url).rstrip("/")
         headers = dict(kwargs.pop("headers", {}) or {})
         headers["Authorization"] = f"Bearer {token}"
         headers["Content-Type"] = "application/json"
         async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as client:
-            response = await client.request(method, f"{self.base_url}{path}", headers=headers, **kwargs)
+            response = await client.request(method, f"{request_base_url}{path}", headers=headers, **kwargs)
             if response.status_code == 401:
                 self._token = None
                 self._token_expires_at = 0
                 token = await self._token_value()
                 headers["Authorization"] = f"Bearer {token}"
-                response = await client.request(method, f"{self.base_url}{path}", headers=headers, **kwargs)
+                response = await client.request(method, f"{request_base_url}{path}", headers=headers, **kwargs)
             response.raise_for_status()
             data = response.json()
             return data if isinstance(data, dict) else {"data": data}
@@ -91,7 +106,12 @@ class ShiprocketProvider(ShippingProvider):
         }
         if declared_value is not None:
             params["declared_value"] = declared_value
-        return await self._request("GET", "/courier/serviceability/", params=params)
+        return await self._request(
+            "GET",
+            "/courier/serviceability/",
+            params=params,
+            base_url=self.serviceability_base_url,
+        )
 
     async def create_shipment(self, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request("POST", "/orders/create/adhoc", json=payload)
