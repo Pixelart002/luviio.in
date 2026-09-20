@@ -64,7 +64,7 @@ class AsyncCartRepository:
         admin_sb = await get_async_admin_supabase()
         try:
             res = await admin_sb.table("cart_items").select(
-                "id, product_id, quantity, price_snapshot, added_at, products(id, name, slug, price, compare_price, stock, hsn_code, gst_percentage, image_url, is_active)"
+                "id, product_id, quantity, price_snapshot, added_at, products(id, name, slug, price, compare_price, stock, hsn_code, gst_percentage, image_url, is_active, weight, weight_unit)"
             ).eq("cart_id", cart_id).order("added_at", desc=False).execute()
             return getattr(res, "data", None) or []
         except Exception as exc:
