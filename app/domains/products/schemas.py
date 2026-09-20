@@ -103,6 +103,12 @@ class ProductCreate(BaseModel):
         return value or None
 
     @model_validator(mode="after")
+    def validate_weight_scale(self):
+        if self.weight is not None and self.weight_unit is None:
+            raise ValueError("weight_unit is required when weight is provided.")
+        return self
+
+    @model_validator(mode="after")
     def compare_must_exceed_price(self):
         if self.compare_price and self.compare_price <= self.price:
             raise ValueError(ProductSecurityMessages.INVALID_COMPARE_PRICE)
