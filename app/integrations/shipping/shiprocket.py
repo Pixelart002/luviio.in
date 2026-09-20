@@ -22,15 +22,15 @@ class ShiprocketProvider(ShippingProvider):
             self.environment = "sandbox"
         if self.environment not in {"sandbox", "production"}:
             raise RuntimeError("SHIPROCKET_ENV must be 'sandbox' (or legacy 'test') or 'production'.")
-        # Never allow a sandbox Shiprocket account to be used by the production
-        # application accidentally. Development/test environments may opt into
-        # sandbox explicitly; production requires production credentials/hosts.
+        # Production must never silently use the sandbox host. If an old
+        # deployment still has SHIPROCKET_ENV=sandbox, force the provider back
+        # to production unless sandbox has been explicitly allowed.
         allow_sandbox = os.getenv("SHIPROCKET_ALLOW_SANDBOX", "false").strip().lower() == "true"
         if settings.APP_ENV == "production" and self.environment == "sandbox" and not allow_sandbox:
-            raise RuntimeError(
-                "Shiprocket sandbox is disabled in production. Set SHIPROCKET_ENV=production "
-                "and use production API credentials/hosts."
+            logging.getLogger(__name__).warning(
+                "[SHIPROCKET] Ignoring sandbox environment in production; forcing production API hosts."
             )
+            self.environment = "production"
 
         if self.environment == "sandbox":
             self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
