@@ -266,7 +266,7 @@ class ShippingProviderService:
         # prefer the profile brand/legal name and verify it against Shiprocket.
         profile_rows = await sb.table("system_settings").select("key,value").in_(
             "key",
-            ["business_brand_name", "business_legal_name", "seller_pincode"],
+            [\n                "business_brand_name", "business_legal_name", "business_email",\n                "business_phone", "seller_address_line1", "seller_address_line2",\n                "seller_city", "seller_state", "seller_country", "seller_pincode",\n            ],
         ).execute()
         profile = {
             str(row.get("key")): row.get("value")
@@ -326,14 +326,98 @@ class ShippingProviderService:
             )
 
             if not pickup_locations:
-                raise HTTPException(
-                    status_code=503,
-                    detail=(
-                        "Shiprocket authenticated successfully, but this Shiprocket account "
-                        "has no pickup locations visible to the API. Verify the API credentials "
-                        "and Shiprocket environment/account, then add/activate a pickup address."
-                    ),
+                # The Shiprocket custom-order API requires an existing pickup
+                # location. If the authenticated account has none, register the
+                # seller's configured Business Profile address through the same
+                # Shiprocket API account/environment, then re-read the locations.
+                # This removes the stale/manual "Home" dependency while keeping
+                # Business Profile as Luviio's seller source of truth.
+                pickup_name = (
+                    str(os.getenv("SHIPROCKET_PICKUP_LOCATION") or "").strip()
+                    or profile_pickup_name
+                    or "Luviio"
                 )
+                pickup_email = _profile_text("business_email") or str(
+                    os.getenv("SHIPROCKET_EMAIL") or ""
+                ).strip()
+                pickup_phone = "".join(
+                    ch for ch in _profile_text("business_phone") if ch.isdigit()
+                )
+                pickup_address = _profile_text("seller_address_line1")
+                pickup_address_2 = _profile_text("seller_address_line2")
+                pickup_city = _profile_text("seller_city")
+                pickup_state = _profile_text("seller_state")
+                pickup_country = _profile_text("seller_country") or "India"
+                pickup_pin = _profile_text("seller_pincode")
+
+                if len(pickup_phone) != 10:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=(
+                            "Shiprocket has no pickup location. Configure a valid "
+                            "Business Profile phone number before automatic pickup registration."
+                        ),
+                    )
+                if not pickup_address or not pickup_city or not pickup_state or not pickup_pin:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=(
+                            "Shiprocket has no pickup location. Complete the Business Profile "
+                            "seller address, city, state and 6-digit PIN code first."
+                        ),
+                    )
+                if not pickup_pin.isdigit() or len(pickup_pin) != 6:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Business Profile seller PIN code must contain exactly 6 digits.",
+                    )
+
+                try:
+                    await provider.add_pickup_location(
+                        {
+                            "pickup_location": pickup_name[:36],
+                            "name": _profile_text("business_legal_name") or pickup_name[:80],
+                            "email": pickup_email,
+                            "phone": pickup_phone,
+                            "address": pickup_address[:80],
+                            "address_2": pickup_address_2[:80],
+                            "city": pickup_city,
+                            "state": pickup_state,
+                            "country": pickup_country,
+                            "pin_code": pickup_pin,
+                        }
+                    )
+                    pickup_locations = await provider.list_pickup_locations()
+                    logger.info(
+                        "[SHIPROCKET] Pickup location auto-registration attempted | env=%s name=%s total_after=%d",
+                        getattr(provider, "environment", "unknown"),
+                        pickup_name[:36],
+                        len(pickup_locations),
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "[SHIPROCKET] Pickup auto-registration failed | env=%s name=%s",
+                        getattr(provider, "environment", "unknown"),
+                        pickup_name[:36],
+                        exc_info=True,
+                    )
+                    raise HTTPException(
+                        status_code=503,
+                        detail=(
+                            "Shiprocket has no pickup location and automatic registration "
+                            "failed. Check the Shiprocket API account/environment and Business Profile."
+                        ),
+                    ) from exc
+
+                if not pickup_locations:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=(
+                            "Shiprocket pickup registration was accepted but the location "
+                            "is not yet visible to the API. Verify/activate it in Shiprocket "
+                            "and retry."
+                        ),
+                    )
             if not usable_locations:
                 raise HTTPException(
                     status_code=503,
