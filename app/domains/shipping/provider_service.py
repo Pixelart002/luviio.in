@@ -10,6 +10,7 @@ from app.integrations.shipping.registry import get_shipping_provider
 from app.domains.shipping.provider_repository import ShippingProviderRepository
 from app.events.bus import OrderShippedEvent, OrderStatusChangedEvent, get_event_bus
 from app.integrations.push.webpush_impl import send_push_to_user
+from app.utils.phone import InvalidIndianMobile, normalize_indian_mobile
 
 logger = logging.getLogger(__name__)
 
@@ -504,13 +505,17 @@ class ShippingProviderService:
         if not billing["name"] or not billing["address"] or not billing["city"] or not billing["state"] or not billing["pincode"]:
             raise HTTPException(status_code=422, detail="Order billing address is incomplete.")
 
-        # Shiprocket expects an Indian customer phone number; do not send an
-        # invalid 11-digit value and rely on its opaque 400 response.
+        # Normalize legacy checkout formats (+91/91/0-prefixed) at the
+        # provider boundary. Existing orders may predate checkout validation.
+        # Shiprocket expects a canonical 10-digit Indian mobile number.
         for label, address in (("shipping", shipping), ("billing", billing)):
-            phone = "".join(ch for ch in str(address.get("phone") or "") if ch.isdigit())
-            if len(phone) != 10:
-                raise HTTPException(status_code=422, detail=f"Order {label} phone number must contain exactly 10 digits.")
-            address["phone"] = phone
+            try:
+                address["phone"] = normalize_indian_mobile(address.get("phone"))
+            except InvalidIndianMobile as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Order {label} phone number is invalid: {exc}",
+                ) from exc
 
         shipping_first, *shipping_last = (shipping["name"] or "Customer").split()
         billing_first, *billing_last = (billing["name"] or "Customer").split()
