@@ -26,8 +26,29 @@ async def list_methods(active_only: bool = True):
 
 @router.post("/rate", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
 async def compute_rate(payload: ShippingRateRequest):
-    data = await _service.compute_rate(subtotal=payload.cart_subtotal, item_count=payload.item_count, weight_kg=payload.total_weight_kg, method_id=payload.method_id, pincode=payload.pincode)
-    return success_response(data=data, message=ShippingMessages.RATE_COMPUTED)
+    # Legacy flat-rate calculation is no longer a checkout source of truth.
+    # Keep this endpoint compatible for existing callers, but route it to the
+    # same live Shiprocket quote used by payment/COD checkout.
+    if not payload.pincode:
+        raise HTTPException(status_code=422, detail="Delivery PIN code is required for live shipping.")
+    data = await _provider_service.quote_for_checkout(
+        delivery_postcode=str(payload.pincode),
+        weight_kg=float(payload.total_weight_kg or 0.5),
+        cod=False,
+        declared_value=float(payload.cart_subtotal or 0),
+    )
+    selected = data["selected"]
+    return success_response(
+        data={
+            "shipping_cost": selected["shipping_cost"],
+            "method": selected,
+            "method_id": selected.get("courier_id"),
+            "applied_type": "shiprocket_live",
+            "provider": "shiprocket",
+            "quotes": data.get("quotes", []),
+        },
+        message="Live Shiprocket shipping rate fetched.",
+    )
 
 @router.post("/manage", status_code=201, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
 async def create_method(payload: ShippingMethodCreate):
