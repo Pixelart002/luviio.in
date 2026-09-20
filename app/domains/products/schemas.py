@@ -5,7 +5,7 @@ such as SEO metadata, low-stock thresholds and derived discounts belong to
 their owning domains/services and are not part of the product contract.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 from uuid import UUID
 from decimal import Decimal
 
@@ -75,7 +75,8 @@ class ProductCreate(BaseModel):
     price: Decimal = Field(..., gt=0, decimal_places=2)
     compare_price: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
     stock: int = Field(default=0, ge=0)
-    weight_grams: Optional[int] = Field(default=None, ge=0)
+    weight: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    weight_unit: Optional[Literal["g", "kg"]] = None
 
     image_url: Optional[str] = Field(default=None, max_length=2048)
     images: List[str] = Field(default_factory=list, max_length=10)
@@ -137,7 +138,8 @@ class ProductUpdate(BaseModel):
     price: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
     compare_price: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
     stock: Optional[int] = Field(default=None, ge=0)
-    weight_grams: Optional[int] = Field(default=None, ge=0)
+    weight: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
+    weight_unit: Optional[Literal["g", "kg"]] = None
 
     image_url: Optional[str] = Field(default=None, max_length=2048)
     images: Optional[List[str]] = Field(default=None, max_length=10)
