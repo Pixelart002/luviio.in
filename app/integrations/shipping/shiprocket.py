@@ -16,21 +16,15 @@ class ShiprocketProvider(ShippingProvider):
     sandbox_serviceability_url = "https://serviceability-sandbox.shiprocket.in"
 
     def __init__(self) -> None:
-        self.environment = os.getenv("SHIPROCKET_ENV", "production").strip().lower()
+        self.environment = os.getenv("SHIPROCKET_ENV", "sandbox").strip().lower()
         if self.environment == "test":
             # Backward-compatible alias for older deployments; keep the log label explicit.
             self.environment = "sandbox"
         if self.environment not in {"sandbox", "production"}:
             raise RuntimeError("SHIPROCKET_ENV must be 'sandbox' (or legacy 'test') or 'production'.")
-        # Production must NEVER use Shiprocket sandbox. This is intentionally
-        # hard-enforced so a stale Koyeb env var cannot route live orders to the
-        # sandbox API. Sandbox is available only when APP_ENV is non-production.
-        if settings.APP_ENV == "production" and self.environment == "sandbox":
-            logging.getLogger(__name__).warning(
-                "[SHIPROCKET] Sandbox disabled in production; forcing production API hosts."
-            )
-            self.environment = "production"
-
+        # Sandbox is intentionally supported even when Luviio itself runs with
+        # APP_ENV=production. SHIPROCKET_ENV is the source of truth; never
+        # silently rewrite sandbox traffic to production.
         if self.environment == "sandbox":
             self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
             self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
