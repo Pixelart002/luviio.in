@@ -22,13 +22,12 @@ class ShiprocketProvider(ShippingProvider):
             self.environment = "sandbox"
         if self.environment not in {"sandbox", "production"}:
             raise RuntimeError("SHIPROCKET_ENV must be 'sandbox' (or legacy 'test') or 'production'.")
-        # Production must never silently use the sandbox host. If an old
-        # deployment still has SHIPROCKET_ENV=sandbox, force the provider back
-        # to production unless sandbox has been explicitly allowed.
-        allow_sandbox = os.getenv("SHIPROCKET_ALLOW_SANDBOX", "false").strip().lower() == "true"
-        if settings.APP_ENV == "production" and self.environment == "sandbox" and not allow_sandbox:
+        # Production must NEVER use Shiprocket sandbox. This is intentionally
+        # hard-enforced so a stale Koyeb env var cannot route live orders to the
+        # sandbox API. Sandbox is available only when APP_ENV is non-production.
+        if settings.APP_ENV == "production" and self.environment == "sandbox":
             logging.getLogger(__name__).warning(
-                "[SHIPROCKET] Ignoring sandbox environment in production; forcing production API hosts."
+                "[SHIPROCKET] Sandbox disabled in production; forcing production API hosts."
             )
             self.environment = "production"
 
