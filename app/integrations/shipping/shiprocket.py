@@ -107,9 +107,17 @@ class ShiprocketProvider(ShippingProvider):
         }
         if declared_value is not None:
             params["declared_value"] = declared_value
+        # Shiprocket documents the production endpoint with a trailing slash.
+        # The sandbox serviceability host currently canonicalizes the opposite
+        # way (trailing slash -> no slash), so keep the two endpoint forms explicit.
+        serviceability_path = (
+            "/courier/serviceability"
+            if self.environment == "sandbox"
+            else "/courier/serviceability/"
+        )
         return await self._request(
             "GET",
-            "/courier/serviceability",
+            serviceability_path,
             params=params,
             base_url=self.serviceability_base_url,
         )
