@@ -38,7 +38,7 @@ class AsyncCheckoutRepository:
                 sb.table("carts")
                 .select(
                     "id, cart_items(id, product_id, quantity, price_snapshot, "
-                    "products(name, price, compare_price, stock, hsn_code, gst_percentage, is_active))"
+                    "products(name, price, compare_price, stock, hsn_code, gst_percentage, is_active, weight, weight_unit))"
                 )
                 .eq("user_id", user_id)
                 .maybe_single()
