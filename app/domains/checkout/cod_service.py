@@ -5,6 +5,7 @@ same server-side cart pricing, stock validation, address ownership and atomic
 reservation path as card checkout.
 """
 import logging
+import os
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Dict, List, Optional
 
@@ -16,7 +17,8 @@ from starlette.concurrency import run_in_threadpool
 from app.constants.payment_messages import PaymentSecurityMessages
 from app.domains.checkout.repository import AsyncCheckoutRepository
 from app.domains.coupons.service import CouponService
-from app.domains.pricing.service import get_pricing_from_config
+from app.domains.pricing.service import get_pricing_from_config, _shipping_tax, PriceBreakdown
+from app.domains.shipping.provider_service import ShippingProviderService
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderCreatedEvent, get_event_bus
 from app.integrations.payments.registry import get_payment_provider
@@ -138,6 +140,48 @@ class CodOrderService:
 
         config = await self.repo.get_pricing_config()
         breakdown = get_pricing_from_config(config).calculate(items=items_to_deduct)
+
+        addr = await self.repo.get_shipping_address(address_id, user_id)
+        if not addr:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
+
+        total_weight = Decimal("0")
+        for item in cart_items:
+            product = item.get("products") or {}
+            raw_weight = product.get("weight")
+            if raw_weight is None:
+                continue
+            try:
+                weight = Decimal(str(raw_weight))
+                if str(product.get("weight_unit") or "g").lower() == "g":
+                    weight /= Decimal("1000")
+                if weight > 0:
+                    total_weight += weight * int(item.get("quantity") or 0)
+            except (ArithmeticError, ValueError, TypeError):
+                raise HTTPException(status_code=409, detail="Product shipping weight is invalid.")
+        if total_weight <= 0:
+            try:
+                total_weight = Decimal(str(os.getenv("SHIPROCKET_RATE_DEFAULT_WEIGHT_KG", "0.5")))
+            except (ArithmeticError, ValueError, TypeError):
+                raise HTTPException(status_code=503, detail="Shiprocket default rate weight is misconfigured.")
+
+        quote = await ShippingProviderService().quote_for_checkout(
+            delivery_postcode=str(addr.get("postal_code") or ""),
+            weight_kg=float(total_weight),
+            cod=True,
+            declared_value=float(subtotal),
+        )
+        provider_shipping = Decimal(str(quote["selected"]["shipping_cost"]))
+        product_tax = breakdown.tax - breakdown.shipping_tax
+        provider_shipping_tax = _shipping_tax(items_to_deduct, provider_shipping, subtotal)
+        breakdown = PriceBreakdown(
+            subtotal=breakdown.subtotal,
+            shipping=provider_shipping,
+            tax=product_tax + provider_shipping_tax,
+            total=breakdown.subtotal + provider_shipping + product_tax + provider_shipping_tax,
+            currency=breakdown.currency,
+            shipping_tax=provider_shipping_tax,
+        )
         coupon_id = None
         coupon_discount = Decimal("0")
         coupon_resolved = coupon_code
@@ -152,10 +196,6 @@ class CodOrderService:
         total = max(breakdown.total - coupon_discount, Decimal("0"))
         amount_paise = int((total * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         PaymentPolicy.assert_minimum_amount(amount_paise)
-
-        addr = await self.repo.get_shipping_address(address_id, user_id)
-        if not addr:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
 
         customer_email = await self.repo.get_customer_email(user_id)
         shipping_email = addr.get("email") or customer_email
