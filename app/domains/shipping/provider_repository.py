@@ -24,13 +24,17 @@ class ShippingProviderRepository:
 
     async def create(self, data: dict[str, Any]) -> dict[str, Any]:
         sb = await get_async_admin_supabase()
-        res = await sb.table("shipping_shipments").insert(data).select("*").single().execute()
-        return res.data
+        res = await sb.table("shipping_shipments").insert(data).execute()
+        if not res.data:
+            raise RuntimeError("Failed to create shipping shipment: no row returned")
+        return res.data[0] if isinstance(res.data, list) else res.data
 
     async def update(self, shipment_id: str, data: dict[str, Any]) -> dict[str, Any]:
         sb = await get_async_admin_supabase()
-        res = await sb.table("shipping_shipments").update(data).eq("id", shipment_id).select("*").single().execute()
-        return res.data
+        res = await sb.table("shipping_shipments").update(data).eq("id", shipment_id).execute()
+        if not res.data:
+            raise RuntimeError(f"Failed to update shipping shipment: {shipment_id}")
+        return res.data[0] if isinstance(res.data, list) else res.data
 
     async def record_event(self, shipment_id: str, provider_event_id: str, provider_status: str, payload: dict[str, Any], occurred_at: str | None = None) -> bool:
         sb = await get_async_admin_supabase()
