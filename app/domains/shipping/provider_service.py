@@ -294,15 +294,53 @@ class ShippingProviderService:
                     detail="Shiprocket pickup locations could not be verified.",
                 ) from exc
 
+            def _pickup_status_active(item: dict[str, Any]) -> bool:
+                # Shiprocket examples use numeric status=2 for an active pickup.
+                # Keep compatibility with boolean/string variants returned by
+                # older/provider-specific responses, but reject explicit inactive states.
+                raw = item.get("status")
+                if isinstance(raw, bool):
+                    return raw
+                normalized = str(raw if raw is not None else "2").strip().lower()
+                return normalized not in {"0", "false", "inactive", "disabled", "deactivated"}
+
             usable_locations = [
                 item for item in pickup_locations
                 if str(item.get("pickup_location") or "").strip()
-                and str(item.get("status") or "1").lower() not in {"0", "inactive", "disabled"}
+                and _pickup_status_active(item)
             ]
+
+            logger.info(
+                "[SHIPROCKET] Pickup locations resolved | env=%s total=%d usable=%d names=%s statuses=%s",
+                getattr(provider, "environment", "unknown"),
+                len(pickup_locations),
+                len(usable_locations),
+                [
+                    str(item.get("pickup_location") or "").strip()
+                    for item in pickup_locations[:10]
+                ],
+                [
+                    str(item.get("status") if item.get("status") is not None else "missing")
+                    for item in pickup_locations[:10]
+                ],
+            )
+
+            if not pickup_locations:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Shiprocket authenticated successfully, but this Shiprocket account "
+                        "has no pickup locations visible to the API. Verify the API credentials "
+                        "and Shiprocket environment/account, then add/activate a pickup address."
+                    ),
+                )
             if not usable_locations:
                 raise HTTPException(
                     status_code=503,
-                    detail="No active Shiprocket pickup location is configured for this account.",
+                    detail=(
+                        "Shiprocket pickup locations exist, but none is active. "
+                        "Activate a verified pickup address in Shiprocket."
+                    ),
                 )
 
             if pickup_location:
