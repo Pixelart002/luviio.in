@@ -218,14 +218,40 @@ class ShippingProviderService:
             "state": order.get("shipping_state") or "", "country": order.get("shipping_country") or "India",
             "pincode": order.get("shipping_postal_code") or "",
         }
-        first, *last = (shipping["name"] or "Customer").split()
+        billing_same_as_shipping = order.get("billing_same_as_shipping")
+        if billing_same_as_shipping is None:
+            billing_same_as_shipping = True
+        if billing_same_as_shipping:
+            billing = dict(shipping)
+        else:
+            billing = {
+                "name": order.get("billing_name") or "",
+                "phone": order.get("billing_phone") or "",
+                "email": order.get("billing_email") or "",
+                "address": order.get("billing_line1") or "",
+                "address_2": order.get("billing_line2") or "",
+                "city": order.get("billing_city") or "",
+                "state": order.get("billing_state") or "",
+                "country": order.get("billing_country") or "India",
+                "pincode": order.get("billing_postal_code") or "",
+            }
+
+        if not shipping["name"] or not shipping["address"] or not shipping["city"] or not shipping["state"] or not shipping["pincode"]:
+            raise HTTPException(status_code=422, detail="Order shipping address is incomplete.")
+        if not billing["name"] or not billing["address"] or not billing["city"] or not billing["state"] or not billing["pincode"]:
+            raise HTTPException(status_code=422, detail="Order billing address is incomplete.")
+
+        shipping_first, *shipping_last = (shipping["name"] or "Customer").split()
+        billing_first, *billing_last = (billing["name"] or "Customer").split()
         payload = {
             "order_id": order.get("order_number") or str(order_id), "order_date": order.get("created_at"),
-            "pickup_location": pickup_location, "billing_customer_name": first, "billing_last_name": " ".join(last),
-            "billing_address": shipping["address"], "billing_address_2": shipping["address_2"],
-            "billing_city": shipping["city"], "billing_pincode": shipping["pincode"], "billing_state": shipping["state"],
-            "billing_country": shipping["country"], "billing_email": shipping["email"], "billing_phone": shipping["phone"],
-            "shipping_is_billing": True, "shipping_customer_name": first, "shipping_last_name": " ".join(last),
+            "pickup_location": pickup_location,
+            "billing_customer_name": billing_first, "billing_last_name": " ".join(billing_last),
+            "billing_address": billing["address"], "billing_address_2": billing["address_2"],
+            "billing_city": billing["city"], "billing_pincode": billing["pincode"], "billing_state": billing["state"],
+            "billing_country": billing["country"], "billing_email": billing["email"], "billing_phone": billing["phone"],
+            "shipping_is_billing": bool(billing_same_as_shipping),
+            "shipping_customer_name": shipping_first, "shipping_last_name": " ".join(shipping_last),
             "shipping_address": shipping["address"], "shipping_address_2": shipping["address_2"],
             "shipping_city": shipping["city"], "shipping_pincode": shipping["pincode"], "shipping_state": shipping["state"],
             "shipping_country": shipping["country"], "shipping_email": shipping["email"], "shipping_phone": shipping["phone"],
