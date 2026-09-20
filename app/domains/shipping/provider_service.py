@@ -119,12 +119,40 @@ class ShippingProviderService:
                 "other_charges": float(courier.get("other_charges") or 0),
                 "chargeable_weight_kg": courier.get("charge_weight"),
                 "estimated_delivery_days": courier.get("estimated_delivery_days"),
+                "etd_hours": courier.get("etd_hours"),
                 "etd": courier.get("etd"),
                 "rating": courier.get("rating"),
             })
         if not quotes:
             raise HTTPException(status_code=422, detail="Shiprocket returned no usable courier rate.")
-        quotes.sort(key=lambda q: (q["shipping_cost"], str(q["courier_name"])))
+        # Checkout uses the fastest serviceable courier, not the cheapest legacy/store rate.
+        # Shiprocket serviceability returns both shipment rate and delivery-time fields.
+        # Never hardcode a courier charge: the selected shipping_cost always comes from
+        # the current Shiprocket response.
+        def _etd_hours(quote: dict[str, Any]) -> float:
+            raw = quote.get("etd_hours")
+            try:
+                value = float(raw)
+                return value if value >= 0 else float("inf")
+            except (TypeError, ValueError):
+                return float("inf")
+
+        def _etd_days(quote: dict[str, Any]) -> float:
+            raw = str(quote.get("estimated_delivery_days") or "").strip()
+            try:
+                # Handles normal integer/string values such as "3".
+                return float(raw)
+            except (TypeError, ValueError):
+                return float("inf")
+
+        quotes.sort(
+            key=lambda q: (
+                _etd_hours(q),
+                _etd_days(q),
+                q["shipping_cost"],
+                str(q["courier_name"]),
+            )
+        )
         selected = quotes[0]
 
         # Safe rate diagnostics: no credentials/tokens or customer address details.
@@ -151,6 +179,7 @@ class ShippingProviderService:
             "cod": cod,
             "declared_value": declared_value,
             "selected": selected,
+            "selection": "fastest_available",
             "quotes": quotes,
             "couriers": quotes,
         }
