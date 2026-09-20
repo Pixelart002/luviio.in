@@ -46,6 +46,16 @@ async def provider_serviceability(pickup_postcode: str, delivery_postcode: str, 
     data = await _provider_service.serviceability(provider, pickup_postcode, delivery_postcode, weight_kg, cod)
     return success_response(data=data, message="Shipping provider serviceability fetched.")
 
+@router.get("/provider/rate", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
+async def provider_rate(delivery_postcode: str, weight_kg: float = 0.5, cod: bool = False, declared_value: float | None = None):
+    data = await _provider_service.quote_for_checkout(
+        delivery_postcode=delivery_postcode,
+        weight_kg=weight_kg,
+        cod=cod,
+        declared_value=declared_value,
+    )
+    return success_response(data=data, message="Live Shiprocket shipping rates fetched.")
+
 @router.get("/provider/shipments", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
 async def list_provider_shipments(status_filter: str | None = None, limit: int = 100):
     return success_response(data={"items": await _provider_repo.list_recent(status_filter, limit)}, message="Fulfillment shipments fetched.")
