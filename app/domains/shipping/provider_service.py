@@ -54,7 +54,7 @@ class ShippingProviderService:
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Shipping provider unavailable: {provider_key}.") from exc
 
-    async def quote_for_checkout(self, delivery_postcode: str, weight_kg: float, cod: bool, declared_value: float | None = None) -> dict[str, Any]:
+    async def quote_for_checkout(self, delivery_postcode: str, weight_kg: float, cod: bool, declared_value: float | None = None, selected_courier_id: int | None = None) -> dict[str, Any]:
         """Return live Shiprocket courier rates for checkout; never use the store flat-rate setting."""
         import os
 
@@ -173,6 +173,23 @@ class ShippingProviderService:
             )
         )
         selected = quotes[0]
+        if selected_courier_id is not None:
+            selected_match = next(
+                (
+                    quote for quote in quotes
+                    if str(quote.get("courier_id") or "").strip() == str(selected_courier_id).strip()
+                ),
+                None,
+            )
+            if selected_match is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="The selected courier is no longer serviceable for this address. Please refresh shipping options.",
+                )
+            selected = selected_match
+            selection = "customer_selected"
+        else:
+            selection = "fastest_available"
 
         # Safe rate diagnostics: no credentials/tokens or customer address details.
         provider = get_shipping_provider("shiprocket")
@@ -198,7 +215,7 @@ class ShippingProviderService:
             "cod": cod,
             "declared_value": declared_value,
             "selected": selected,
-            "selection": "fastest_available",
+            "selection": selection,
             "quotes": quotes,
             "couriers": quotes,
         }
@@ -646,11 +663,21 @@ class ShippingProviderService:
         external_shipment_id = _find(response, "shipment_id", "shipmentid", "id")
         if external_shipment_id is None:
             raise HTTPException(status_code=502, detail="Courier provider created no shipment identifier.")
+        shipment_metadata = dict(response) if isinstance(response, dict) else {"provider_response": response}
+        selected_courier_id = order.get("shipping_courier_id")
+        selected_courier_name = order.get("shipping_courier_name")
+        selected_service_type = order.get("shipping_service_type")
+        shipment_metadata["selected_courier"] = {
+            "courier_id": selected_courier_id,
+            "courier_name": selected_courier_name,
+            "service_type": selected_service_type,
+        }
         shipment = await self.repo.create({
             "order_id": order_id, "provider_key": provider_key,
             "external_order_id": str(external_order_id) if external_order_id else None,
             "external_shipment_id": str(external_shipment_id),
-            "status": "created", "provider_status": "created", "metadata": response,
+            "courier_name": str(selected_courier_name) if selected_courier_name else None,
+            "status": "created", "provider_status": "created", "metadata": shipment_metadata,
         })
         if order_status == "paid":
             await self._mark_paid_order_processing(order_id, order)
@@ -667,16 +694,24 @@ class ShippingProviderService:
         row = await self._get_provider_row(shipment_id)
         if not row.get("external_shipment_id"):
             raise HTTPException(status_code=409, detail="Provider shipment must be created before AWB assignment.")
-        try:
-            response = await get_shipping_provider(row["provider_key"]).assign_awb(shipment_id=str(row["external_shipment_id"]), courier_id=courier_id)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail="Unable to assign courier/AWB.") from exc
         # Resumable: never request a second AWB when one is already persisted.
         if row.get("tracking_number"):
             return row
-        response = await get_shipping_provider(row["provider_key"]).assign_awb(
-            shipment_id=str(row["external_shipment_id"]), courier_id=courier_id
-        )
+        effective_courier_id = courier_id
+        if effective_courier_id is None:
+            selected = dict((row.get("metadata") or {}).get("selected_courier") or {})
+            raw_selected_id = selected.get("courier_id")
+            try:
+                effective_courier_id = int(raw_selected_id) if raw_selected_id not in (None, "") else None
+            except (TypeError, ValueError):
+                effective_courier_id = None
+        try:
+            response = await get_shipping_provider(row["provider_key"]).assign_awb(
+                shipment_id=str(row["external_shipment_id"]),
+                courier_id=effective_courier_id,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Unable to assign courier/AWB.") from exc
         awb = _find(response, "awb_code", "awb", "tracking_number")
         courier = _find(response, "courier_name", "courier")
         courier_id_value = _find(response, "courier_company_id", "courier_id", "company_id")
