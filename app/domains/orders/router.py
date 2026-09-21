@@ -70,7 +70,7 @@ async def create_order_from_cart(request: Request, payload: OrderCreateFromCartR
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="idempotency_key is required for checkout.")
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Checkout initiated by UID: {user_id[:8]}...")
-    data = await CheckoutService().create_online_order(user_id=user_id, client_ip=_get_real_ip(request), idempotency_key=payload.idempotency_key, address_id=str(payload.shipping_address_id), user_agent=request.headers.get("user-agent", ""), coupon_code=payload.coupon_code)
+    data = await CheckoutService().create_online_order(user_id=user_id, client_ip=_get_real_ip(request), idempotency_key=payload.idempotency_key, address_id=str(payload.shipping_address_id), user_agent=request.headers.get("user-agent", ""), coupon_code=payload.coupon_code, shipping_courier_id=payload.shipping_courier_id)
     return success_response(data=_public_order_result(data), message="Order placed successfully.")
 
 
@@ -81,7 +81,7 @@ async def create_cod_order(request: Request, payload: OrderCreateFromCartRequest
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="idempotency_key is required for checkout.")
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"COD checkout initiated by UID: {user_id[:8]}...")
-    data = await CheckoutService().create_cod_order(user_id=user_id, address_id=str(payload.shipping_address_id), idempotency_key=payload.idempotency_key, coupon_code=payload.coupon_code)
+    data = await CheckoutService().create_cod_order(user_id=user_id, address_id=str(payload.shipping_address_id), idempotency_key=payload.idempotency_key, coupon_code=payload.coupon_code, shipping_courier_id=payload.shipping_courier_id)
     return success_response(data=_public_order_result(data), message="COD order placed successfully.")
 
 
