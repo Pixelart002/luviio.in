@@ -104,6 +104,13 @@ async def create_provider_shipment(
 async def assign_awb(shipment_id: str, courier_id: int | None = None):
     return success_response(data=await _provider_service.assign_awb(shipment_id, courier_id), message="Courier/AWB assigned.")
 
+@router.post("/provider/shipments/{shipment_id}/process", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
+async def process_provider_shipment(shipment_id: str):
+    return success_response(
+        data=await _provider_service.process_shipment(shipment_id),
+        message="Shipment fulfillment workflow completed/resumed.",
+    )
+
 @router.post("/provider/shipments/{shipment_id}/pickup", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
 async def schedule_pickup(shipment_id: str):
     return success_response(data=await _provider_service.schedule_pickup(shipment_id), message="Pickup scheduled.")
