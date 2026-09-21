@@ -802,11 +802,13 @@ class ShippingProviderService:
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Unable to generate shipping label.") from exc
         url = _find(response, "label_url", "label_download_url", "url")
+        if not url:
+            raise HTTPException(status_code=502, detail="Shiprocket did not return a shipping-label URL.")
         metadata = dict(row.get("metadata") or {})
         metadata["label"] = response
         metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "label_generated", "updated_at": _now()}
         return await self.repo.update(shipment_id, {
-            "label_url": str(url) if url else row.get("label_url"),
+            "label_url": str(url),
             "metadata": metadata, "updated_at": _now()
         })
 
@@ -823,11 +825,13 @@ class ShippingProviderService:
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Unable to generate manifest.") from exc
         url = _find(response, "manifest_url", "manifest_download_url", "url")
+        if not url:
+            raise HTTPException(status_code=502, detail="Shiprocket did not return a manifest URL.")
         metadata = dict(row.get("metadata") or {})
         metadata["manifest"] = response
         metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "manifest_generated", "updated_at": _now()}
         return await self.repo.update(shipment_id, {
-            "manifest_url": str(url) if url else row.get("manifest_url"),
+            "manifest_url": str(url),
             "metadata": metadata, "updated_at": _now()
         })
 
@@ -849,6 +853,12 @@ class ShippingProviderService:
             row = await self.generate_label(shipment_id)
         if not row.get("provider_invoice_url"):
             row = await self.print_invoice(shipment_id)
+        if not row.get("tracking_number"):
+            raise HTTPException(status_code=409, detail="Shipment workflow cannot complete without an AWB.")
+        if not row.get("pickup_id"):
+            raise HTTPException(status_code=409, detail="Shipment workflow cannot complete until pickup is scheduled.")
+        if not row.get("manifest_url") or not row.get("label_url") or not row.get("provider_invoice_url"):
+            raise HTTPException(status_code=409, detail="Shipment workflow is incomplete; required documents were not generated.")
         metadata = dict(row.get("metadata") or {})
         metadata["workflow"] = {
             **(metadata.get("workflow") or {}),
