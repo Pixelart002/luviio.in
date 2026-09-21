@@ -22,6 +22,7 @@ class CheckoutService:
         billing_address_id: Optional[str] = None,
         user_agent: Optional[str] = None,
         coupon_code: Optional[str] = None,
+        shipping_courier_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         return await PaymentService().create_intent(
             user_id=user_id,
@@ -31,6 +32,7 @@ class CheckoutService:
             billing_address_id=billing_address_id,
             user_agent=user_agent,
             coupon_code=coupon_code,
+            shipping_courier_id=shipping_courier_id,
         )
 
     async def create_cod_order(
@@ -40,10 +42,12 @@ class CheckoutService:
         address_id: str,
         idempotency_key: str,
         coupon_code: Optional[str] = None,
+        shipping_courier_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         return await CodOrderService().create_order(
             user_id=user_id,
             address_id=address_id,
             idempotency_key=idempotency_key,
             coupon_code=coupon_code,
+            shipping_courier_id=shipping_courier_id,
         )
