@@ -179,6 +179,10 @@ class ShippingProviderService:
                 "courier_id": courier.get("courier_company_id") or courier.get("id"),
                 "courier_name": courier.get("courier_name") or "Shiprocket courier",
                 "service_type": courier.get("service_type") or courier.get("courier_type") or courier.get("shipment_type") or courier.get("service"),
+                # Keep delivery product/mode separate from generic courier service type.
+                # Never infer a 2/3/4-wheeler from a generic "Surface" service.
+                "delivery_mode": courier.get("delivery_mode") or courier.get("mode") or courier.get("delivery_type"),
+                "vehicle_type": courier.get("vehicle_type") or courier.get("vehicle") or courier.get("vehicle_mode"),
                 "shipping_cost": round(rate, 2),
                 "provider_rate": round(rate, 2),
                 "component_total": round(component_total, 2),
@@ -586,6 +590,25 @@ class ShippingProviderService:
                     getattr(provider, "environment", "unknown"),
                     bool(os.getenv("SHIPROCKET_PICKUP_LOCATION")),
                 )
+        # Revalidate the exact selected courier immediately before booking.
+        # Provider availability can change between checkout and fulfillment.
+        selected_courier_id = order.get("shipping_courier_id")
+        live_quote = await self.quote_for_checkout(
+            delivery_postcode=str(order.get("shipping_postal_code") or "").strip(),
+            weight_kg=float(weight_kg),
+            cod=payment_method == "COD",
+            declared_value=float(order.get("total_amount") or order.get("total") or 0),
+            selected_courier_id=int(selected_courier_id) if selected_courier_id not in (None, "") else None,
+        )
+        selected_live = live_quote.get("selected") if isinstance(live_quote, dict) else None
+        if not isinstance(selected_live, dict):
+            raise HTTPException(status_code=422, detail="Selected delivery partner is no longer serviceable. Please refresh delivery options.")
+        selected_courier_id = selected_courier_id or selected_live.get("courier_id")
+        selected_courier_name = order.get("shipping_courier_name") or selected_live.get("courier_name")
+        selected_service_type = order.get("shipping_service_type") or selected_live.get("service_type")
+        selected_delivery_mode = selected_live.get("delivery_mode")
+        selected_vehicle_type = selected_live.get("vehicle_type")
+
         provider_items = [{
             "name": item.get("product_name") or (item.get("products") or {}).get("name") or "Product",
             "sku": item.get("sku") or (item.get("products") or {}).get("sku") or str(item.get("product_id")),
@@ -716,13 +739,15 @@ class ShippingProviderService:
         if external_shipment_id is None:
             raise HTTPException(status_code=502, detail="Courier provider created no shipment identifier.")
         shipment_metadata = dict(response) if isinstance(response, dict) else {"provider_response": response}
-        selected_courier_id = order.get("shipping_courier_id")
-        selected_courier_name = order.get("shipping_courier_name")
-        selected_service_type = order.get("shipping_service_type")
         shipment_metadata["selected_courier"] = {
             "courier_id": selected_courier_id,
             "courier_name": selected_courier_name,
             "service_type": selected_service_type,
+            "delivery_mode": selected_delivery_mode,
+            "vehicle_type": selected_vehicle_type,
+            "provider_rate_at_booking": selected_live.get("provider_rate"),
+            "estimated_delivery_days": selected_live.get("estimated_delivery_days"),
+            "etd": selected_live.get("etd"),
         }
         shipment = await self.repo.create({
             "order_id": order_id, "provider_key": provider_key,
@@ -731,6 +756,8 @@ class ShippingProviderService:
             "courier_name": str(selected_courier_name) if selected_courier_name else None,
             "courier_id": int(selected_courier_id) if selected_courier_id not in (None, "") else None,
             "service_type": str(selected_service_type) if selected_service_type else None,
+            "delivery_mode": str(selected_delivery_mode) if selected_delivery_mode else None,
+            "vehicle_type": str(selected_vehicle_type) if selected_vehicle_type else None,
             "status": "created", "provider_status": "created", "workflow_status": "created", "metadata": shipment_metadata,
         })
         if order_status == "paid":
