@@ -106,37 +106,71 @@ class ShippingProviderService:
         if not isinstance(couriers, list) or not couriers:
             raise HTTPException(status_code=422, detail="No Shiprocket courier is serviceable for this address.")
 
+        def _money(value: Any) -> float:
+            """Parse a Shiprocket monetary field without letting malformed data break checkout."""
+            try:
+                return max(float(value or 0), 0.0)
+            except (TypeError, ValueError):
+                return 0.0
+
         quotes = []
         for courier in couriers:
             if not isinstance(courier, dict) or courier.get("blocked"):
                 continue
+
+            # Shiprocket's documented serviceability response exposes both
+            # rate and its charge components. Normally rate is the customer-
+            # facing shipment rate and equals the applicable charge total.
+            # Reconcile a stale/suspiciously small rate against the provider's
+            # charge components instead of charging an accidental tiny amount.
             raw_rate = courier.get("rate")
             if isinstance(raw_rate, dict):
                 raw_rate = raw_rate.get("rate") or raw_rate.get("total")
-            try:
-                rate = float(raw_rate)
-            except (TypeError, ValueError):
-                rate = 0.0
+            rate = _money(raw_rate)
+            freight_charge = _money(courier.get("freight_charge"))
+            cod_charge = _money(courier.get("cod_charges"))
+            other_charges = _money(courier.get("other_charges"))
+            coverage_charges = _money(courier.get("coverage_charges"))
+            entry_tax = _money(courier.get("entry_tax"))
+            discount = _money(courier.get("discount"))
+
+            component_total = max(
+                freight_charge + cod_charge + other_charges + coverage_charges + entry_tax - discount,
+                0.0,
+            )
+
             if rate <= 0:
-                try:
-                    rate = float(courier.get("freight_charge") or 0) + float(courier.get("cod_charges") or 0) + float(courier.get("other_charges") or 0)
-                except (TypeError, ValueError):
-                    rate = 0.0
+                rate = component_total
+            elif component_total > 0 and rate + 0.01 < component_total:
+                logger.warning(
+                    "[SHIPROCKET] Rate/component mismatch | courier=%s courier_id=%s rate=%.2f freight=%.2f cod=%.2f other=%.2f coverage=%.2f entry_tax=%.2f discount=%.2f effective=%.2f",
+                    courier.get("courier_name") or "unknown",
+                    courier.get("courier_company_id") or courier.get("id"),
+                    rate,
+                    freight_charge,
+                    cod_charge,
+                    other_charges,
+                    coverage_charges,
+                    entry_tax,
+                    discount,
+                    component_total,
+                )
+                rate = component_total
+
             if rate <= 0:
                 continue
-            try:
-                discount = float(courier.get("discount") or 0)
-            except (TypeError, ValueError):
-                discount = 0.0
+
             quotes.append({
                 "courier_id": courier.get("courier_company_id") or courier.get("id"),
                 "courier_name": courier.get("courier_name") or "Shiprocket courier",
                 "service_type": courier.get("service_type") or courier.get("courier_type") or courier.get("shipment_type") or courier.get("service"),
                 "shipping_cost": round(rate, 2),
                 "discount": round(discount, 2),
-                "freight_charge": float(courier.get("freight_charge") or rate),
-                "cod_charge": float(courier.get("cod_charges") or 0),
-                "other_charges": float(courier.get("other_charges") or 0),
+                "freight_charge": round(freight_charge, 2),
+                "cod_charge": round(cod_charge, 2),
+                "other_charges": round(other_charges, 2),
+                "coverage_charges": round(coverage_charges, 2),
+                "entry_tax": round(entry_tax, 2),
                 "chargeable_weight_kg": courier.get("charge_weight"),
                 "estimated_delivery_days": courier.get("estimated_delivery_days"),
                 "etd_hours": courier.get("etd_hours"),
