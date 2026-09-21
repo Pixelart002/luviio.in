@@ -245,6 +245,8 @@ class CodOrderService:
             "shipping_courier_id": quote["selected"].get("courier_id"),
             "shipping_courier_name": quote["selected"].get("courier_name"),
             "shipping_service_type": quote["selected"].get("service_type") or quote["selected"].get("service"),
+            "shipping_delivery_mode": quote["selected"].get("delivery_mode"),
+            "shipping_vehicle_type": quote["selected"].get("vehicle_type"),
             "shipping_address_id": address_id,
             "shipping_name": addr.get("full_name"),
             "shipping_phone": shipping_phone,
