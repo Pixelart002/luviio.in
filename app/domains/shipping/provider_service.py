@@ -118,11 +118,12 @@ class ShippingProviderService:
             if not isinstance(courier, dict) or courier.get("blocked"):
                 continue
 
-            # Shiprocket's documented serviceability response exposes both
-            # rate and its charge components. Normally rate is the customer-
-            # facing shipment rate and equals the applicable charge total.
-            # Reconcile a stale/suspiciously small rate against the provider's
-            # charge components instead of charging an accidental tiny amount.
+            # Shiprocket's serviceability response exposes the provider's
+            # quoted shipment rate plus diagnostic charge components. The
+            # provider quote (rate) is the authoritative checkout quote; the
+            # component fields are retained for audit/diagnostics and must not
+            # be blindly summed because some components are not additive to
+            # the displayed shipment rate.
             raw_rate = courier.get("rate")
             if isinstance(raw_rate, dict):
                 raw_rate = raw_rate.get("rate") or raw_rate.get("total")
@@ -139,11 +140,26 @@ class ShippingProviderService:
                 0.0,
             )
 
-            if rate <= 0:
-                rate = component_total
-            elif component_total > 0 and rate + 0.01 < component_total:
+            if rate <= 0 and component_total > 0:
+                # Only use the component sum as a defensive fallback when the
+                # provider omitted/returned a zero rate. Never replace a valid
+                # provider rate with a locally reconstructed total.
                 logger.warning(
-                    "[SHIPROCKET] Rate/component mismatch | courier=%s courier_id=%s rate=%.2f freight=%.2f cod=%.2f other=%.2f coverage=%.2f entry_tax=%.2f discount=%.2f effective=%.2f",
+                    "[SHIPROCKET] Missing provider rate; using component fallback | courier=%s courier_id=%s freight=%.2f cod=%.2f other=%.2f coverage=%.2f entry_tax=%.2f discount=%.2f fallback=%.2f",
+                    courier.get("courier_name") or "unknown",
+                    courier.get("courier_company_id") or courier.get("id"),
+                    freight_charge,
+                    cod_charge,
+                    other_charges,
+                    coverage_charges,
+                    entry_tax,
+                    discount,
+                    component_total,
+                )
+                rate = component_total
+            elif rate > 0 and component_total > 0 and abs(rate - component_total) > 0.01:
+                logger.info(
+                    "[SHIPROCKET] Quote/component diagnostic mismatch | courier=%s courier_id=%s provider_rate=%.2f freight=%.2f cod=%.2f other=%.2f coverage=%.2f entry_tax=%.2f discount=%.2f component_total=%.2f",
                     courier.get("courier_name") or "unknown",
                     courier.get("courier_company_id") or courier.get("id"),
                     rate,
@@ -155,7 +171,6 @@ class ShippingProviderService:
                     discount,
                     component_total,
                 )
-                rate = component_total
 
             if rate <= 0:
                 continue
@@ -165,6 +180,8 @@ class ShippingProviderService:
                 "courier_name": courier.get("courier_name") or "Shiprocket courier",
                 "service_type": courier.get("service_type") or courier.get("courier_type") or courier.get("shipment_type") or courier.get("service"),
                 "shipping_cost": round(rate, 2),
+                "provider_rate": round(rate, 2),
+                "component_total": round(component_total, 2),
                 "discount": round(discount, 2),
                 "freight_charge": round(freight_charge, 2),
                 "cod_charge": round(cod_charge, 2),
