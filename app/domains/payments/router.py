@@ -115,6 +115,7 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
                 billing_id,
                 user_agent=user_agent,
                 coupon_code=payload.coupon_code,
+                shipping_courier_id=payload.shipping_courier_id,
             )
     except HTTPException as exc:
         logger.error(
