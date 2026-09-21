@@ -712,7 +712,9 @@ class ShippingProviderService:
             "external_order_id": str(external_order_id) if external_order_id else None,
             "external_shipment_id": str(external_shipment_id),
             "courier_name": str(selected_courier_name) if selected_courier_name else None,
-            "status": "created", "provider_status": "created", "metadata": shipment_metadata,
+            "courier_id": int(selected_courier_id) if selected_courier_id not in (None, "") else None,
+            "service_type": str(selected_service_type) if selected_service_type else None,
+            "status": "created", "provider_status": "created", "workflow_status": "created", "metadata": shipment_metadata,
         })
         if order_status == "paid":
             await self._mark_paid_order_processing(order_id, order)
@@ -760,9 +762,13 @@ class ShippingProviderService:
         return await self.repo.update(shipment_id, {
             "tracking_number": str(awb),
             "courier_name": str(courier) if courier else row.get("courier_name"),
+            "courier_id": int(courier_id_value) if courier_id_value not in (None, "") else row.get("courier_id"),
+            "service_type": str(service_type) if service_type else row.get("service_type"),
             "tracking_url": str(tracking_url) if tracking_url else row.get("tracking_url"),
             "status": "awb_assigned",
             "provider_status": "awb_assigned",
+            "workflow_status": "awb_assigned",
+            "awb_assigned_at": _now(),
             "metadata": metadata,
             "updated_at": _now(),
         })
@@ -791,7 +797,9 @@ class ShippingProviderService:
         return await self.repo.update(shipment_id, {
             "pickup_id": str(pickup_id),
             "status": "pickup_scheduled", "provider_status": "pickup_scheduled",
-            "pickup_scheduled_at": _now(), "metadata": metadata, "updated_at": _now(),
+            "workflow_status": "pickup_scheduled",
+            "pickup_scheduled_at": _now(), "pickup_requested_at": _now(),
+            "metadata": metadata, "updated_at": _now(),
         })
 
     async def generate_label(self, shipment_id: str) -> dict[str, Any]:
@@ -816,6 +824,8 @@ class ShippingProviderService:
         metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "label_generated", "updated_at": _now()}
         return await self.repo.update(shipment_id, {
             "label_url": str(url),
+            "workflow_status": "label_generated",
+            "label_generated_at": _now(),
             "metadata": metadata, "updated_at": _now()
         })
 
@@ -841,6 +851,8 @@ class ShippingProviderService:
         metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "manifest_generated", "updated_at": _now()}
         return await self.repo.update(shipment_id, {
             "manifest_url": str(url),
+            "workflow_status": "manifest_generated",
+            "manifest_generated_at": _now(),
             "metadata": metadata, "updated_at": _now()
         })
 
@@ -876,6 +888,7 @@ class ShippingProviderService:
             "completed_at": _now(),
         }
         return await self.repo.update(shipment_id, {
+            "workflow_status": "documents_ready",
             "metadata": metadata,
             "updated_at": _now(),
         })
@@ -904,6 +917,8 @@ class ShippingProviderService:
         metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "invoice_generated", "updated_at": _now()}
         return await self.repo.update(shipment_id, {
             "provider_invoice_url": str(url),
+            "workflow_status": "invoice_generated",
+            "provider_invoice_generated_at": _now(),
             "metadata": metadata, "updated_at": _now()
         })
 
@@ -944,9 +959,15 @@ class ShippingProviderService:
             return row
 
         now = _now()
+        workflow_status = (
+            "delivered" if provider_status in _DELIVERED_PROVIDER_STATUSES else
+            "shipped" if provider_status in _SHIPPED_PROVIDER_STATUSES else
+            str(row.get("workflow_status") or row.get("status") or "created")
+        )
         updates: dict[str, Any] = {
             "provider_status": provider_status, "last_provider_event_at": now,
-            "status": provider_status or row.get("status"), "metadata": {**(row.get("metadata") or {}), "last_provider_event": payload},
+            "status": provider_status or row.get("status"),
+            "workflow_status": workflow_status, "metadata": {**(row.get("metadata") or {}), "last_provider_event": payload},
             "updated_at": now,
         }
         if awb: updates["tracking_number"] = awb
@@ -1014,4 +1035,4 @@ class ShippingProviderService:
         row = await self._get_provider_row(shipment_id)
         try: response = await get_shipping_provider(row["provider_key"]).cancel_shipment(str(row["external_shipment_id"]))
         except Exception as exc: raise HTTPException(status_code=502, detail="Unable to cancel provider shipment.") from exc
-        return await self.repo.update(shipment_id, {"status": "cancelled", "provider_status": "cancelled", "metadata": {**(row.get("metadata") or {}), "cancel": response}, "updated_at": _now()})
+        return await self.repo.update(shipment_id, {"status": "cancelled", "provider_status": "cancelled", "workflow_status": "cancelled", "metadata": {**(row.get("metadata") or {}), "cancel": response}, "updated_at": _now()})
