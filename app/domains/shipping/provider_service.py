@@ -779,12 +779,17 @@ class ShippingProviderService:
             )
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Unable to schedule courier pickup.") from exc
-        pickup_id = _find(response, "pickup_id", "pickup_token", "pickupid")
+        pickup_id = _find(response, "pickup_id", "pickup_token", "pickupid", "pickup_token_number")
+        if not pickup_id:
+            raise HTTPException(
+                status_code=502,
+                detail="Shiprocket pickup API returned no pickup reference.",
+            )
         metadata = dict(row.get("metadata") or {})
         metadata["pickup"] = response
         metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "pickup_scheduled", "updated_at": _now()}
         return await self.repo.update(shipment_id, {
-            "pickup_id": str(pickup_id) if pickup_id else row.get("pickup_id"),
+            "pickup_id": str(pickup_id),
             "status": "pickup_scheduled", "provider_status": "pickup_scheduled",
             "pickup_scheduled_at": _now(), "metadata": metadata, "updated_at": _now(),
         })
@@ -795,6 +800,8 @@ class ShippingProviderService:
             return row
         if not row.get("tracking_number"):
             raise HTTPException(status_code=409, detail="Assign an AWB before generating the shipping label.")
+        if not row.get("pickup_id"):
+            raise HTTPException(status_code=409, detail="Schedule pickup before generating the shipping label.")
         try:
             response = await get_shipping_provider(row["provider_key"]).generate_label(
                 shipment_id=str(row["external_shipment_id"])
@@ -818,6 +825,8 @@ class ShippingProviderService:
             return row
         if not row.get("tracking_number"):
             raise HTTPException(status_code=409, detail="Assign an AWB before generating the manifest.")
+        if not row.get("pickup_id"):
+            raise HTTPException(status_code=409, detail="Schedule pickup before generating the manifest.")
         try:
             response = await get_shipping_provider(row["provider_key"]).generate_manifest(
                 shipment_id=str(row["external_shipment_id"])
@@ -877,18 +886,24 @@ class ShippingProviderService:
             return row
         if not row.get("tracking_number"):
             raise HTTPException(status_code=409, detail="Assign an AWB before generating the courier invoice.")
+        if not row.get("pickup_id"):
+            raise HTTPException(status_code=409, detail="Schedule pickup before generating the courier invoice.")
+        if not row.get("external_order_id"):
+            raise HTTPException(status_code=409, detail="Shiprocket order ID is missing; cannot generate the courier invoice.")
         try:
             response = await get_shipping_provider(row["provider_key"]).print_invoice(
-                shipment_id=str(row["external_shipment_id"])
+                order_id=str(row["external_order_id"])
             )
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Unable to generate courier invoice.") from exc
         url = _find(response, "invoice_url", "invoice_download_url", "url")
+        if not url:
+            raise HTTPException(status_code=502, detail="Shiprocket did not return a courier-invoice URL.")
         metadata = dict(row.get("metadata") or {})
         metadata["provider_invoice"] = response
         metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "invoice_generated", "updated_at": _now()}
         return await self.repo.update(shipment_id, {
-            "provider_invoice_url": str(url) if url else row.get("provider_invoice_url"),
+            "provider_invoice_url": str(url),
             "metadata": metadata, "updated_at": _now()
         })
 
