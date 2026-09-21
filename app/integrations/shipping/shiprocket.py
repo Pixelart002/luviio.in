@@ -192,8 +192,11 @@ class ShiprocketProvider(ShippingProvider):
     async def generate_manifest(self, *, shipment_id: str) -> dict[str, Any]:
         return await self._request("POST", "/manifests/generate", json={"shipment_id": [int(shipment_id)]})
 
-    async def print_invoice(self, *, shipment_id: str) -> dict[str, Any]:
-        return await self._request("POST", "/orders/print/invoice", json={"ids": [int(shipment_id)]})
+    async def print_manifest(self, *, order_id: str) -> dict[str, Any]:
+        return await self._request("POST", "/manifests/print", json={"order_ids": [int(order_id)]})
+
+    async def print_invoice(self, *, order_id: str) -> dict[str, Any]:
+        return await self._request("POST", "/orders/print/invoice", json={"ids": [int(order_id)]})
 
     async def track(self, tracking_number: str) -> dict[str, Any]:
         return await self._request("GET", f"/courier/track/awb/{tracking_number}")
