@@ -27,7 +27,7 @@ def normalize_indian_mobile(value: object) -> str:
     elif digits.startswith("0") and len(digits) == 11:
         digits = digits[1:]
 
-    if not re.fullmatch(r"[6-9][0-9]{9}", digits):
+    if not re.fullmatch(r"[6-9][0-9]{9}", digits) or len(set(digits)) == 1:
         raise InvalidIndianMobile(
             "Phone number must be a valid 10-digit Indian mobile number."
         )
