@@ -131,6 +131,7 @@ class ShippingProviderService:
             quotes.append({
                 "courier_id": courier.get("courier_company_id") or courier.get("id"),
                 "courier_name": courier.get("courier_name") or "Shiprocket courier",
+                "service_type": courier.get("service_type") or courier.get("courier_type") or courier.get("shipment_type") or courier.get("service"),
                 "shipping_cost": round(rate, 2),
                 "discount": round(discount, 2),
                 "freight_charge": float(courier.get("freight_charge") or rate),
