@@ -47,6 +47,7 @@ class CodOrderService:
         idempotency_key: str,
         billing_address_id: Optional[str] = None,
         coupon_code: Optional[str] = None,
+        shipping_courier_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         from app.permissions.action_control import assert_action_enabled
 
@@ -170,6 +171,7 @@ class CodOrderService:
             weight_kg=float(total_weight),
             cod=True,
             declared_value=float(subtotal),
+            selected_courier_id=shipping_courier_id,
         )
         provider_shipping = Decimal(str(quote["selected"]["shipping_cost"]))
         product_tax = breakdown.tax - breakdown.shipping_tax
@@ -239,6 +241,10 @@ class CodOrderService:
             "discount_amount": float(coupon_discount),
             **breakdown.as_dict(),
             "total_amount": float(total),
+            "shipping_provider": "shiprocket",
+            "shipping_courier_id": quote["selected"].get("courier_id"),
+            "shipping_courier_name": quote["selected"].get("courier_name"),
+            "shipping_service_type": quote["selected"].get("service_type") or quote["selected"].get("service"),
             "shipping_address_id": address_id,
             "shipping_name": addr.get("full_name"),
             "shipping_phone": shipping_phone,
