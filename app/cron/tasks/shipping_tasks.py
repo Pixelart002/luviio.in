@@ -13,15 +13,43 @@ logger = logging.getLogger(__name__)
 repo = ShippingProviderRepository()
 service = ShippingProviderService()
 
+# Tracking is meaningful only after Shiprocket has accepted/scheduled the pickup
+# workflow. AWB assignment alone does not mean the parcel is physically moving.
+# In sandbox, polling an AWB that is still waiting for pickup can return a
+# provider-side 500 ("Connection refused") and creates noisy retry logs.
+_TRACKING_READY_WORKFLOWS = {
+    "pickup_scheduled",
+    "manifest_generated",
+    "label_generated",
+    "invoice_generated",
+    "documents_ready",
+    "shipped",
+}
+
 @cron_task(minutes=10)
 async def synchronize_active_shipments() -> None:
     rows = await repo.list_recent(limit=200)
-    active = [r for r in rows if r.get("provider_key") == "shiprocket" and r.get("tracking_number") and str(r.get("status") or "").lower() not in {"delivered","cancelled","canceled","rto","rto_delivered"}]
+    active = [
+        r for r in rows
+        if (
+            r.get("provider_key") == "shiprocket"
+            and r.get("tracking_number")
+            and str(r.get("workflow_status") or "").lower() in _TRACKING_READY_WORKFLOWS
+            and str(r.get("status") or "").lower() not in {
+                "delivered", "cancelled", "canceled", "rto", "rto_delivered"
+            }
+        )
+    ]
     for row in active:
         try:
             await service.sync_tracking(str(row["id"]))
         except Exception as exc:
-            logger.warning("[CRON] shipment sync failed id=%s: %s", str(row.get("id"))[:8], exc)
+            logger.warning(
+                "[CRON] shipment sync failed id=%s workflow=%s: %s",
+                str(row.get("id"))[:8],
+                row.get("workflow_status"),
+                exc,
+            )
 
 @cron_task(hours=1)
 async def send_post_delivery_followups() -> None:
