@@ -671,54 +671,146 @@ class ShippingProviderService:
             response = await get_shipping_provider(row["provider_key"]).assign_awb(shipment_id=str(row["external_shipment_id"]), courier_id=courier_id)
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Unable to assign courier/AWB.") from exc
+        # Resumable: never request a second AWB when one is already persisted.
+        if row.get("tracking_number"):
+            return row
+        response = await get_shipping_provider(row["provider_key"]).assign_awb(
+            shipment_id=str(row["external_shipment_id"]), courier_id=courier_id
+        )
         awb = _find(response, "awb_code", "awb", "tracking_number")
         courier = _find(response, "courier_name", "courier")
+        courier_id_value = _find(response, "courier_company_id", "courier_id", "company_id")
+        service_type = _find(response, "service_type", "courier_type", "shipment_type", "service")
         tracking_url = _find(response, "tracking_url", "track_url")
         if not awb:
             raise HTTPException(status_code=502, detail="Courier provider returned no AWB.")
-        updated = await self.repo.update(shipment_id, {
-            "tracking_number": str(awb), "courier_name": str(courier) if courier else row.get("courier_name"), "tracking_url": str(tracking_url) if tracking_url else row.get("tracking_url"),
-            "status": "awb_assigned", "provider_status": "awb_assigned", "metadata": {**(row.get("metadata") or {}), "awb_assignment": response},
+        metadata = dict(row.get("metadata") or {})
+        metadata["awb_assignment"] = response
+        metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "awb_assigned", "updated_at": _now()}
+        return await self.repo.update(shipment_id, {
+            "tracking_number": str(awb),
+            "courier_name": str(courier) if courier else row.get("courier_name"),
+            "tracking_url": str(tracking_url) if tracking_url else row.get("tracking_url"),
+            "status": "awb_assigned",
+            "provider_status": "awb_assigned",
+            "metadata": metadata,
             "updated_at": _now(),
         })
-        return updated
 
     async def schedule_pickup(self, shipment_id: str) -> dict[str, Any]:
         row = await self._get_provider_row(shipment_id)
         if not row.get("tracking_number"):
             raise HTTPException(status_code=409, detail="Assign an AWB before scheduling pickup.")
+        if row.get("pickup_id"):
+            return row
         try:
-            response = await get_shipping_provider(row["provider_key"]).generate_pickup(shipment_id=str(row["external_shipment_id"]))
+            response = await get_shipping_provider(row["provider_key"]).generate_pickup(
+                shipment_id=str(row["external_shipment_id"])
+            )
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Unable to schedule courier pickup.") from exc
         pickup_id = _find(response, "pickup_id", "pickup_token", "pickupid")
+        metadata = dict(row.get("metadata") or {})
+        metadata["pickup"] = response
+        metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "pickup_scheduled", "updated_at": _now()}
         return await self.repo.update(shipment_id, {
             "pickup_id": str(pickup_id) if pickup_id else row.get("pickup_id"),
             "status": "pickup_scheduled", "provider_status": "pickup_scheduled",
-            "pickup_scheduled_at": _now(), "metadata": {**(row.get("metadata") or {}), "pickup": response},
-            "updated_at": _now(),
+            "pickup_scheduled_at": _now(), "metadata": metadata, "updated_at": _now(),
         })
 
     async def generate_label(self, shipment_id: str) -> dict[str, Any]:
         row = await self._get_provider_row(shipment_id)
-        try: response = await get_shipping_provider(row["provider_key"]).generate_label(shipment_id=str(row["external_shipment_id"]))
-        except Exception as exc: raise HTTPException(status_code=502, detail="Unable to generate shipping label.") from exc
+        if row.get("label_url"):
+            return row
+        if not row.get("tracking_number"):
+            raise HTTPException(status_code=409, detail="Assign an AWB before generating the shipping label.")
+        try:
+            response = await get_shipping_provider(row["provider_key"]).generate_label(
+                shipment_id=str(row["external_shipment_id"])
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Unable to generate shipping label.") from exc
         url = _find(response, "label_url", "label_download_url", "url")
-        return await self.repo.update(shipment_id, {"label_url": str(url) if url else row.get("label_url"), "metadata": {**(row.get("metadata") or {}), "label": response}, "updated_at": _now()})
+        metadata = dict(row.get("metadata") or {})
+        metadata["label"] = response
+        metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "label_generated", "updated_at": _now()}
+        return await self.repo.update(shipment_id, {
+            "label_url": str(url) if url else row.get("label_url"),
+            "metadata": metadata, "updated_at": _now()
+        })
 
     async def generate_manifest(self, shipment_id: str) -> dict[str, Any]:
         row = await self._get_provider_row(shipment_id)
-        try: response = await get_shipping_provider(row["provider_key"]).generate_manifest(shipment_id=str(row["external_shipment_id"]))
-        except Exception as exc: raise HTTPException(status_code=502, detail="Unable to generate manifest.") from exc
+        if row.get("manifest_url"):
+            return row
+        if not row.get("tracking_number"):
+            raise HTTPException(status_code=409, detail="Assign an AWB before generating the manifest.")
+        try:
+            response = await get_shipping_provider(row["provider_key"]).generate_manifest(
+                shipment_id=str(row["external_shipment_id"])
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Unable to generate manifest.") from exc
         url = _find(response, "manifest_url", "manifest_download_url", "url")
-        return await self.repo.update(shipment_id, {"manifest_url": str(url) if url else row.get("manifest_url"), "metadata": {**(row.get("metadata") or {}), "manifest": response}, "updated_at": _now()})
+        metadata = dict(row.get("metadata") or {})
+        metadata["manifest"] = response
+        metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "manifest_generated", "updated_at": _now()}
+        return await self.repo.update(shipment_id, {
+            "manifest_url": str(url) if url else row.get("manifest_url"),
+            "metadata": metadata, "updated_at": _now()
+        })
+
+    async def process_shipment(self, shipment_id: str) -> dict[str, Any]:
+        """Resume the complete post-create Shiprocket fulfillment workflow.
+
+        The workflow is intentionally idempotent: persisted AWB/pickup/label/manifest/
+        invoice artifacts are reused, so a retry after a provider timeout does not
+        blindly repeat earlier stages.
+        """
+        row = await self._get_provider_row(shipment_id)
+        if not row.get("tracking_number"):
+            row = await self.assign_awb(shipment_id)
+        if not row.get("pickup_id"):
+            row = await self.schedule_pickup(shipment_id)
+        if not row.get("manifest_url"):
+            row = await self.generate_manifest(shipment_id)
+        if not row.get("label_url"):
+            row = await self.generate_label(shipment_id)
+        if not row.get("provider_invoice_url"):
+            row = await self.print_invoice(shipment_id)
+        metadata = dict(row.get("metadata") or {})
+        metadata["workflow"] = {
+            **(metadata.get("workflow") or {}),
+            "step": "documents_ready",
+            "completed": True,
+            "completed_at": _now(),
+        }
+        return await self.repo.update(shipment_id, {
+            "metadata": metadata,
+            "updated_at": _now(),
+        })
 
     async def print_invoice(self, shipment_id: str) -> dict[str, Any]:
         row = await self._get_provider_row(shipment_id)
-        try: response = await get_shipping_provider(row["provider_key"]).print_invoice(shipment_id=str(row["external_shipment_id"]))
-        except Exception as exc: raise HTTPException(status_code=502, detail="Unable to generate courier invoice.") from exc
+        if row.get("provider_invoice_url"):
+            return row
+        if not row.get("tracking_number"):
+            raise HTTPException(status_code=409, detail="Assign an AWB before generating the courier invoice.")
+        try:
+            response = await get_shipping_provider(row["provider_key"]).print_invoice(
+                shipment_id=str(row["external_shipment_id"])
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Unable to generate courier invoice.") from exc
         url = _find(response, "invoice_url", "invoice_download_url", "url")
-        return await self.repo.update(shipment_id, {"provider_invoice_url": str(url) if url else row.get("provider_invoice_url"), "metadata": {**(row.get("metadata") or {}), "provider_invoice": response}, "updated_at": _now()})
+        metadata = dict(row.get("metadata") or {})
+        metadata["provider_invoice"] = response
+        metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "invoice_generated", "updated_at": _now()}
+        return await self.repo.update(shipment_id, {
+            "provider_invoice_url": str(url) if url else row.get("provider_invoice_url"),
+            "metadata": metadata, "updated_at": _now()
+        })
 
     async def track(self, provider_key: str, tracking_number: str) -> dict[str, Any]:
         try: return await get_shipping_provider(provider_key).track(tracking_number)
