@@ -189,6 +189,18 @@ class ProductService:
         # hardcoded GST slab allowlist in the application.
         await validate_product_tax(data["hsn_code"], data["gst_percentage"])
 
+        measurement_type = data.get("measurement_type")
+        measurement_value = data.get("measurement_value")
+        measurement_unit = data.get("measurement_unit")
+        if any(v is not None for v in (measurement_type, measurement_value, measurement_unit)):
+            if measurement_type is None or measurement_value is None or measurement_unit is None:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="measurement_type, measurement_value and measurement_unit must be provided together.")
+            definition = await self.repo.get_measurement_definition(str(measurement_type).strip().lower(), str(measurement_unit).strip())
+            if not definition:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid measurement type/unit combination.")
+            data["measurement_type"] = definition["measurement_type"]
+            data["measurement_unit"] = definition["code"]
+
         self._pack_product_specifications(data)
         return data
 
