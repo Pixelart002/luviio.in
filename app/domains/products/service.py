@@ -30,60 +30,35 @@ class ProductService:
     )
 
     @classmethod
-    def _pack_product_specifications(cls, data: Dict[str, Any]) -> None:
-        attrs = dict(data.get("attributes") or {})
-        specs = dict(data.get("specifications") or {})
+    def _extract_product_specifications(cls, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
         for field in cls._SPEC_FIELDS:
             if field in data:
                 value = data.pop(field)
-                if value is not None:
-                    attrs[field] = value
-        measurements = {}
-        for field in ("volume", "volume_unit", "length", "width", "height", "dimension_unit", "quantity", "quantity_unit"):
-            if field in data:
-                value = data.pop(field)
-                if value is not None:
-                    measurements[field] = value
-        if measurements:
-            specs["measurements"] = measurements
-        if specs:
-            attrs["specifications"] = specs
-        data["attributes"] = attrs
+                if value is None:
+                    continue
+                values = value if isinstance(value, list) else [value]
+                for item in values:
+                    rows.append({"specification_code": field, "value_numeric": item if isinstance(item, (int, float)) else None, "value_text": None if isinstance(item, (int, float)) else str(item)})
+        incoming = data.pop("specifications", None)
+        if isinstance(incoming, dict):
+            for key, value in incoming.items():
+                code = re.sub(r"[^a-zA-Z0-9]+", "_", str(key)).strip("_").lower()
+                if not code:
+                    continue
+                values = value if isinstance(value, list) else [value]
+                for item in values:
+                    if item is not None:
+                        rows.append({"specification_code": code, "value_numeric": item if isinstance(item, (int, float)) else None, "value_text": None if isinstance(item, (int, float)) else str(item)})
+        data["_spec_rows"] = rows
+        return rows
 
     @classmethod
     def _project_product(cls, product: Dict[str, Any]) -> Dict[str, Any]:
         if not product:
             return product
         result = dict(product)
-        attrs = result.pop("attributes", {}) or {}
-        nested = attrs.get("specifications") if isinstance(attrs.get("specifications"), dict) else {}
-        aliases = {
-            "brand": ("brand", "Brand"),
-            "manufacturer": ("manufacturer", "Manufacturer"),
-            "model_number": ("model_number", "Model Number"),
-            "gtin": ("gtin", "GTIN"),
-            "ean": ("ean", "EAN"),
-            "part_number": ("part_number", "Part Number"),
-            "key_features": ("key_features", "Key Features"),
-            "material": ("material", "Material"),
-            "finish": ("finish", "Finish", "Finish Type"),
-            "color": ("color", "Color"),
-            "size": ("size", "Size"),
-            "dimensions": ("dimensions", "Dimensions"),
-            "warranty": ("warranty", "Warranty"),
-        }
-        for field, keys in aliases.items():
-            value = next((attrs.get(key) for key in keys if attrs.get(key) is not None), None)
-            result[field] = value
-        measurements = nested.get("measurements") if isinstance(nested.get("measurements"), dict) else attrs.get("measurements")
-        if not isinstance(measurements, dict):
-            measurements = {}
-        for field in ("volume", "volume_unit", "length", "width", "height", "dimension_unit", "quantity", "quantity_unit"):
-            result[field] = measurements.get(field)
-        result["measurements"] = measurements
-        result["specifications"] = nested
-        for field in ("low_stock_threshold", "seo_title", "seo_description", "seo_keywords",
-                      "canonical_url", "discount_amount", "discount_percentage", "created_at"):
+        for field in ("low_stock_threshold", "discount_amount", "discount_percentage", "created_at"):
             result.pop(field, None)
         result.pop("categories", None)
         return result
@@ -204,7 +179,8 @@ class ProductService:
             data["measurement_type"] = definition["measurement_type"]
             data["measurement_unit"] = definition["code"]
 
-        self._pack_product_specifications(data)
+        self._extract_product_specifications(data)
+        data["_seo_data"] = {key: data.pop(key) for key in ("seo_title", "seo_description", "canonical_url") if key in data}
         return data
 
     async def create_product(self, data: Dict[str, Any]) -> Dict[str, Any]:
