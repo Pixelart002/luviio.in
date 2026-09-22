@@ -274,6 +274,21 @@ class ProductService:
             data["gst_percentage"] = gst_percentage
             await validate_product_tax(hsn_code, gst_percentage)
 
+        if any(field in data for field in ("measurement_type", "measurement_value", "measurement_unit")):
+            current = await self.repo.get_product_by_id(product_id)
+            if not current:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
+            effective_type = str(data.get("measurement_type") if data.get("measurement_type") is not None else current.get("measurement_type") or "").strip().lower()
+            effective_value = data.get("measurement_value") if "measurement_value" in data else current.get("measurement_value")
+            effective_unit = str(data.get("measurement_unit") if data.get("measurement_unit") is not None else current.get("measurement_unit") or "").strip()
+            if not effective_type or effective_value is None or not effective_unit:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="measurement_type, measurement_value and measurement_unit must be provided together.")
+            definition = await self.repo.get_measurement_definition(effective_type, effective_unit)
+            if not definition:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid measurement type/unit combination.")
+            data["measurement_type"] = definition["measurement_type"]
+            data["measurement_unit"] = definition["code"]
+
         if any(field in data for field in self._SPEC_FIELDS) or "specifications" in data:
             current = await self.repo.get_product_by_id(product_id)
             if not current:
