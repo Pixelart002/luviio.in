@@ -10,11 +10,17 @@ from app.constants.auth_messages import AuthMessages, AuthSecurityMessages
 from app.core.dependencies import get_current_user
 from app.domains.auth.mfa import (
     MFAError,
-    challenge as mfa_challenge,
     enroll_totp,
     list_factors,
     reset_pending_totp,
+)
+from app.domains.auth.mfa import (
+    challenge as mfa_challenge,
+)
+from app.domains.auth.mfa import (
     unenroll as mfa_unenroll,
+)
+from app.domains.auth.mfa import (
     verify as mfa_verify,
 )
 from app.domains.auth.mfa_schemas import MFAEnrollRequest, MFAUnenrollRequest, MFAVerifyRequest

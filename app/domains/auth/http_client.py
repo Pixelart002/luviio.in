@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import httpx
 
-
 _auth_http_client: httpx.AsyncClient | None = None
 
 

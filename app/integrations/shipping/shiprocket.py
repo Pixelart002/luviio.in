@@ -1,205 +1,94 @@
-"""Shiprocket API adapter."""
 from __future__ import annotations
-import asyncio, os, time
+
+import os
 from typing import Any
+
 import httpx
+from fastapi import HTTPException, status
+
 from app.integrations.shipping.base import ShippingProvider
-from app.core.config import settings
-import logging
+
+
+class ShiprocketClient:
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+        self.base_url = os.getenv("SHIPROCKET_BASE_URL", "https://apiv2.shiprocket.in/v1/external").rstrip("/")
+        self.email = os.getenv("SHIPROCKET_EMAIL", "")
+        self.password = os.getenv("SHIPROCKET_PASSWORD", "")
+        self._token: str | None = None
+        self.client = client
+
+    async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        if not self.client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=3.0)) as client:
+                return await self._send(client, method, path, **kwargs)
+        return await self._send(self.client, method, path, **kwargs)
+
+    async def _send(self, client: httpx.AsyncClient, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        if not self.email or not self.password:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Shiprocket is not configured")
+        if not self._token:
+            auth = await client.post(f"{self.base_url}/auth/login", json={"email": self.email, "password": self.password})
+            auth.raise_for_status()
+            self._token = auth.json().get("token")
+            if not self._token:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Shiprocket authentication failed")
+        response = await client.request(method, f"{self.base_url}/{path.lstrip('/')}", headers={"Authorization": f"Bearer {self._token}"}, **kwargs)
+        if response.status_code == 401:
+            self._token = None
+            auth = await client.post(f"{self.base_url}/auth/login", json={"email": self.email, "password": self.password})
+            auth.raise_for_status()
+            self._token = auth.json().get("token")
+            if not self._token:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Shiprocket authentication failed")
+            response = await client.request(method, f"{self.base_url}/{path.lstrip('/')}", headers={"Authorization": f"Bearer {self._token}"}, **kwargs)
+        response.raise_for_status()
+        return response.json()
+
+    async def check_serviceability(self, pickup_postcode: str, delivery_postcode: str, weight_kg: float, cod: bool) -> dict[str, Any]:
+        return await self._request("GET", "/courier/serviceability", params={"pickup_postcode": pickup_postcode, "delivery_postcode": delivery_postcode, "weight": weight_kg, "cod": int(cod)})
+
+    async def create_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/orders/create/adhoc", json=payload)
+
+    async def cancel_order(self, ids: list[int]) -> dict[str, Any]:
+        return await self._request("POST", "/orders/cancel", json={"ids": ids})
+
+    async def track(self, shipment_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/courier/track/shipment/{shipment_id}")
+
 
 class ShiprocketProvider(ShippingProvider):
     key = "shiprocket"
-    # Production and Sandbox use different API hosts in the Shiprocket sandbox
-    # console. Keep the URLs explicit so sandbox traffic can never hit production.
-    production_base_url = "https://apiv2.shiprocket.in/v1/external"
-    sandbox_base_url = "https://api-sandbox.shiprocket.in/v1/external"
-    sandbox_serviceability_url = "https://serviceability-sandbox.shiprocket.in"
 
     def __init__(self) -> None:
-        self.environment = os.getenv("SHIPROCKET_ENV", "sandbox").strip().lower()
-        if self.environment == "test":
-            # Backward-compatible alias for older deployments; keep the log label explicit.
-            self.environment = "sandbox"
-        if self.environment not in {"sandbox", "production"}:
-            raise RuntimeError("SHIPROCKET_ENV must be 'sandbox' (or legacy 'test') or 'production'.")
-        # Sandbox is intentionally supported even when Luviio itself runs with
-        # APP_ENV=production. SHIPROCKET_ENV is the source of truth; never
-        # silently rewrite sandbox traffic to production.
-        if self.environment == "sandbox":
-            self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
-            self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
-        else:
-            self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
-            self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
-
-        # Explicit override is useful for provider-issued environments. For
-        # sandbox, default to Shiprocket's sandbox hosts shown by the sandbox API
-        # console: api-sandbox for auth/order APIs and the dedicated
-        # serviceability-sandbox host for courier serviceability.
-        if self.environment == "sandbox":
-            self.base_url = os.getenv("SHIPROCKET_BASE_URL", self.sandbox_base_url).strip().rstrip("/")
-            self.serviceability_base_url = os.getenv(
-                "SHIPROCKET_SERVICEABILITY_BASE_URL",
-                self.sandbox_serviceability_url,
-            ).strip().rstrip("/")
-        else:
-            self.base_url = os.getenv("SHIPROCKET_BASE_URL", self.production_base_url).strip().rstrip("/")
-            self.serviceability_base_url = os.getenv(
-                "SHIPROCKET_SERVICEABILITY_BASE_URL",
-                self.base_url,
-            ).strip().rstrip("/")
-        self._token: str | None = None
-        self._token_expires_at = 0.0
-        self._lock = asyncio.Lock()
-
-    def _configured(self) -> None:
-        if not self.email or not self.password:
-            raise RuntimeError("Shiprocket provider is not configured.")
-
-    async def _token_value(self) -> str:
-        self._configured()
-        if self._token and time.time() < self._token_expires_at:
-            return self._token
-        async with self._lock:
-            if self._token and time.time() < self._token_expires_at:
-                return self._token
-            async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
-                response = await client.post(
-                    f"{self.base_url}/auth/login",
-                    json={"email": self.email, "password": self.password},
-                )
-                if response.is_error:
-                    # Safe diagnostic only: never log credentials or tokens.
-                    import logging
-                    logging.getLogger(__name__).error(
-                        "[SHIPROCKET] Authentication failed | env=%s status=%s body=%s",
-                        self.environment,
-                        response.status_code,
-                        response.text[:500].replace("\n", " "),
-                    )
-                    response.raise_for_status()
-                data = response.json()
-            token = str(data.get("token") or "").strip()
-            if not token:
-                raise RuntimeError("Shiprocket authentication returned no token.")
-            self._token = token
-            self._token_expires_at = time.time() + (240 * 60 * 60) - 300
-            return token
-
-    async def _request(self, method: str, path: str, *, base_url: str | None = None, **kwargs: Any) -> dict[str, Any]:
-        token = await self._token_value()
-        request_base_url = (base_url or self.base_url).rstrip("/")
-        headers = dict(kwargs.pop("headers", {}) or {})
-        headers["Authorization"] = f"Bearer {token}"
-        headers["Content-Type"] = "application/json"
-        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as client:
-            response = await client.request(method, f"{request_base_url}{path}", headers=headers, **kwargs)
-            if response.status_code == 401:
-                self._token = None
-                self._token_expires_at = 0
-                token = await self._token_value()
-                headers["Authorization"] = f"Bearer {token}"
-                response = await client.request(method, f"{request_base_url}{path}", headers=headers, **kwargs)
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError:
-                logging.getLogger(__name__).error(
-                    "[SHIPROCKET] API request failed | env=%s status=%s method=%s path=%s body=%s",
-                    self.environment,
-                    response.status_code,
-                    method,
-                    path,
-                    response.text[:2000].replace("\n", " "),
-                )
-                raise
-            data = response.json()
-            return data if isinstance(data, dict) else {"data": data}
+        self.client = ShiprocketClient()
 
     async def serviceability(self, *, pickup_postcode: str, delivery_postcode: str, weight_kg: float, cod: bool, declared_value: float | None = None) -> dict[str, Any]:
-        params: dict[str, Any] = {
-            "pickup_postcode": pickup_postcode, "delivery_postcode": delivery_postcode,
-            "weight": weight_kg, "cod": 1 if cod else 0,
-        }
-        if declared_value is not None:
-            params["declared_value"] = declared_value
-        # Shiprocket documents the production endpoint with a trailing slash.
-        # The sandbox serviceability host currently canonicalizes the opposite
-        # way (trailing slash -> no slash), so keep the two endpoint forms explicit.
-        serviceability_path = (
-            "/courier/serviceability"
-            if self.environment == "sandbox"
-            else "/courier/serviceability/"
-        )
-        return await self._request(
-            "GET",
-            serviceability_path,
-            params=params,
-            base_url=self.serviceability_base_url,
-        )
-
-    async def list_pickup_locations(self) -> list[dict[str, Any]]:
-        """Return pickup locations registered on the authenticated Shiprocket account.
-
-        Shiprocket returns them under data.shipping_address. Keep parsing strict so
-        an unexpected provider response cannot silently look like "no pickup".
-        """
-        response = await self._request("GET", "/settings/company/pickup")
-        if not isinstance(response, dict):
-            raise RuntimeError("Shiprocket pickup API returned an invalid response.")
-        data = response.get("data")
-        if not isinstance(data, dict):
-            raise RuntimeError("Shiprocket pickup API returned no data object.")
-        locations = data.get("shipping_address")
-        if locations is None:
-            raise RuntimeError("Shiprocket pickup API response is missing shipping_address.")
-        if not isinstance(locations, list):
-            raise RuntimeError("Shiprocket pickup API returned invalid shipping_address.")
-        return [item for item in locations if isinstance(item, dict)]
-
-    async def add_pickup_location(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Register a seller pickup location on the authenticated Shiprocket account."""
-        required = (
-            "pickup_location", "name", "email", "phone",
-            "address", "city", "state", "country", "pin_code",
-        )
-        missing = [key for key in required if not str(payload.get(key) or "").strip()]
-        if missing:
-            raise ValueError(
-                "Shiprocket pickup configuration is incomplete: "
-                + ", ".join(missing)
-            )
-        return await self._request(
-            "POST",
-            "/settings/company/addpickup",
-            json=payload,
-        )
+        return await self.client.check_serviceability(pickup_postcode, delivery_postcode, weight_kg, cod)
 
     async def create_shipment(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self._request("POST", "/orders/create/adhoc", json=payload)
+        return await self.client.create_order(payload)
 
     async def assign_awb(self, *, shipment_id: str, courier_id: int | None = None) -> dict[str, Any]:
-        body: dict[str, Any] = {"shipment_id": int(shipment_id)}
+        payload: dict[str, Any] = {"shipment_id": int(shipment_id)}
         if courier_id is not None:
-            body["courier_id"] = int(courier_id)
-        return await self._request("POST", "/courier/assign/awb", json=body)
+            payload["courier_id"] = courier_id
+        return await self.client._request("POST", "/courier/assign/awb", json=payload)
 
     async def generate_pickup(self, *, shipment_id: str) -> dict[str, Any]:
-        return await self._request("POST", "/courier/generate/pickup", json={"shipment_id": [int(shipment_id)]})
+        return await self.client._request("POST", "/courier/generate/pickup", json={"shipment_id": [int(shipment_id)]})
 
     async def generate_label(self, *, shipment_id: str) -> dict[str, Any]:
-        return await self._request("POST", "/courier/generate/label", json={"shipment_id": [int(shipment_id)]})
+        return await self.client._request("POST", "/courier/generate/label", json={"shipment_id": [int(shipment_id)]})
 
     async def generate_manifest(self, *, shipment_id: str) -> dict[str, Any]:
-        return await self._request("POST", "/manifests/generate", json={"shipment_id": [int(shipment_id)]})
-
-    async def print_manifest(self, *, order_id: str) -> dict[str, Any]:
-        return await self._request("POST", "/manifests/print", json={"order_ids": [int(order_id)]})
+        return await self.client._request("POST", "/manifests/generate", json={"shipment_id": [int(shipment_id)]})
 
     async def print_invoice(self, *, order_id: str) -> dict[str, Any]:
-        return await self._request("POST", "/orders/print/invoice", json={"ids": [int(order_id)]})
+        return await self.client._request("POST", "/orders/print/invoice", json={"ids": [int(order_id)]})
 
     async def track(self, tracking_number: str) -> dict[str, Any]:
-        return await self._request("GET", f"/courier/track/awb/{tracking_number}")
+        return await self.client.track(tracking_number)
 
     async def cancel_shipment(self, shipment_id: str) -> dict[str, Any]:
-        return await self._request("POST", "/orders/cancel", json={"ids": [int(shipment_id)]})
+        return await self.client.cancel_order([int(shipment_id)])

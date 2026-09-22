@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.core.dependencies import require_permission
-from app.core.exceptions import MFARequired, UnauthorizedAction
+from app.core.exceptions import MFARequired
 from app.domains.auth.mfa import _provider_error_message, list_factors
 
 

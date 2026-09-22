@@ -16,9 +16,9 @@ from starlette.concurrency import run_in_threadpool
 
 from app.constants.payment_messages import PaymentSecurityMessages
 from app.domains.checkout.repository import AsyncCheckoutRepository
-from app.domains.shipping.provider_service import ShippingProviderService
 from app.domains.coupons.service import CouponService
-from app.domains.pricing.service import get_pricing_from_config, _shipping_tax, PriceBreakdown
+from app.domains.pricing.service import PriceBreakdown, _shipping_tax, get_pricing_from_config
+from app.domains.shipping.provider_service import ShippingProviderService
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderCreatedEvent, get_event_bus
 from app.integrations.payments.registry import get_payment_provider

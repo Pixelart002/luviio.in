@@ -11,7 +11,14 @@ import io
 import logging
 import re
 
-from app.core.logging_config import correlation_id_ctx, new_id, request_id_ctx, safe_id, span_id_ctx, trace_id_ctx
+from app.core.logging_config import (
+    correlation_id_ctx,
+    new_id,
+    request_id_ctx,
+    safe_id,
+    span_id_ctx,
+    trace_id_ctx,
+)
 
 logger = logging.getLogger(__name__)
 

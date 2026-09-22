@@ -1,35 +1,33 @@
-# Production Security Baseline
-
-## Required controls
+# Security Baseline
 
 - Keep `SB_SERVICE_ROLE_KEY` server-side only.
-- Use allowlisted CORS origins; never combine credentialed requests with `*`.
-- Validate request bodies with Pydantic domain DTOs.
-- Authorize with server-verified identity, RBAC/policy, and ownership checks; never trust user-editable role or permission metadata.
-- Select only required database columns and never expose secrets, tokens, or payment credentials in logs.
-- Verify Stripe and other webhook signatures before processing business events.
-- Preserve webhook idempotency and payment settlement integrity across retries and concurrent delivery.
-- Rate-limit authentication and mutation endpoints and enforce request/body limits.
+- Use allowlisted CORS origins; never use `*` with credentials.
+- Validate request bodies with Pydantic DTOs.
+- Authorize by server-verified role/policy, never by user-editable metadata.
+- Select only required database columns; never expose secrets or tokens in logs.
+- Verify Stripe and other webhook signatures before parsing business events.
+- Rate-limit authentication, checkout and mutation endpoints.
 - Return safe generic errors to clients; keep provider/database details in redacted server logs.
-- Keep debug/admin documentation and operational endpoints reviewed before public exposure.
-- Rotate credentials through deployment secret management, never through source files.
+- Keep production docs and debug endpoints reviewed before exposure.
+- Rotate credentials through deployment environment management, never source files.
 
-## Logging and observability
+## Release controls
 
-Request and correlation IDs must be sanitized and safe to return to clients. Production logs must be structured and redacted. Do not log authorization headers, cookies, service-role keys, Stripe secrets, webhook secrets, VAPID private keys, passwords, client secrets, or raw sensitive payloads.
+Before every release, run the checks in `docs/ARCHITECTURE.md`, review changed routes and confirm no secret-like value appears in the diff. Treat `SB_SERVICE_ROLE_KEY` as a privileged server-only credential: never return it, log it, place it in client code, or use it to bypass an authorization decision. Keep authorization checks close to the service boundary, use explicit column projections, and fail closed for privileged mutations.
 
-## External integrations
+## Cleanup rule
 
-Provider adapters must use bounded network timeouts and explicit failure handling. Transient provider failures may be retried with bounded backoff; permanent resource-invalid responses may be cleaned up only when the provider explicitly establishes that the resource is no longer valid. Do not delete recoverable subscriptions or business records merely because one delivery attempt failed.
+Delete stale code only after its replacement is committed, all imports are migrated, tests cover the behavior, and a tracked-file/import scan shows no consumers. Compatibility adapters may remain temporarily, but they must contain delegation only—not a second business-logic implementation. Best-effort cleanup paths (thumbnail rollback, remote cancellation, queue delivery) now emit safe server logs instead of silently swallowing failures; provider details and secrets are never returned to clients.
 
-## Database security
+## Checkout data ownership and lookup rules
 
-RLS remains enabled where applicable. Privileged database functions use explicit execution permissions and controlled search paths. Payment settlement and webhook claim operations rely on database-backed integrity and idempotency rather than application-process locks.
+- Profile and saved-address email values are validated at the API boundary with `EmailStr`.
+- Checkout reads the selected address from the database and snapshots the validated email/address into the order; payment confirmation uses that immutable snapshot, not mutable profile data.
+- Stripe remains the source of truth for payment status and amount; the database RPC is the source of truth for order settlement, stock reservation, and idempotency.
+- Webhooks must be signature-verified and claimed by event ID before settlement. Client confirmation is a recovery path, never proof of payment by itself.
+- Public catalog/pricing reads may be cached at runtime; stock, coupons, authorization, orders, and payment state must be fresh database/provider lookups.
+- Payment webhooks select only required order columns and never use wildcard projections for sensitive records.
 
-## Change hygiene
+## Fresh commit validation
 
-Delete stale code only after its replacement is committed, all imports are migrated, tests cover the behavior, and a tracked-file/import scan shows no consumers. Do not maintain a second implementation behind a compatibility alias.
-
-## Release validation
-
-Before production release, run the CI verification gates, review the complete diff for secret-like values, confirm migrations are reviewed, and verify that environment-specific credentials are supplied only by the deployment platform. Security warnings from third-party dependencies must be tracked separately from application failures and must not be misreported as application defects.
+The latest domain changes were validated with 36 passing tests. Test-only Supabase and Stripe placeholders are loaded before module collection; production configuration still fails closed when required credentials are missing. The remaining five warnings originate in third-party Supabase and ReportLab packages and are not application failures.

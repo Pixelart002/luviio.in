@@ -14,6 +14,7 @@ from app.enums.roles import UserRole
 class ProfileUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     full_name: Optional[str] = Field(default=None, min_length=2, max_length=255)
+    email: Optional[EmailStr] = Field(default=None, description="Primary checkout and notification email")
     phone: Optional[str] = Field(default=None, max_length=20)
 
     @field_validator("phone")

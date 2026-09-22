@@ -4,104 +4,22 @@ Product Domain Service — Async Enterprise Grade
 Canonical product business logic. Legacy service remains available for
 compatibility while domain consumers use this module directly.
 """
-import asyncio
 import logging
-import re
-import unicodedata
 from typing import Any, Dict, List, Tuple
 
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 
-from app.constants.product_messages import ProductRules, ProductSecurityMessages
+from app.constants.product_messages import ProductSecurityMessages
 from app.domains.products.repository import AsyncProductRepository
-from app.domains.products.taxonomy import validate_product_tax
 from app.permissions.policies.product_policies import ProductPolicy
-from app.utils.image import delete_product_image, upload_multiple_images
+from app.utils.image import delete_product_image, upload_product_image
 
 logger = logging.getLogger(__name__)
 
-
 class ProductService:
-    _SPEC_FIELDS = (
-        "brand", "manufacturer", "model_number", "gtin", "ean",
-        "part_number", "key_features", "material", "finish", "color",
-        "size", "dimensions", "volume", "volume_unit", "length", "width", "height", "dimension_unit", "quantity", "quantity_unit", "warranty",
-    )
-
-    @classmethod
-    def _pack_product_specifications(cls, data: Dict[str, Any]) -> None:
-        attrs = dict(data.get("attributes") or {})
-        specs = dict(data.get("specifications") or {})
-        for field in cls._SPEC_FIELDS:
-            if field in data:
-                value = data.pop(field)
-                if value is not None:
-                    attrs[field] = value
-        measurements = {}
-        for field in ("volume", "volume_unit", "length", "width", "height", "dimension_unit", "quantity", "quantity_unit"):
-            if field in data:
-                value = data.pop(field)
-                if value is not None:
-                    measurements[field] = value
-        if measurements:
-            specs["measurements"] = measurements
-        if specs:
-            attrs["specifications"] = specs
-        data["attributes"] = attrs
-
-    @classmethod
-    def _project_product(cls, product: Dict[str, Any]) -> Dict[str, Any]:
-        if not product:
-            return product
-        result = dict(product)
-        attrs = result.pop("attributes", {}) or {}
-        nested = attrs.get("specifications") if isinstance(attrs.get("specifications"), dict) else {}
-        aliases = {
-            "brand": ("brand", "Brand"),
-            "manufacturer": ("manufacturer", "Manufacturer"),
-            "model_number": ("model_number", "Model Number"),
-            "gtin": ("gtin", "GTIN"),
-            "ean": ("ean", "EAN"),
-            "part_number": ("part_number", "Part Number"),
-            "key_features": ("key_features", "Key Features"),
-            "material": ("material", "Material"),
-            "finish": ("finish", "Finish", "Finish Type"),
-            "color": ("color", "Color"),
-            "size": ("size", "Size"),
-            "dimensions": ("dimensions", "Dimensions"),
-            "warranty": ("warranty", "Warranty"),
-        }
-        for field, keys in aliases.items():
-            value = next((attrs.get(key) for key in keys if attrs.get(key) is not None), None)
-            result[field] = value
-        measurements = nested.get("measurements") if isinstance(nested.get("measurements"), dict) else attrs.get("measurements")
-        if not isinstance(measurements, dict):
-            measurements = {}
-        for field in ("volume", "volume_unit", "length", "width", "height", "dimension_unit", "quantity", "quantity_unit"):
-            result[field] = measurements.get(field)
-        result["measurements"] = measurements
-        result["specifications"] = nested
-        for field in ("low_stock_threshold", "seo_title", "seo_description", "seo_keywords",
-                      "canonical_url", "discount_amount", "discount_percentage", "created_at"):
-            result.pop(field, None)
-        result.pop("categories", None)
-        return result
-
     def __init__(self) -> None:
         self.repo = AsyncProductRepository()
-
-    @staticmethod
-    def _slugify(value: str) -> str:
-        normalized = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode("ascii")
-        slug = re.sub(r"[^a-zA-Z0-9]+", "-", normalized).strip("-").lower()
-        return slug[:260]
-
-    async def _resolve_slug(self, name: str, requested_slug: str | None = None) -> str:
-        base = self._slugify(requested_slug or name)
-        if not base:
-            base = "product"
-        return await self.repo.generate_unique_slug(base)
 
     def _enrich_discount(self, prod: Dict[str, Any]) -> Dict[str, Any]:
         if not prod:
@@ -126,9 +44,6 @@ class ProductService:
         return await self.repo.get_active_categories()
 
     async def create_category(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        if not data.get("slug"):
-            data["slug"] = self._slugify(data.get("name", "")) or "category"
-            data["slug"] = await self.repo.generate_unique_category_slug(data["slug"])
         res = await self.repo.create_category(data)
         if not res:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
@@ -142,193 +57,91 @@ class ProductService:
 
     async def get_products(self, page: int, page_size: int, category: str, search: str, min_p: float, max_p: float, in_stock: bool) -> Tuple[List[Dict[str, Any]], int]:
         products, total = await self.repo.get_products(page, page_size, category, search, min_p, max_p, in_stock)
-        return [self._project_product(self._enrich_discount(p)) for p in products], total
+        return [self._enrich_discount(p) for p in products], total
+
+    async def get_product_by_sku(self, sku: str) -> Dict[str, Any]:
+        product = await self.repo.get_product_by_sku(sku)
+        if not product:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
+        return product
 
     async def get_product(self, slug: str) -> Dict[str, Any]:
         product = await self.repo.get_product_by_slug(slug)
         if not product:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
         product["images"] = product.get("images") or []
-        return self._project_product(self._enrich_discount(product))
+        return self._enrich_discount(product)
 
-    async def _prepare_product_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        data.setdefault("is_active", True)
-        sku = data.get("sku")
-        requested_slug = data.get("slug")
-        if sku:
-            sku_exists, slug = await asyncio.gather(
-                self.repo.check_sku_exists(sku),
-                self._resolve_slug(data.get("name", ""), requested_slug),
-            )
-            if sku_exists:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ProductSecurityMessages.SKU_COLLISION)
-        else:
-            slug = await self._resolve_slug(data.get("name", ""), requested_slug)
-        data["slug"] = slug
-
-        data["price"] = float(data["price"])
-        if data.get("compare_price") is not None:
-            data["compare_price"] = float(data["compare_price"])
-        if data.get("compare_price") is not None and data["compare_price"] <= data["price"]:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ProductSecurityMessages.INVALID_COMPARE_PRICE)
-        images = data.get("images") or []
-        if not images and data.get("image_url"):
-            images = [data["image_url"]]
-        data["images"] = images
-        data["image_url"] = images[0] if images else None
-
-        hsn_code = str(data.get("hsn_code") or "").strip()
-        if not hsn_code:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="HSN code is required for every product.")
-        data["hsn_code"] = hsn_code
-        if data.get("gst_percentage") is None:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="GST percentage is required for every product.")
-        data["gst_percentage"] = int(data["gst_percentage"])
-
-        # The provider is the source for HSN/GST validation; there is no
-        # hardcoded GST slab allowlist in the application.
-        await validate_product_tax(data["hsn_code"], data["gst_percentage"])
-
-        self._pack_product_specifications(data)
-        return data
+    @staticmethod
+    def _normalize_package(data: Dict[str, Any]) -> None:
+        package = data.pop("package", None)
+        if package:
+            attrs = dict(data.get("attributes") or {})
+            attrs["shipping_package"] = package
+            data["attributes"] = attrs
 
     async def create_product(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        data = await self._prepare_product_data(data)
+        self._normalize_package(data)
+        if data.get("sku") and await self.repo.check_sku_exists(data["sku"]):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ProductSecurityMessages.SKU_COLLISION)
+        data["slug"] = await self.repo.generate_unique_slug(data["slug"])
+        data["price"] = float(data["price"])
+        if data.get("compare_price"):
+            data["compare_price"] = float(data["compare_price"])
+        data["images"] = data.get("images") or []
+        data["image_url"] = data["images"][0] if data["images"] else None
+        data["hsn_code"] = str(data.get("hsn_code") or "9988").strip()
+        data["gst_percentage"] = int(data.get("gst_percentage") if data.get("gst_percentage") is not None else 18)
+        data["attributes"] = data.get("attributes") or {}
         res = await self.repo.create_product(data)
         if not res:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
         await self.repo.sync_product_images_table(res["id"], res.get("images") or [])
-        return self._project_product(self._enrich_discount(res))
-
-    async def create_product_with_images(self, data: Dict[str, Any], files: List[tuple[bytes, str]]) -> Dict[str, Any]:
-        data = await self._prepare_product_data(data)
-        if len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
-        if len(data.get("images") or []) + len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
-        res = await self.repo.create_product(data)
-        if not res:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
-        try:
-            existing = list(res.get("images") or [])
-            uploaded: List[str] = []
-            if files:
-                uploaded = await run_in_threadpool(upload_multiple_images, files, res["id"], max_images=ProductRules.MAX_IMAGES_PER_PRODUCT - len(existing))
-            all_images = existing + uploaded
-            await asyncio.gather(
-                self.repo.update_product(res["id"], {"images": all_images, "image_url": all_images[0] if all_images else None}),
-                self.repo.sync_product_images_table(res["id"], all_images),
-            )
-            res["images"] = all_images
-            res["image_url"] = all_images[0] if all_images else None
-            return self._project_product(self._enrich_discount(res))
-        except Exception as exc:
-            logger.error("Product creation image upload failed for %s: %s", res.get("id"), exc, exc_info=True)
-            try:
-                await self.repo.soft_delete_product(res["id"])
-            except Exception as cleanup_exc:
-                logger.warning("Failed to soft-delete partial product %s: %s", res.get("id"), cleanup_exc)
-            if isinstance(exc, HTTPException):
-                raise
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=ProductSecurityMessages.UPLOAD_FAILED) from exc
+        return self._enrich_discount(res)
 
     async def update_product(self, product_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        self._normalize_package(data)
         if "sku" in data and data["sku"] and await self.repo.check_sku_exists(data["sku"], exclude_product_id=product_id):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ProductSecurityMessages.SKU_COLLISION)
         if "slug" in data and data["slug"]:
-            data["slug"] = await self.repo.generate_unique_slug(self._slugify(data["slug"]) or "product", exclude_product_id=product_id)
-        if "name" in data and not data.get("slug"):
-            data["slug"] = await self.repo.generate_unique_slug(self._slugify(data["name"]) or "product", exclude_product_id=product_id)
+            data["slug"] = await self.repo.generate_unique_slug(data["slug"], exclude_product_id=product_id)
         if "price" in data and data["price"] is not None:
             data["price"] = float(data["price"])
         if "compare_price" in data and data["compare_price"] is not None:
             data["compare_price"] = float(data["compare_price"])
-        if "price" in data or "compare_price" in data:
-            current_price_row = await self.repo.get_product_by_id(product_id)
-            if not current_price_row:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
-            effective_price = float(data["price"]) if data.get("price") is not None else float(current_price_row.get("price") or 0)
-            effective_compare = data["compare_price"] if "compare_price" in data else current_price_row.get("compare_price")
-            if effective_compare is not None and float(effective_compare) <= effective_price:
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=ProductSecurityMessages.INVALID_COMPARE_PRICE)
-
-        if "hsn_code" in data or "gst_percentage" in data:
-            current = await self.repo.get_product_by_id(product_id)
-            if not current:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
-            hsn_code = str(data.get("hsn_code") or current.get("hsn_code") or "").strip()
-            gst_percentage = int(data.get("gst_percentage") if data.get("gst_percentage") is not None else current.get("gst_percentage"))
-            data["hsn_code"] = hsn_code
-            data["gst_percentage"] = gst_percentage
-            await validate_product_tax(hsn_code, gst_percentage)
-
-        if any(field in data for field in self._SPEC_FIELDS) or "specifications" in data:
-            current = await self.repo.get_product_by_id(product_id)
-            if not current:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
-            current_attrs = dict(current.get("attributes") or {})
-            current_specs = current_attrs.get("specifications") if isinstance(current_attrs.get("specifications"), dict) else {}
-            measurement_fields = ("volume", "volume_unit", "length", "width", "height", "dimension_unit", "quantity", "quantity_unit")
-            measurements = dict(current_specs.get("measurements") or {})
-            for field in self._SPEC_FIELDS:
-                if field in data:
-                    current_attrs[field] = data.pop(field)
-            for field in measurement_fields:
-                if field in data:
-                    value = data.pop(field)
-                    if value is None:
-                        measurements.pop(field, None)
-                    else:
-                        measurements[field] = value
-            if measurements:
-                current_specs["measurements"] = measurements
-            elif "measurements" in current_specs:
-                current_specs.pop("measurements", None)
-            if "specifications" in data:
-                incoming_specs = data.pop("specifications") or {}
-                current_specs.update(incoming_specs)
-            if current_specs:
-                current_attrs["specifications"] = current_specs
-            data["attributes"] = current_attrs
-
+        if "gst_percentage" in data and data["gst_percentage"] is not None:
+            data["gst_percentage"] = int(data["gst_percentage"])
+        if "hsn_code" in data and data["hsn_code"]:
+            data["hsn_code"] = str(data["hsn_code"]).strip()
         if "images" in data:
             imgs = data["images"] or []
             data["images"], data["image_url"] = imgs, imgs[0] if imgs else None
-        elif data.get("image_url"):
-            data["images"] = [data["image_url"]]
         res = await self.repo.update_product(product_id, data)
         if not res:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
         if "images" in data:
             await self.repo.sync_product_images_table(product_id, res.get("images") or [])
-        return self._project_product(self._enrich_discount(res))
+        return self._enrich_discount(res)
 
     async def delete_product(self, product_id: str) -> None:
         if not await self.repo.soft_delete_product(product_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
 
-    async def upload_images(self, product_id: str, files: List[tuple[bytes, str]]) -> Dict[str, Any]:
+    async def upload_image(self, product_id: str, contents: bytes, filename: str) -> Dict[str, Any]:
         prod = await self.repo.get_product_by_id(product_id)
         if not prod:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
         existing = prod.get("images") or []
-        if not files:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one image is required.")
         ProductPolicy.assert_can_upload_image(len(existing))
-        if len(existing) + len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
         try:
-            uploaded = await run_in_threadpool(upload_multiple_images, files, product_id, max_images=ProductRules.MAX_IMAGES_PER_PRODUCT - len(existing))
+            url = await run_in_threadpool(upload_product_image, file_bytes=contents, product_id=product_id, filename=filename, generate_thumbnail=False)
         except Exception as exc:
-            logger.error("Product image upload failed: %s", exc)
+            logger.error("Image upload failed: %s", exc)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=ProductSecurityMessages.UPLOAD_FAILED) from exc
-        all_images = existing + uploaded
+        all_images = existing + [url]
         await self.repo.update_product(product_id, {"images": all_images, "image_url": all_images[0]})
         await self.repo.sync_product_images_table(product_id, all_images)
-        return {"images": all_images, "image_url": all_images[0], "uploaded_urls": uploaded}
-
-    async def upload_image(self, product_id: str, contents: bytes, filename: str) -> Dict[str, Any]:
-        return await self.upload_images(product_id, [(contents, filename)])
+        return {"images": all_images, "image_url": all_images[0], "uploaded_url": url}
 
     async def delete_image(self, product_id: str, index: int) -> Dict[str, Any]:
         prod = await self.repo.get_product_by_id(product_id)

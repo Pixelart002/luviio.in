@@ -11,7 +11,6 @@ Architecture & Fixes:
   - Read path avoids an unnecessary cart upsert/write.
 """
 import logging
-from datetime import datetime, timezone
 from typing import Any, List, Optional, Tuple
 
 from fastapi import HTTPException, status
