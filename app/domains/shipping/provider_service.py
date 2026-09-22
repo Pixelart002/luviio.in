@@ -179,10 +179,20 @@ class ShippingProviderService:
                 "courier_id": courier.get("courier_company_id") or courier.get("id"),
                 "courier_name": courier.get("courier_name") or "Shiprocket courier",
                 "service_type": courier.get("service_type") or courier.get("courier_type") or courier.get("shipment_type") or courier.get("service"),
-                # Keep delivery product/mode separate from generic courier service type.
-                # Never infer a 2/3/4-wheeler from a generic "Surface" service.
-                "delivery_mode": courier.get("delivery_mode") or courier.get("mode") or courier.get("delivery_type"),
+                # Preserve provider-declared delivery metadata. Shiprocket's
+                # standard courier serviceability response exposes fields such
+                # as mode/service_type, but "Surface"/"Air" is not a vehicle.
+                # Never invent 2W/3W/4W from a generic courier service name.
+                "provider_mode": courier.get("mode"),
+                "delivery_mode": courier.get("delivery_mode") or courier.get("delivery_type"),
                 "vehicle_type": courier.get("vehicle_type") or courier.get("vehicle") or courier.get("vehicle_mode"),
+                "quick_delivery": (
+                    str(courier.get("checkout_shipping_method") or "").upper() == "SR_QUICK"
+                    or "shiprocket quick" in str(courier.get("courier_name") or "").casefold()
+                    or str(courier.get("delivery_mode") or "").casefold() in {"quick", "instant"}
+                ),
+                "quick_vehicle_type": courier.get("quick_vehicle_type") or courier.get("vehicle_type") or courier.get("vehicle") or courier.get("vehicle_mode"),
+                "first_mile_courier_option": courier.get("first_mile_courier_option"),
                 "shipping_cost": round(rate, 2),
                 "provider_rate": round(rate, 2),
                 "component_total": round(component_total, 2),
@@ -651,14 +661,42 @@ class ShippingProviderService:
         # Normalize legacy checkout formats (+91/91/0-prefixed) at the
         # provider boundary. Existing orders may predate checkout validation.
         # Shiprocket expects a canonical 10-digit Indian mobile number.
-        for label, address in (("shipping", shipping), ("billing", billing)):
-            try:
-                address["phone"] = normalize_indian_mobile(address.get("phone"))
-            except InvalidIndianMobile as exc:
+        # Normalize both consignee and billing phones at the provider boundary.
+        # Some legacy orders have billing_same_as_shipping=False even though the
+        # saved billing address is effectively identical to shipping. In that
+        # case Shiprocket must receive the valid consignee number rather than a
+        # stale/empty billing_phone.
+        try:
+            shipping["phone"] = normalize_indian_mobile(shipping.get("phone"))
+        except InvalidIndianMobile as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Order shipping phone number is invalid: {exc}",
+            ) from exc
+
+        def _same_saved_address(left: dict[str, Any], right: dict[str, Any]) -> bool:
+            keys = ("name", "address", "address_2", "city", "state", "pincode", "country")
+            return all(
+                str(left.get(key) or "").strip().casefold()
+                == str(right.get(key) or "").strip().casefold()
+                for key in keys
+            )
+
+        try:
+            billing["phone"] = normalize_indian_mobile(billing.get("phone"))
+        except InvalidIndianMobile:
+            if billing_same_as_shipping or _same_saved_address(billing, shipping):
+                billing = dict(shipping)
+                billing_same_as_shipping = True
+                logger.info(
+                    "[SHIPROCKET] Billing phone fallback to normalized shipping phone | "
+                    "reason=shipping_billing_same"
+                )
+            else:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Order {label} phone number is invalid: {exc}",
-                ) from exc
+                    detail="Order billing phone number is invalid.",
+                )
 
         shipping_first, *shipping_last = (shipping["name"] or "Customer").split()
         billing_first, *billing_last = (billing["name"] or "Customer").split()
@@ -714,6 +752,19 @@ class ShippingProviderService:
             **shipping_payload,
             "order_items": provider_items, "payment_method": "COD" if payment_method == "COD" else "Prepaid",
             "shipping_charges": float(order.get("shipping_cost") or 0),
+            # Shiprocket's custom-order API supports SR_STANDARD/SR_EXPRESS/
+            # SR_RUSH/SR_QUICK for accounts that have those checkout methods.
+            # Only send a method when it is explicitly known from the selected
+            # provider quote/order snapshot; never guess Quick from "Surface".
+            "checkout_shipping_method": (
+                "SR_QUICK"
+                if bool(selected_live.get("quick_delivery"))
+                else (
+                    "SR_EXPRESS"
+                    if str(selected_service_type or "").casefold() in {"air", "express"}
+                    else "SR_STANDARD"
+                )
+            ),
             "giftwrap_charges": 0,
             "transaction_charges": 0,
             "total_discount": float(order.get("discount_amount") or 0),
