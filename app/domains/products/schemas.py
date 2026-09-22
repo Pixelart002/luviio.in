@@ -135,6 +135,12 @@ class ProductCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_measurement_units(self):
+        if self.measurement_value is not None and (self.measurement_type is None or self.measurement_unit is None):
+            raise ValueError("measurement_type and measurement_unit are required when measurement_value is provided.")
+        if self.measurement_type is not None and self.measurement_unit is None:
+            raise ValueError("measurement_unit is required when measurement_type is provided.")
+        if self.measurement_unit is not None and self.measurement_type is None:
+            raise ValueError("measurement_type is required when measurement_unit is provided.")
         if self.volume is not None and self.volume_unit is None:
             raise ValueError("volume_unit is required when volume is provided.")
         if any(v is not None for v in (self.length, self.width, self.height)) and self.dimension_unit is None:
@@ -221,6 +227,12 @@ class ProductUpdate(BaseModel):
 
     @model_validator(mode="after")
     def validate_measurement_units(self):
+        if self.measurement_value is not None and (self.measurement_type is None or self.measurement_unit is None):
+            raise ValueError("measurement_type and measurement_unit are required when measurement_value is provided.")
+        if self.measurement_type is not None and self.measurement_unit is None:
+            raise ValueError("measurement_unit is required when measurement_type is provided.")
+        if self.measurement_unit is not None and self.measurement_type is None:
+            raise ValueError("measurement_type is required when measurement_unit is provided.")
         if self.volume is not None and self.volume_unit is None:
             raise ValueError("volume_unit is required when volume is provided.")
         if any(v is not None for v in (self.length, self.width, self.height)) and self.dimension_unit is None:
