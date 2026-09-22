@@ -218,7 +218,7 @@ async def switch_pending_payment_method(request: Request, order_number: str, met
     order_number = _require_public_order_number(order_number)
     target = str(method or "").strip().lower()
     if target not in {"stripe", "cod"}:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unsupported payment method.")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Unsupported payment method.")
 
     repo = AsyncOrderRepository()
     order = await repo.get_order_by_id(order_number)
