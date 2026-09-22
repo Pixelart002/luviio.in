@@ -91,6 +91,12 @@ class AsyncProductRepository:
         data_list = getattr(res, "data", None)
         return self._format_product_images(data_list[0]) if data_list else None
 
+    async def get_measurement_catalog(self) -> Dict[str, List[Dict[str, Any]]]:
+        admin_sb = await get_async_admin_supabase()
+        types_res = await admin_sb.table("measurement_types").select("code, name, value_kind").eq("is_active", True).order("name").execute()
+        units_res = await admin_sb.table("measurement_units").select("code, measurement_type, name, symbol, is_base, multiplier").eq("is_active", True).order("name").execute()
+        return {"types": getattr(types_res, "data", None) or [], "units": getattr(units_res, "data", None) or []}
+
     async def get_measurement_definition(self, measurement_type: str, measurement_unit: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("measurement_units").select("code, measurement_type, name, symbol, multiplier, is_active").eq("code", measurement_unit).eq("measurement_type", measurement_type).eq("is_active", True).limit(1).execute()
