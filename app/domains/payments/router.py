@@ -19,10 +19,10 @@ from app.utils.response import success_response
 
 
 def get_real_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "127.0.0.1"
+    # Trust the socket peer by default. A forwarded header is only reliable
+    # when a trusted proxy has already normalized it; accepting arbitrary
+    # client-supplied values makes rate limits and audit trails spoofable.
+    return request.client.host if request.client else "unknown"
 
 limiter = Limiter(key_func=get_real_ip)
 router = APIRouter(prefix="/payments", tags=["Payments"])

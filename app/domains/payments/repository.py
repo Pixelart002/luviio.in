@@ -146,7 +146,9 @@ class AsyncPaymentRepository:
     async def get_order_by_payment_intent(self, pi_id: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.table("orders").select("*").eq("stripe_payment_intent", pi_id).maybe_single().execute()
+            res = await admin_sb.table("orders").select(
+                "id,customer_id,status,stripe_payment_intent,total_amount,shipping_email,billing_email,coupon_id,discount_amount"
+            ).eq("stripe_payment_intent", pi_id).maybe_single().execute()
             return getattr(res, "data", None)
         except Exception as exc:
             logger.error("DB Error fetching order by PI %s: %s", pi_id, exc, exc_info=True)

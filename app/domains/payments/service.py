@@ -326,6 +326,12 @@ class PaymentService:
 
         existing_order = await self.repo.get_order_by_id(order_id)
         PaymentPolicy.assert_can_confirm(existing_order, user_id)
+        # The checkout snapshot is authoritative. The profile can change while
+        # Stripe is processing, so notifications must use the paid order's
+        # validated shipping/billing email rather than a mutable session value.
+        order_email = (existing_order or {}).get("shipping_email") or (existing_order or {}).get("billing_email") or email
+        if not order_email:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
 
         try:
             # 🔥 FIX: Extract Payment Method
@@ -378,7 +384,7 @@ class PaymentService:
                 logger.error("[PAYMENT] Coupon redemption failed for order %s: %s", order_id, coupon_exc)
 
         try:
-            get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=email, customer_id=user_id))
+            get_event_bus().publish(OrderPaidEvent(order=existing_order, customer_email=order_email, customer_id=user_id))
         except Exception as e:
             logger.error("Event bus failed: %s", e)
 
