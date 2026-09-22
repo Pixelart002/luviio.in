@@ -189,6 +189,9 @@ class ProductUpdate(BaseModel):
     stock: Optional[int] = Field(default=None, ge=0)
     weight: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
     weight_unit: Optional[Literal["g", "kg"]] = None
+    measurement_type: Optional[str] = Field(default=None, min_length=2, max_length=32)
+    measurement_value: Optional[Decimal] = Field(default=None, ge=0, decimal_places=6)
+    measurement_unit: Optional[str] = Field(default=None, min_length=1, max_length=32)
 
     image_url: Optional[str] = Field(default=None, max_length=2048)
     images: Optional[List[str]] = Field(default=None, max_length=10)
