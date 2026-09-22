@@ -20,7 +20,7 @@ class AsyncProductRepository:
             product["images"] = [img["url"] for img in imgs if "url" in img]
         else:
             product["images"] = product.get("images") or []
-        return self._format_product_specs(product)
+        return self._format_product_seo(self._format_product_specs(product))
 
     def _format_product_specs(self, product: Dict[str, Any]) -> Dict[str, Any]:
         rows = product.pop("product_specifications", None) or []
@@ -43,6 +43,16 @@ class AsyncProductRepository:
         for field in ("brand", "manufacturer", "model_number", "gtin", "ean", "part_number",
                       "material", "finish", "color", "size", "dimensions", "warranty"):
             product[field] = specs.get(field)
+        return product
+
+    def _format_product_seo(self, product: Dict[str, Any]) -> Dict[str, Any]:
+        rows = product.pop("product_seo", None) or []
+        seo = rows[0] if isinstance(rows, list) and rows else (rows if isinstance(rows, dict) else {})
+        product["seo_title"] = seo.get("title")
+        product["seo_description"] = seo.get("description")
+        product["canonical_url"] = seo.get("canonical_url")
+        product["robots_index"] = seo.get("robots_index", True)
+        product["robots_follow"] = seo.get("robots_follow", True)
         return product
 
     async def get_active_categories(self) -> List[Dict[str, Any]]:
