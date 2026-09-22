@@ -2,9 +2,11 @@
 import json
 import logging
 import uuid
+from html import escape
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
 
@@ -96,6 +98,28 @@ async def hsn_lookup(request: Request, code: str) -> Dict[str, Any]:
             "source": "external_taxonomy_provider",
         }
     )
+
+
+@router.get("/products/share/{slug}", response_class=HTMLResponse, include_in_schema=False)
+async def product_share_page(request: Request, slug: str) -> HTMLResponse:
+    """Server-rendered share shell for WhatsApp/Facebook/LinkedIn crawlers.
+
+    Social crawlers do not execute the React application, so product OG metadata
+    must be available in the initial HTML response.
+    """
+    product = await ProductService().get_product(slug)
+    site_url = "https://luviio.in"
+    canonical = f"{site_url}/product/{escape(product["slug"], quote=True)}"
+    title = escape(str(product.get("seo_title") or product.get("name") or "Luviio product"))
+    description = escape(str(product.get("seo_description") or product.get("short_description") or product.get("description") or "Shop on Luviio."))
+    image = str(product.get("image_url") or ((product.get("images") or [None])[0]) or "")
+    if image.startswith("/"):
+        image = site_url + image
+    image = escape(image, quote=True)
+    canonical_attr = escape(canonical, quote=True)
+    redirect_url = escape(f"/product.html?slug={product["slug"]}", quote=True)
+    html = f"""<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title}</title><meta name=\"description\" content=\"{description}\"><link rel=\"canonical\" href=\"{canonical_attr}\"><meta property=\"og:type\" content=\"product\"><meta property=\"og:site_name\" content=\"Luviio\"><meta property=\"og:title\" content=\"{title}\"><meta property=\"og:description\" content=\"{description}\"><meta property=\"og:url\" content=\"{canonical_attr}\"><meta property=\"og:image\" content=\"{image}\"><meta property=\"og:image:alt\" content=\"{title}\"><meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"{title}\"><meta name=\"twitter:description\" content=\"{description}\"><meta name=\"twitter:image\" content=\"{image}\"><meta http-equiv=\"refresh\" content=\"0;url={redirect_url}\"></head><body><p>Opening product…</p><script>location.replace({redirect_url!r})</script></body></html>"""
+    return HTMLResponse(content=html, headers={"Cache-Control": "public, max-age=300, s-maxage=3600"})
 
 
 @router.get("/products/{slug}", status_code=status.HTTP_200_OK)
