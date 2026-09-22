@@ -31,13 +31,21 @@ class Settings(BaseSettings):
     VAPID_PRIVATE_KEY: str = ""
     VAPID_CLAIM_EMAIL: str = "mailto:admin@luviio.in"
 
-    # Production must never implicitly trust localhost or a Vercel preview.
-    # Add local/preview origins explicitly through deployment env vars.
+    OLA_MAPS_API_KEY: str = ""
+
+    FRONTEND_URL: str = "https://www.luviio.in"
     ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in"
 
     RATE_LIMIT_PER_MINUTE: int = 60
+    TRUSTED_PROXY_IPS: str = ""
     SENTRY_DSN: str = ""
     APP_VERSION: str = "unknown"
+
+    # External HSN/GST taxonomy provider. No GST slab table is maintained in code.
+    TAXONOMY_API_BASE_URL: str = "https://hsn.krakelabsindia.com"
+    TAXONOMY_API_KEY: str = ""
+    TAXONOMY_API_TIMEOUT_SECONDS: float = 3.0
+    TAXONOMY_ENFORCE_PRODUCT_TAX: bool = True
 
     @field_validator(
         "SB_URL", "SB_KEY", "SB_SERVICE_ROLE_KEY",
@@ -53,6 +61,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def trusted_proxy_ips(self) -> List[str]:
+        return [item.strip() for item in self.TRUSTED_PROXY_IPS.split(",") if item.strip()]
 
     @property
     def is_production(self) -> bool:

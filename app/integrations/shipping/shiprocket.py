@@ -6,6 +6,8 @@ from typing import Any
 import httpx
 from fastapi import HTTPException, status
 
+from app.integrations.shipping.base import ShippingProvider
+
 
 class ShiprocketClient:
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
@@ -53,3 +55,40 @@ class ShiprocketClient:
 
     async def track(self, shipment_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/courier/track/shipment/{shipment_id}")
+
+
+class ShiprocketProvider(ShippingProvider):
+    key = "shiprocket"
+
+    def __init__(self) -> None:
+        self.client = ShiprocketClient()
+
+    async def serviceability(self, *, pickup_postcode: str, delivery_postcode: str, weight_kg: float, cod: bool, declared_value: float | None = None) -> dict[str, Any]:
+        return await self.client.check_serviceability(pickup_postcode, delivery_postcode, weight_kg, cod)
+
+    async def create_shipment(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self.client.create_order(payload)
+
+    async def assign_awb(self, *, shipment_id: str, courier_id: int | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"shipment_id": int(shipment_id)}
+        if courier_id is not None:
+            payload["courier_id"] = courier_id
+        return await self.client._request("POST", "/courier/assign/awb", json=payload)
+
+    async def generate_pickup(self, *, shipment_id: str) -> dict[str, Any]:
+        return await self.client._request("POST", "/courier/generate/pickup", json={"shipment_id": [int(shipment_id)]})
+
+    async def generate_label(self, *, shipment_id: str) -> dict[str, Any]:
+        return await self.client._request("POST", "/courier/generate/label", json={"shipment_id": [int(shipment_id)]})
+
+    async def generate_manifest(self, *, shipment_id: str) -> dict[str, Any]:
+        return await self.client._request("POST", "/manifests/generate", json={"shipment_id": [int(shipment_id)]})
+
+    async def print_invoice(self, *, order_id: str) -> dict[str, Any]:
+        return await self.client._request("POST", "/orders/print/invoice", json={"ids": [int(order_id)]})
+
+    async def track(self, tracking_number: str) -> dict[str, Any]:
+        return await self.client.track(tracking_number)
+
+    async def cancel_shipment(self, shipment_id: str) -> dict[str, Any]:
+        return await self.client.cancel_order([int(shipment_id)])

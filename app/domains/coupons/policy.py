@@ -25,12 +25,30 @@ class CouponPolicy:
 
         now = datetime.now(timezone.utc)
 
-        def _parse(v):
+        def _parse(v: Any) -> Optional[datetime]:
             if not v:
                 return None
             if isinstance(v, datetime):
                 return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
-            return v
+            if isinstance(v, str):
+                value = v.strip()
+                if not value:
+                    return None
+                # Supabase/PostgREST commonly returns timestamptz as ISO-8601 text.
+                try:
+                    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                except ValueError:
+                    logger.warning("Invalid coupon timestamp value: %r", v)
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Coupon validity window is invalid.",
+                    )
+                return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+            logger.warning("Unsupported coupon timestamp type: %s", type(v).__name__)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Coupon validity window is invalid.",
+            )
 
         valid_from = _parse(coupon.get("valid_from"))
         valid_until = _parse(coupon.get("valid_until"))

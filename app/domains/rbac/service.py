@@ -8,6 +8,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
+from app.constants.rbac_messages import USER_ACTION_NOTES, USER_ACTIONS
+from app.domains.rbac.action_control_repository import UserActionControlRepository
 from app.domains.rbac.repository import AsyncRbacRepository
 from app.enums.roles import UserRole
 from app.permissions.action_control import invalidate_action_control_cache
@@ -31,6 +33,15 @@ class RolePermissionService:
     def roles() -> List[str]:
         return [r.value if hasattr(r, "value") else str(r) for r in UserRole]
 
+    @staticmethod
+    def _known_permissions() -> set[str]:
+        catalogue = static_descriptions()
+        return {
+            value
+            for category in catalogue["categories"].values()
+            for value in category["permissions"].values()
+        }
+
     async def effective_matrix(self) -> Dict[str, List[str]]:
         matrix: Dict[str, List[str]] = {}
         for role in self.roles():
@@ -45,11 +56,17 @@ class RolePermissionService:
     async def set_override(self, role: str, permission: str, enabled: bool) -> Dict[str, Any]:
         if role not in self.roles():
             raise ValueError(f"Unknown role: {role}")
+        permission = permission.strip()
+        if not permission or permission == "*" or permission not in self._known_permissions():
+            raise ValueError(f"Unknown permission: {permission}")
         saved = await self.repo.upsert_role_override(role, permission, enabled)
-        invalidate_overrides_cache()  # next require_permission re-reads the table
+        invalidate_overrides_cache()
         return {"role": role, "permission": permission, "enabled": enabled, "saved": bool(saved)}
 
     async def remove_override(self, role: str, permission: str) -> Dict[str, Any]:
+        permission = permission.strip()
+        if not permission or permission == "*" or permission not in self._known_permissions():
+            raise ValueError(f"Unknown permission: {permission}")
         await self.repo.delete_role_override(role, permission)
         invalidate_overrides_cache()
         return {"role": role, "permission": permission, "overridden": False}
@@ -59,21 +76,61 @@ class RolePermissionService:
 
 
 class UserActionControlService:
-    """Manages per-user capability gating (disable/enable a specific user's actions)."""
+    """Per-user capability CRUD; persistence is encapsulated in its repository."""
 
     def __init__(self) -> None:
-        self.repo = AsyncRbacRepository()
+        self.repo = UserActionControlRepository()
+
+    @staticmethod
+    def action_catalogue() -> List[Dict[str, str]]:
+        return [
+            {"action": action, "note": USER_ACTION_NOTES[action]}
+            for action in USER_ACTIONS
+        ]
+
+    @staticmethod
+    def validate_action(action: str) -> None:
+        if action not in USER_ACTION_NOTES:
+            raise ValueError(f"Unknown user action: {action}")
+
+    @staticmethod
+    def action_note(action: str) -> str:
+        UserActionControlService.validate_action(action)
+        return USER_ACTION_NOTES[action]
 
     async def list_for_user(self, user_id: str) -> List[Dict[str, Any]]:
-        return await self.repo.list_user_controls(user_id)
+        return await self.repo.list(user_id)
 
-    async def set_for_user(self, user_id: str, action: str, enabled: bool,
-                           actor_id: str, reason: str = "") -> Dict[str, Any]:
-        saved = await self.repo.upsert_user_control(user_id, action, enabled, actor_id, reason)
+    async def get_for_user(self, user_id: str, action: str) -> Dict[str, Any] | None:
+        self.validate_action(action)
+        return await self.repo.get(user_id, action)
+
+    async def set_for_user(
+        self,
+        user_id: str,
+        action: str,
+        enabled: bool,
+        actor_id: str,
+        reason: str = "",
+    ) -> Dict[str, Any]:
+        self.validate_action(action)
+        saved = await self.repo.create_or_update(user_id, action, enabled, actor_id, reason)
         invalidate_action_control_cache()
-        return {"user_id": user_id, "action": action, "enabled": enabled, "saved": bool(saved)}
+        return {
+            "user_id": user_id,
+            "action": action,
+            "note": USER_ACTION_NOTES[action],
+            "enabled": enabled,
+            "saved": bool(saved),
+        }
 
     async def remove_for_user(self, user_id: str, action: str) -> Dict[str, Any]:
-        await self.repo.delete_user_control(user_id, action)
+        self.validate_action(action)
+        await self.repo.delete(user_id, action)
         invalidate_action_control_cache()
-        return {"user_id": user_id, "action": action, "enabled": True}
+        return {
+            "user_id": user_id,
+            "action": action,
+            "note": USER_ACTION_NOTES[action],
+            "enabled": True,
+        }

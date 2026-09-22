@@ -10,80 +10,84 @@ HTTP request
   -> versioned composition (`app/api/v1/api.py`)
   -> domain router (`app/domains/<domain>/router.py`)
   -> domain-owned Pydantic schema (`app/domains/<domain>/schemas.py`)
-  -> auth and permission dependencies
+  -> authentication and authorization dependencies
   -> domain service
   -> domain repository
-  -> Supabase / integrations
+  -> Supabase / external integration
 ```
 
-## Folder responsibilities
+## Architectural boundaries
 
-- `app/api/v1/api.py`: thin versioned route composition only; no business logic.
+- `app/main.py`: application assembly, lifespan, exception handling, middleware composition, and top-level health wiring.
+- `app/api/v1/api.py`: versioned HTTP route composition only; no business logic.
 - `app/api/middlewares`: stateless HTTP/ASGI transport concerns only.
-- `app/domains/<domain>`: vertical feature slice containing router, business service, repository, and domain-specific contracts/policy.
+- `app/domains/<domain>`: vertical feature slice containing router, service, repository, and domain-specific contracts/policy.
 - `app/infrastructure`: cross-cutting infrastructure adapters/endpoints. Health monitoring lives under `app/infrastructure/health`.
-- `app/services` and `app/repositories`: legacy compatibility area being migrated; new feature code must use canonical domain modules.
-- `app/permissions`: authorization policy decisions.
-- `app/core`: configuration, authentication dependencies, clients, shared middleware composition, logging, and errors.
-- `app/integrations`: isolated third-party adapters.
+- `app/permissions`: authorization policy decisions shared across domains.
+- `app/core`: configuration, authentication dependencies, clients, shared middleware composition, logging, errors, and cross-cutting infrastructure.
+- `app/integrations`: isolated third-party provider adapters.
 - `app/events`: domain events and handlers.
 - `app/cron`: idempotent scheduled work.
 - `tests`: behavior and security regression coverage.
 - `docs`: human-maintained system documentation.
 
-## API transport migration
+## API ownership
 
-The old feature-router copies under `app/api/v1/routers/` have been removed. Invoice routing is owned by Orders, while health routing is owned by infrastructure.
+Feature routing is owned by the corresponding domain. Invoice routing is owned by Orders; infrastructure health routing is owned by `app/infrastructure/health`.
 
-The old shared `app/api/schemas` DTO package has now been retired. Domain request/response contracts live with their owning bounded context, preventing the API layer from becoming a second business-model layer.
+Domain request/response contracts live with their owning bounded context. The versioned API layer composes routes but does not become a second business-model layer.
 
-The API layer is intentionally thin: `app/main.py` owns application assembly, `app/api/v1/api.py` composes the versioned route table, and domain/infrastructure modules own endpoint behavior.
+## Domain ownership
 
-## Payment domain migration
+All feature implementations use canonical ownership under `app/domains/<domain>/`. The retired top-level `app/services` and `app/repositories` layers are not application boundaries and must not be reintroduced.
 
-Payments have a single canonical repository under `app/domains/payments/repository.py`. The abandoned-order cron imports that repository directly, and payment tests target `app/domains/payments/service.py` ownership. The duplicate legacy payment service has been removed.
+Payments have a single canonical repository at `app/domains/payments/repository.py`. Payment orchestration uses that repository and consumes pricing from `app/domains/pricing/service.py`. The canonical payment service is `app/domains/payments/service.py`.
 
-`app/repositories/payment_repo.py` remains only as a temporary compatibility shim; it contains no independent persistence implementation and has an explicit removal condition after remaining legacy imports are migrated.
+Admin and Notifications likewise use their domain-owned router, service, and repository layers. External push, payment, email, and other provider calls remain behind `app/integrations` adapters.
 
-The canonical payment repository implementation was preserved during the path/documentation cleanup. Its module path is now documented as `app/domains/payments/repository.py`.
+## Authentication and authorization
 
-## Pricing domain migration
+Authentication establishes the server-verified subject. Authorization decisions are made by the permission/RBAC layer and enforced at the service boundary for privileged mutations and user-owned resources. Client-provided role or ownership fields are never trusted as authorization input.
 
-Pricing ownership is canonical under `app/domains/pricing/service.py`. Pricing tests now import the canonical domain service, and the legacy Cart Service consumes the canonical pricing implementation. The legacy pricing module remains temporarily while Payment/Cart legacy compatibility imports are completed; it must not contain divergent business logic.
+## Persistence and correctness
 
-## Admin domain migration
+Repositories own database access. Supabase is the persistence boundary; migrations are the schema source of truth. Correctness-critical operations such as checkout, payment settlement, inventory mutation, webhook idempotency, and ownership checks must rely on database constraints/transactions or other shared infrastructure rather than process-local state.
 
-Admin routing, business logic, and persistence now have canonical ownership under `app/domains/admin/`. The admin router imports `AdminService` from the domain, and the domain service imports `AsyncAdminRepository` from the domain repository. The duplicate legacy `app/services/admin/service.py` and `app/repositories/admin_repo.py` implementations have been removed.
+## Payments and webhooks
 
-## Notifications domain migration
+Payment integrations are isolated behind provider adapters. Webhook signatures are verified before business processing. Provider event IDs and payment identifiers are persisted for idempotency. Settlement uses database-backed integrity checks and transactions; replayed or concurrently delivered events must not double-settle an order.
 
-Push notification routing, orchestration, and persistence now have canonical ownership under `app/domains/notifications/`. The router imports `PushService` from the domain service, and the domain service imports `AsyncPushRepository` from the domain repository. The duplicate legacy `app/services/notifications/push.py` and `app/repositories/push_repo.py` modules have been removed.
+## Observability
 
-## Observability and correlation
-
-Every HTTP request receives a sanitized `X-Request-ID` and `X-Correlation-ID`. Both are returned in the response and included in structured logs; `trace_id` and `span_id` are reserved for distributed tracing providers. Production logs are JSON and local logs are readable key/value lines. Secrets, cookies, authorization headers, payment data, and sensitive payloads are redacted. Sentry is opt-in through `SENTRY_DSN` and disabled in local/test environments.
+Every HTTP request receives sanitized `X-Request-ID` and `X-Correlation-ID` values. They are returned in responses and included in structured logs. Production logs are JSON; local logs are readable key/value lines. Secrets, cookies, authorization headers, payment data, and sensitive payloads are redacted. Sentry is opt-in through `SENTRY_DSN` and disabled in local/test environments.
 
 ## Middleware and horizontal scaling
 
-Middleware remains outside domains because it applies uniformly to every worker/instance. Request IDs are server-generated, body limits are enforced before oversized payloads reach business logic, security headers are added centrally, and compression avoids already-compressed/streaming responses. Middleware must remain stateless and must never be a correctness source of truth; shared correctness state belongs in database/cache infrastructure.
+Middleware is stateless and safe across multiple workers/instances. Request IDs are server-generated, body limits are enforced before business logic, security headers are centralized, and compression avoids already-compressed or streaming responses. Middleware state is never a correctness source of truth.
 
 ## Settings boundary
 
-The Settings domain owns `SettingsCoreEngine`, role-scoped settings services, and its repository. New feature code must not depend on the legacy settings service package.
+The Settings domain owns operational settings, validation, authorization, and persistence. Environment variables remain the source for secrets and deployment credentials. Settings are not a substitute for business records, RBAC policy, or provider credentials.
 
 ## Scaling rules
 
 1. Keep routers thin and domain services focused.
 2. Keep persistence behind repositories.
-3. Never rely on process-local state for correctness across multiple workers.
-4. Preserve checkout/payment idempotency; use database-backed constraints/transactions for correctness.
-5. Paginate unbounded collections and cap payload sizes.
+3. Never rely on process-local state for correctness across workers.
+4. Preserve checkout/payment idempotency with database-backed guarantees.
+5. Paginate unbounded collections and cap request/body sizes.
 6. Isolate external providers behind integrations/adapters.
-7. Make scheduled jobs idempotent so multiple workers cannot corrupt state.
-8. Avoid unbounded per-request logging; production logging should be structured and operationally controllable.
-9. Add positive, invalid-input, unauthorized, and failure-path tests for critical endpoints.
-10. Update architecture docs whenever ownership or boundaries change.
+7. Make scheduled jobs idempotent and safe for multi-instance execution.
+8. Keep production logging structured, bounded, and redacted.
+9. Cover critical endpoints with success, validation, authorization, and failure-path tests.
+10. Update this documentation whenever a production ownership boundary changes.
 
-## Safe migration rule
+## Change and deletion policy
 
-Never remove a legacy module because its name looks old. First add the canonical replacement, migrate every import, run syntax/tests, perform a repository-wide reference scan, then remove the stale module. Temporary compatibility shims are acceptable only when they contain no duplicate business logic and have an explicit removal condition.
+A structural change is complete only when the canonical replacement exists, production/tests/docs use it, the repository has no live references to the retired boundary, and CI is green.
+
+Do not recreate compatibility shims or duplicate business-logic implementations. When a legacy module is removed, verify imports, tests, documentation, and deployment references before deletion.
+
+## Verification standard
+
+CI is the authoritative automated verification path. A production change is considered complete only after the relevant compile, lint, type-check, dependency-audit, and test gates pass.

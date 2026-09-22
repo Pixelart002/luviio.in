@@ -1,7 +1,7 @@
 """
 Auth Repository — Async Hardened Production Grade
 =================================================
-Path: app/repositories/auth_repo.py
+Path: app/domains/auth/repository.py
 """
 import logging
 from typing import Any, Dict, Optional
@@ -10,8 +10,10 @@ import httpx
 
 from app.core.config import settings
 from app.core.supabase import get_async_supabase
+from app.domains.auth.http_client import get_auth_http_client
 
 logger = logging.getLogger(__name__)
+
 
 class AsyncAuthRepository:
     def __init__(self):
@@ -20,7 +22,7 @@ class AsyncAuthRepository:
     async def sign_up(self, email: str, password: str, full_name: str) -> Optional[str]:
         sb = await get_async_supabase()
         res = await sb.auth.sign_up({
-            "email": email, 
+            "email": email,
             "password": password,
             "options": {"data": {"full_name": full_name}}
         })
@@ -47,16 +49,20 @@ class AsyncAuthRepository:
             "apikey": settings.SB_KEY,
             "Content-Type": "application/json",
         }
+        client = await get_auth_http_client()
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(url, headers=headers, json={"refresh_token": refresh_token})
-                
+            response = await client.post(
+                url,
+                headers=headers,
+                json={"refresh_token": refresh_token},
+            )
+
             if response.status_code != 200:
                 data = response.json()
                 msg = data.get("error_description") or data.get("msg") or response.text
                 logger.warning("Session refresh failed: %s", msg)
                 raise ValueError(f"Invalid Refresh Token: {msg}")
-                
+
             data = response.json()
             user = data.get("user") or {}
             return {
@@ -76,9 +82,9 @@ class AsyncAuthRepository:
             "apikey": settings.SB_KEY,
             "Content-Type": "application/json",
         }
+        client = await get_auth_http_client()
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(url, headers=headers, json={"refresh_token": refresh_token})
+            await client.post(url, headers=headers, json={"refresh_token": refresh_token})
         except httpx.RequestError as exc:
             logger.warning("Network timeout while invalidating token: %s", exc)
 
@@ -93,10 +99,14 @@ class AsyncAuthRepository:
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
         }
+        client = await get_auth_http_client()
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.put(url, headers=headers, json={"password": new_password})
-                
+            response = await client.put(
+                url,
+                headers=headers,
+                json={"password": new_password},
+            )
+
             if response.status_code != 200:
                 data = response.json()
                 msg = data.get("error_description") or data.get("msg") or "Token is invalid or expired."

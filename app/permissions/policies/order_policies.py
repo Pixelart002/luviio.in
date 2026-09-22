@@ -111,11 +111,10 @@ class OrderPolicy:
         # 2. Finite State Machine Check
         current_status = str(order.get("status", "")).lower()
 
-        # 🔥 FIX: Added PROCESSING to cancellable states (Can cancel while packing)
+        # Paid/processing orders require the payment-domain refund workflow;
+        # direct cancellation is limited to unpaid pending orders.
         cancellable_states = {
             OrderStatus.PENDING.value,
-            OrderStatus.PAID.value,
-            OrderStatus.PROCESSING.value
         }
 
         if current_status not in cancellable_states:
@@ -155,13 +154,14 @@ class OrderPolicy:
 
         current_status = str(order.get("status", "")).lower()
 
-        # 🔥 FIX: Added PROCESSING so users can download invoice during warehouse packing
+        # Invoice remains available only while the order is fulfilled or in
+        # fulfilment. A refunded order is no longer offered an invoice download
+        # from the customer order flow.
         valid_invoice_states = {
             OrderStatus.PAID.value,
             OrderStatus.PROCESSING.value,
             OrderStatus.SHIPPED.value,
             OrderStatus.DELIVERED.value,
-            OrderStatus.REFUNDED.value
         }
 
         if current_status not in valid_invoice_states:
@@ -187,11 +187,8 @@ class OrderPolicy:
         Useful for non-HTTP domain services or background task workers.
         """
         # 1. State Verification
-        # 🔥 FIX: Added PROCESSING here too
         cancellable_states = {
             OrderStatus.PENDING.value if hasattr(OrderStatus.PENDING, "value") else "pending",
-            OrderStatus.PAID.value if hasattr(OrderStatus.PAID, "value") else "paid",
-            OrderStatus.PROCESSING.value if hasattr(OrderStatus.PROCESSING, "value") else "processing"
         }
 
         if str(current_status).lower() not in cancellable_states:

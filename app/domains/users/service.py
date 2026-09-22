@@ -13,6 +13,7 @@ from app.permissions.policies.user_policies import UserPolicy
 
 logger = logging.getLogger(__name__)
 
+
 class UserService:
     def __init__(self) -> None:
         self.repo = AsyncUserRepository()
@@ -81,24 +82,44 @@ class UserService:
             except Exception as exc:
                 logger.warning("Non-fatal error setting new default address for %s: %s", user_id[:8], exc)
 
-    async def get_users_paginated(self, page: int, page_size: int, search: Optional[str] = None, role_filter: Optional[str] = None) -> Tuple[List[Dict[str, Any]], int]:
+    async def get_users_paginated(
+        self,
+        page: int,
+        page_size: int,
+        search: Optional[str] = None,
+        role_filter: Optional[str] = None,
+    ) -> Tuple[List[Dict[str, Any]], int]:
         try:
             return await self.repo.get_users_paginated(page, page_size, search, role_filter)
         except Exception as exc:
             logger.error("Error fetching paginated users: %s", exc, exc_info=True)
             raise LuviioException(UserSecurityMessages.DB_OPERATION_FAILED, "DB_ERROR", 500) from exc
 
-    async def admin_update_user(self, admin_id: str, target_user_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def admin_update_user(
+        self,
+        admin_id: str,
+        target_user_id: str,
+        payload: Dict[str, Any],
+        actor_role: str = "admin",
+    ) -> Dict[str, Any]:
         if not payload:
             raise LuviioException(UserSecurityMessages.NO_FIELDS_TO_UPDATE, "INVALID_PAYLOAD", 400)
         UserPolicy.assert_admin_not_downgrading_self(admin_id, target_user_id, payload)
         existing = await self.repo.get_user_by_id(target_user_id)
         if not existing:
             raise ResourceNotFound("User")
+        if "role" in payload and payload["role"] is not None:
+            UserPolicy.assert_role_change_allowed(
+                actor_role=actor_role,
+                current_target_role=existing.get("role", "customer"),
+                new_target_role=payload["role"],
+            )
         try:
             res = await self.repo.update_profile(target_user_id, payload)
             if not res:
                 raise ResourceNotFound("User")
+            from app.core.dependencies import invalidate_profile_cache
+            invalidate_profile_cache(target_user_id)
             return res
         except ResourceNotFound:
             raise

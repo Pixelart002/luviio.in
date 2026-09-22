@@ -16,5 +16,5 @@ class OrderSecurityMessages:
     INVALID_TRANSITION = "The requested order status transition is not permitted by business rules."
     REFUND_FAILED = "Payment gateway failed to process the refund. Please verify with Stripe dashboard."
     CONCURRENCY_CONFLICT = "Order state was modified by another transaction. Please refresh and try again."
-    INVOICE_UNAVAILABLE = "Invoice PDF is only available for paid, shipped, delivered, or refunded orders."
+    INVOICE_UNAVAILABLE = "Invoice PDF is only available for paid, processing, shipped, or delivered orders."
     PDF_GENERATION_FAILED = "An internal error occurred while generating the invoice document."

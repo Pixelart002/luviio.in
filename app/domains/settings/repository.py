@@ -13,6 +13,7 @@ from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 
+
 class AsyncSettingsRepository:
     def __init__(self):
         pass
@@ -42,11 +43,29 @@ class AsyncSettingsRepository:
     async def update_setting_value(self, key: str, new_value: Any) -> Dict[str, Any]:
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.table("system_settings").update({"value": new_value}).eq("key", key).select("*").execute()
-            data = getattr(res, "data", None)
-            if data and len(data) > 0:
+            # The installed async PostgREST builder does not support
+            # update(...).select(...). Execute the UPDATE first, then fetch
+            # the canonical row with a normal SELECT query.
+            await (
+                admin_sb.table("system_settings")
+                .update({"value": new_value})
+                .eq("key", key)
+                .execute()
+            )
+
+            res = await (
+                admin_sb.table("system_settings")
+                .select("*")
+                .eq("key", key)
+                .limit(1)
+                .execute()
+            )
+            data = getattr(res, "data", None) or []
+            if data:
                 return data[0]
-            raise RuntimeError("Update succeeded but returned empty payload.")
+            raise RuntimeError("Setting update matched no settings row.")
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.error("DB Error updating setting '%s': %s", key, exc, exc_info=True)
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=SettingsSecurityMessages.DB_OPERATION_FAILED) from exc

@@ -17,6 +17,7 @@ class OrderCreateFromCartRequest(BaseModel):
     notes: Optional[str] = Field(None, max_length=1000, description="Optional customer instructions")
     idempotency_key: Optional[str] = Field(None, max_length=100, description="Prevent duplicate orders on network retry")
     coupon_code: Optional[str] = Field(None, max_length=40, description="Optional promo code to apply at checkout")
+    shipping_courier_id: Optional[int] = Field(None, ge=1, description="Customer-selected Shiprocket courier company ID")
 
 class OrderAdminUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -34,5 +35,5 @@ class OrderListResponse(BaseModel):
 
 class OrderCancelResponse(BaseModel):
     status: str
-    order_id: str
+    order_number: str
     message: str

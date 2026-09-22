@@ -1,22 +1,23 @@
 """
 Auth Service — Enterprise Orchestration
 =======================================
-Path: app/domains/auth/service.py
+Shared auth throttling is awaited so it works consistently across all workers.
 """
 import logging
 from typing import Any, Dict
 
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
-from supabase import AuthApiError
 
 from app.constants.auth_messages import AuthSecurityMessages
 from app.domains.auth.repository import AsyncAuthRepository
 from app.domains.users.repository import AsyncUserRepository
 from app.integrations.email.registry import get_email_provider
 from app.permissions.policies.auth_policies import AuthPolicy
+from supabase import AuthApiError
 
 logger = logging.getLogger(__name__)
+
 
 class AuthService:
     def __init__(self):
@@ -24,16 +25,17 @@ class AuthService:
         self.user_repo = AsyncUserRepository()
 
     async def register_user(self, email: str, password: str, full_name: str, client_ip: str) -> bool:
-        AuthPolicy.assert_safe_attempt(client_ip, email)
+        await AuthPolicy.assert_safe_attempt(client_ip, email)
         try:
             auth_user_id = await self.auth_repo.sign_up(email, password, full_name)
         except AuthApiError as exc:
-            AuthPolicy.record_failed_attempt(client_ip, email)
+            await AuthPolicy.record_failed_attempt(client_ip, email)
             logger.warning("Supabase registration rejected for %s: %s", email, exc)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=AuthSecurityMessages.REGISTRATION_FAILED) from exc
         if not auth_user_id:
-            AuthPolicy.record_failed_attempt(client_ip, email)
+            await AuthPolicy.record_failed_attempt(client_ip, email)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=AuthSecurityMessages.REGISTRATION_FAILED)
+        await AuthPolicy.reset_attempts(client_ip, email)
         try:
             await self.user_repo.upsert_profile(user_id=auth_user_id, email=email, full_name=full_name)
         except Exception as exc:
@@ -46,16 +48,16 @@ class AuthService:
         return True
 
     async def login_user(self, email: str, password: str, client_ip: str) -> Dict[str, Any]:
-        AuthPolicy.assert_safe_attempt(client_ip, email)
+        await AuthPolicy.assert_safe_attempt(client_ip, email)
         try:
             session_data = await self.auth_repo.sign_in(email, password)
             if not session_data:
-                AuthPolicy.record_failed_attempt(client_ip, email)
+                await AuthPolicy.record_failed_attempt(client_ip, email)
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.INVALID_CREDENTIALS)
-            AuthPolicy.reset_attempts(client_ip, email)
+            await AuthPolicy.reset_attempts(client_ip, email)
             return session_data
         except AuthApiError as exc:
-            AuthPolicy.record_failed_attempt(client_ip, email)
+            await AuthPolicy.record_failed_attempt(client_ip, email)
             logger.info("Login failed for %s from IP %s", email, client_ip)
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.INVALID_CREDENTIALS) from exc
 
@@ -78,10 +80,11 @@ class AuthService:
                 logger.error("Error during session logout: %s", exc)
 
     async def process_forgot_password(self, email: str, client_ip: str) -> None:
-        AuthPolicy.assert_safe_attempt(client_ip)
+        await AuthPolicy.assert_safe_attempt(client_ip)
         try:
             await self.auth_repo.reset_password_email(email)
         except Exception as exc:
+            await AuthPolicy.record_failed_attempt(client_ip)
             logger.warning("Password reset email trigger failed for %s: %s", email, exc)
 
     async def process_reset_password(self, access_token: str, new_password: str) -> None:

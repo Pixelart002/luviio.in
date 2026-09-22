@@ -1,26 +1,42 @@
-# Deployment Guide
+# Production Deployment Guide
 
-## Build source
+## Dependency source
 
-Use `pyproject.toml` and the committed `uv.lock` as the only dependency source. `requirements.txt` must not be reintroduced because the Python buildpack rejects multiple package-manager files.
+`pyproject.toml` defines the project requirements and `uv.lock` is the authoritative resolved dependency graph. Do not introduce `requirements.txt`, Pipenv, Poetry, or another package-manager lockfile.
 
-## Commands
+Production installs must use the lockfile without changing dependency resolution:
 
 ```text
 uv lock --check
 uv sync --locked --no-dev --no-editable
 python -m compileall -q app
-pytest
+pytest -q
 ```
 
-## Runtime
+## Build and runtime
 
-The Procfile must start `app.main:app`. Production configuration is supplied through environment variables; never commit local `.env` files.
+The application entrypoint is `app.main:app`. The production process must run the ASGI application through the deployment platform's supported command/Procfile. Production configuration is supplied through environment variables; local `.env` files and credentials are never committed.
+
+The Docker image uses Python 3.13 and uv. Dependency installation must remain lockfile-driven; image builds must not silently resolve a new dependency graph.
+
+## Required production configuration
+
+Configure the environment-specific Supabase, Stripe, webhook, email, push, CORS, and observability settings required by the deployed features. Server-only credentials must remain in the platform's secret manager/environment configuration.
 
 ## Release checklist
 
-1. Review the diff for secrets and generated files.
-2. Confirm Supabase, Stripe and webhook configuration exists for the target environment.
-3. Run the verification commands above.
-4. Deploy from a feature branch and inspect health plus structured logs.
-5. Roll back through the deployment platform if behavior is unsafe; do not use a runtime setting as a substitute for rollback.
+1. Review the complete diff for secrets, credentials, generated files, and accidental debug code.
+2. Confirm the committed `uv.lock` matches `pyproject.toml`.
+3. Run locked dependency installation and the compile, lint, type-check, dependency-audit, and test gates used by CI.
+4. Apply reviewed database migrations before enabling code that depends on them.
+5. Confirm webhook endpoints, signing secrets, CORS origins, and external-provider configuration match the target environment.
+6. Deploy and verify `/health`, critical API flows, structured logs, and error monitoring.
+7. Monitor the release before treating it as complete.
+
+## Rollback
+
+Rollback application code through the deployment platform's release mechanism. Roll back database changes only through a reviewed corrective migration or an explicitly documented recovery procedure. Do not use runtime settings as a substitute for a code or database rollback.
+
+## Operational safety
+
+Run scheduled jobs only through the configured scheduler/worker mechanism. Jobs must be idempotent and safe under retries. Do not assume process-local memory is shared between instances.

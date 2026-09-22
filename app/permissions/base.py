@@ -1,62 +1,69 @@
 from app.enums.roles import UserRole
 from app.permissions.admin import AdminPermissions as AP
+from app.permissions.cart import CartPermissions as CartP
 from app.permissions.coupons import CouponPermissions as CP
 from app.permissions.orders import OrderPermissions as OP
 from app.permissions.payments import PaymentPermissions as PayP
 from app.permissions.products import ProductPermissions as PP
+from app.permissions.reviews import ReviewPermissions as RP
 from app.permissions.settings import SettingsPermissions as SP
 from app.permissions.shipping import ShippingPermissions as ShipP
 from app.permissions.subscriptions import SubscriptionPermissions as SubP
 from app.permissions.users import UserPermissions as UP
 
-# Master Role-to-Permission Mapping
-# ==================================
-# This is the STATIC default matrix. At runtime, `app.permissions.overrides`
-# layers an optional `role_permissions` table on top of it so admins can
-# enable/disable individual permissions per role without a redeploy.
-# Effective permission = static default, adjusted by DB overrides.
-ROLE_PERMISSIONS = {
-    UserRole.SUPER_ADMIN: ["*"],  # God Mode — absolute, can never be narrowed at runtime.
+# Inventory uses canonical permission strings because its endpoints are domain-specific.
+INVENTORY_READ = "inventory.read"
+INVENTORY_ADJUST = "inventory.adjust"
+INVENTORY_RECEIVE = "inventory.receive"
+INVENTORY_RETURN = "inventory.return"
+INVENTORY_DAMAGE = "inventory.damage"
+INVENTORY_WASTAGE = "inventory.wastage"
+INVENTORY_RECONCILE = "inventory.reconcile"
+INVENTORY_HISTORY_READ = "inventory.history.read"
+INVENTORY_LOW_STOCK_READ = "inventory.low_stock.read"
+INVENTORY_LOW_STOCK_SCAN = "inventory.low_stock.scan"
+INVENTORY_RESERVATION_RELEASE = "inventory.reservation.release"
 
+# Master Role-to-Permission Mapping. DB role_permissions is an override layer.
+ROLE_PERMISSIONS = {
+    UserRole.SUPER_ADMIN: ["*"],
     UserRole.ADMIN: [
+        AP.ACCESS_CONSOLE,
         PP.CREATE, PP.READ, PP.UPDATE, PP.DELETE,
         OP.READ, OP.UPDATE, OP.CANCEL, OP.REFUND,
         UP.READ, UP.UPDATE, UP.DELETE,
         PayP.READ, PayP.PROCESS, PayP.REFUND,
-        AP.VIEW_ANALYTICS, AP.MANAGE_SETTINGS,
-        # 🔥 FIX: these were never granted to any role except super_admin
-        # (via the "*" wildcard) — every /settings/* endpoint 403'd for
-        # admins too, even though AP.MANAGE_SETTINGS above already signaled
-        # admin was meant to manage settings. MANAGE_LOCKED intentionally
-        # excluded — that stays super_admin-only per SettingsPolicy.
+        AP.VIEW_ANALYTICS, AP.MANAGE_SETTINGS, AP.MANAGE_ROLES,
         SP.READ, SP.UPDATE, SP.RESET,
-        # New commerce domains — full staff control
         CP.CREATE, CP.READ, CP.UPDATE, CP.DELETE, CP.APPLY,
+        CartP.VIEW_ABANDONED, CartP.MANAGE_REMINDERS,
         ShipP.READ, ShipP.UPDATE, ShipP.DELETE,
         SubP.READ_PLANS, SubP.READ_MINE, SubP.MANAGE, SubP.MANAGE_USERS,
-        # NOTE: AP.MANAGE_ROLES stays super_admin-only (role assignment is God-Mode).
+        RP.MODERATE,
+        INVENTORY_READ, INVENTORY_ADJUST, INVENTORY_RECEIVE, INVENTORY_RETURN,
+        INVENTORY_DAMAGE, INVENTORY_WASTAGE, INVENTORY_RECONCILE,
+        INVENTORY_HISTORY_READ, INVENTORY_LOW_STOCK_READ, INVENTORY_LOW_STOCK_SCAN,
+        INVENTORY_RESERVATION_RELEASE,
     ],
-
     UserRole.MANAGER: [
+        AP.ACCESS_CONSOLE,
         PP.CREATE, PP.READ, PP.UPDATE,
         OP.READ, OP.UPDATE, OP.CANCEL,
         UP.READ,
         PayP.READ,
         AP.VIEW_ANALYTICS,
-        # Day-to-day commerce operations, no destructive/financial rights
         CP.CREATE, CP.READ, CP.UPDATE,
+        CartP.VIEW_ABANDONED, CartP.MANAGE_REMINDERS,
         ShipP.READ, ShipP.UPDATE,
         SubP.READ_PLANS, SubP.MANAGE_USERS,
-        # NOTE: SettingsPermissions intentionally NOT granted here yet.
-        # ManagerSettingsService exists (operational/ui_ux categories only)
-        # but no router endpoint calls it yet — /settings/ is still wired
-        # to AdminSettingsService only, which returns ALL settings
-        # unfiltered. Granting SP.READ here would let managers see
-        # financial/locked settings via the list endpoint. Add a
-        # manager-scoped router route first, then grant permissions here.
+        RP.MODERATE,
+        INVENTORY_READ, INVENTORY_ADJUST, INVENTORY_RECEIVE, INVENTORY_RETURN,
+        INVENTORY_DAMAGE, INVENTORY_WASTAGE, INVENTORY_RECONCILE,
+        INVENTORY_HISTORY_READ, INVENTORY_LOW_STOCK_READ, INVENTORY_LOW_STOCK_SCAN,
+        INVENTORY_RESERVATION_RELEASE,
     ],
-
     UserRole.SUPPORT: [
+        AP.ACCESS_CONSOLE,
         PP.READ,
         OP.READ, OP.UPDATE,
         UP.READ,
@@ -64,10 +71,8 @@ ROLE_PERMISSIONS = {
         CP.READ, CP.APPLY,
         ShipP.READ,
         SubP.READ_PLANS, SubP.READ_MINE,
+        INVENTORY_READ, INVENTORY_HISTORY_READ, INVENTORY_LOW_STOCK_READ,
     ],
-
-    # Customers use ABAC (Resource Ownership) for their own data, but the
-    # customer-facing commerce endpoints below are guarded by PBAC.
     UserRole.CUSTOMER: [
         CP.APPLY,
         SubP.READ_PLANS, SubP.SUBSCRIBE, SubP.READ_MINE,
@@ -76,10 +81,6 @@ ROLE_PERMISSIONS = {
 
 
 def get_static_role_permissions(role) -> set[str]:
-    """
-    Returns the static default permission set for a role (handles both the
-    UserRole enum and its string value).
-    """
     key = role
     if isinstance(role, str):
         try:

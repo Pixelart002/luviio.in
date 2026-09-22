@@ -1,10 +1,6 @@
-"""
-Stripe Implementation
-=====================
-Path: app/integrations/payments/stripe_impl.py
-"""
+"""Stripe payment-provider plugin."""
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 import stripe
 
@@ -16,6 +12,7 @@ logger = logging.getLogger(__name__)
 if getattr(settings, "STRIPE_SECRET_KEY", None):
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
+
 class StripeProvider(PaymentProvider):
     def create_payment_intent(
         self,
@@ -24,34 +21,26 @@ class StripeProvider(PaymentProvider):
         order_id: str,
         user_id: str,
         idem_key: str,
+        payment_method_types: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         try:
-            intent = stripe.PaymentIntent.create(
-                amount=amount_paise,
-                currency=currency.lower(),
-                metadata={
-                    "order_id": order_id,
-                    "user_id": user_id,
-                },
-                automatic_payment_methods={"enabled": True},
-                description=f"{getattr(settings, 'APP_NAME', 'Luviio Commerce')} — Order #{order_id[:8].upper()}",
-                idempotency_key=idem_key,
-            )
+            params: Dict[str, Any] = {
+                "amount": amount_paise,
+                "currency": currency.lower(),
+                "metadata": {"order_id": order_id, "user_id": user_id},
+                "description": f"{getattr(settings, 'APP_NAME', 'Luviio Commerce')} — Order #{order_id[:8].upper()}",
+                "idempotency_key": idem_key,
+            }
+            if payment_method_types:
+                params["payment_method_types"] = payment_method_types
+            else:
+                params["automatic_payment_methods"] = {"enabled": True}
 
-            client_secret = (
-                intent.get("client_secret")
-                if isinstance(intent, dict)
-                else getattr(intent, "client_secret", None)
-            )
-
+            intent = stripe.PaymentIntent.create(**params)
+            client_secret = intent.get("client_secret") if isinstance(intent, dict) else getattr(intent, "client_secret", None)
             if not client_secret:
                 raise RuntimeError("Stripe did not return a client_secret for the new PaymentIntent")
-
-            return {
-                "client_secret": client_secret,
-                "id": intent.id,
-                "status": intent.status,
-            }
+            return {"client_secret": client_secret, "id": intent.id, "status": intent.status}
         except stripe.error.StripeError as e:
             logger.error("Stripe Intent creation failed: %s", e)
             raise
@@ -59,10 +48,7 @@ class StripeProvider(PaymentProvider):
     def update_intent_metadata(self, intent_id: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
         try:
             intent = stripe.PaymentIntent.modify(intent_id, metadata=metadata)
-            return {
-                "id": intent.id,
-                "status": intent.status,
-            }
+            return {"id": intent.id, "status": intent.status}
         except stripe.error.StripeError as e:
             logger.error("Stripe Intent modify failed: %s", e)
             raise
@@ -77,6 +63,7 @@ class StripeProvider(PaymentProvider):
                 "currency": intent.currency,
                 "metadata": intent.metadata,
                 "client_secret": intent.client_secret,
+                "payment_method_types": list(getattr(intent, "payment_method_types", None) or []),
             }
         except stripe.error.StripeError as e:
             logger.error("Stripe Intent retrieval failed: %s", e)
@@ -84,43 +71,57 @@ class StripeProvider(PaymentProvider):
 
     def verify_webhook(self, payload: bytes, sig_header: str) -> Dict[str, Any]:
         try:
-            event = stripe.Webhook.construct_event(
-                payload=payload,
-                sig_header=sig_header,
-                secret=getattr(settings, "STRIPE_WEBHOOK_SECRET", ""),
-            )
-            return {
-                # 🔥 FIX: event id is required for webhook-delivery idempotency
-                # (Stripe retries webhooks on any non-2xx / timeout response,
-                # so without this we have no way to detect "already processed").
-                "id": event["id"],
-                "type": event["type"],
-                "data": event["data"],
-            }
+            event = stripe.Webhook.construct_event(payload=payload, sig_header=sig_header, secret=getattr(settings, "STRIPE_WEBHOOK_SECRET", ""))
+            return {"id": event["id"], "type": event["type"], "data": event["data"]}
         except (ValueError, stripe.error.SignatureVerificationError) as e:
             logger.error("Webhook signature verification failed: %s", e)
             raise ValueError("Invalid Stripe Signature") from e
 
-    def process_refund(self, payment_intent_id: str) -> bool:
+    def process_refund(
+        self,
+        payment_intent_id: str,
+        amount_paise: Optional[int] = None,
+        idempotency_key: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
         try:
-            refund = stripe.Refund.create(payment_intent=payment_intent_id)
-            return refund.status in {"succeeded", "pending"}
+            params: Dict[str, Any] = {"payment_intent": payment_intent_id}
+            if amount_paise is not None:
+                params["amount"] = amount_paise
+            if reason:
+                params["reason"] = reason
+            request_kwargs: Dict[str, Any] = {}
+            if idempotency_key:
+                request_kwargs["idempotency_key"] = idempotency_key
+            refund = stripe.Refund.create(**params, **request_kwargs)
+            return {
+                "id": refund.id,
+                "status": refund.status,
+                "amount": refund.amount,
+                "currency": refund.currency,
+                "payment_intent": refund.payment_intent,
+                "failure_reason": getattr(refund, "failure_reason", None),
+            }
         except stripe.error.StripeError as e:
             logger.error("Stripe Refund failed: %s", e)
-            return False
+            raise
 
-    # 🔥 NEW
     def cancel_intent(self, payment_intent_id: str) -> Dict[str, Any]:
         try:
             intent = stripe.PaymentIntent.cancel(payment_intent_id)
-            return {
-                "id": intent.id,
-                "status": intent.status,
-            }
+            return {"id": intent.id, "status": intent.status}
+        except stripe.error.InvalidRequestError as e:
+            # Compensation is intentionally idempotent. Stripe returns
+            # payment_intent_unexpected_state when the intent is already
+            # canceled. Treat that terminal state as successful cancellation,
+            # but never silently accept a succeeded intent.
+            if getattr(e, "code", None) == "payment_intent_unexpected_state":
+                current = stripe.PaymentIntent.retrieve(payment_intent_id)
+                if current.status == "canceled":
+                    logger.info("Stripe PaymentIntent %s was already canceled", payment_intent_id)
+                    return {"id": current.id, "status": current.status}
+            logger.warning("Stripe Intent cancel failed for %s: %s", payment_intent_id, e)
+            raise
         except stripe.error.StripeError as e:
-            # Not fatal for the caller -- the intent may already be in a
-            # state Stripe won't let us cancel (e.g. already succeeded, or
-            # already canceled). Callers should log and continue with the
-            # DB-side cancellation regardless.
             logger.warning("Stripe Intent cancel failed for %s: %s", payment_intent_id, e)
             raise

@@ -18,8 +18,8 @@ class PushSubscription(BaseModel):
 
 class BatchNotificationRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
-    user_ids: List[str] = Field(..., min_length=1)
+    user_ids: List[str] | None = Field(default=None, min_length=1)
     title: str = Field(default="Luviio", min_length=1, max_length=120)
     body: str = Field(..., min_length=1, max_length=2000)
-    icon: str = "/icons/ri-notification-3-line.png"
+    icon: str = "/icon-192.png"
     url: str = "/"

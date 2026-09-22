@@ -3,7 +3,7 @@ Health Check Router — Async Enterprise Grade
 ============================================
 Path: app/infrastructure/health/router.py
 
-Infrastructure health endpoint used by load balancers and monitoring.
+Infrastructure health endpoints used by load balancers and monitoring.
 """
 import asyncio
 import logging
@@ -22,6 +22,20 @@ START_TIME = time.time()
 
 _DB_CHECK_RETRIES = 3
 _DB_CHECK_RETRY_DELAY = 1.0
+
+
+@router.get("/health/live")
+async def liveness_check() -> dict:
+    """Lightweight process liveness check; never depends on external services."""
+    return success_response(
+        data={
+            "status": "ok",
+            "app": settings.APP_NAME,
+            "env": settings.APP_ENV,
+            "uptime_seconds": round(time.time() - START_TIME, 2),
+            "version": getattr(settings, "APP_VERSION", "1.0.0"),
+        }
+    )
 
 
 @router.get("/health")

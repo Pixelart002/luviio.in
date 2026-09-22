@@ -3,11 +3,11 @@ Settings Event Handlers
 ======================
 Path: app/events/handlers/settings_handlers.py
 
-Rebuilt — was deleted, leaving SettingUpdatedEvent/SettingResetEvent with no subscribers.
-The events are published by app/services/settings/core_engine.py.
-These handlers persist audit log entries for settings changes.
+Persists audit rows for settings changes using the canonical
+`settings_audit_log` schema.
 """
 import logging
+from uuid import UUID
 
 from app.core.supabase import get_async_admin_supabase
 from app.events.settings_events import SettingResetEvent, SettingUpdatedEvent
@@ -15,59 +15,50 @@ from app.events.settings_events import SettingResetEvent, SettingUpdatedEvent
 logger = logging.getLogger(__name__)
 
 
-async def handle_setting_updated(event: SettingUpdatedEvent) -> None:
-    """
-    Persist a settings audit row when a setting is updated.
-    Writes to the `settings_audit_log` table.
-    """
-    admin_sb = await get_async_admin_supabase()
+def _actor_uuid(value: str | None) -> str | None:
+    """Return a valid actor UUID or None for system/non-user mutations."""
+    if not value:
+        return None
     try:
-        await admin_sb.table("settings_audit_log").insert({
+        return str(UUID(str(value)))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+async def _write_audit_row(payload: dict) -> None:
+    admin_sb = await get_async_admin_supabase()
+    await admin_sb.table("settings_audit_log").insert(payload).execute()
+
+
+async def handle_setting_updated(event: SettingUpdatedEvent) -> None:
+    """Persist a settings audit row when a setting is updated."""
+    try:
+        await _write_audit_row({
             "action": "updated",
             "key": event.key,
             "old_value": event.old_value,
             "new_value": event.new_value,
-            "actor_id": event.updated_by,
+            "changed_by": _actor_uuid(event.updated_by),
             "reason": event.reason,
-        }).execute()
-        logger.info(
-            "[HANDLER:SETTINGS] Audit log written for key='%s' by %s",
-            event.key,
-            event.updated_by,
-        )
-    except Exception as exc:
-        logger.error(
-            "[HANDLER:SETTINGS] Failed to write audit log for key='%s': %s",
-            event.key,
-            exc,
-            exc_info=True,
-        )
+        })
+        logger.info("Settings audit written | action=updated key=%s", event.key)
+    except Exception:
+        logger.exception("Settings audit write failed | action=updated key=%s", event.key)
+        raise
 
 
 async def handle_setting_reset(event: SettingResetEvent) -> None:
-    """
-    Persist a settings audit row when a setting is reset to default.
-    Writes to the `settings_audit_log` table.
-    """
-    admin_sb = await get_async_admin_supabase()
+    """Persist a settings audit row when a setting is reset to default."""
     try:
-        await admin_sb.table("settings_audit_log").insert({
+        await _write_audit_row({
             "action": "reset",
             "key": event.key,
             "old_value": None,
             "new_value": event.restored_value,
-            "actor_id": event.reset_by,
+            "changed_by": _actor_uuid(event.reset_by),
             "reason": "reset_to_default",
-        }).execute()
-        logger.info(
-            "[HANDLER:SETTINGS] Audit log written for reset key='%s' by %s",
-            event.key,
-            event.reset_by,
-        )
-    except Exception as exc:
-        logger.error(
-            "[HANDLER:SETTINGS] Failed to write audit log for reset key='%s': %s",
-            event.key,
-            exc,
-            exc_info=True,
-        )
+        })
+        logger.info("Settings audit written | action=reset key=%s", event.key)
+    except Exception:
+        logger.exception("Settings audit write failed | action=reset key=%s", event.key)
+        raise

@@ -15,20 +15,45 @@ logger = logging.getLogger(__name__)
 class RbacPolicy:
     @staticmethod
     def assert_role_manageable(actor_role: str, target_role: str) -> None:
-        """
-        God-Mode rule: only a super_admin may toggle permissions that belong to
-        another super_admin. A regular admin can manage every other role but
-        can never lock themselves out of the wildcard.
+        """Prevent RBAC self-escalation while preserving super-admin control.
+
+        Rules:
+        - super_admin may manage every role.
+        - admin may manage only manager/support/customer permissions.
+        - admin may not alter admin or super_admin role permissions.
         """
         actor = str(actor_role).lower()
         target = str(target_role).lower()
-        is_super_actor = actor == UserRole.SUPER_ADMIN.value
-        if target == UserRole.SUPER_ADMIN.value and not is_super_actor:
-            logger.warning("RBAC Block | non-super-admin '%s' tried to edit super_admin perms", actor_role)
+
+        if actor == UserRole.SUPER_ADMIN.value:
+            return
+
+        if actor == UserRole.ADMIN.value:
+            if target in {
+                UserRole.MANAGER.value,
+                UserRole.SUPPORT.value,
+                UserRole.CUSTOMER.value,
+            }:
+                return
+            logger.warning(
+                "RBAC Block | admin '%s' tried to edit privileged role '%s'",
+                actor_role,
+                target_role,
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only a super_admin can modify super_admin permissions.",
+                detail="Admins may only modify manager, support, or customer permissions.",
             )
+
+        logger.warning(
+            "RBAC Block | non-admin '%s' tried to edit role '%s'",
+            actor_role,
+            target_role,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an admin or super_admin can modify role permissions.",
+        )
 
     @staticmethod
     def assert_not_self_lockout(actor_id: str, target_user_id: str, action: str, enabled: bool) -> None:

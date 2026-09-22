@@ -18,6 +18,7 @@ from app.permissions.policies.cart_policies import CartPolicy
 
 logger = logging.getLogger(__name__)
 
+
 class CartService:
     def __init__(self):
         self.repo = AsyncCartRepository()
@@ -26,49 +27,67 @@ class CartService:
         config, raw_items = await asyncio.gather(self.repo.get_pricing_config(), self.repo.get_cart_items_with_products(cart_id))
         pricing_engine = get_pricing_from_config(config)
         if not raw_items:
-            return {
-                "items": [], "item_count": 0, "subtotal": 0.0, "shipping_cost": 0.0,
-                "tax_amount": 0.0, "total_amount": 0.0, "free_shipping_eligible": False,
-                "amount_to_free_shipping": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0,
-                "free_shipping_threshold": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0,
-                "has_unavailable_items": False, "currency": "INR",
-            }
+            return {"items": [], "item_count": 0, "subtotal": 0.0, "shipping_cost": 0.0, "tax_amount": 0.0, "total_amount": 0.0, "free_shipping_eligible": False, "amount_to_free_shipping": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0, "free_shipping_threshold": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0, "has_unavailable_items": False, "currency": "INR"}
         enriched = []
         subtotal = Decimal("0")
+        total_item_count = 0
         has_unavailable = False
         for row in raw_items:
             prod = row.get("products") or {}
-            qty = row["quantity"]
-            snapshot = Decimal(str(row["price_snapshot"]))
-            current_price = Decimal(str(prod.get("price", snapshot)))
+            qty = row.get("quantity")
+            if qty is None or int(qty) <= 0:
+                raise HTTPException(status_code=500, detail="Cart contains an invalid quantity.")
+            qty = int(qty)
+            snapshot_raw = row.get("price_snapshot")
+            if snapshot_raw is None:
+                raise HTTPException(status_code=500, detail="Cart contains an item without a price snapshot.")
+            snapshot = Decimal(str(snapshot_raw))
+            if snapshot < 0:
+                raise HTTPException(status_code=500, detail="Cart contains an invalid price snapshot.")
+            current_price_raw = prod.get("price")
+            if current_price_raw is None:
+                raise HTTPException(status_code=500, detail="Cart contains a product without a price.")
+            current_price = Decimal(str(current_price_raw))
+            if current_price < 0:
+                raise HTTPException(status_code=500, detail="Cart contains an invalid product price.")
             comp_p = prod.get("compare_price")
             compare_price = float(comp_p) if comp_p is not None else 0.0
-            line_total = current_price * qty
+            line_total = snapshot * qty
             subtotal += line_total
-            in_stock = prod.get("is_active", True) and prod.get("stock", 0) >= qty
+            total_item_count += qty
+            in_stock = bool(prod.get("is_active", True)) and int(prod.get("stock", 0)) >= qty
             price_changed = abs(float(current_price) - float(snapshot)) > 0.001
             if not in_stock:
                 has_unavailable = True
-            hsn_code = str(prod.get("hsn_code") or row.get("hsn_code") or "9988").strip()
-            gst_percentage = int(prod.get("gst_percentage") if prod.get("gst_percentage") is not None else (row.get("gst_percentage") if row.get("gst_percentage") is not None else 18))
-            enriched.append({
-                "id": str(row["id"]), "product_id": str(row["product_id"]), "name": str(prod.get("name", "")),
-                "slug": str(prod.get("slug", "")), "image_url": prod.get("image_url"), "hsn_code": hsn_code,
-                "gst_percentage": gst_percentage, "quantity": qty, "unit_price": float(current_price),
-                "compare_price": compare_price, "price_snapshot": float(snapshot), "line_total": float(line_total),
-                "stock": int(prod.get("stock", 0)), "in_stock": in_stock, "is_active": prod.get("is_active", True),
-                "price_changed": price_changed, "added_at": str(row["added_at"]),
-            })
+            hsn_code = str(prod.get("hsn_code") or row.get("hsn_code") or "").strip()
+            if not hsn_code:
+                raise HTTPException(status_code=500, detail="Cart contains a product without HSN configuration.")
+            gst_raw = prod.get("gst_percentage") if prod.get("gst_percentage") is not None else row.get("gst_percentage")
+            if gst_raw is None:
+                raise HTTPException(status_code=500, detail="Cart contains a product without GST configuration.")
+            enriched.append({"id": str(row["id"]), "product_id": str(row["product_id"]), "name": str(prod.get("name", "")), "slug": str(prod.get("slug", "")), "image_url": prod.get("image_url"), "hsn_code": hsn_code, "gst_percentage": int(gst_raw), "quantity": qty, "unit_price": float(snapshot), "current_unit_price": float(current_price), "compare_price": compare_price, "weight": prod.get("weight"), "weight_unit": prod.get("weight_unit"), "price_snapshot": float(snapshot), "line_total": float(line_total), "stock": int(prod.get("stock", 0)), "in_stock": in_stock, "is_active": prod.get("is_active", True), "price_changed": price_changed, "added_at": str(row["added_at"])})
         breakdown = pricing_engine.calculate(items=enriched)
-        pricing_dict = breakdown.as_dict()
-        amount_to_free = 0.0
-        if pricing_engine.shipping_enabled and subtotal < pricing_engine.shipping_threshold:
-            amount_to_free = round(max(0.0, float(pricing_engine.shipping_threshold) - float(subtotal)), 2)
+        # Never expose the legacy flat-rate shipping in the cart. Shiprocket
+        # needs the delivery PIN and payment method, so live shipping is resolved
+        # only after the customer enters/selects an address at checkout.
+        product_tax = breakdown.tax - breakdown.shipping_tax
+        pricing_dict = {
+            **breakdown.as_dict(),
+            "shipping_cost": 0.0,
+            "shipping_tax_amount": 0.0,
+            "tax_amount": float(product_tax),
+            "total_amount": float(subtotal + product_tax),
+        }
         return {
-            "items": enriched, "item_count": len(enriched), **pricing_dict,
-            "free_shipping_eligible": breakdown.shipping == Decimal("0") and subtotal > Decimal("0"),
-            "amount_to_free_shipping": amount_to_free, "free_shipping_threshold": float(pricing_engine.shipping_threshold),
-            "has_unavailable_items": has_unavailable, "currency": "INR"
+            "items": enriched,
+            "item_count": total_item_count,
+            **pricing_dict,
+            "free_shipping_eligible": False,
+            "amount_to_free_shipping": 0.0,
+            "free_shipping_threshold": 0.0,
+            "shipping_calculated_at_checkout": True,
+            "has_unavailable_items": has_unavailable,
+            "currency": breakdown.currency,
         }
 
     async def get_cart(self, user_id: str) -> Dict[str, Any]:
@@ -76,9 +95,11 @@ class CartService:
         return await self._calculate_cart_pricing(cart["id"])
 
     async def add_item(self, user_id: str, product_id: str, quantity: int) -> Dict[str, Any]:
-        prod = await self.repo.get_product_stock_status(product_id)
+        prod, cart = await asyncio.gather(
+            self.repo.get_product_stock_status(product_id),
+            self.repo.get_or_create_cart(user_id),
+        )
         CartPolicy.assert_product_available(prod, quantity)
-        cart = await self.repo.get_or_create_cart(user_id)
         existing = await self.repo.get_cart_item(cart["id"], product_id)
         if existing:
             new_qty = existing["quantity"] + quantity
@@ -92,8 +113,10 @@ class CartService:
 
     async def update_item(self, user_id: str, product_id: str, quantity: int) -> Dict[str, Any]:
         CartPolicy.assert_item_limit(quantity)
-        cart = await self.repo.get_or_create_cart(user_id)
-        prod = await self.repo.get_product_stock_status(product_id)
+        cart, prod = await asyncio.gather(
+            self.repo.get_or_create_cart(user_id),
+            self.repo.get_product_stock_status(product_id),
+        )
         CartPolicy.assert_product_available(prod, quantity)
         success = await self.repo.update_item_quantity_by_product(cart["id"], product_id, quantity)
         if not success:
@@ -115,7 +138,7 @@ class CartService:
         rows, total = await self.repo.get_abandoned_carts(cutoff, offset, page_size)
         for row in rows:
             items = row.get("cart_items", [])
-            row["item_count"] = len(items)
+            row["item_count"] = sum(int(i["quantity"]) for i in items)
             row["estimated_value"] = float(sum(Decimal(str(i["price_snapshot"])) * i["quantity"] for i in items))
         return {"items": rows, "total": total, "page": page, "page_size": page_size, "pages": -(-total // page_size) if page_size > 0 else 0, "hours_threshold": hours}
 
@@ -128,8 +151,13 @@ class CartService:
         email, name = user_info.get("email", ""), user_info.get("full_name", "there")
         push_sent, email_sent = 0, False
         try:
-            from app.core.supabase import get_admin_supabase
-            push_sent = send_push_to_user(get_admin_supabase(), user_id, title="🛒 Left something behind?", body=f"Your cart has {len(items)} item(s) waiting.", icon="/icons/cart.png", url="/cart.html")
+            push_sent = await send_push_to_user(
+                user_id,
+                title="🛒 Left something behind?",
+                body=f"Your cart has {len(items)} item(s) waiting.",
+                icon="/icons/cart.png",
+                url="/cart.html",
+            )
         except Exception as exc:
             logger.warning("WebPush failed for cart %s: %s", cart_id, exc)
         if email:

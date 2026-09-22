@@ -6,7 +6,7 @@ Path: app/domains/coupons/schemas.py
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.constants.coupon_messages import COUPON_TYPE_FIXED, COUPON_TYPE_PERCENT
 
@@ -32,12 +32,11 @@ class CouponCreate(BaseModel):
             raise ValueError("type must be 'percent' or 'fixed'")
         return v
 
-    @field_validator("value")
-    @classmethod
-    def _value(cls, v: float) -> float:
-        if v > 100:
+    @model_validator(mode="after")
+    def _validate_value(self):
+        if self.type == COUPON_TYPE_PERCENT and self.value > 100:
             raise ValueError("Percent value cannot exceed 100")
-        return v
+        return self
 
 
 class CouponUpdate(BaseModel):
@@ -53,6 +52,13 @@ class CouponUpdate(BaseModel):
     is_active: Optional[bool] = None
     description: Optional[str] = None
 
+    @field_validator("type")
+    @classmethod
+    def _type(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in (COUPON_TYPE_PERCENT, COUPON_TYPE_FIXED):
+            raise ValueError("type must be 'percent' or 'fixed'")
+        return v
+
 
 class CouponApplyRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -65,7 +71,7 @@ class CouponApplyResult(BaseModel):
     code: str
     type: str
     value: float
-    discount: float          # the resolved discount amount actually applied
+    discount: float
     subtotal_after: float
     coupon_id: str = ""
 

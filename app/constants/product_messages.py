@@ -14,6 +14,7 @@ class ProductMessages:
     IMAGE_DELETED = "Product image deleted successfully."
     IMAGES_REORDERED = "Product images reordered successfully."
 
+
 class ProductSecurityMessages:
     CATEGORY_NOT_FOUND = "The requested category could not be found."
     CATEGORY_NOT_EMPTY = "Cannot delete this category because it contains active products."
@@ -23,10 +24,10 @@ class ProductSecurityMessages:
     INVALID_IMAGE_INDEX = "The specified image index is out of range."
     INVALID_IMAGE_REORDER = "The provided image URLs do not match the existing images."
     INVALID_COMPARE_PRICE = "The compare price (MRP) must be strictly greater than the selling price."
-    INVALID_GST_SLAB = "The GST percentage must be one of the legal slabs: 0, 5, 12, 18, 28."
+    INVALID_GST_SLAB = "GST rate must match the configured external HSN/GST taxonomy provider."
     DB_OPERATION_FAILED = "An internal database error occurred. Please try again."
     UPLOAD_FAILED = "Failed to upload the image to cloud storage."
 
+
 class ProductRules:
     MAX_IMAGES_PER_PRODUCT = 10
-    LEGAL_GST_SLABS = {0, 5, 12, 18, 28}

@@ -1,72 +1,86 @@
 """
 Auth Policies & Brute Force Guard
 =================================
-Path: app/permissions/policies/auth_policies.py
+Shared database-backed throttling so limits remain consistent across workers
+and restarts. The DB functions are service-role-only infrastructure.
 """
+import hashlib
 import logging
-import time
-from typing import Dict, List
 
 from fastapi import HTTPException, status
 
 from app.constants.auth_messages import AuthRules, AuthSecurityMessages
+from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
 
-# In-memory brute force protection state
-_login_attempts: Dict[str, List[float]] = {}
-_blocked_ips: Dict[str, float] = {}
+
+def _key(value: str, kind: str) -> str:
+    normalized = (value or "").strip().lower()
+    if not normalized:
+        return ""
+    return hashlib.sha256(f"auth:{kind}:{normalized}".encode("utf-8")).hexdigest()
+
 
 class AuthPolicy:
+    @staticmethod
+    async def assert_safe_attempt(ip: str, email: str = "") -> None:
+        ip_key = _key(ip, "ip")
+        email_key = _key(email, "email")
+        try:
+            sb = await get_async_admin_supabase()
+            result = await sb.rpc(
+                "auth_throttle_check",
+                {
+                    "p_ip_key": ip_key,
+                    "p_email_key": email_key,
+                    "p_window_seconds": AuthRules.LOGIN_WINDOW_SECONDS,
+                    "p_max_attempts": AuthRules.MAX_LOGIN_ATTEMPTS,
+                },
+            ).execute()
+            allowed = bool(getattr(result, "data", False))
+        except Exception as exc:
+            logger.error("Auth throttle check failed; failing closed: %s", exc, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication protection is temporarily unavailable. Please retry shortly.",
+            ) from exc
+
+        if not allowed:
+            logger.warning("Auth throttle blocked attempt | ip_key=%s", ip_key[:12])
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=AuthSecurityMessages.TOO_MANY_REQUESTS,
+            )
 
     @staticmethod
-    def assert_safe_attempt(ip: str, email: str = "") -> None:
-        """ABAC Guard: Prevents credential stuffing and brute-force attacks."""
-        now = time.time()
-        global _login_attempts, _blocked_ips
-        
-        # Cleanup expired attempts & blocks
-        _login_attempts = {k: [t for t in v if now - t < AuthRules.LOGIN_WINDOW_SECONDS] for k, v in _login_attempts.items()}
-        _login_attempts = {k: v for k, v in _login_attempts.items() if v}
-        _blocked_ips = {k: v for k, v in _blocked_ips.items() if v > now}
-        
-        if ip in _blocked_ips: 
-            logger.warning("Auth Block | Blocked IP attempted access: %s", ip)
-            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=AuthSecurityMessages.TOO_MANY_REQUESTS)
-            
-        email_key = f"email:{email}" if email else None
-        if email_key and email_key in _blocked_ips: 
-            logger.warning("Auth Block | Blocked Email attempted access: %s", email)
-            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=AuthSecurityMessages.TOO_MANY_REQUESTS)
-        
-        ip_attempts = len(_login_attempts.get(ip, []))
-        email_attempts = len(_login_attempts.get(email_key, [])) if email_key else 0
-        
-        if ip_attempts >= AuthRules.MAX_LOGIN_ATTEMPTS or email_attempts >= AuthRules.MAX_LOGIN_ATTEMPTS:
-            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=AuthSecurityMessages.TOO_MANY_REQUESTS)
+    async def record_failed_attempt(ip: str, email: str = "") -> None:
+        ip_key = _key(ip, "ip")
+        email_key = _key(email, "email")
+        try:
+            sb = await get_async_admin_supabase()
+            await sb.rpc(
+                "auth_throttle_record_failure",
+                {
+                    "p_ip_key": ip_key,
+                    "p_email_key": email_key,
+                    "p_window_seconds": AuthRules.LOGIN_WINDOW_SECONDS,
+                    "p_max_attempts": AuthRules.MAX_LOGIN_ATTEMPTS,
+                    "p_cooldown_seconds": AuthRules.LOGIN_COOLDOWN_SECONDS,
+                },
+            ).execute()
+        except Exception as exc:
+            logger.error("Auth throttle failure recording failed: %s", exc, exc_info=True)
 
     @staticmethod
-    def record_failed_attempt(ip: str, email: str = "") -> None:
-        """Records a failed attempt and blocks if threshold is breached."""
-        now = time.time()
-        _login_attempts.setdefault(ip, []).append(now)
-        if email: _login_attempts.setdefault(f"email:{email}", []).append(now)
-        
-        if len(_login_attempts[ip]) >= AuthRules.MAX_LOGIN_ATTEMPTS:
-            _blocked_ips[ip] = now + AuthRules.LOGIN_COOLDOWN_SECONDS
-            logger.warning("Auth Alert | IP %s blocked for brute force.", ip)
-            
-        if email:
-            email_key = f"email:{email}"
-            if len(_login_attempts.get(email_key, [])) >= AuthRules.MAX_LOGIN_ATTEMPTS:
-                _blocked_ips[email_key] = now + AuthRules.LOGIN_COOLDOWN_SECONDS
-                logger.warning("Auth Alert | Email %s blocked for brute force.", email)
-
-    @staticmethod
-    def reset_attempts(ip: str, email: str = "") -> None:
-        """Clears records on successful authentication."""
-        _login_attempts.pop(ip, None)
-        _blocked_ips.pop(ip, None)
-        if email:
-            _login_attempts.pop(f"email:{email}", None)
-            _blocked_ips.pop(f"email:{email}", None)
+    async def reset_attempts(ip: str, email: str = "") -> None:
+        ip_key = _key(ip, "ip")
+        email_key = _key(email, "email")
+        try:
+            sb = await get_async_admin_supabase()
+            await sb.rpc(
+                "auth_throttle_reset",
+                {"p_ip_key": ip_key, "p_email_key": email_key},
+            ).execute()
+        except Exception as exc:
+            logger.error("Auth throttle reset failed: %s", exc, exc_info=True)

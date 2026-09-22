@@ -22,10 +22,13 @@ from app.utils.response import success_response
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])
 
+
 def get_real_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
+
 limiter = Limiter(key_func=get_real_ip)
+
 
 @router.get("/me", status_code=status.HTTP_200_OK)
 async def get_me(request: Request, current: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
@@ -34,6 +37,7 @@ async def get_me(request: Request, current: Dict[str, Any] = Depends(get_current
     profile = current.get("profile", current)
     safe_fields = {"id", "email", "full_name", "phone", "role", "is_active", "created_at"}
     return success_response(data={k: v for k, v in profile.items() if k in safe_fields})
+
 
 @router.patch("/me", status_code=status.HTTP_200_OK)
 @limiter.limit("20/minute")
@@ -45,11 +49,13 @@ async def update_me(request: Request, payload: ProfileUpdate, current: Dict[str,
         request.state.actions.append(UserMessages.PROFILE_UPDATED)
     return success_response(data=updated or current.get("profile", current), message=UserMessages.PROFILE_UPDATED)
 
+
 @router.get("/me/addresses", status_code=status.HTTP_200_OK)
 async def list_addresses(request: Request, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append("Fetching saved shipping address ledger for active user")
     return success_response(data=await UserService().get_addresses(user_id))
+
 
 @router.post("/me/addresses", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
@@ -61,6 +67,7 @@ async def add_address(request: Request, payload: AddressCreate, user_id: str = D
         request.state.actions.append(UserMessages.ADDRESS_ADDED)
     return success_response(data=result, message=UserMessages.ADDRESS_ADDED)
 
+
 @router.delete("/me/addresses/{address_id}", status_code=status.HTTP_200_OK)
 async def delete_address(request: Request, address_id: UUID, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
@@ -70,6 +77,7 @@ async def delete_address(request: Request, address_id: UUID, user_id: str = Depe
         request.state.actions.append(UserMessages.ADDRESS_DELETED)
     return success_response(message=UserMessages.ADDRESS_DELETED)
 
+
 @router.get("/", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(UserPermissions.READ))])
 async def list_users(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), search: Optional[str] = Query(None, max_length=100), role_filter: Optional[UserRole] = Query(None)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
@@ -78,17 +86,31 @@ async def list_users(request: Request, page: int = Query(1, ge=1), page_size: in
     items, total = await UserService().get_users_paginated(page, page_size, search, role_str)
     return paginate(items, total, page, page_size)
 
+
 @router.patch("/{user_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(UserPermissions.UPDATE))])
-async def admin_update_user(request: Request, user_id: UUID, payload: AdminUserUpdate, admin_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
+async def admin_update_user(
+    request: Request,
+    user_id: UUID,
+    payload: AdminUserUpdate,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    admin_id: str = Depends(get_user_id_strict),
+) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin overriding user profile -> Target ID: {str(user_id)[:8]}...")
     dumped = payload.model_dump(exclude_unset=True)
     if "role" in dumped and dumped["role"] is not None:
         dumped["role"] = dumped["role"].value
-    result = await UserService().admin_update_user(admin_id, str(user_id), dumped)
+    actor_role = (current_user.get("profile") or {}).get("role", UserRole.CUSTOMER.value)
+    result = await UserService().admin_update_user(
+        admin_id,
+        str(user_id),
+        dumped,
+        actor_role=actor_role,
+    )
     if hasattr(request.state, "actions"):
         request.state.actions.append(UserMessages.USER_UPDATED)
     return success_response(data=result, message=UserMessages.USER_UPDATED)
+
 
 @router.get("/{user_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(UserPermissions.READ))])
 async def get_user_detail(request: Request, user_id: UUID) -> Dict[str, Any]:

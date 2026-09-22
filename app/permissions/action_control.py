@@ -38,10 +38,10 @@ def invalidate_action_control_cache() -> None:
     _loaded = False
 
 
-async def _reload() -> None:
+async def _reload() -> bool:
     global _control_cache, _cache_ts, _loaded
     if _loaded and (time.time() - _cache_ts) < _CACHE_TTL_SECONDS:
-        return
+        return True
     try:
         from app.core.supabase import get_async_admin_supabase
         sb = await get_async_admin_supabase()
@@ -53,21 +53,27 @@ async def _reload() -> None:
         }
         _cache_ts = time.time()
         _loaded = True
+        return True
     except Exception as exc:
-        logger.warning("[RBAC:ACTION] Could not load user_action_controls (%s). Allowing by default.", exc)
+        logger.warning("[RBAC:ACTION] Could not load user_action_controls (%s). Failing closed.", exc)
         _control_cache = {}
         _cache_ts = time.time()
-        _loaded = True
+        _loaded = False
+        return False
 
 
 async def is_action_enabled(user_id: str, action: str) -> bool:
     """True unless an explicit disabled row exists for (user_id, action)."""
-    await _reload()
+    if not user_id:
+        return False
+    loaded = await _reload()
+    if not loaded:
+        return False
     return _control_cache.get((user_id, action), True)
 
 
 async def assert_action_enabled(user_id: str, action: str, reason: str = "") -> None:
-    """Raises 403 if the action is disabled for this user."""
+    """Raises 403 if the action is disabled for this user or its policy state is unavailable."""
     if not user_id:
         return
     if not await is_action_enabled(user_id, action):

@@ -1,6 +1,6 @@
 """Admin domain repository — async Supabase persistence."""
-import asyncio
 import logging
+import time
 from typing import Any, Dict, Optional
 
 from app.core.supabase import get_async_admin_supabase
@@ -10,101 +10,86 @@ logger = logging.getLogger(__name__)
 
 
 class AsyncAdminRepository:
-    """Persistence boundary for administrator and dashboard data."""
+    """Persistence boundary for administrator, reporting and audit data."""
 
     async def get_live_admin_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch the live administrator profile without frontend cache dependencies."""
         admin_sb = await get_async_admin_supabase()
-        try:
-            res = await admin_sb.table("users").select(
-                "id, email, full_name, role, is_active, created_at"
-            ).eq("id", user_id).limit(1).execute()
-
-            data = getattr(res, "data", None)
-            if data:
-                profile = data[0]
-                profile["created_at"] = ts_to_iso(profile.get("created_at"))
-                return profile
+        res = await (
+            admin_sb.table("users")
+            .select("id, email, full_name, role, is_active, created_at")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        data = getattr(res, "data", None)
+        if not data:
             return None
-        except Exception as exc:
-            logger.error(
-                "DB error fetching admin profile | user=%.8s: %s",
-                user_id,
-                exc,
-                exc_info=True,
-            )
-            return None
+        profile = data[0]
+        profile["created_at"] = ts_to_iso(profile.get("created_at"))
+        return profile
 
     async def get_dashboard_stats(self) -> Dict[str, Any]:
-        """Fetch independent dashboard counters concurrently."""
-        stats = {
-            "products": 0,
-            "orders": 0,
-            "pending_orders": 0,
-            "users": 0,
-            "revenue": 0.0,
-        }
+        """Fetch dashboard counters/revenue with one DB round trip."""
+        sb = await get_async_admin_supabase()
+        res = await sb.rpc("admin_dashboard_metrics").execute()
+        data = getattr(res, "data", None)
 
-        async def fetch_products() -> None:
-            try:
-                sb = await get_async_admin_supabase()
-                res = await sb.table("products").select(
-                    "id", count="exact"
-                ).eq("is_active", True).limit(1).execute()
-                stats["products"] = res.count or 0
-            except Exception as exc:
-                logger.error("Stats product query failed: %s", exc, exc_info=True)
+        if not isinstance(data, dict):
+            raise RuntimeError("Unable to load complete dashboard telemetry")
 
-        async def fetch_orders() -> None:
-            try:
-                sb = await get_async_admin_supabase()
-                res = await sb.table("orders").select(
-                    "id", count="exact"
-                ).limit(1).execute()
-                stats["orders"] = res.count or 0
-            except Exception as exc:
-                logger.error("Stats order query failed: %s", exc, exc_info=True)
+        try:
+            return {
+                "products": int(data.get("products") or 0),
+                "orders": int(data.get("orders") or 0),
+                "pending_orders": int(data.get("pending_orders") or 0),
+                "users": int(data.get("users") or 0),
+                "revenue": round(float(data.get("revenue") or 0), 2),
+            }
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("Unable to normalize dashboard telemetry") from exc
 
-        async def fetch_pending() -> None:
-            try:
-                sb = await get_async_admin_supabase()
-                res = await sb.table("orders").select(
-                    "id", count="exact"
-                ).eq("status", "pending").limit(1).execute()
-                stats["pending_orders"] = res.count or 0
-            except Exception as exc:
-                logger.error("Stats pending-order query failed: %s", exc, exc_info=True)
+    async def get_report_summary(self) -> Dict[str, Any]:
+        sb = await get_async_admin_supabase()
+        orders_res = await sb.table("orders").select("id,status,total_amount,created_at,payment_method").order("created_at", desc=True).limit(1000).execute()
+        products_res = await sb.table("products").select("id,name,stock,low_stock_threshold,is_active").limit(500).execute()
+        items_res = await sb.table("order_items").select("product_id,product_name,quantity,subtotal").limit(5000).execute()
+        orders = getattr(orders_res, "data", None) or []
+        products = getattr(products_res, "data", None) or []
+        items = getattr(items_res, "data", None) or []
 
-        async def fetch_users() -> None:
-            try:
-                sb = await get_async_admin_supabase()
-                res = await sb.table("users").select(
-                    "id", count="exact"
-                ).limit(1).execute()
-                stats["users"] = res.count or 0
-            except Exception as exc:
-                logger.error("Stats user query failed: %s", exc, exc_info=True)
+        status_counts: Dict[str, int] = {}
+        revenue = 0.0
+        for order in orders:
+            state = order.get("status", "unknown")
+            status_counts[state] = status_counts.get(state, 0) + 1
+            if state in {"paid", "processing", "shipped", "delivered"}:
+                revenue += float(order.get("total_amount") or 0)
 
-        async def fetch_revenue() -> None:
-            try:
-                sb = await get_async_admin_supabase()
-                res = await sb.table("orders").select(
-                    "total_amount"
-                ).in_("status", ["paid", "shipped", "delivered"]).execute()
-                data = getattr(res, "data", None) or []
-                stats["revenue"] = round(
-                    sum(float(order.get("total_amount") or 0) for order in data),
-                    2,
-                )
-            except Exception as exc:
-                logger.error("Stats revenue query failed: %s", exc, exc_info=True)
+        top: Dict[str, Dict[str, Any]] = {}
+        for item in items:
+            key = str(item.get("product_id") or item.get("product_name") or "unknown")
+            row = top.setdefault(key, {"product_id": item.get("product_id"), "product_name": item.get("product_name") or "Product", "quantity": 0, "sales": 0.0})
+            row["quantity"] += int(item.get("quantity") or 0)
+            row["sales"] += float(item.get("subtotal") or 0)
 
-        await asyncio.gather(
-            fetch_products(),
-            fetch_orders(),
-            fetch_pending(),
-            fetch_users(),
-            fetch_revenue(),
-            return_exceptions=True,
+        low_stock = sum(1 for product in products if product.get("is_active") and int(product.get("stock") or 0) <= int(product.get("low_stock_threshold") or 0))
+        return {"orders": len(orders), "revenue": round(revenue, 2), "status_counts": status_counts, "top_products": sorted(top.values(), key=lambda row: (row["quantity"], row["sales"]), reverse=True)[:10], "low_stock_products": low_stock, "generated_at": ts_to_iso(time.time())}
+
+    async def get_payment_report(self, limit: int = 10, offset: int = 0) -> dict[str, Any]:
+        sb = await get_async_admin_supabase()
+        res = await sb.rpc("admin_payment_telemetry", {"p_limit": limit, "p_offset": offset}).execute()
+        data = getattr(res, "data", None) or []
+        total_count = int(data[0].get("total_count") or 0) if data else 0
+        items = [{key: value for key, value in row.items() if key != "total_count"} for row in data]
+        return {"items": items, "has_more": offset + len(items) < total_count, "next_offset": offset + len(items), "total_count": total_count}
+
+    async def get_audit_logs(self, limit: int = 200) -> list[dict[str, Any]]:
+        sb = await get_async_admin_supabase()
+        res = await (
+            sb.table("audit_logs")
+            .select("id,request_id,actor_user_id,method,path,status_code,duration_ms,created_at")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
         )
-        return stats
+        return getattr(res, "data", None) or []

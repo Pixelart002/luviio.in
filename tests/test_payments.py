@@ -15,11 +15,18 @@ def build_service(monkeypatch):
 
 
 def test_registry_is_case_insensitive():
-    from app.integrations.payments.registry import get_payment_provider
+    from app.integrations.payments.registry import ConfiguredPaymentProvider, get_payment_provider
     from app.integrations.payments.stripe_impl import StripeProvider
 
-    assert isinstance(get_payment_provider("stripe"), StripeProvider)
-    assert isinstance(get_payment_provider("STRIPE"), StripeProvider)
+    stripe = get_payment_provider("stripe")
+    uppercase = get_payment_provider("STRIPE")
+
+    assert isinstance(stripe, ConfiguredPaymentProvider)
+    assert isinstance(uppercase, ConfiguredPaymentProvider)
+    assert isinstance(stripe.provider, StripeProvider)
+    assert isinstance(uppercase.provider, StripeProvider)
+    assert stripe.provider_key == "stripe"
+    assert uppercase.provider_key == "stripe"
 
 
 def test_money_and_order_helpers(monkeypatch):
