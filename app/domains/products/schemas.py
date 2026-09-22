@@ -103,6 +103,9 @@ class ProductCreate(BaseModel):
     hsn_code: str = Field(..., min_length=4, max_length=8, pattern=r"^\d{4,8}$")
     gst_percentage: int = Field(..., ge=0, le=100)
     country_of_origin: Optional[str] = Field(default=None, min_length=2, max_length=100)
+    seo_title: Optional[str] = Field(default=None, min_length=1, max_length=70)
+    seo_description: Optional[str] = Field(default=None, min_length=1, max_length=170)
+    canonical_url: Optional[str] = Field(default=None, max_length=2048)
     is_active: bool = True
 
     @field_validator("hsn_code")
@@ -205,6 +208,9 @@ class ProductUpdate(BaseModel):
     hsn_code: Optional[str] = Field(default=None, min_length=4, max_length=8, pattern=r"^\d{4,8}$")
     gst_percentage: Optional[int] = Field(default=None, ge=0, le=100)
     country_of_origin: Optional[str] = Field(default=None, min_length=2, max_length=100)
+    seo_title: Optional[str] = Field(default=None, min_length=1, max_length=70)
+    seo_description: Optional[str] = Field(default=None, min_length=1, max_length=170)
+    canonical_url: Optional[str] = Field(default=None, max_length=2048)
     is_active: Optional[bool] = None
 
     @field_validator("hsn_code")
