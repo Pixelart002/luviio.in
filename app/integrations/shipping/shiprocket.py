@@ -4,6 +4,7 @@ import os
 from typing import Any
 
 import httpx
+from fastapi import HTTPException, status
 
 
 class ShiprocketClient:
@@ -21,14 +22,23 @@ class ShiprocketClient:
         return await self._send(self.client, method, path, **kwargs)
 
     async def _send(self, client: httpx.AsyncClient, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        if not self.email or not self.password:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Shiprocket is not configured")
         if not self._token:
             auth = await client.post(f"{self.base_url}/auth/login", json={"email": self.email, "password": self.password})
             auth.raise_for_status()
-            self._token = auth.json()["token"]
+            self._token = auth.json().get("token")
+            if not self._token:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Shiprocket authentication failed")
         response = await client.request(method, f"{self.base_url}/{path.lstrip('/')}", headers={"Authorization": f"Bearer {self._token}"}, **kwargs)
         if response.status_code == 401:
             self._token = None
-            return await self._send(client, method, path, **kwargs)
+            auth = await client.post(f"{self.base_url}/auth/login", json={"email": self.email, "password": self.password})
+            auth.raise_for_status()
+            self._token = auth.json().get("token")
+            if not self._token:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Shiprocket authentication failed")
+            response = await client.request(method, f"{self.base_url}/{path.lstrip('/')}", headers={"Authorization": f"Bearer {self._token}"}, **kwargs)
         response.raise_for_status()
         return response.json()
 

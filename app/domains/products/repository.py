@@ -62,9 +62,19 @@ class AsyncProductRepository:
         raw_products = getattr(res, "data", None) or []
         return [self._format_product_images(p) for p in raw_products], res.count or 0
 
+    async def get_product_by_sku(self, sku: str) -> Optional[Dict[str, Any]]:
+        admin_sb = await get_async_admin_supabase()
+        res = await admin_sb.table("products").select(
+            "id, name, slug, sku, short_description, description, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, attributes, is_active, hsn_code, gst_percentage, product_images(id, url, alt, position)"
+        ).eq("sku", sku).eq("is_active", True).limit(1).execute()
+        data_list = getattr(res, "data", None)
+        return self._format_product_images(data_list[0]) if data_list else None
+
     async def get_product_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.table("products").select("*, categories(name, slug), product_images(id, url, alt, position)").eq("slug", slug).eq("is_active", True).limit(1).execute()
+        res = await admin_sb.table("products").select(
+            "id, name, slug, sku, description, short_description, category_id, price, compare_price, stock, low_stock_threshold, weight_grams, image_url, attributes, is_active, created_at, hsn_code, gst_percentage, categories(name, slug), product_images(id, url, alt, position)"
+        ).eq("slug", slug).eq("is_active", True).limit(1).execute()
         data_list = getattr(res, "data", None)
         return self._format_product_images(data_list[0]) if data_list else None
 

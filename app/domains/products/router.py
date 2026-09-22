@@ -41,6 +41,11 @@ async def list_products(request: Request, page: int = Query(1, ge=1), page_size:
     items, total = await ProductService().get_products(page, page_size, category, search, min_price, max_price, in_stock)
     return paginate(items, total, page, page_size)
 
+@router.get("/products/sku/{sku}", status_code=status.HTTP_200_OK)
+async def get_product_by_sku(request: Request, sku: str) -> Dict[str, Any]:
+    return success_response(data=await ProductService().get_product_by_sku(sku))
+
+
 @router.get("/products/{slug}", status_code=status.HTTP_200_OK)
 async def get_product(request: Request, slug: str) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):

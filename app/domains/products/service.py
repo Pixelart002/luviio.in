@@ -59,6 +59,12 @@ class ProductService:
         products, total = await self.repo.get_products(page, page_size, category, search, min_p, max_p, in_stock)
         return [self._enrich_discount(p) for p in products], total
 
+    async def get_product_by_sku(self, sku: str) -> Dict[str, Any]:
+        product = await self.repo.get_product_by_sku(sku)
+        if not product:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
+        return product
+
     async def get_product(self, slug: str) -> Dict[str, Any]:
         product = await self.repo.get_product_by_slug(slug)
         if not product:
@@ -66,7 +72,16 @@ class ProductService:
         product["images"] = product.get("images") or []
         return self._enrich_discount(product)
 
+    @staticmethod
+    def _normalize_package(data: Dict[str, Any]) -> None:
+        package = data.pop("package", None)
+        if package:
+            attrs = dict(data.get("attributes") or {})
+            attrs["shipping_package"] = package
+            data["attributes"] = attrs
+
     async def create_product(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        self._normalize_package(data)
         if data.get("sku") and await self.repo.check_sku_exists(data["sku"]):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ProductSecurityMessages.SKU_COLLISION)
         data["slug"] = await self.repo.generate_unique_slug(data["slug"])
@@ -85,6 +100,7 @@ class ProductService:
         return self._enrich_discount(res)
 
     async def update_product(self, product_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        self._normalize_package(data)
         if "sku" in data and data["sku"] and await self.repo.check_sku_exists(data["sku"], exclude_product_id=product_id):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ProductSecurityMessages.SKU_COLLISION)
         if "slug" in data and data["slug"]:

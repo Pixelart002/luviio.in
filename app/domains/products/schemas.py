@@ -62,6 +62,8 @@ class ProductCreate(BaseModel):
 class ProductUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     name: Optional[str] = Field(default=None, min_length=2, max_length=255)
+    slug: Optional[str] = Field(default=None, min_length=2, max_length=280, pattern=r"^[a-z0-9-]+$")
+    sku: Optional[str] = Field(default=None, max_length=100)
     description: Optional[str] = None
     short_description: Optional[str] = Field(default=None, max_length=500)
     price: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
