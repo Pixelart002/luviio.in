@@ -167,10 +167,8 @@ class StandardPricing(PricingStrategy):
             product_tax += item_sub * (gst_percentage / Decimal("100"))
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
-        # Shipping is resolved only after address/payment context is available.
-        # Shiprocket is the sole checkout shipping source of truth.
-        shipping = Decimal("0.00")
-        shipping_tax = Decimal("0.00")
+        shipping = Decimal("0.00") if calc_subtotal >= self._threshold else self._flat
+        shipping_tax = _shipping_tax(items, shipping, calc_subtotal)
         total_tax = product_tax + shipping_tax
         return PriceBreakdown(
             subtotal=calc_subtotal,
@@ -221,9 +219,7 @@ class ZeroTaxPricing(PricingStrategy):
             calc_subtotal += item_price * item_qty
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
-        # Shipping is resolved only after address/payment context is available.
-        # Shiprocket is the sole checkout shipping source of truth.
-        shipping = Decimal("0.00")
+        shipping = Decimal("0.00") if calc_subtotal >= self._threshold else self._flat
         return PriceBreakdown(
             subtotal=calc_subtotal,
             shipping=shipping,

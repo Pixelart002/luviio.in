@@ -6,7 +6,6 @@ Path: app/domains/payments/service.py
 import asyncio
 import logging
 import os
-import time
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -20,10 +19,16 @@ from app.constants.payment_messages import PaymentMessages, PaymentRules, Paymen
 from app.core.supabase import get_async_admin_supabase
 from app.domains.inventory.service import InventoryService
 from app.domains.payments.repository import AsyncPaymentRepository
+from app.domains.pricing.service import PriceBreakdown, _shipping_tax, get_pricing_from_config
 from app.domains.shipping.provider_service import ShippingProviderService
-from app.domains.pricing.service import get_pricing_from_config, _shipping_tax, PriceBreakdown
 from app.enums.order_status import OrderStatus
-from app.events.bus import OrderCreatedEvent, OrderFailedEvent, OrderPaidEvent, OrderStatusChangedEvent, get_event_bus
+from app.events.bus import (
+    OrderCreatedEvent,
+    OrderFailedEvent,
+    OrderPaidEvent,
+    OrderStatusChangedEvent,
+    get_event_bus,
+)
 from app.integrations.payments.registry import get_payment_provider
 from app.permissions.policies.payment_policies import PaymentPolicy
 from app.utils.phone import InvalidIndianMobile, normalize_indian_mobile
@@ -185,14 +190,18 @@ class PaymentService:
                 total_weight = Decimal(str(os.getenv("SHIPROCKET_RATE_DEFAULT_WEIGHT_KG", "0.5")))
             except (ArithmeticError, ValueError, TypeError):
                 raise HTTPException(status_code=503, detail="Shiprocket default rate weight is misconfigured.")
-        quote = await ShippingProviderService().quote_for_checkout(
-            delivery_postcode=str(addr.get("postal_code") or ""),
-            weight_kg=float(total_weight),
-            cod=False,
-            declared_value=float(subtotal),
-            selected_courier_id=shipping_courier_id,
-        )
-        provider_shipping = Decimal(str(quote["selected"]["shipping_cost"]))
+        if os.getenv("SHIPROCKET_EMAIL") and os.getenv("SHIPROCKET_PASSWORD"):
+            quote = await ShippingProviderService().quote_for_checkout(
+                delivery_postcode=str(addr.get("postal_code") or ""),
+                weight_kg=float(total_weight),
+                cod=False,
+                declared_value=float(subtotal),
+                selected_courier_id=shipping_courier_id,
+            )
+            provider_shipping = Decimal(str(quote["selected"]["shipping_cost"]))
+        else:
+            provider_shipping = Decimal(str(config.get("shipping_flat") or "0")) if subtotal < Decimal(str(config.get("shipping_threshold") or "0")) else Decimal("0")
+            quote = {"selected": {"shipping_cost": float(provider_shipping), "courier_id": None, "courier_name": "configured-rate", "service_type": "configured", "delivery_mode": "standard"}}
         product_tax = breakdown.tax - breakdown.shipping_tax
         provider_shipping_tax = _shipping_tax(items_to_deduct, provider_shipping, subtotal)
         breakdown = PriceBreakdown(
@@ -695,7 +704,9 @@ class PaymentService:
 
                 fully_refunded = bool(refund_record.get("fully_refunded"))
                 if refund_status == "succeeded" and fully_refunded and current_status in {OrderStatus.PAID.value, OrderStatus.PROCESSING.value}:
-                    from app.domains.inventory.customer_cancellation import release_stock_for_customer_cancellation
+                    from app.domains.inventory.customer_cancellation import (
+                        release_stock_for_customer_cancellation,
+                    )
                     updated = await release_stock_for_customer_cancellation(order_id, customer_id, "refunded")
                     if not updated:
                         raise RuntimeError("Full refund succeeded but inventory settlement failed")

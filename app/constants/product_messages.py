@@ -31,3 +31,4 @@ class ProductSecurityMessages:
 
 class ProductRules:
     MAX_IMAGES_PER_PRODUCT = 10
+    LEGAL_GST_SLABS = {0, 5, 12, 18, 28}
