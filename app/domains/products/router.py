@@ -49,6 +49,11 @@ async def delete_category(request: Request, category_id: uuid.UUID) -> Dict[str,
     return success_response(message=ProductMessages.CATEGORY_DELETED)
 
 
+@router.get("/products/measurements", status_code=status.HTTP_200_OK)
+async def measurement_catalog(request: Request) -> Dict[str, Any]:
+    return success_response(data=await ProductService().get_measurement_catalog())
+
+
 @router.get("/products", status_code=status.HTTP_200_OK)
 async def list_products(request: Request, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), category: str = Query(None), search: str = Query(None), min_price: float = Query(None), max_price: float = Query(None), in_stock: bool = Query(None)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
