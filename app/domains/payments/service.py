@@ -164,7 +164,7 @@ class PaymentService:
         try:
             validate_email(addr.get("email") or "", check_deliverability=False)
         except EmailNotValidError:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
 
         total_weight = Decimal("0")
         for item in cart_items:
@@ -244,7 +244,7 @@ class PaymentService:
                 )
             except EmailNotValidError:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING,
                 )
 
@@ -253,7 +253,7 @@ class PaymentService:
             billing_phone = normalize_indian_mobile(billing_addr.get("phone"))
         except InvalidIndianMobile as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Invalid checkout phone number: {exc}",
             ) from exc
 
