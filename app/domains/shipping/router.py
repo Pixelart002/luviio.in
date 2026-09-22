@@ -17,8 +17,10 @@ from app.domains.shipping.schemas import (
     ShippingMethodCreate,
     ShippingMethodUpdate,
     ShippingRateRequest,
+    ShiprocketServiceabilityRequest,
 )
 from app.domains.shipping.service import ShippingService
+from app.integrations.shipping.shiprocket import ShiprocketClient
 from app.permissions.shipping import ShippingPermissions
 from app.utils.response import success_response
 
@@ -44,10 +46,21 @@ async def compute_rate(payload: ShippingRateRequest):
         subtotal=payload.cart_subtotal,
         item_count=payload.item_count,
         weight_kg=payload.total_weight_kg,
+        volumetric_weight_kg=payload.volumetric_weight_kg,
         method_id=payload.method_id,
         pincode=payload.pincode,
+        cod=payload.cod,
     )
     return success_response(data=data, message=ShippingMessages.RATE_COMPUTED)
+
+
+@router.post("/shiprocket/serviceability", status_code=status.HTTP_200_OK,
+             dependencies=[Depends(require_permission(ShippingPermissions.READ))])
+async def shiprocket_serviceability(payload: ShiprocketServiceabilityRequest):
+    data = await ShiprocketClient().check_serviceability(
+        payload.pickup_pincode, payload.delivery_pincode, float(payload.weight_kg), payload.cod
+    )
+    return success_response(data=data, message="Shiprocket serviceability fetched")
 
 
 # ── Admin ──────────────────────────────────────────────────────────────────────

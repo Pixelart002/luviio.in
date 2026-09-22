@@ -1,10 +1,10 @@
-"""Product HTTP schemas owned by the Products domain."""
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.constants.product_messages import ProductRules, ProductSecurityMessages
+from app.domains.products.measurements import ProductPackage
 
 
 class CategoryCreate(BaseModel):
@@ -37,6 +37,7 @@ class ProductCreate(BaseModel):
     stock: int = Field(default=0, ge=0)
     low_stock_threshold: int = Field(default=10, ge=0)
     weight_grams: Optional[int] = Field(default=None, ge=0)
+    package: Optional[ProductPackage] = None
     image_url: Optional[str] = None
     images: List[str] = Field(default_factory=list)
     attributes: Optional[Dict[str, Any]] = Field(default_factory=dict)
@@ -53,7 +54,7 @@ class ProductCreate(BaseModel):
 
     @model_validator(mode="after")
     def compare_must_exceed_price(self):
-        if self.compare_price and self.price and self.compare_price <= self.price:
+        if self.compare_price and self.compare_price <= self.price:
             raise ValueError(ProductSecurityMessages.INVALID_COMPARE_PRICE)
         return self
 
@@ -68,6 +69,7 @@ class ProductUpdate(BaseModel):
     stock: Optional[int] = Field(default=None, ge=0)
     low_stock_threshold: Optional[int] = Field(default=None, ge=0)
     weight_grams: Optional[int] = Field(default=None, ge=0)
+    package: Optional[ProductPackage] = None
     image_url: Optional[str] = None
     images: Optional[List[str]] = None
     attributes: Optional[Dict[str, Any]] = None
@@ -85,6 +87,6 @@ class ProductUpdate(BaseModel):
 
     @model_validator(mode="after")
     def compare_must_exceed_price(self):
-        if self.compare_price and self.price and self.compare_price <= self.price:
+        if self.price is not None and self.compare_price is not None and self.compare_price <= self.price:
             raise ValueError(ProductSecurityMessages.INVALID_COMPARE_PRICE)
         return self
