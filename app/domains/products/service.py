@@ -122,6 +122,9 @@ class ProductService:
             prod["discount_percentage"] = 0
         return prod
 
+    async def get_measurement_catalog(self) -> Dict[str, List[Dict[str, Any]]]:
+        return await self.repo.get_measurement_catalog()
+
     async def get_categories(self) -> List[Dict[str, Any]]:
         return await self.repo.get_active_categories()
 
