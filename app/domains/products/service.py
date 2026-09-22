@@ -185,10 +185,15 @@ class ProductService:
 
     async def create_product(self, data: Dict[str, Any]) -> Dict[str, Any]:
         data = await self._prepare_product_data(data)
+        spec_rows = data.pop("_spec_rows", [])
+        seo_data = data.pop("_seo_data", {})
         res = await self.repo.create_product(data)
         if not res:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
+        await self.repo.sync_product_specifications(res["id"], spec_rows)
+        await self.repo.sync_product_seo(res["id"], seo_data)
         await self.repo.sync_product_images_table(res["id"], res.get("images") or [])
+        res = await self.repo.get_product_by_id(res["id"]) or res
         return self._project_product(self._enrich_discount(res))
 
     async def create_product_with_images(self, data: Dict[str, Any], files: List[tuple[bytes, str]]) -> Dict[str, Any]:
@@ -197,6 +202,8 @@ class ProductService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
         if len(data.get("images") or []) + len(files) > ProductRules.MAX_IMAGES_PER_PRODUCT:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ProductSecurityMessages.MAX_IMAGES_EXCEEDED.format(limit=ProductRules.MAX_IMAGES_PER_PRODUCT))
+        spec_rows = data.pop("_spec_rows", [])
+        seo_data = data.pop("_seo_data", {})
         res = await self.repo.create_product(data)
         if not res:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ProductSecurityMessages.DB_OPERATION_FAILED)
@@ -208,6 +215,8 @@ class ProductService:
             all_images = existing + uploaded
             await asyncio.gather(
                 self.repo.update_product(res["id"], {"images": all_images, "image_url": all_images[0] if all_images else None}),
+                self.repo.sync_product_specifications(res["id"], spec_rows),
+                self.repo.sync_product_seo(res["id"], seo_data),
                 self.repo.sync_product_images_table(res["id"], all_images),
             )
             res["images"] = all_images
@@ -268,35 +277,9 @@ class ProductService:
             data["measurement_type"] = definition["measurement_type"]
             data["measurement_unit"] = definition["code"]
 
-        if any(field in data for field in self._SPEC_FIELDS) or "specifications" in data:
-            current = await self.repo.get_product_by_id(product_id)
-            if not current:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
-            current_attrs = dict(current.get("attributes") or {})
-            current_specs = current_attrs.get("specifications") if isinstance(current_attrs.get("specifications"), dict) else {}
-            measurement_fields = ("volume", "volume_unit", "length", "width", "height", "dimension_unit", "quantity", "quantity_unit")
-            measurements = dict(current_specs.get("measurements") or {})
-            for field in self._SPEC_FIELDS:
-                if field in data:
-                    current_attrs[field] = data.pop(field)
-            for field in measurement_fields:
-                if field in data:
-                    value = data.pop(field)
-                    if value is None:
-                        measurements.pop(field, None)
-                    else:
-                        measurements[field] = value
-            if measurements:
-                current_specs["measurements"] = measurements
-            elif "measurements" in current_specs:
-                current_specs.pop("measurements", None)
-            if "specifications" in data:
-                incoming_specs = data.pop("specifications") or {}
-                current_specs.update(incoming_specs)
-            if current_specs:
-                current_attrs["specifications"] = current_specs
-            data["attributes"] = current_attrs
-
+        spec_fields_present = any(field in data for field in self._SPEC_FIELDS) or "specifications" in data
+        spec_rows = self._extract_product_specifications(data) if spec_fields_present else None
+        seo_data = {key: data.pop(key) for key in ("seo_title", "seo_description", "canonical_url") if key in data}
         if "images" in data:
             imgs = data["images"] or []
             data["images"], data["image_url"] = imgs, imgs[0] if imgs else None
@@ -305,8 +288,13 @@ class ProductService:
         res = await self.repo.update_product(product_id, data)
         if not res:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
+        if spec_fields_present:
+            await self.repo.sync_product_specifications(product_id, spec_rows or [])
+        if seo_data:
+            await self.repo.sync_product_seo(product_id, seo_data)
         if "images" in data:
             await self.repo.sync_product_images_table(product_id, res.get("images") or [])
+        res = await self.repo.get_product_by_id(product_id) or res
         return self._project_product(self._enrich_discount(res))
 
     async def delete_product(self, product_id: str) -> None:
