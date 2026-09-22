@@ -8,7 +8,7 @@ from html import escape
 from typing import Any, Dict
 from urllib.parse import quote
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, status
 from fastapi.responses import HTMLResponse
 
 from app.core.config import settings
@@ -50,7 +50,7 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
         or "Shop this product on Luviio."
     ).strip()
     canonical_url = _frontend_product_url(slug)
-    image_url = _absolute_image_url(_first_image(product), request)
+    image_url = _absolute_image_url(_first_image(product), request) or f"{settings.FRONTEND_URL.rstrip('/')}/og-default.svg"
 
     title = f"{name} | Luviio"
     escaped_title = escape(title, quote=True)
@@ -58,14 +58,13 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
     escaped_description = escape(description[:300], quote=True)
     escaped_url = escape(canonical_url, quote=True)
 
-    image_tags = ""
-    if image_url:
-        escaped_image = escape(image_url, quote=True)
-        image_tags = (
-            f'\n    <meta property="og:image" content="{escaped_image}">'
-            f'\n    <meta property="og:image:alt" content="{escaped_name}">'
-            f'\n    <meta name="twitter:image" content="{escaped_image}">'
-        )
+    escaped_image = escape(image_url, quote=True)
+    image_tags = (
+        f'\n    <meta property="og:image" content="{escaped_image}">'
+        f'\n    <meta property="og:image:secure_url" content="{escaped_image}">'
+        f'\n    <meta property="og:image:alt" content="{escaped_name}">'
+        f'\n    <meta name="twitter:image" content="{escaped_image}">'
+    )
 
     html = f"""<!doctype html>
 <html lang="en">
@@ -89,4 +88,11 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
     <script>window.location.replace({canonical_url!r});</script>
 </body>
 </html>"""
-    return HTMLResponse(content=html)
+    return HTMLResponse(
+        content=html,
+        status_code=status.HTTP_200_OK,
+        headers={
+            "Cache-Control": "public, max-age=60, s-maxage=300, stale-while-revalidate=86400",
+            "X-Robots-Tag": "index, follow",
+        },
+    )
