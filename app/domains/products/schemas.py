@@ -93,6 +93,9 @@ class ProductCreate(BaseModel):
     stock: int = Field(default=0, ge=0)
     weight: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
     weight_unit: Optional[Literal["g", "kg"]] = None
+    measurement_type: Optional[str] = Field(default=None, min_length=2, max_length=32)
+    measurement_value: Optional[Decimal] = Field(default=None, ge=0, decimal_places=6)
+    measurement_unit: Optional[str] = Field(default=None, min_length=1, max_length=32)
 
     image_url: Optional[str] = Field(default=None, max_length=2048)
     images: List[str] = Field(default_factory=list, max_length=10)
@@ -122,6 +125,12 @@ class ProductCreate(BaseModel):
     def validate_weight_scale(self):
         if self.weight is not None and self.weight_unit is None:
             raise ValueError("weight_unit is required when weight is provided.")
+        if self.measurement_value is not None and (self.measurement_type is None or self.measurement_unit is None):
+            raise ValueError("measurement_type and measurement_unit are required when measurement_value is provided.")
+        if self.measurement_type is not None and self.measurement_unit is None:
+            raise ValueError("measurement_unit is required when measurement_type is provided.")
+        if self.measurement_unit is not None and self.measurement_type is None:
+            raise ValueError("measurement_type is required when measurement_unit is provided.")
         return self
 
     @model_validator(mode="after")
