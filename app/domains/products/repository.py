@@ -17,10 +17,32 @@ class AsyncProductRepository:
         if "product_images" in product:
             imgs = product.pop("product_images") or []
             imgs.sort(key=lambda x: x.get("position", 0) if x.get("position") is not None else 0)
-            relational_urls = [img["url"] for img in imgs if "url" in img]
-            product["images"] = relational_urls
+            product["images"] = [img["url"] for img in imgs if "url" in img]
         else:
             product["images"] = product.get("images") or []
+        return self._format_product_specs(product)
+
+    def _format_product_specs(self, product: Dict[str, Any]) -> Dict[str, Any]:
+        rows = product.pop("product_specifications", None) or []
+        rows.sort(key=lambda x: x.get("position", 0))
+        specs: Dict[str, Any] = {}
+        for row in rows:
+            code = row.get("specification_code")
+            if not code:
+                continue
+            value = row.get("value_numeric")
+            if value is None:
+                value = row.get("value_text")
+            if code in specs:
+                if not isinstance(specs[code], list):
+                    specs[code] = [specs[code]]
+                specs[code].append(value)
+            else:
+                specs[code] = value
+        product["specifications"] = specs
+        for field in ("brand", "manufacturer", "model_number", "gtin", "ean", "part_number",
+                      "material", "finish", "color", "size", "dimensions", "warranty"):
+            product[field] = specs.get(field)
         return product
 
     async def get_active_categories(self) -> List[Dict[str, Any]]:
@@ -59,7 +81,7 @@ class AsyncProductRepository:
         # Listing cards only need these fields. Keep detail-only tax/SEO/image
         # relations out of the hot catalogue query to reduce DB work and payload.
         q = admin_sb.table("products").select(
-            "id, name, slug, description, short_description, sku, category_id, price, compare_price, stock, weight, weight_unit, measurement_type, measurement_value, measurement_unit, image_url, is_active, hsn_code, gst_percentage, attributes, country_of_origin, categories(name, slug)",
+            "id, name, slug, description, short_description, sku, category_id, price, compare_price, stock, weight, weight_unit, measurement_type, measurement_value, measurement_unit, image_url, is_active, hsn_code, gst_percentage, country_of_origin, categories(name, slug)",
             count="exact",
         ).eq("is_active", True)
         if category_slug:
@@ -81,13 +103,13 @@ class AsyncProductRepository:
 
     async def get_product_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.table("products").select("id, name, slug, sku, category_id, description, short_description, price, compare_price, stock, weight, weight_unit, measurement_type, measurement_value, measurement_unit, image_url, is_active, hsn_code, gst_percentage, attributes, country_of_origin, product_images(id, url, alt, position), categories(name, slug)").eq("slug", slug).eq("is_active", True).limit(1).execute()
+        res = await admin_sb.table("products").select("id, name, slug, sku, category_id, description, short_description, price, compare_price, stock, weight, weight_unit, measurement_type, measurement_value, measurement_unit, image_url, is_active, hsn_code, gst_percentage, country_of_origin, product_images(id, url, alt, position), categories(name, slug)").eq("slug", slug).eq("is_active", True).limit(1).execute()
         data_list = getattr(res, "data", None)
         return self._format_product_images(data_list[0]) if data_list else None
 
     async def get_product_by_id(self, product_id: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.table("products").select("id, name, slug, sku, price, compare_price, stock, hsn_code, gst_percentage, image_url, attributes, is_active, product_images(id, url, alt, position)").eq("id", product_id).limit(1).execute()
+        res = await admin_sb.table("products").select("id, name, slug, sku, price, compare_price, stock, hsn_code, gst_percentage, image_url, is_active, product_images(id, url, alt, position)").eq("id", product_id).limit(1).execute()
         data_list = getattr(res, "data", None)
         return self._format_product_images(data_list[0]) if data_list else None
 
@@ -155,6 +177,22 @@ class AsyncProductRepository:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("products").update({"is_active": False}).eq("id", product_id).execute()
         return bool(getattr(res, "data", None))
+
+    async def sync_product_specifications(self, product_id: str, rows: List[Dict[str, Any]]) -> None:
+        admin_sb = await get_async_admin_supabase()
+        await admin_sb.table("product_specifications").delete().eq("product_id", product_id).execute()
+        if rows:
+            payload = [dict(row, product_id=product_id, position=index) for index, row in enumerate(rows)]
+            await admin_sb.table("product_specifications").insert(payload).execute()
+
+    async def sync_product_seo(self, product_id: str, seo: Dict[str, Any]) -> None:
+        admin_sb = await get_async_admin_supabase()
+        clean = {k: v for k, v in seo.items() if v is not None}
+        if not clean:
+            await admin_sb.table("product_seo").delete().eq("product_id", product_id).execute()
+            return
+        clean["product_id"] = product_id
+        await admin_sb.table("product_seo").upsert(clean, on_conflict="product_id").execute()
 
     async def sync_product_images_table(self, product_id: str, image_urls: List[str]) -> None:
         admin_sb = await get_async_admin_supabase()
