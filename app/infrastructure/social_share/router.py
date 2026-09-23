@@ -2,19 +2,28 @@
 
 Social crawlers need metadata in the initial HTTP response and do not execute
 the SPA's client-side JavaScript before building a link preview.
+
+Route: GET /share/products/{slug}
+Mounted at app root so the frontend middleware can fetch it directly.
 """
 
+import logging
 from html import escape
 from typing import Any, Dict
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request, status
+from fastapi.exceptions import HTTPException
 from fastapi.responses import HTMLResponse
 
 from app.core.config import settings
 from app.domains.products.service import ProductService
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["Social Share"])
+
+_DEFAULT_IMAGE = f"{settings.FRONTEND_URL.rstrip('/')}/og-default.svg"
 
 
 def _frontend_product_url(slug: str) -> str:
@@ -23,48 +32,60 @@ def _frontend_product_url(slug: str) -> str:
 
 
 def _first_image(product: Dict[str, Any]) -> str | None:
-    images = product.get("images") or []
-    if images and isinstance(images[0], str):
-        return images[0]
     image_url = product.get("image_url")
-    return image_url if isinstance(image_url, str) else None
-
-
-def _absolute_image_url(image_url: str | None, request: Request) -> str | None:
-    if not image_url:
-        return None
-    if image_url.startswith(("http://", "https://")):
+    if image_url and isinstance(image_url, str) and image_url.startswith("http"):
         return image_url
-    return str(request.base_url).rstrip("/") + "/" + image_url.lstrip("/")
+    images = product.get("images") or []
+    for img in images:
+        if isinstance(img, str) and img.startswith("http"):
+            return img
+    return None
 
 
 @router.get("/share/products/{slug}", response_class=HTMLResponse, include_in_schema=False)
 async def product_share_page(request: Request, slug: str) -> HTMLResponse:
-    """Return crawler-readable OG metadata and redirect visitors to the SPA."""
-    product = await ProductService().get_product(slug)
+    """Return crawler-readable OG metadata for a product."""
+    try:
+        product = await ProductService().get_product(slug)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_404_NOT_FOUND:
+            return HTMLResponse(
+                content="<html><head><title>Not found</title></head><body>Product not found.</body></html>",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        logger.error("social_share.product_fetch_error slug=%s status=%s", slug, exc.status_code)
+        return HTMLResponse(
+            content="<html><head><title>Error</title></head><body>Temporarily unavailable.</body></html>",
+            status_code=status.HTTP_502_BAD_GATEWAY,
+        )
+    except Exception:
+        logger.exception("social_share.unexpected_error slug=%s", slug)
+        return HTMLResponse(
+            content="<html><head><title>Error</title></head><body>Temporarily unavailable.</body></html>",
+            status_code=status.HTTP_502_BAD_GATEWAY,
+        )
 
-    name = str(product.get("name") or "Luviio Product")
-    description = str(
-        product.get("short_description")
-        or product.get("description")
-        or "Shop this product on Luviio."
-    ).strip()
+    name = str(product.get("name") or "Luviio Product").strip()
+    seo = product.get("product_seo") or {}
+    seo_title = str(seo.get("title") or "").strip() if isinstance(seo, dict) else ""
+    seo_description = str(seo.get("description") or "").strip() if isinstance(seo, dict) else ""
+
+    description = (
+        seo_description
+        or str(product.get("short_description") or "").strip()
+        or str(product.get("description") or "").strip()
+        or f"Shop {name} on Luviio."
+    )
+
     canonical_url = _frontend_product_url(slug)
-    image_url = _absolute_image_url(_first_image(product), request) or f"{settings.FRONTEND_URL.rstrip('/')}/og-default.svg"
+    image_url = _first_image(product) or _DEFAULT_IMAGE
+    display_title = seo_title or f"{name} | Luviio"
 
-    title = f"{name} | Luviio"
-    escaped_title = escape(title, quote=True)
+    escaped_title = escape(display_title, quote=True)
     escaped_name = escape(name, quote=True)
     escaped_description = escape(description[:300], quote=True)
     escaped_url = escape(canonical_url, quote=True)
-
     escaped_image = escape(image_url, quote=True)
-    image_tags = (
-        f'\n    <meta property="og:image" content="{escaped_image}">'
-        f'\n    <meta property="og:image:secure_url" content="{escaped_image}">'
-        f'\n    <meta property="og:image:alt" content="{escaped_name}">'
-        f'\n    <meta name="twitter:image" content="{escaped_image}">'
-    )
 
     html = f"""<!doctype html>
 <html lang="en">
@@ -73,21 +94,33 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{escaped_title}</title>
     <meta name="description" content="{escaped_description}">
+    <link rel="canonical" href="{escaped_url}">
+
     <meta property="og:type" content="product">
+    <meta property="og:site_name" content="Luviio">
     <meta property="og:title" content="{escaped_title}">
     <meta property="og:description" content="{escaped_description}">
-    <meta property="og:url" content="{escaped_url}">{image_tags}
+    <meta property="og:url" content="{escaped_url}">
+    <meta property="og:image" content="{escaped_image}">
+    <meta property="og:image:secure_url" content="{escaped_image}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="{escaped_name}">
+    <meta property="og:locale" content="en_IN">
+
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{escaped_title}">
     <meta name="twitter:description" content="{escaped_description}">
-    <link rel="canonical" href="{escaped_url}">
+    <meta name="twitter:image" content="{escaped_image}">
+    <meta name="twitter:image:alt" content="{escaped_name}">
+
     <meta http-equiv="refresh" content="0;url={escaped_url}">
 </head>
 <body>
     <p>Opening <a href="{escaped_url}">{escaped_title}</a>…</p>
-    <script>window.location.replace({canonical_url!r});</script>
 </body>
 </html>"""
+
     return HTMLResponse(
         content=html,
         status_code=status.HTTP_200_OK,
