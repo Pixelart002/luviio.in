@@ -21,15 +21,20 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   return payload.data ?? payload
 }
 
-export type ApiProduct = { id: string; name: string; slug: string; sku?: string; price?: number; selling_price?: number; images?: string[]; category?: string; category_name?: string; stock_status?: string; short_description?: string; description?: string; specifications?: Record<string, string> }
+export type ApiProduct = { id: string; name: string; slug: string; sku?: string; price?: number; selling_price?: number; compare_price?: number; image_url?: string | null; images?: string[]; category?: string; category_name?: string; stock_status?: string; stock?: number; short_description?: string; description?: string; specifications?: Record<string, string> }
 export type ApiCategory = { id: string; name: string; slug?: string; image_url?: string }
 export type ProductPage = { items: ApiProduct[]; total: number; page: number; page_size: number; pages?: number }
 export type Cart = { id?: string; items?: Array<{ product_id: string; product?: ApiProduct; quantity: number; unit_price?: number; total?: number }>; subtotal?: number; total?: number; item_count?: number }
 export type Session = { authenticated: boolean; user_id?: string; email?: string; expires_at?: number }
 
+const normalizePage = (payload: ProductPage | ApiProduct[]): ProductPage => {
+  if (Array.isArray(payload)) return { items: payload, total: payload.length, page: 1, page_size: payload.length }
+  return { items: Array.isArray(payload.items) ? payload.items : [], total: payload.total ?? payload.items?.length ?? 0, page: payload.page ?? 1, page_size: payload.page_size ?? payload.items?.length ?? 0, pages: payload.pages }
+}
+
 export const catalogApi = {
   categories: () => api<ApiCategory[]>('/categories'),
-  products: (params = '') => api<ProductPage>(`/products${params ? `?${params}` : ''}`),
+  products: async (params = '') => normalizePage(await api<ProductPage | ApiProduct[]>(`/products${params ? `?${params}` : ''}`)),
   product: (slug: string) => api<ApiProduct>(`/products/${encodeURIComponent(slug)}`),
 }
 export const authApi = {
