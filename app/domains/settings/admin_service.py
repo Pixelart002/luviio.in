@@ -24,6 +24,11 @@ class AdminSettingsService:
         self, key: str, new_value: Any, admin_id: str, role: str, reason: str
     ) -> Dict[str, Any]:
         existing = await self.engine.fetch_by_key(key)
+        if key == "stripe_publishable_key":
+            normalized = str(new_value or "").strip()
+            if not __import__("re").fullmatch(r"pk_(test|live)_[A-Za-z0-9]+", normalized):
+                raise ValueError("stripe_publishable_key must be a valid Stripe publishable key (pk_test_... or pk_live_...).")
+            new_value = normalized
         SettingsPolicy.assert_can_modify(existing, role)
         SettingsPolicy.assert_valid_data_type(new_value, existing["data_type"])
         return await self.engine.mutate_setting(
