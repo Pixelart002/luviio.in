@@ -1,4 +1,4 @@
-import { request } from './request'
+import { getAccessToken, request } from './request'
 
 export { ApiError, getAccessToken, setAccessToken } from './request'
 
