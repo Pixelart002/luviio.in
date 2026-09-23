@@ -7,7 +7,7 @@ To run:
   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
 import logging
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
@@ -26,6 +26,7 @@ from app.domains.auth.http_client import close_auth_http_client, init_auth_http_
 from app.events.registry import register_all_event_handlers
 from app.infrastructure.health.router import router as health_router
 from app.infrastructure.social_share.router import router as social_share_router
+from app.infrastructure.tokenforge_mcp.server import mcp, mcp_app
 
 configure_logging()
 init_sentry()
@@ -46,7 +47,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         scheduler_started,
     )
     try:
-        yield
+        async with AsyncExitStack() as stack:
+            await stack.enter_async_context(mcp.session_manager.run())
+            yield
     finally:
         stop_cron_jobs()
         await close_auth_http_client()
@@ -81,3 +84,4 @@ register_exception_handlers(app)
 app.include_router(health_router)
 app.include_router(social_share_router)
 app.include_router(api_router, prefix="/api/v1")
+app.mount("/mcp", mcp_app)
