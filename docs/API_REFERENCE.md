@@ -157,6 +157,7 @@ The last three are operational endpoints and should be treated as protected oper
 | Method | Path | Access | Purpose |
 |---|---|---|---|
 | GET | `/api/v1/settings/` | `settings:read` | Read settings |
+| GET | `/api/v1/payments/public-config` | Public | Browser-safe payment configuration only |
 | PATCH | `/api/v1/settings/{key}` | `settings:update` | Mutate setting with reason/context |
 | POST | `/api/v1/settings/{key}/reset` | `settings:reset` | Restore default |
 
