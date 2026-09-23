@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Check, Download, Minus, Plus, ShieldCheck, Truck, Headphones, PackageCheck, Trash2 } from 'lucide-react'
 import { authApi, cartApi, catalogApi, ordersApi, paymentsApi, userApi, type Address, type ApiCategory, type ApiProduct, type Cart, type Order } from '../api/client'
@@ -171,11 +171,11 @@ function CartPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     cartApi.get().then(setCart).catch(e => setError(readableError(e))).finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [])
+  }, [])
+  useEffect(() => { load() }, [load])
 
   const update = async (id: string, quantity: number) => {
     if (quantity < 1) return
@@ -243,8 +243,8 @@ function Checkout() {
   const [cardReady, setCardReady] = useState(false)
   const [cardError, setCardError] = useState('')
 
-  const loadAddresses = () => userApi.addresses().then(items => { setAddresses(items); setSelected(current => current || items.find(item => item.is_default)?.id || items[0]?.id || '') }).catch(e => setMessage(readableError(e)))
-  useEffect(() => { loadAddresses() }, [])
+  const loadAddresses = useCallback(() => userApi.addresses().then(items => { setAddresses(items); setSelected(current => current || items.find(item => item.is_default)?.id || items[0]?.id || '') }).catch(e => setMessage(readableError(e))), [])
+  useEffect(() => { loadAddresses() }, [loadAddresses])
 
   useEffect(() => {
     if (!payment?.clientSecret || !window.Stripe || !import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) return
