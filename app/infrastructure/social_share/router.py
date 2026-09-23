@@ -128,7 +128,7 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
             "Cache-Control": "public, max-age=60, s-maxage=300, stale-while-revalidate=86400",
             "X-Robots-Tag": "index, follow",
         },
-    )def _resolve_image(product: dict) -> str:
+    )\n\ndef _resolve_image(product: dict) -> str:
     # Luviio uses one canonical social-preview image for all product shares.
     return _DEFAULT_IMAGE
 
