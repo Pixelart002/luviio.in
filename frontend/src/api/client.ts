@@ -61,6 +61,28 @@ export type Cart = {
   currency?: string
 }
 
+export type Session = { authenticated: boolean; user_id?: string; email?: string; expires_at?: number; profile?: Record<string, unknown> }
+
+export type Address = {
+  id: string
+  full_name?: string
+  phone?: string
+  email?: string
+  line1?: string
+  line2?: string
+  address_line1?: string
+  address_line2?: string
+  city?: string
+  state?: string
+  postal_code?: string
+  country?: string
+  landmark?: string
+  address_type?: string
+  company_name?: string
+  gstin?: string
+  is_default?: boolean
+}
+
 export type AddressInput = {
   line1: string
   line2?: string
@@ -262,7 +284,7 @@ export const ordersApi = {
 }
 
 export const paymentsApi = {
-  createIntent: (body: { shipping_address_id: string; idempotency_key: string; coupon_code?: string; provider_key?: string }) =>
+  createIntent: (body: { shipping_address_id: string; idempotency_key: string; coupon_code?: string; shipping_courier_id?: number; provider_key?: string }) =>
     request<PaymentIntentResult>('POST', '/payments/create-intent', body),
   confirm: (payment_intent_id: string, provider_key?: string) =>
     request<Order>('POST', '/payments/confirm', { payment_intent_id, provider_key }),
