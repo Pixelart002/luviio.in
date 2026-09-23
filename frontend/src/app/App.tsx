@@ -335,7 +335,7 @@ function Checkout() {
       setSelectedCourierId(null)
       setShippingError(readableError(e))
     } finally { setShippingLoading(false) }
-  }, [cart?.items.length, declaredValue, paymentMethod, selectedAddress?.postal_code, totalWeightKg])
+  }, [cart?.items.length, declaredValue, paymentMethod, selectedAddress, totalWeightKg])
 
   useEffect(() => { loadShipping() }, [loadShipping])
 
