@@ -144,7 +144,6 @@ Do not fabricate success. Preserve the user's cart/order context and expose a re
 
 These backend capabilities need dedicated browser workflows and UI before they can be considered end-to-end complete:
 
-- coupon apply/remove feedback;
 - coupon validation/apply/remove feedback beyond checkout submission;
 - product reviews;
 - authenticated route guards;
@@ -187,4 +186,7 @@ The workflow ID should be referenced in the feature PR/commit and in the browser
 - `docs/BROWSER_WORKFLOWS.md`: executable browser acceptance workflows.
 
 When a route, endpoint, permission, workflow or state transition changes, update the matching source-of-truth document in the same change.
-\n## 10. Cart / checkout / order contract correction (2026-09-24)\n\nThe browser previously consumed an older cart/order DTO. The canonical mapping is now:\n\n```text\nCartResponse\n  items[].name / image_url / quantity / unit_price / line_total / weight / weight_unit\n  subtotal / tax_amount / total_amount\n       |\n       v\nCheckout\n  saved address -> delivery PIN\n  cart weight -> live Shiprocket quotes\n  selected courier_id\n       |\n       +--> online: payments/create-intent -> Stripe -> payments/confirm\n       |\n       +--> COD: orders/cod\n       |\n       v\nOrder detail\n  order_items[]\n  subtotal / shipping_cost / tax_amount / discount_amount / total_amount\n  shipping_* snapshot\n       |\n       v\nCustomer shipment\n  GET /shipping/my/:orderNumber\n  courier / AWB / tracking / workflow status\n```\n\nShipping is intentionally not calculated from the legacy flat-rate store setting in the browser. Live serviceability is resolved after a delivery address is selected.\n
+
+## 10. Cart / checkout / order contract correction (2026-09-24)
+
+The browser previously consumed an older cart/order DTO. The canonical mapping is now:\n\n```text\nCartResponse\n  items[].name / image_url / quantity / unit_price / line_total / weight / weight_unit\n  subtotal / tax_amount / total_amount\n       |\n       v\nCheckout\n  saved address -> delivery PIN\n  cart weight -> live Shiprocket quotes\n  selected courier_id\n       |\n       +--> online: payments/create-intent -> Stripe -> payments/confirm\n       |\n       +--> COD: orders/cod\n       |\n       v\nOrder detail\n  order_items[]\n  subtotal / shipping_cost / tax_amount / discount_amount / total_amount\n  shipping_* snapshot\n       |\n       v\nCustomer shipment\n  GET /shipping/my/:orderNumber\n  courier / AWB / tracking / workflow status\n```\n\nShipping is intentionally not calculated from the legacy flat-rate store setting in the browser. Live serviceability is resolved after a delivery address is selected.
