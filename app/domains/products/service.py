@@ -26,7 +26,7 @@ class ProductService:
     _SPEC_FIELDS = (
         "brand", "manufacturer", "model_number", "gtin", "ean",
         "part_number", "key_features", "material", "finish", "color",
-        "size", "dimensions", "volume", "volume_unit", "length", "width", "height", "dimension_unit", "quantity", "quantity_unit", "warranty",
+        "size", "dimensions", "volume", "volume_unit", "quantity", "quantity_unit", "warranty",
     )
 
     @classmethod
