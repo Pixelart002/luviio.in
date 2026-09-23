@@ -5,7 +5,7 @@ description = "Luviio backend API"
 requires-python = ">=3.13,<3.14"
 dependencies = [
   "fastapi>=0.141.1,<0.142",
-  "uvicorn[standard]==0.30.6",
+  "uvicorn[standard]>=0.31.1,<0.32",
   "gunicorn==23.0.0",
   "supabase==2.10.0",
   "pydantic==2.9.2",
@@ -33,7 +33,7 @@ package = false
 [dependency-groups]
 dev = [
     "mypy==1.13.0",
-    "pip-audit==2.7.3",
+    "pip-audit==2.7.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.2.0",
     "pytest-cov==5.0.0",
