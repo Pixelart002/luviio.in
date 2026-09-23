@@ -2,7 +2,7 @@
 
 ## Scope
 
-LUVIIO sells hardware. The Product API therefore models a hardware catalogue instead of copying every marketplace-specific attribute. Category-specific hardware properties live inside `specifications`.
+LUVIIO sells hardware. The Product API therefore models a hardware catalogue instead of copying every marketplace-specific attribute. Common hardware fields are relational; category-specific hardware properties are stored in the relational `product_specifications` table and projected as `specifications` in read responses.
 
 Operational metadata such as SEO settings, low-stock thresholds and calculated discounts are owned by their respective services and are not accepted by the Product API.
 
@@ -31,19 +31,11 @@ Stable snake_case names are used at the HTTP boundary.
 | color | string/null | optional | optional | Product color |
 | size | string/null | optional | optional | Product size |
 | dimensions | string/null | optional | optional | Product dimensions |
-| specifications | object | optional | optional | Category-specific hardware specifications |
 | warranty | string/null | optional | optional | Warranty information |
 | price | decimal | required | optional | Selling price; > 0 |
 | compare_price | decimal/null | optional | optional | MRP/compare-at price; must exceed price |
 | stock | integer | default 0 | optional | Available stock; >= 0 |
-| weight | decimal/null | optional | optional | Product weight value; up to 3 decimal places |\n| weight_unit | string/null | optional | optional | Weight scale: `g` or `kg`; required when `weight` is provided |
-| volume | decimal/null | optional | optional | Capacity/volume value; up to 3 decimal places |
-| volume_unit | string/null | optional | optional | `ml` or `L`; required when `volume` is provided |
-| length / width / height | decimal/null | optional | optional | Physical dimensions; up to 3 decimal places |
-| dimension_unit | string/null | optional | optional | `mm`, `cm`, `m`, `in`, or `ft`; required when a dimension is provided |
-| quantity | decimal/null | optional | optional | Selling quantity value |
-| quantity_unit | string/null | optional | optional | `piece`, `pack`, `set`, `pair`, or `box`; required when `quantity` is provided |
-| image_url | string/null | optional | optional | Primary image URL |
+| measurement_type | string/null | optional | optional | One selected measurement type from the DB measurement master |\n| measurement_value | decimal/null | optional | optional | Value for the selected measurement type |\n| measurement_unit | string/null | optional | optional | Unit attached to the selected measurement type; backend validates the pair |\n| image_url | string/null | optional | optional | Primary image URL |
 | images | string[] | optional | optional | Up to 10 images; first is primary |
 | hsn_code | string | required | optional | 4-8 numeric digits |
 | gst_percentage | integer | required | optional | 0-100; provider validated |
@@ -52,11 +44,11 @@ Stable snake_case names are used at the HTTP boundary.
 
 ## Measurement scales
 
-Physical measurements are separate from free-form specifications. Weight supports `g`/`kg`; volume supports `ml`/`L`; dimensions support `mm`/`cm`/`m`/`in`/`ft`; selling quantity supports `piece`/`pack`/`set`/`pair`/`box`. Measurement values are stored with their selected scale under the existing structured product attributes storage.
+The admin selects at most one product measurement type at a time. Active measurement types and their units are loaded from the database measurement master at runtime; units are not hardcoded in the frontend. The backend validates that the selected unit belongs to the selected type.
 
 ## Hardware specifications
 
-Common fields are first-class API fields. Category-specific fields belong in `specifications`.
+Common fields are first-class API fields. Category-specific fields are stored in relational `product_specifications` rows and projected as `specifications` in read responses.
 
 Examples:
 
@@ -90,7 +82,7 @@ These remain in the database or owning subsystem where needed, but are not Produ
 ## API consistency
 
 - Product update supports slug and SKU.
-- Structured hardware fields are stored through the existing product attributes storage without adding dozens of nullable columns.
-- Public responses project structured hardware fields and category-specific specifications instead of exposing the legacy generic `attributes` object.
+- Structured hardware fields are stored relationally without adding a generic JSON/JSONB product field.
+- Public responses project structured hardware fields and category-specific relational specifications; the legacy generic `attributes` JSONB field is removed.
 - HSN/GST validation remains fail-closed when taxonomy enforcement is enabled.
 - Database-level HSN/GST constraints continue to protect new writes.
