@@ -39,12 +39,15 @@ def test_product_update_accepts_hardware_identity_fields():
             "gtin": "8901234567890",
             "material": "Stainless Steel",
             "finish": "Polished",
-            "specifications": {"outlet_size": "110 mm"},
         }
     )
     assert payload.brand == "Luviio"
     assert payload.model_number == "HD-001"
-    assert payload.specifications["outlet_size"] == "110 mm"
+
+
+def test_product_update_rejects_generic_json_specifications():
+    with pytest.raises(ValidationError):
+        ProductUpdate.model_validate({"specifications": {"outlet_size": "110 mm"}})
 
 
 def test_product_create_accepts_hardware_catalog_fields():
@@ -67,7 +70,6 @@ def test_product_create_accepts_hardware_catalog_fields():
             color="Silver",
             size="150 x 150 mm",
             dimensions="150 x 150 x 50 mm",
-            specifications={"outlet_size": "110 mm", "installation_type": "Floor"},
             warranty="1 year",
             compare_price=150,
             stock=10,
@@ -80,7 +82,6 @@ def test_product_create_accepts_hardware_catalog_fields():
     )
     assert payload.hsn_code == "731810"
     assert payload.gst_percentage == 18
-    assert payload.specifications["outlet_size"] == "110 mm"
     assert payload.material == "Stainless Steel"
 
 
