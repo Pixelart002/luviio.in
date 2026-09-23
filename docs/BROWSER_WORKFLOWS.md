@@ -79,112 +79,114 @@ Precondition: test session can be expired/revoked.
 
 ## 3. Cart workflows
 
-### BW-020 — Add/update/remove cart
-1. Add product A.
+### BW-020 — Add/update/remove canonical cart
+1. Add a product to the cart.
 2. Open `/cart`.
-3. Verify server-confirmed quantity and total.
-4. Update quantity.
-5. Verify cart total changes from the API result.
-6. Remove item.
-7. Verify empty-cart state.
+3. Verify each line uses the backend cart DTO: name, image_url, quantity, unit_price and line_total.
+4. Change quantity and verify the API result updates the rendered line and totals.
+5. Remove the line and verify the empty-cart state.
+
+Assertions:
+- `CartResponse.total_amount`, `subtotal` and `tax_amount` are rendered from server data.
+- `has_unavailable_items` blocks checkout.
+- `price_changed` is surfaced to the customer.
+- Shipping is explicitly marked as calculated at checkout rather than fabricated from a frontend rate.
 
 ### BW-021 — Cart authorization
-1. Open `/cart` while signed out.
-2. Verify sign-in/recovery UX.
-3. Sign in.
-4. Verify the user's own cart appears.
-5. Verify no other user's cart data is exposed.
+1. Open `/cart` signed out.
+2. Verify deterministic sign-in/recovery UX.
+3. Sign in and reload the cart.
+4. Verify only the authenticated user's cart is visible.
 
 ## 4. Checkout workflows
 
-### BW-030 — Checkout prerequisites
-1. Add product to cart.
-2. Sign in.
-3. Open `/checkout`.
-4. Verify saved addresses or deliberate empty-address state.
-5. Select an address.
-6. Verify checkout controls become actionable only when prerequisites are valid.
-
-### BW-031 — Online checkout
+### BW-030 — Address prerequisite
 1. Start from a non-empty cart.
-2. Select shipping address.
-3. Submit online checkout with a unique idempotency key.
-4. Verify server-confirmed order result.
-5. Verify cart is cleared only after successful order completion.
-6. Verify confirmation contains public order identifier.
+2. Open `/checkout`.
+3. Verify saved/default addresses load.
+4. Add a new address.
+5. Verify the new address becomes selected.
+6. Verify the address PIN is the input for live shipping serviceability.
 
-The browser must not calculate the authoritative subtotal, GST, shipping or final total.
+### BW-031 — Live shipping selection
+1. Select a delivery address.
+2. Verify `GET /shipping/provider/rate` is called with the delivery PIN, canonical cart weight and declared cart value.
+3. Verify courier name, service, ETA and live shipping charge are visible.
+4. Select a courier.
+5. Switch between online and COD.
+6. Verify shipping options are refreshed because COD serviceability can differ.
+7. Verify the selected courier ID is carried into the final order/payment request.
 
-### BW-032 — COD checkout
-Same flow as BW-031 using COD.
-Verify:
-- COD method is available only when backend allows it;
-- order is created once;
-- repeated submission with the same idempotency key does not create a duplicate order.
+Assertions:
+- Browser does not calculate or hard-code the authoritative shipping charge.
+- Provider failure leaves checkout in a retryable state.
+- No courier option is treated as a successful checkout prerequisite.
 
-### BW-033 — Checkout failure
-Inject/trigger a deterministic backend rejection (invalid address, unavailable stock, disabled method, provider failure, etc.).
+### BW-032 — Online checkout
+1. Select address and a serviceable courier.
+2. Select online payment.
+3. Submit `POST /payments/create-intent` with the selected courier ID.
+4. Complete Stripe confirmation.
+5. Verify `POST /payments/confirm` succeeds.
+6. Clear the cart only after confirmation.
+7. Navigate to `/orders/:orderNumber` using the server-confirmed public order number.
+
+### BW-033 — COD checkout
+1. Select address and a COD-compatible courier.
+2. Submit `POST /orders/cod` with the selected courier ID.
+3. Clear the cart only after order creation succeeds.
+4. Navigate to the server-confirmed order number.
+
+### BW-034 — Checkout failure/recovery
+Trigger an address, stock, shipping-provider, payment-provider or validation failure.
 Verify:
 - no false success;
-- user receives actionable error;
-- cart/order state remains consistent;
-- retry does not duplicate an order.
+- selected cart/order context is preserved;
+- the user gets an actionable error;
+- a retry does not create a duplicate order.
 
 ## 5. Payment workflows
 
-### BW-040 — Payment success
-Precondition: test payment provider configuration.
-1. Complete online checkout.
-2. Complete provider confirmation.
-3. Return to the application.
-4. Verify settled order state.
-
-### BW-041 — Payment failure
-1. Start online payment.
-2. Force a provider/client failure.
-3. Verify failed/pending status is visible.
-4. Verify no duplicate order/inventory mutation beyond backend policy.
-5. Verify retry action when the order is retryable.
-
-### BW-042 — Payment retry
-1. Open a retryable pending order.
-2. Start retry.
-3. Verify retry attempt is represented.
-4. Complete or fail the retry.
-5. Verify UI reflects authoritative order/payment state.
-
-### BW-043 — Payment method switch
-1. Open an eligible pending order.
-2. Switch payment method.
-3. Verify server-confirmed method/state.
-4. Complete the new method flow.
+### BW-040 — Payment success/failure
+- Successful provider confirmation must produce an authoritative order state.
+- Failed card confirmation must not show success and must notify the backend of payment failure.
+- Missing Stripe browser configuration must stop the online path before attempting provider confirmation.
 
 ## 6. Order lifecycle workflows
 
 ### BW-050 — Order history
 1. Sign in.
 2. Open `/orders`.
-3. Verify only the current user's orders.
-4. Verify pagination/load-more behavior when applicable.
+3. Verify the list consumes `order_number`, `status`, `total_amount` and `created_at`.
+4. Open an order by its public order number.
 
 ### BW-051 — Order detail
-1. Select a known public order number.
-2. Open `/orders/:orderNumber`.
-3. Verify items, status, totals and customer-safe details.
-4. Verify another user's order number cannot expose private order data.
+1. Open `/orders/:orderNumber`.
+2. Verify items come from `order_items`.
+3. Verify summary uses `subtotal`, `shipping_cost`, `tax_amount`, `discount_amount` and `total_amount`.
+4. Verify the shipping address snapshot is visible.
+5. Verify courier, service and AWB/tracking information when available.
+6. Verify `GET /shipping/my/:orderNumber` drives shipment status/tracking data.
+7. Verify a not-yet-booked shipment renders a deliberate pending state.
 
-### BW-052 — Invoice
-1. Open an eligible order.
-2. Trigger invoice view/download.
-3. Verify the response is an invoice for that exact order.
-4. Verify no internal/server-only fields are exposed.
+### BW-052 — Shipment tracking
+1. Open an order with a provider shipment.
+2. Verify courier and AWB.
+3. Verify tracking URL when returned.
+4. Verify the order timeline distinguishes order state from granular shipment workflow state.
 
-### BW-053 — Order cancellation
+### BW-053 — Invoice
 1. Open an eligible order.
-2. Cancel it.
-3. Verify confirmed status.
-4. Verify inventory/cart/payment side effects match backend policy.
-5. Verify repeated cancellation is safely rejected or idempotent.
+2. Trigger invoice download.
+3. Verify the PDF request uses the public order number and the authenticated session.
+4. Verify a failed download leaves the order page usable.
+
+### BW-054 — Cancellation
+1. Open a cancellable order.
+2. Confirm cancellation.
+3. Verify the cancel response is not treated as a complete order object.
+4. Refetch order + shipment.
+5. Verify the updated authoritative status and cancellation action state.
 
 ## 7. Product and customer interaction workflows
 
