@@ -1,1 +1,31 @@
-{"name":"luviio-frontend","private":true,"version":"0.1.0","type":"module","scripts":{"dev":"vite --host 0.0.0.0 --port 7700","build":"tsc -b && vite build","preview":"vite preview --host 0.0.0.0 --port 7700","lint":"eslint ."},"dependencies":{"@vitejs/plugin-react":"latest","vite":"latest","typescript":"latest","react":"latest","react-dom":"latest","react-router-dom":"latest","lucide-react":"latest"},"devDependencies":{"@types/react":"latest","@types/react-dom":"latest","eslint":"latest","@eslint/js":"latest","typescript-eslint":"latest","eslint-plugin-react-hooks":"latest","eslint-plugin-react-refresh":"latest"}}
+{
+  "name": "luviio-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 7700",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 7700",
+    "lint": "eslint .",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "6.1.1",
+    "lucide-react": "1.47.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-router-dom": "7.18.4",
+    "typescript": "6.0.3",
+    "vite": "8.3.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.11.0",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "eslint": "10.11.0",
+    "eslint-plugin-react-hooks": "7.0.1",
+    "eslint-plugin-react-refresh": "0.4.26",
+    "typescript-eslint": "8.70.1"
+  }
+}
