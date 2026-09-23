@@ -27,7 +27,7 @@ def test_product_create_rejects_short_hsn():
 
 def test_product_create_rejects_legacy_non_product_fields():
     with pytest.raises(ValidationError):
-        ProductCreate.model_validate(base_product(seo_title="legacy SEO"))
+        ProductCreate.model_validate(base_product(legacy_field="legacy value"))
 
 
 def test_product_create_rejects_generic_json_specifications():
@@ -138,10 +138,7 @@ def test_product_measurement_scales_accept_volume_dimensions_and_quantity():
         price=100,
         volume=1.5,
         volume_unit="L",
-        length=150,
-        width=100,
-        height=50,
-        dimension_unit="mm",
+        dimensions="150 x 100 x 50 mm",
         quantity=2,
         quantity_unit="piece",
         hsn_code="73249000",
@@ -149,8 +146,19 @@ def test_product_measurement_scales_accept_volume_dimensions_and_quantity():
     )
     assert product.volume == 1.5
     assert product.volume_unit == "L"
-    assert product.dimension_unit == "mm"
+    assert product.dimensions == "150 x 100 x 50 mm"
     assert product.quantity_unit == "piece"
+
+
+def test_product_rejects_legacy_dimension_fields():
+    with pytest.raises(ValidationError):
+        ProductCreate(
+            name="Legacy dimensions",
+            price=100,
+            length=150,
+            hsn_code="73249000",
+            gst_percentage=18,
+        )
 
 
 def test_product_measurement_requires_units():
