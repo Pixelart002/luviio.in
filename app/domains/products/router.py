@@ -154,7 +154,7 @@ async def create_product(request: Request) -> Dict[str, Any]:
                 if isinstance(value, UploadFile):
                     image_files.append((await value.read(), value.filename or "unknown"))
             logger.info("product.create.payload request_id=%s sku=%s images=%s", request_id, payload.sku or "Auto", len(image_files))
-            result = await ProductService().create_product_with_images(payload.model_dump(), image_files)
+            result = await ProductService().create_product_with_images(payload.model_dump(mode="json"), image_files)
         else:
             try:
                 payload = ProductCreate.model_validate(await request.json())
@@ -183,7 +183,7 @@ async def create_product(request: Request) -> Dict[str, Any]:
 async def update_product(request: Request, product_id: uuid.UUID, payload: ProductUpdate) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin overriding Product metadata -> ID: {str(product_id)[:8]}...")
-    result = await ProductService().update_product(str(product_id), payload.model_dump(exclude_unset=True))
+    result = await ProductService().update_product(str(product_id), payload.model_dump(mode="json", exclude_unset=True))
     return success_response(data=result, message=ProductMessages.PRODUCT_UPDATED)
 
 
