@@ -14,7 +14,7 @@ dependencies = [
   "stripe==10.12.0",
   "slowapi==0.1.9",
   "httpx==0.27.2",
-  "email-validator==2.2.0",
+  "email-validator==2.3.0",
   "resend==2.4.0",
   "Pillow>=10.4.0",
   "pywebpush==2.0.0",
