@@ -87,6 +87,21 @@ async def list_factors(access_token: str) -> dict[str, Any]:
     }
 
 
+async def get_verified_totp_factor_id(access_token: str) -> str:
+    """Resolve the current user's single verified TOTP factor internally."""
+    factors = await list_factors(access_token)
+    verified = [
+        factor
+        for factor in factors.get("totp", [])
+        if factor.get("status") == "verified" and factor.get("id")
+    ]
+    if not verified:
+        raise MFAError("No verified authenticator factor is enrolled.")
+    if len(verified) > 1:
+        raise MFAError("Multiple verified authenticator factors are enrolled; factor selection is required.")
+    return str(verified[0]["id"])
+
+
 async def enroll_totp(access_token: str, friendly_name: str = "Luviio Admin") -> dict[str, Any]:
     return await _request(
         "POST",
