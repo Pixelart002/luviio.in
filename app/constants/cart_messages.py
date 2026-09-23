@@ -18,6 +18,7 @@ class CartSecurityMessages:
     OUT_OF_STOCK = "Only {stock} units available for '{name}'."
     PRODUCT_UNAVAILABLE = "Product '{name}' is currently unavailable or inactive."
     LIMIT_EXCEEDED = "Maximum {limit} units allowed per item in the cart."
+    DB_OPERATION_FAILED = "An internal database error occurred while processing your cart request."
 
 class CartRules:
     MAX_QTY_PER_ITEM = 100
