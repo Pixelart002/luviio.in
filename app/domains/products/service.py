@@ -168,6 +168,12 @@ class ProductService:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid measurement type/unit combination.")
             data["measurement_type"] = definition["measurement_type"]
             data["measurement_unit"] = definition["code"]
+            # Shipping/fulfillment still consumes the legacy normalized weight
+            # fields. When the selected product measurement is weight, mirror
+            # it into grams so the shipping engine keeps one normalized source.
+            if definition["measurement_type"] == "weight":
+                data["weight"] = round(float(measurement_value) * float(definition.get("multiplier") or 1), 3)
+                data["weight_unit"] = "g"
 
         self._extract_product_specifications(data)
         data["_seo_data"] = {key: data.pop(key) for key in ("seo_title", "seo_description", "canonical_url") if key in data}
@@ -266,6 +272,9 @@ class ProductService:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid measurement type/unit combination.")
             data["measurement_type"] = definition["measurement_type"]
             data["measurement_unit"] = definition["code"]
+            if definition["measurement_type"] == "weight":
+                data["weight"] = round(float(effective_value) * float(definition.get("multiplier") or 1), 3)
+                data["weight_unit"] = "g"
 
         spec_fields_present = any(field in data for field in self._SPEC_FIELDS) or "specifications" in data
         spec_rows = self._extract_product_specifications(data) if spec_fields_present else None
