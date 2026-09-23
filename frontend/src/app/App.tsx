@@ -127,7 +127,7 @@ function Shop() {
       <div><p className="eyebrow">Catalog / {category || 'All products'}</p><h1>{search ? `Results for “${search}”` : 'Shop all hardware'}</h1><p className="muted">Live products, prices and availability from the LUVIIO catalog.</p></div>
       <form className="catalog-search" onSubmit={submit}><input aria-label="Search catalog" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search products"/><button className="button button-dark" type="submit">Search</button></form>
     </div>
-    {loading ? <div className="loading" aria-live="polite">Loading the catalog…</div> : error ? <ErrorState message={error}/> : products.length ? <div className="product-grid">{products.map(p => <ProductCard key={p.id} product={p} onAdd={async id => { try { await cartApi.add(id); emitCartChanged() } catch (e) { setError(readableError(e)) }}/>)}</div> : <div className="empty-state large">No products found. Try another search or category.</div>}
+    {loading ? <div className="loading" aria-live="polite">Loading the catalog…</div> : error ? <ErrorState message={error}/> : products.length ? <div className="product-grid">{products.map(p => <ProductCard key={p.id} product={p} onAdd={async id => { try { await cartApi.add(id); emitCartChanged() } catch (e) { setError(readableError(e)) } }} />)}</div> : <div className="empty-state large">No products found. Try another search or category.</div>}
   </section>
 }
 
