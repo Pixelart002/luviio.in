@@ -66,6 +66,7 @@ Rules:
 | `/cart` | current cart | `GET /cart`, `PUT/DELETE /cart/items/*`, `DELETE /cart` |
 | `/checkout` | address selection + order creation | `GET /users/me/addresses`, `POST /orders/checkout`, `POST /orders/cod` |
 | `/orders` | customer order list | `GET /orders/my` |
+| `/orders/:orderNumber` | order detail, cancellation, invoice | `GET /orders/my/{order_number}`, `POST /orders/my/{order_number}/cancel`, `GET /orders/{order_number}/invoice` |
 | `/account` | login/session/logout | `GET /auth/session`, `POST /auth/login`, `POST /auth/logout` |
 | `/register` | registration | `POST /auth/register` |
 
@@ -143,15 +144,10 @@ Do not fabricate success. Preserve the user's cart/order context and expose a re
 
 These backend capabilities need dedicated browser workflows and UI before they can be considered end-to-end complete:
 
-- customer address create/delete/default management;
-- order detail `/orders/:orderNumber`;
-- invoice download/view;
-- online-payment confirmation, failure, retry and method switch;
 - coupon apply/remove feedback;
 - shipping-rate presentation;
 - product reviews;
 - authenticated route guards;
-- refresh/expired-session UX;
 - admin console and admin authentication/MFA boundary;
 - admin product/category/image/measurement workflows;
 - inventory adjustment/low-stock views;
