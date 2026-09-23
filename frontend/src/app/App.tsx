@@ -175,7 +175,7 @@ function CartPage() {
     setLoading(true)
     cartApi.get().then(setCart).catch(e => setError(readableError(e))).finally(() => setLoading(false))
   }
-  useEffect(load, [])
+  useEffect(() => { load() }, [])
 
   const update = async (id: string, quantity: number) => {
     if (quantity < 1) return
@@ -244,7 +244,7 @@ function Checkout() {
   const [cardError, setCardError] = useState('')
 
   const loadAddresses = () => userApi.addresses().then(items => { setAddresses(items); setSelected(current => current || items.find(item => item.is_default)?.id || items[0]?.id || '') }).catch(e => setMessage(readableError(e)))
-  useEffect(loadAddresses, [])
+  useEffect(() => { loadAddresses() }, [])
 
   useEffect(() => {
     if (!payment?.clientSecret || !window.Stripe || !import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) return
