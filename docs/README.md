@@ -1,43 +1,49 @@
-# Luviio Backend Documentation Index
+# Luviio Documentation Index
 
-Last reviewed: 2026-09-16
+Last reviewed: 2026-09-24
 Source of truth: current `main` codebase.
 
 ## Read in this order
 
-1. [`SYSTEM_MAP.md`](SYSTEM_MAP.md) — complete architecture, layers, domain ownership, runtime boundaries.
-2. [`DEPENDENCY_GRAPH.md`](DEPENDENCY_GRAPH.md) — Python packages, domain-to-domain dependencies, external integrations, and dependency direction rules.
-3. [`API_REFERENCE.md`](API_REFERENCE.md) — complete HTTP inventory, grouped by domain, with access class and workflow role.
-4. [`USER_FLOWS.md`](USER_FLOWS.md) — customer lifecycle from session to catalog, cart, checkout, order, payment, invoice, review and notifications.
-5. [`ADMIN_FLOWS.md`](ADMIN_FLOWS.md) — admin/operator flows for catalog, users, orders, payments, inventory, coupons, shipping, settings, RBAC, reviews and observability.
-6. [`DATA_SECURITY.md`](DATA_SECURITY.md) — authorization, ownership, database boundary, RLS assumptions, sensitive data rules and audit behavior.
-7. [`BACKGROUND_WORKFLOWS.md`](BACKGROUND_WORKFLOWS.md) — startup, event bus, cron, low-stock, stale-order release, notifications and failure/retry paths.
-8. [`OPERATIONS.md`](OPERATIONS.md) — CI/CD, health checks, deployment, smoke tests, rollback and production verification.
+### Architecture
+1. [`SYSTEM_MAP.md`](SYSTEM_MAP.md) — complete backend architecture, domain ownership and runtime boundaries.
+2. [`FRONTEND_SYSTEM_MAP.md`](FRONTEND_SYSTEM_MAP.md) — browser routes, frontend ownership and frontend↔backend boundaries.
+3. [`DEPENDENCY_GRAPH.md`](DEPENDENCY_GRAPH.md) — Python dependencies and domain dependency direction.
 
-## Existing detailed guides
+### Contracts
+4. [`API_REFERENCE.md`](API_REFERENCE.md) — complete HTTP inventory, access class and workflow role.
+5. [`DATA_SECURITY.md`](DATA_SECURITY.md) — authorization, ownership, database boundaries and sensitive-data rules.
+6. [`DATABASE.md`](DATABASE.md) — persistence and database invariants.
 
-- [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- [`API.md`](API.md)
-- [`DATABASE.md`](DATABASE.md)
-- [`SECURITY.md`](SECURITY.md)
-- [`SETTINGS.md`](SETTINGS.md)
-- [`TESTING.md`](TESTING.md)
-- [`DEPLOYMENT.md`](DEPLOYMENT.md)
-- [`PRODUCTION_READINESS.md`](PRODUCTION_READINESS.md)
+### Workflows
+7. [`USER_FLOWS.md`](USER_FLOWS.md) — backend customer lifecycle.
+8. [`ADMIN_FLOWS.md`](ADMIN_FLOWS.md) — backend operator lifecycle.
+9. [`BROWSER_WORKFLOWS.md`](BROWSER_WORKFLOWS.md) — executable browser acceptance workflows linking UI actions to API/business outcomes.
+10. [`BACKGROUND_WORKFLOWS.md`](BACKGROUND_WORKFLOWS.md) — events, cron, outbox, notifications and retry paths.
+11. [`FULFILLMENT_WORKFLOW.md`](FULFILLMENT_WORKFLOW.md) — shipping/fulfillment lifecycle.
+
+### Operations
+12. [`OPERATIONS.md`](OPERATIONS.md) — CI, health, deploy, smoke test and rollback.
+13. [`TESTING.md`](TESTING.md) — automated test strategy and CI gates.
+14. [`DEPLOYMENT.md`](DEPLOYMENT.md) — release/deployment rules.
+15. [`PRODUCTION_READINESS.md`](PRODUCTION_READINESS.md) — verified state and remaining operational gates.
 
 ## Documentation rule
 
-Documentation is implementation-owned. When a developer changes a route, domain contract, dependency, workflow, permission, database invariant, deployment step or operator action, the matching documentation file must be updated in the same change.
+Documentation is implementation-owned. A route, API contract, permission, workflow, database invariant, frontend state transition, deployment step or operator action is not considered fully changed until its matching source-of-truth documentation is updated in the same change.
 
-## Counts in this repository
+## Workflow ownership
 
-- 15 feature/domain router families under `/api/v1`: Admin, Auth, Cart, Coupons, Inventory, Notifications, Orders, Payments, Products, RBAC, Reviews, Settings, Shipping, Subscriptions and Users.
-- Health is infrastructure-owned and composed into both root and versioned API mounts.
-- Social share is infrastructure-owned and mounted at the root application level.
-- 105 distinct route handlers are defined across the current router modules.
-- The root application adds one `/` handler, bringing the distinct application handlers to 106.
-- Because the health router is mounted both outside and inside `/api/v1`, there are 108 concrete URL registrations in the FastAPI application.
+```text
+Backend architecture       -> SYSTEM_MAP.md
+Backend API contract       -> API_REFERENCE.md
+Customer backend flow      -> USER_FLOWS.md
+Admin backend flow         -> ADMIN_FLOWS.md
+Frontend route/client map  -> FRONTEND_SYSTEM_MAP.md
+Browser acceptance         -> BROWSER_WORKFLOWS.md
+Async/event processing     -> BACKGROUND_WORKFLOWS.md
+Fulfillment                -> FULFILLMENT_WORKFLOW.md
+Production operations      -> OPERATIONS.md / DEPLOYMENT.md
+```
 
-## Important distinction
-
-A route handler is a Python endpoint function. A URL registration is a concrete path mounted in FastAPI. The two numbers differ because health is intentionally exposed at both `/health*` and `/api/v1/health*`.
+The browser workflow document is the bridge between what a user does in the browser and what the backend must prove.
