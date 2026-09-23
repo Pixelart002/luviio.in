@@ -27,14 +27,23 @@ export type ProductPage = { items: ApiProduct[]; total: number; page: number; pa
 export type Cart = { id?: string; items?: Array<{ product_id: string; product?: ApiProduct; quantity: number; unit_price?: number; total?: number }>; subtotal?: number; total?: number; item_count?: number }
 export type Session = { authenticated: boolean; user_id?: string; email?: string; expires_at?: number }
 
-const normalizePage = (payload: ProductPage | ApiProduct[]): ProductPage => {
+const normalizePage = (payload: ProductPage | ApiProduct[] | { items?: ApiProduct[]; products?: ApiProduct[] }): ProductPage => {
   if (Array.isArray(payload)) return { items: payload, total: payload.length, page: 1, page_size: payload.length }
-  return { items: Array.isArray(payload.items) ? payload.items : [], total: payload.total ?? payload.items?.length ?? 0, page: payload.page ?? 1, page_size: payload.page_size ?? payload.items?.length ?? 0, pages: payload.pages }
+  const candidate = payload as { items?: ApiProduct[]; products?: ApiProduct[] }
+  const items = Array.isArray(candidate?.items) ? candidate.items : Array.isArray(candidate?.products) ? candidate.products : []
+  return { items, total: (payload as ProductPage)?.total ?? items.length, page: (payload as ProductPage)?.page ?? 1, page_size: (payload as ProductPage)?.page_size ?? items.length, pages: (payload as ProductPage)?.pages }
+}
+
+const normalizeCategories = (payload: ApiCategory[] | { items?: ApiCategory[]; categories?: ApiCategory[] }): ApiCategory[] => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.items)) return payload.items
+  if (Array.isArray(payload?.categories)) return payload.categories
+  return []
 }
 
 export const catalogApi = {
-  categories: () => api<ApiCategory[]>('/categories'),
-  products: async (params = '') => normalizePage(await api<ProductPage | ApiProduct[]>(`/products${params ? `?${params}` : ''}`)),
+  categories: async () => normalizeCategories(await api<ApiCategory[] | { items?: ApiCategory[]; categories?: ApiCategory[] }>('/categories')),
+  products: async (params = '') => normalizePage(await api<ProductPage | ApiProduct[] | { items?: ApiProduct[]; products?: ApiProduct[] }>(`/products${params ? `?${params}` : ''}`)),
   product: (slug: string) => api<ApiProduct>(`/products/${encodeURIComponent(slug)}`),
 }
 export const authApi = {
