@@ -1,11 +1,16 @@
 """Shiprocket API adapter."""
 from __future__ import annotations
-import asyncio, os, time
-from typing import Any
-import httpx
-from app.integrations.shipping.base import ShippingProvider
-from app.core.config import settings
+
+import asyncio
 import logging
+import os
+import time
+from typing import Any
+
+import httpx
+
+from app.integrations.shipping.base import ShippingProvider
+
 
 class ShiprocketProvider(ShippingProvider):
     key = "shiprocket"

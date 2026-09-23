@@ -5,8 +5,8 @@ from collections.abc import Iterator
 _TEST_ENVIRONMENT = {
     "APP_ENV": "development",
     "SB_URL": "https://test.supabase.co",
-    "SB_KEY": "test-anon-key",
-    "SB_SERVICE_ROLE_KEY": "test-service-key",
+    "SB_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0IiwiZXhwIjo0MTAyNDQ0ODA0fQ.test-signature",
+    "SB_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LWFkbWluIiwiZXhwIjo0MTAyNDQ0ODA0fQ.test-signature",
     "SUPABASE_JWT_SECRET": "test-jwt-secret",
     "STRIPE_SECRET_KEY": "sk_test_placeholder",
     "STRIPE_WEBHOOK_SECRET": "whsec_placeholder",
@@ -54,3 +54,21 @@ def client(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient
 @pytest.fixture
 def fake_supabase() -> Mock:
     return Mock()
+
+
+@pytest.fixture(autouse=True)
+def stub_external_shipping(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def quote_for_checkout(*args, **kwargs):
+        return {
+            "selected": {
+                "shipping_cost": 45.90,
+                "courier_id": 1,
+                "courier_name": "Test courier",
+            },
+            "quotes": [],
+        }
+
+    monkeypatch.setattr(
+        "app.domains.shipping.provider_service.ShippingProviderService.quote_for_checkout",
+        quote_for_checkout,
+    )

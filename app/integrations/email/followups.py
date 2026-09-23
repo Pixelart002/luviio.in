@@ -1,6 +1,9 @@
 """Post-delivery customer follow-up emails."""
 from __future__ import annotations
-import html, os
+
+import html
+import os
+
 import resend
 from starlette.concurrency import run_in_threadpool
 

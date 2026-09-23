@@ -1,6 +1,5 @@
-from fastapi import HTTPException
-
 import pytest
+from fastapi import HTTPException
 
 from app.domains.products.taxonomy import validate_product_tax
 

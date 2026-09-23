@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Route, Routes, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowRight, ShieldCheck, Truck, Headphones, PackageCheck, Plus, Trash2 } from 'lucide-react'
 import { authApi, cartApi, catalogApi, type ApiCategory, type ApiProduct, type Cart } from '../api/client'
 import { SiteHeader } from '../components/SiteHeader'

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from typing import Any
+
 from fastapi import HTTPException, status
+
 from app.constants.product_messages import ProductRules, ProductSecurityMessages
+
 
 def gst_rates(_results: list[dict[str, Any]] | None = None) -> list[int]:
     return list(ProductRules.LEGAL_GST_SLABS)

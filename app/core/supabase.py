@@ -12,9 +12,8 @@ Architecture & Fixes:
 import logging
 from typing import Optional
 
-from supabase import AsyncClient, Client, ClientOptions, create_async_client, create_client
-
 from app.core.config import settings
+from supabase import AsyncClient, Client, ClientOptions, create_async_client, create_client
 
 logger = logging.getLogger(__name__)
 

@@ -2,11 +2,9 @@
 import json
 import logging
 import uuid
-from html import escape
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
 

@@ -14,7 +14,6 @@ from app.api.middlewares.security import (
     GZipMiddleware,
     HideServerHeaderMiddleware,
     MaxBodySizeMiddleware,
-    RequestIDMiddleware,
     SecurityHeadersMiddleware,
 )
 from app.core.rate_limit import SharedRateLimitMiddleware, limiter

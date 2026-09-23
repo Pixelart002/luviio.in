@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import logging
 
-from app.cron.registry import cron_task
 from app.core.supabase import get_async_admin_supabase
+from app.cron.registry import cron_task
 
 logger = logging.getLogger(__name__)
 

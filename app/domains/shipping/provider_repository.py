@@ -1,7 +1,10 @@
 """Persistence for provider-managed shipments and provider events."""
 from __future__ import annotations
+
 from typing import Any, Optional
+
 from app.core.supabase import get_async_admin_supabase
+
 
 class ShippingProviderRepository:
     async def get_by_order(self, order_id: str, provider_key: str) -> Optional[dict[str, Any]]:

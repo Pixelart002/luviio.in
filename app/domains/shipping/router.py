@@ -1,14 +1,21 @@
 """Shipping domain routes: checkout rates plus complete fulfillment lifecycle."""
 from __future__ import annotations
+
 import hmac
 import os
 from typing import Any
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+
+from fastapi import APIRouter, Depends, Header, HTTPException
+
 from app.constants.shipping_messages import ShippingMessages
 from app.core.dependencies import get_user_id_strict, require_permission
-from app.domains.shipping.provider_service import ShippingProviderService
 from app.domains.shipping.provider_repository import ShippingProviderRepository
-from app.domains.shipping.schemas import ShippingMethodCreate, ShippingMethodUpdate, ShippingRateRequest
+from app.domains.shipping.provider_service import ShippingProviderService
+from app.domains.shipping.schemas import (
+    ShippingMethodCreate,
+    ShippingMethodUpdate,
+    ShippingRateRequest,
+)
 from app.domains.shipping.service import ShippingService
 from app.permissions.shipping import ShippingPermissions
 from app.utils.response import success_response
