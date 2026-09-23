@@ -40,16 +40,6 @@ class ProductService:
                 values = value if isinstance(value, list) else [value]
                 for item in values:
                     rows.append({"specification_code": field, "value_numeric": item if isinstance(item, (int, float)) else None, "value_text": None if isinstance(item, (int, float)) else str(item)})
-        incoming = data.pop("specifications", None)
-        if isinstance(incoming, dict):
-            for key, value in incoming.items():
-                code = re.sub(r"[^a-zA-Z0-9]+", "_", str(key)).strip("_").lower()
-                if not code:
-                    continue
-                values = value if isinstance(value, list) else [value]
-                for item in values:
-                    if item is not None:
-                        rows.append({"specification_code": code, "value_numeric": item if isinstance(item, (int, float)) else None, "value_text": None if isinstance(item, (int, float)) else str(item)})
         data["_spec_rows"] = rows
         return rows
 
