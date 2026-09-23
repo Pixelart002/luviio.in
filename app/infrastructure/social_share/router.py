@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Social Share"])
 
-_DEFAULT_IMAGE = f"{settings.FRONTEND_URL.rstrip('/')}/og-default.svg"
+_DEFAULT_IMAGE = f"{settings.FRONTEND_URL.rstrip('/')}/icon-512.png"
 
 
 def _frontend_product_url(slug: str) -> str:
