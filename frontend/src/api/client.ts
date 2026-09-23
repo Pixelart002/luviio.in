@@ -59,9 +59,22 @@ export const cartApi = {
   remove: (product_id: string) => api<Cart>(`/cart/items/${product_id}`, { method: 'DELETE' }),
   clear: () => api('/cart', { method: 'DELETE' }),
 }
+export type Address = { id: string; full_name?: string; phone?: string; address_line1?: string; address_line2?: string; city?: string; state?: string; postal_code?: string; country?: string; is_default?: boolean }
+export type Order = { id?: string; order_number?: string; status?: string; payment_status?: string; total?: number; created_at?: string; items?: Array<{ product_name?: string; quantity?: number; total?: number }> }
 export const ordersApi = {
-  mine: (page = 1) => api<{ items: unknown[]; total: number }>(`/orders/my?page=${page}&page_size=20`),
+  mine: (page = 1) => api<{ items: Order[]; total: number }>(`/orders/my?page=${page}&page_size=20`),
+  detail: (orderNumber: string) => api<Order>(`/orders/my/${encodeURIComponent(orderNumber)}`),
   checkout: (shipping_address_id: string, idempotency_key: string, coupon_code?: string) => api('/orders/checkout', { method: 'POST', body: JSON.stringify({ shipping_address_id, idempotency_key, coupon_code }) }),
   cod: (shipping_address_id: string, idempotency_key: string, coupon_code?: string) => api('/orders/cod', { method: 'POST', body: JSON.stringify({ shipping_address_id, idempotency_key, coupon_code }) }),
+}
+const normalizeAddresses = (payload: Address[] | { items?: Address[]; addresses?: Address[] }) => {
+  if (Array.isArray(payload)) return payload
+  return Array.isArray(payload?.items) ? payload.items : Array.isArray(payload?.addresses) ? payload.addresses : []
+}
+export const userApi = {
+  me: () => api('/users/me'),
+  addresses: async () => normalizeAddresses(await api<Address[] | { items?: Address[]; addresses?: Address[] }>('/users/me/addresses')),
+  addAddress: (address: Omit<Address, 'id'>) => api<Address>('/users/me/addresses', { method: 'POST', body: JSON.stringify(address) }),
+  deleteAddress: (id: string) => api(`/users/me/addresses/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 export const apiBaseUrl = API_BASE
