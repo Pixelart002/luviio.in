@@ -189,8 +189,6 @@ class ProductUpdate(BaseModel):
             raise ValueError("measurement_type is required when measurement_unit is provided.")
         if self.volume is not None and self.volume_unit is None:
             raise ValueError("volume_unit is required when volume is provided.")
-        if any(v is not None for v in (self.length, self.width, self.height)) and self.dimension_unit is None:
-            raise ValueError("dimension_unit is required when dimensions are provided.")
         if self.quantity is not None and self.quantity_unit is None:
             raise ValueError("quantity_unit is required when quantity is provided.")
         return self
