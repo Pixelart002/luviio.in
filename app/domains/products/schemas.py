@@ -85,7 +85,6 @@ class ProductCreate(BaseModel):
     dimension_unit: Optional[Literal["mm", "cm", "m", "in", "ft"]] = None
     quantity: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
     quantity_unit: Optional[Literal["piece", "pack", "set", "pair", "box"]] = None
-    specifications: Dict[str, Any] = Field(default_factory=dict)
     warranty: Optional[str] = Field(default=None, max_length=500)
 
     price: Decimal = Field(..., gt=0, decimal_places=2)
@@ -190,7 +189,6 @@ class ProductUpdate(BaseModel):
     dimension_unit: Optional[Literal["mm", "cm", "m", "in", "ft"]] = None
     quantity: Optional[Decimal] = Field(default=None, ge=0, decimal_places=3)
     quantity_unit: Optional[Literal["piece", "pack", "set", "pair", "box"]] = None
-    specifications: Optional[Dict[str, Any]] = None
     warranty: Optional[str] = Field(default=None, max_length=500)
 
     price: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
