@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 MIGRATION = Path("migrations/20260916233000_harden_public_schema_and_client_mutations.sql")
 
 

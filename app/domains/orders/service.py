@@ -11,8 +11,8 @@ from app.constants.order_messages import OrderMessages, OrderSecurityMessages
 from app.domains.inventory.service import InventoryService
 from app.domains.orders.exceptions import OrderRepositoryError
 from app.domains.orders.payment_port import OrderPaymentPort
-from app.domains.payments.repository import AsyncPaymentRepository
 from app.domains.orders.repository import AsyncOrderRepository
+from app.domains.payments.repository import AsyncPaymentRepository
 from app.domains.users.repository import AsyncUserRepository
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderShippedEvent, OrderStatusChangedEvent, get_event_bus

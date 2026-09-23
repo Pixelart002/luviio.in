@@ -1,12 +1,12 @@
 """Product HTTP schemas owned by the Products domain."""
 
-from typing import Any, Dict, List, Optional, Literal
-from uuid import UUID
 from decimal import Decimal
+from typing import List, Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.constants.product_messages import ProductSecurityMessages, ProductRules
+from app.constants.product_messages import ProductRules, ProductSecurityMessages
 
 
 class CategoryCreate(BaseModel):

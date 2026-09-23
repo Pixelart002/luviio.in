@@ -15,7 +15,12 @@ from fastapi import HTTPException
 from app.domains.notifications.service import PushService
 from app.domains.subscriptions.policy import SubscriptionPolicy
 from app.domains.subscriptions.repository import AsyncSubscriptionRepository
-from app.domains.subscriptions.tier_registry import all_tiers_public, get_tier_perks, normalize_tier, render_tier
+from app.domains.subscriptions.tier_registry import (
+    all_tiers_public,
+    get_tier_perks,
+    normalize_tier,
+    render_tier,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -259,7 +259,7 @@ async def test_create_intent_persistence_failure_compensates_provider_intent(mon
         "shipping_threshold": 1499,
     })
     service.repo.get_shipping_address = AsyncMock(return_value={
-        "id": "addr-1", "full_name": "User", "phone": "9999999999", "email": "user@example.com",
+        "id": "addr-1", "full_name": "User", "phone": "9876543210", "email": "user@example.com",
         "line1": "1 Main St", "city": "Delhi", "state": "Delhi", "postal_code": "110001", "country": "IN",
     })
     service.repo.create_checkout_payment_attempt = AsyncMock(return_value="attempt-1")

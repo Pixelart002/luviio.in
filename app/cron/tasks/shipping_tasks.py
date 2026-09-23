@@ -1,9 +1,11 @@
 """Scheduled shipment synchronization and post-delivery follow-ups."""
 from __future__ import annotations
+
 import logging
 from datetime import datetime, timedelta, timezone
-from app.cron.registry import cron_task
+
 from app.core.supabase import get_async_admin_supabase
+from app.cron.registry import cron_task
 from app.domains.shipping.provider_repository import ShippingProviderRepository
 from app.domains.shipping.provider_service import ShippingProviderService
 from app.integrations.email.registry import get_email_provider

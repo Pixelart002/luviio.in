@@ -1,15 +1,20 @@
 """End-to-end shipment orchestration: order -> courier -> AWB -> pickup -> tracking."""
 from __future__ import annotations
-import hashlib, json, logging, os
+
+import hashlib
+import json
+import logging
+import os
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
+
 from app.core.supabase import get_async_admin_supabase
-from app.integrations.shipping.registry import get_shipping_provider
 from app.domains.shipping.provider_repository import ShippingProviderRepository
 from app.events.bus import OrderShippedEvent, OrderStatusChangedEvent, get_event_bus
 from app.integrations.push.webpush_impl import send_push_to_user
+from app.integrations.shipping.registry import get_shipping_provider
 from app.utils.phone import InvalidIndianMobile, normalize_indian_mobile
 
 logger = logging.getLogger(__name__)
@@ -56,7 +61,6 @@ class ShippingProviderService:
 
     async def quote_for_checkout(self, delivery_postcode: str, weight_kg: float, cod: bool, declared_value: float | None = None, selected_courier_id: int | None = None) -> dict[str, Any]:
         """Return live Shiprocket courier rates for checkout; never use the store flat-rate setting."""
-        import os
 
         # Business Profile is the seller SSOT. Shiprocket pickup postcode must
         # come from the configured seller/business profile, not a duplicate env value.

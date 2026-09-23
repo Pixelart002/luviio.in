@@ -1,14 +1,13 @@
 """Privileged-account MFA via Supabase Auth TOTP."""
 from __future__ import annotations
 
-from typing import Any
 import logging
+from typing import Any
 
 import httpx
 
 from app.core.config import settings
 from app.domains.auth.http_client import get_auth_http_client
-
 
 logger = logging.getLogger(__name__)
 
