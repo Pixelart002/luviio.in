@@ -15,6 +15,7 @@ from app.core.dependencies import require_permission
 from app.core.logging_config import request_id_ctx
 from app.domains.products.schemas import CategoryCreate, ProductCreate, ProductUpdate
 from app.domains.products.service import ProductService
+from app.integrations.gst_accelerator import GSTAcceleratorError, suggest_hsn
 from app.permissions.products import ProductPermissions
 from app.utils.pagination import paginate
 from app.utils.response import success_response
@@ -61,6 +62,17 @@ async def list_products(request: Request, page: int = Query(1, ge=1), page_size:
         request.state.actions.append(f"Querying Paginated Catalog (Page: {page})")
     items, total = await ProductService().get_products(page, page_size, category, search, min_price, max_price, in_stock)
     return paginate(items, total, page, page_size)
+
+
+@router.get("/products/hsn-suggestions", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.CREATE))])
+async def hsn_suggestions(request: Request, q: str = Query(..., min_length=2, max_length=120)) -> Dict[str, Any]:
+    """Return external HSN typeahead suggestions; selection remains an explicit admin action."""
+    try:
+        suggestions = await suggest_hsn(q)
+    except GSTAcceleratorError as exc:
+        logger.warning("hsn.suggestions.provider_error detail=%s", str(exc)[:200])
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="HSN suggestion service is temporarily unavailable.") from exc
+    return success_response(data={"items": suggestions})
 
 
 @router.get("/products/{slug}", status_code=status.HTTP_200_OK)
