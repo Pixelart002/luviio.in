@@ -24,7 +24,6 @@ dependencies = [
   "apscheduler",
   "nanoid",
   "requests>=2.32.0,<3.0.0",
-  "mcp>=1.28,<2",
 ]
 
 [tool.uv]
