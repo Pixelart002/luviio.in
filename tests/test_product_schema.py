@@ -30,6 +30,11 @@ def test_product_create_rejects_legacy_non_product_fields():
         ProductCreate.model_validate(base_product(seo_title="legacy SEO"))
 
 
+\ndef test_product_create_rejects_generic_json_specifications():
+    with pytest.raises(ValidationError):
+        ProductCreate.model_validate(base_product(specifications={"outlet_size": "110 mm"}))
+
+
 def test_product_update_accepts_hardware_identity_fields():
     payload = ProductUpdate.model_validate(
         {
@@ -97,6 +102,21 @@ def test_product_weight_accepts_kg_scale():
     )
     assert product.weight == 1.25
     assert product.weight_unit == "kg"
+
+
+def test_product_create_accepts_single_generic_measurement():
+    payload = ProductCreate(
+        name="Measured hardware",
+        price=100,
+        measurement_type="weight",
+        measurement_value=1.25,
+        measurement_unit="kg",
+        hsn_code="73249000",
+        gst_percentage=18,
+    )
+    assert payload.measurement_type == "weight"
+    assert payload.measurement_value == 1.25
+    assert payload.measurement_unit == "kg"
 
 
 def test_product_weight_rejects_invalid_unit():
