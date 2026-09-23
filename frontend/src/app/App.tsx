@@ -6,7 +6,7 @@ import { SiteHeader } from '../components/SiteHeader'
 import { ProductCard } from '../components/ProductCard'
 import type { Product } from '../types'
 
-const toProduct = (p: ApiProduct): Product => ({ ...p, price: p.selling_price ?? p.price ?? 0, image: p.images?.[0], category: p.category_name ?? p.category, description: p.short_description ?? p.description })
+const toProduct = (p: ApiProduct): Product => ({ ...p, price: p.selling_price ?? p.price ?? 0, image: p.images?.[0] || p.image_url || undefined, category: p.category_name ?? p.category, description: p.short_description ?? p.description })
 const ErrorState = ({ message }: { message: string }) => <div className="empty-state large">{message}</div>
 
 function Home() {
