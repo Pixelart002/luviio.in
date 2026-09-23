@@ -90,8 +90,10 @@ class AsyncProductRepository:
         admin_sb = await get_async_admin_supabase()
         # Listing cards only need these fields. Keep detail-only tax/SEO/image
         # relations out of the hot catalogue query to reduce DB work and payload.
+        base_select = "id, name, slug, description, short_description, sku, category_id, price, compare_price, stock, weight, weight_unit, measurement_type, measurement_value, measurement_unit, image_url, is_active, hsn_code, gst_percentage, country_of_origin, {category_relation}, product_specifications(id, specification_code, value_text, value_numeric, unit_code, position), product_seo(product_id, title, description, canonical_url, robots_index, robots_follow)"
+        category_relation = "categories!inner(name, slug)" if category_slug else "categories(name, slug)"
         q = admin_sb.table("products").select(
-            "id, name, slug, description, short_description, sku, category_id, price, compare_price, stock, weight, weight_unit, measurement_type, measurement_value, measurement_unit, image_url, is_active, hsn_code, gst_percentage, country_of_origin, categories(name, slug), product_specifications(id, specification_code, value_text, value_numeric, unit_code, position), product_seo(product_id, title, description, canonical_url, robots_index, robots_follow)",
+            base_select.format(category_relation=category_relation),
             count="exact",
         ).eq("is_active", True)
         if category_slug:
