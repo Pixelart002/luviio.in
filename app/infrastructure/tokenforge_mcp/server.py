@@ -99,6 +99,4 @@ transport_security = TransportSecuritySettings(
     ],
 )
 
-mcp_app = mcp.streamable_http_app(
-    transport_security=transport_security,
-)
+mcp_app = mcp.streamable_http_app()
