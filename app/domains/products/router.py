@@ -15,7 +15,6 @@ from app.core.dependencies import require_permission
 from app.core.logging_config import request_id_ctx
 from app.domains.products.schemas import CategoryCreate, ProductCreate, ProductUpdate
 from app.domains.products.service import ProductService
-from app.domains.products.taxonomy import gst_rates, lookup_hsn, search_hsn
 from app.permissions.products import ProductPermissions
 from app.utils.pagination import paginate
 from app.utils.response import success_response
@@ -62,42 +61,6 @@ async def list_products(request: Request, page: int = Query(1, ge=1), page_size:
         request.state.actions.append(f"Querying Paginated Catalog (Page: {page})")
     items, total = await ProductService().get_products(page, page_size, category, search, min_price, max_price, in_stock)
     return paginate(items, total, page, page_size)
-
-
-@router.get("/products/taxonomy/hsn-search", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.READ))])
-async def hsn_search(
-    request: Request,
-    q: str = Query(..., min_length=2, max_length=120),
-    limit: int = Query(8, ge=1, le=20),
-) -> Dict[str, Any]:
-    """Return live HSN candidates and their provider-supplied GST rates for admin product entry."""
-    results = await search_hsn(q, limit)
-    rates = gst_rates(results)
-    return success_response(
-        data={
-            "query": q,
-            "results": results,
-            "gst_rates": rates,
-            "recommended_gst_rate": rates[0] if len(rates) == 1 else None,
-            "source": "external_taxonomy_provider",
-        }
-    )
-
-
-@router.get("/products/taxonomy/hsn/{code}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.READ))])
-async def hsn_lookup(request: Request, code: str) -> Dict[str, Any]:
-    """Return live HSN details/rates without a local hardcoded HSN table."""
-    results = await lookup_hsn(code)
-    rates = gst_rates(results)
-    return success_response(
-        data={
-            "code": code,
-            "results": results,
-            "gst_rates": rates,
-            "recommended_gst_rate": rates[0] if len(rates) == 1 else None,
-            "source": "external_taxonomy_provider",
-        }
-    )
 
 
 @router.get("/products/{slug}", status_code=status.HTTP_200_OK)
