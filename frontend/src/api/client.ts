@@ -277,7 +277,10 @@ export const ordersApi = {
   cancel: (orderNumber: string) => request<Order>('POST', `/orders/my/${encodeURIComponent(orderNumber)}/cancel`),
   invoice: async (orderNumber: string) => {
     const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '')
-    const response = await fetch(`${API_BASE}/orders/${encodeURIComponent(orderNumber)}/invoice`, { credentials: 'include' })
+    const headers: Record<string, string> = {}
+    const token = getAccessToken()
+    if (token) headers.Authorization = `Bearer ${token}`
+    const response = await fetch(`${API_BASE}/orders/${encodeURIComponent(orderNumber)}/invoice`, { credentials: 'include', headers })
     if (!response.ok) throw new Error(`Unable to download invoice (${response.status})`)
     return response.blob()
   },
