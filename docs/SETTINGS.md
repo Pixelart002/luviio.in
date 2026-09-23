@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`system_settings` stores operational configuration that may be changed at runtime by authorized administrators. It is not a secrets store and it is not a replacement for business records, RBAC policy, or provider credentials.
+`system_settings` stores operational configuration that may be changed at runtime by authorized administrators. Browser-safe provider configuration (for example a Stripe publishable key) may be stored here when it is explicitly marked public. Server secrets and provider credentials such as Stripe secret/webhook keys remain deployment secrets and are never stored in `system_settings`.
 
 ## Access model
 
