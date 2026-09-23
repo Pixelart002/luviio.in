@@ -12,6 +12,7 @@ from app.domains.auth.mfa import (
     MFAError,
     challenge as mfa_challenge,
     enroll_totp,
+    get_verified_totp_factor_id,
     list_factors,
     reset_pending_totp,
     unenroll as mfa_unenroll,
@@ -131,13 +132,14 @@ async def mfa_verify_code(
     current: dict[str, Any] = Depends(get_current_user),
 ):
     try:
-        challenge_data = await mfa_challenge(current["access_token"], payload.factor_id)
+        factor_id = await get_verified_totp_factor_id(current["access_token"])
+        challenge_data = await mfa_challenge(current["access_token"], factor_id)
         challenge_id = str(challenge_data.get("id") or "")
         if not challenge_id:
             raise MFAError("MFA challenge could not be created.")
         session_data = await mfa_verify(
             current["access_token"],
-            payload.factor_id,
+            factor_id,
             challenge_id,
             payload.code,
         )
@@ -190,9 +192,6 @@ async def mfa_unenroll_endpoint(
     payload: MFAUnenrollRequest,
     current: dict[str, Any] = Depends(get_current_user),
 ):
-    # A pending/unverified enrollment is not an active second factor, so an
-    # authenticated privileged user may discard it and restart setup. A
-    # verified factor remains protected by the existing AAL2 requirement.
     try:
         factors = await list_factors(current["access_token"])
     except MFAError as exc:
