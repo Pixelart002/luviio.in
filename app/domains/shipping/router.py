@@ -1,11 +1,11 @@
 """Shipping domain routes: checkout rates plus complete fulfillment lifecycle."""
 from __future__ import annotations
+import hmac
 import os
 from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from app.constants.shipping_messages import ShippingMessages
 from app.core.dependencies import get_user_id_strict, require_permission
-from app.domains.orders.service import OrderService
 from app.domains.shipping.provider_service import ShippingProviderService
 from app.domains.shipping.provider_repository import ShippingProviderRepository
 from app.domains.shipping.schemas import ShippingMethodCreate, ShippingMethodUpdate, ShippingRateRequest
@@ -17,7 +17,6 @@ router = APIRouter(prefix="/shipping", tags=["Shipping"])
 _service = ShippingService()
 _provider_service = ShippingProviderService()
 _provider_repo = ShippingProviderRepository()
-_order_service = OrderService()
 
 @router.get("/methods", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
 async def list_methods(active_only: bool = True):
@@ -141,15 +140,17 @@ async def provider_tracking(tracking_number: str, provider: str = "shiprocket"):
 
 @router.post("/provider/webhook/{provider}", status_code=200)
 async def provider_webhook(provider: str, payload: dict[str, Any], x_luviio_shipping_secret: str | None = Header(default=None)):
-    expected = os.getenv("LUVIIO_SHIPPING_WEBHOOK_SECRET") or os.getenv("LUVIIO_SHIPPING_WEBHOOK_SECRET")
-    if not expected or not x_luviio_shipping_secret or x_luviio_shipping_secret != expected:
+    expected = os.getenv("LUVIIO_SHIPPING_WEBHOOK_SECRET")
+    if not expected or not x_luviio_shipping_secret or not hmac.compare_digest(x_luviio_shipping_secret, expected):
         raise HTTPException(status_code=401, detail="Invalid shipping webhook signature.")
     data = await _provider_service.handle_webhook(provider, payload)
     return success_response(data=data, message="Shipping webhook processed.")
 
 @router.get("/my/{order_number}", status_code=200)
 async def my_shipment(order_number: str, user_id: str = Depends(get_user_id_strict)):
-    sb = await __import__("app.core.supabase", fromlist=["get_async_admin_supabase"]).get_async_admin_supabase()
+    from app.core.supabase import get_async_admin_supabase
+
+    sb = await get_async_admin_supabase()
     order_res = await sb.table("orders").select("id,order_number,customer_id").eq("order_number", order_number.strip()).eq("customer_id", user_id).maybe_single().execute()
     order = order_res.data if order_res else None
     if not order:
