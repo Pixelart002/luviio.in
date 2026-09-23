@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     TAXONOMY_API_TIMEOUT_SECONDS: float = 3.0
     TAXONOMY_ENFORCE_PRODUCT_TAX: bool = True
 
+    # Server-side credential used only by the TokenForge MCP integration.
+    TOKENFORGE_API_KEY: str = ""
+
     @field_validator(
         "SB_URL", "SB_KEY", "SB_SERVICE_ROLE_KEY",
         "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET",
