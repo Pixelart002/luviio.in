@@ -30,7 +30,7 @@ def test_product_create_rejects_legacy_non_product_fields():
         ProductCreate.model_validate(base_product(seo_title="legacy SEO"))
 
 
-\ndef test_product_create_rejects_generic_json_specifications():
+def test_product_create_rejects_generic_json_specifications():
     with pytest.raises(ValidationError):
         ProductCreate.model_validate(base_product(specifications={"outlet_size": "110 mm"}))
 
