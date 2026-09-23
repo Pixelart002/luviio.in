@@ -327,19 +327,17 @@ function Checkout() {
     try {
       const result = await shippingApi.rate(selectedAddress.postal_code, Math.max(totalWeightKg, 0.5), paymentMethod === 'cod', declaredValue)
       const quotes = result.quotes || result.couriers || (result.selected ? [result.selected] : [])
-      const preferred = quotes.find(q => String(q.courier_id) === String(selectedCourierId)) || result.selected || quotes[0]
+      const preferred = result.selected || quotes[0]
       setShipping({ quotes, selected: preferred })
-      if (preferred?.courier_id != null) setSelectedCourierId(Number(preferred.courier_id))
+      setSelectedCourierId(preferred?.courier_id != null ? Number(preferred.courier_id) : null)
     } catch (e) {
       setShipping(null)
       setSelectedCourierId(null)
       setShippingError(readableError(e))
     } finally { setShippingLoading(false) }
-  }, [cart?.items.length, declaredValue, paymentMethod, selectedAddress?.postal_code, selectedCourierId, totalWeightKg])
+  }, [cart?.items.length, declaredValue, paymentMethod, selectedAddress?.postal_code, totalWeightKg])
 
-  useEffect(() => {
-    if (!payment) loadShipping()
-  }, [loadShipping, payment])
+  useEffect(() => { loadShipping() }, [loadShipping])
 
   useEffect(() => {
     if (selectedCourierId == null || !shipping?.quotes.length) return
@@ -363,6 +361,8 @@ function Checkout() {
     setAddresses(items => [address, ...items])
     setSelected(address.id)
     setShowAddressForm(false)
+    setShipping(null)
+    setShippingError('')
   }
 
   const selectedCourier = shipping?.quotes.find(q => String(q.courier_id) === String(selectedCourierId)) || shipping?.selected
@@ -396,7 +396,74 @@ function Checkout() {
       const confirmed = await paymentsApi.confirm(payment.paymentIntentId, 'stripe')
       await cartApi.clear().catch(() => undefined)
       emitCartChanged()
-      navigate(`/orders/${encodeURICompofunction formatStatus(status?: string) {
+      navigate(`/orders/${encodeURIComponent(confirmed.order_number || payment.orderNumber || '')}`)
+    } catch (e) { setMessage(readableError(e)) } finally { setSubmitting(false) }
+  }
+
+  const placeCod = async () => {
+    if (!selected || !selectedCourierId) { setMessage('Select a delivery address and courier first.'); return }
+    setSubmitting(true); setMessage('')
+    try {
+      const result = await ordersApi.cod(selected, crypto.randomUUID(), coupon.trim() || undefined, selectedCourierId)
+      await cartApi.clear().catch(() => undefined)
+      emitCartChanged()
+      navigate(`/orders/${encodeURIComponent(result.order_number || '')}`)
+    } catch (e) { setMessage(readableError(e)) } finally { setSubmitting(false) }
+  }
+
+  if (!cart) return <section className="section"><div className="loading">Preparing checkout…</div></section>
+
+  return <section className="checkout-page section">
+    <div className="section-heading">
+      <div><p className="eyebrow">Secure checkout</p><h1>Deliver it right.</h1><p className="muted">Your address, live courier rate, tax and final order are validated by the LUVIIO backend.</p></div>
+      <Link className="text-link" to="/cart"><ArrowLeft size={15}/> Back to cart</Link>
+    </div>
+
+    <div className="checkout-layout">
+      <div className="checkout-panel">
+        <div className="panel-heading"><h2>1. Delivery address</h2><button className="button button-outline" type="button" onClick={() => setShowAddressForm(v => !v)}>{showAddressForm ? 'Close' : 'Add address'}</button></div>
+        {showAddressForm && <AddressForm onSaved={addAddress}/>}
+        {addresses.length ? <div className="address-list">{addresses.map(address => <label className="address-option" key={address.id}><input type="radio" name="address" checked={selected === address.id} onChange={() => { setSelected(address.id); setShipping(null); setShippingError('') }}/><span><strong>{address.full_name || 'Delivery address'}</strong>{address.is_default && <small className="default-badge">Default</small>}<br/>{addressLine1(address)}{addressLine2(address) ? `, ${addressLine2(address)}` : ''}<br/>{address.city}, {address.state} {address.postal_code}</span></label>)}</div> : !showAddressForm && <p className="muted">No saved addresses. Add a delivery address to continue.</p>}
+
+        <div className="checkout-step">
+          <div className="panel-heading"><h2>2. Delivery options</h2><span className="muted">{totalWeightKg.toFixed(2)} kg chargeable estimate</span></div>
+          {!selectedAddress ? <p className="muted">Select a delivery address to load live courier options.</p> : shippingLoading ? <div className="loading">Checking courier serviceability…</div> : shippingError ? <ErrorState message={shippingError}/> : shipping?.quotes.length ? <div className="shipping-options">{shipping.quotes.map(quote => <label className="shipping-option" key={String(quote.courier_id)}>
+            <input type="radio" name="shipping-courier" checked={String(selectedCourierId) === String(quote.courier_id)} onChange={() => setSelectedCourierId(Number(quote.courier_id))}/>
+            <span className="shipping-option-main"><strong>{quote.courier_name || 'Courier service'}</strong><small>{quote.service_type || quote.delivery_mode || 'Standard delivery'}{quote.estimated_delivery_days ? ` · ${quote.estimated_delivery_days} day${Number(quote.estimated_delivery_days) === 1 ? '' : 's'}` : ''}</small>{quote.etd && <small>{quote.etd}</small>}</span>
+            <strong>{money(quote.shipping_cost)}</strong>
+          </label>)}</div> : <p className="muted">No serviceable courier options were returned for this PIN.</p>}
+        </div>
+
+        <div className="checkout-step">
+          <h2>3. Payment</h2>
+          <div className="payment-methods">
+            <label className={`payment-method ${paymentMethod === 'online' ? 'active' : ''}`}><input type="radio" name="payment-method" checked={paymentMethod === 'online'} onChange={() => { setPaymentMethod('online'); setPayment(null); setShipping(null); setSelectedCourierId(null) }}/><span><strong>Pay online</strong><small>Stripe secure card payment</small></span></label>
+            <label className={`payment-method ${paymentMethod === 'cod' ? 'active' : ''}`}><input type="radio" name="payment-method" checked={paymentMethod === 'cod'} onChange={() => { setPaymentMethod('cod'); setPayment(null); setShipping(null); setSelectedCourierId(null) }}/><span><strong>Cash on delivery</strong><small>Live courier availability decides COD serviceability</small></span></label>
+          </div>
+
+          {!payment ? <div className="checkout-actions"><button className="button button-dark" disabled={!canCheckout || paymentMethod !== 'online' || submitting} onClick={createPayment}>{submitting ? 'Preparing payment…' : 'Continue to secure payment'} <ArrowRight size={17}/></button><button className="button button-outline" disabled={!canCheckout || paymentMethod !== 'cod' || submitting} onClick={placeCod}>{submitting ? 'Placing order…' : 'Place COD order'}</button></div> :
+            <div className="payment-box"><h2>4. Complete payment</h2><p className="muted">Enter your card details. Your payment is processed by Stripe.</p><div id="luviio-card-element" className="card-element"/>{cardError && <ErrorState message={cardError}/>}<button className="button button-dark" disabled={submitting || !cardReady || !!cardError} onClick={confirmPayment}>{submitting ? 'Processing…' : 'Confirm payment'} <Check size={17}/></button></div>}
+          {message && <ErrorState message={message}/>}
+        </div>
+      </div>
+
+      <aside className="checkout-summary">
+        <div className="panel-heading"><h2>Order summary</h2><span>{cart.item_count} items</span></div>
+        <div className="summary-lines">
+          <span><span>Items</span><strong>{money(cart.subtotal)}</strong></span>
+          <span><span>GST on products</span><strong>{money(cart.tax_amount)}</strong></span>
+          <span><span>Shipping</span><strong>{selectedCourier ? money(shippingCost) : 'Select delivery'}</strong></span>
+          <hr/>
+          <span className="summary-total"><span>Estimated total</span><strong>{money(estimatedTotal)}</strong></span>
+        </div>
+        <p className="muted summary-note">Final tax and total are calculated authoritatively during order creation, including any applicable tax on shipping.</p>
+        <div className="coupon-field"><label>Coupon code<input value={coupon} onChange={e => setCoupon(e.target.value)} placeholder="Optional"/></label></div>
+      </aside>
+    </div>
+  </section>
+}
+
+function formatStatus(status?: string) {
   return String(status || 'processing').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
 }
 
