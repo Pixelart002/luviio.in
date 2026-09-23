@@ -64,7 +64,7 @@ async def list_products(request: Request, page: int = Query(1, ge=1), page_size:
     return paginate(items, total, page, page_size)
 
 
-@router.get("/products/hsn-suggestions", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.CREATE))])
+@router.get("/products/hsn-suggestions", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.READ))])
 async def hsn_suggestions(request: Request, q: str = Query(..., min_length=2, max_length=120)) -> Dict[str, Any]:
     """Return external HSN typeahead suggestions; selection remains an explicit admin action."""
     try:
