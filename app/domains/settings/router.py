@@ -34,7 +34,10 @@ async def update_setting(request: Request, key: str, payload: SettingUpdate, use
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Initiating setting mutation -> Key: '{key}' | Reason: {payload.reason or 'None'}")
     user_role = current_user.get("role") or current_user.get("profile", {}).get("role", "admin")
-    updated = await AdminSettingsService().update_core_setting(key=key, new_value=payload.value, admin_id=user_id, role=user_role, reason=payload.reason or "Admin UI override")
+    try:
+        updated = await AdminSettingsService().update_core_setting(key=key, new_value=payload.value, admin_id=user_id, role=user_role, reason=payload.reason or "Admin UI override")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     invalidate_maintenance_cache()
     if hasattr(request.state, "actions"):
         request.state.actions.append("Setting mutated successfully & global TTL cache purged")
