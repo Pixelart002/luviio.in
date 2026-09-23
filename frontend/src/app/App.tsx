@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Check, Download, Minus, Plus, ShieldCheck, Truck, Headphones, PackageCheck, Trash2 } from 'lucide-react'
 import { authApi, cartApi, catalogApi, ordersApi, paymentsApi, userApi, type Address, type ApiCategory, type ApiProduct, type Cart, type Order } from '../api/client'
@@ -242,6 +242,8 @@ function Checkout() {
   const [payment, setPayment] = useState<{ clientSecret: string; paymentIntentId: string; orderNumber?: string } | null>(null)
   const [cardReady, setCardReady] = useState(false)
   const [cardError, setCardError] = useState('')
+  const stripeElementsRef = useRef<StripeElements | null>(null)
+  const cardElementRef = useRef<StripeCardElement | null>(null)
 
   const loadAddresses = useCallback(() => userApi.addresses().then(items => { setAddresses(items); setSelected(current => current || items.find(item => item.is_default)?.id || items[0]?.id || '') }).catch(e => setMessage(readableError(e))), [])
   useEffect(() => { loadAddresses() }, [loadAddresses])
@@ -251,10 +253,12 @@ function Checkout() {
     const stripe = window.Stripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
     const elements = stripe.elements()
     const card = elements.create('card', { hidePostalCode: true })
+    stripeElementsRef.current = elements
+    cardElementRef.current = card
     card.mount('#luviio-card-element')
     card.on('ready', () => setCardReady(true))
     card.on('change', event => setCardError(event.error?.message || ''))
-    return () => { card.destroy() }
+    return () => { card.destroy(); stripeElementsRef.current = null; cardElementRef.current = null; setCardReady(false) }
   }, [payment])
 
   const addAddress = (address: Address) => {
@@ -277,10 +281,9 @@ function Checkout() {
   const confirmPayment = async () => {
     if (!payment || !window.Stripe || !import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) return
     const stripe = window.Stripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
-    const elements = stripe.elements()
     setSubmitting(true)
     try {
-      const card = elements.getElement('card')
+      const card = cardElementRef.current
       if (!card) throw new Error('Payment card form is not ready.')
       const result = await stripe.confirmCardPayment(payment.clientSecret, { payment_method: { card } })
       if (result.error) {
