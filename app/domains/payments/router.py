@@ -21,6 +21,7 @@ from app.domains.payments.schemas import (
     PaymentIntentRequest,
 )
 from app.domains.payments.service import PaymentService
+from app.domains.settings.service import SettingsService
 from app.integrations.payments.context import payment_provider_context
 from app.integrations.payments.manager import PaymentPluginManager
 from app.utils.response import success_response
@@ -87,6 +88,20 @@ async def _public_payment_data(data: Dict[str, Any]) -> Dict[str, Any]:
 
 limiter = Limiter(key_func=get_real_ip)
 router = APIRouter(prefix="/payments", tags=["Payments"])
+
+
+@router.get("/public-config")
+@limiter.limit("60/minute")
+async def public_payment_config(request: Request) -> Dict[str, Any]:
+    """Return browser-safe payment configuration only; never expose provider secrets."""
+    try:
+        setting = await SettingsService().get_by_key("stripe_publishable_key")
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_404_NOT_FOUND:
+            return success_response(data={"stripe": {"enabled": False, "publishable_key": ""}})
+        raise
+    key = str(setting.get("value") or "").strip()
+    return success_response(data={"stripe": {"enabled": bool(key), "publishable_key": key}})
 
 
 @router.post("/create-intent")
