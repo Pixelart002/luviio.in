@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Check, Download, Minus, Plus, ShieldCheck, Truck, Headphones, PackageCheck, Trash2 } from 'lucide-react'
-import { authApi, cartApi, catalogApi, ordersApi, paymentsApi, userApi, type Address, type ApiCategory, type ApiProduct, type Cart, type Order } from '../api/client'
+import { authApi, cartApi, catalogApi, ordersApi, paymentsApi, shippingApi, userApi, type Address, type ApiCategory, type ApiProduct, type Cart, type CartItem, type Order, type Shipment, type ShippingQuote } from '../api/client'
 import { SiteHeader } from '../components/SiteHeader'
 import { ProductCard } from '../components/ProductCard'
 import type { Product } from '../types'
@@ -170,6 +170,12 @@ function ProductDetail() {
   </section>
 }
 
+function cartItemWeightKg(item: CartItem) {
+  const raw = Number(item.weight ?? 0)
+  if (!Number.isFinite(raw) || raw <= 0) return 0
+  return String(item.weight_unit).toLowerCase() === 'g' ? raw / 1000 : raw
+}
+
 function CartPage() {
   const [cart, setCart] = useState<Cart | null>(null)
   const [loading, setLoading] = useState(true)
@@ -177,33 +183,72 @@ function CartPage() {
 
   const load = useCallback(() => {
     setLoading(true)
+    setError('')
     cartApi.get().then(setCart).catch(e => setError(readableError(e))).finally(() => setLoading(false))
   }, [])
+
   useEffect(() => { load() }, [load])
 
   const update = async (id: string, quantity: number) => {
     if (quantity < 1) return
-    try { setCart(await cartApi.update(id, quantity)); emitCartChanged() } catch (e) { setError(readableError(e)) }
+    try {
+      setCart(await cartApi.update(id, quantity))
+      emitCartChanged()
+    } catch (e) { setError(readableError(e)) }
   }
+
   const remove = async (id: string) => {
-    try { setCart(await cartApi.remove(id)); emitCartChanged() } catch (e) { setError(readableError(e)) }
+    try {
+      setCart(await cartApi.remove(id))
+      emitCartChanged()
+    } catch (e) { setError(readableError(e)) }
   }
+
+  const itemCount = cart?.item_count ?? cart?.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 0
+  const subtotal = Number(cart?.subtotal ?? 0)
+  const tax = Number(cart?.tax_amount ?? 0)
+  const total = Number(cart?.total_amount ?? subtotal + tax)
+  const unavailable = Boolean(cart?.has_unavailable_items)
 
   if (loading) return <section className="section"><div className="loading">Loading your cart…</div></section>
-  if (error) return <section className="placeholder section"><ErrorState message={`${error}. Please sign in to view your cart.`}/><Link className="button button-dark" to="/account">Sign in</Link></section>
+  if (error) return <section className="placeholder section"><ErrorState message={error}/><Link className="button button-dark" to="/account">Sign in</Link></section>
 
   return <section className="cart-page section">
-    <p className="eyebrow">Your basket</p><h1>Cart</h1>
+    <div className="section-heading">
+      <div><p className="eyebrow">Your basket</p><h1>Cart</h1><p className="muted">{itemCount} item{itemCount === 1 ? '' : 's'} ready for checkout.</p></div>
+      <Link className="text-link" to="/shop">Continue shopping <ArrowRight size={15}/></Link>
+    </div>
+
     {!cart?.items?.length ? <div className="empty-state large">Your cart is empty. <Link to="/shop">Browse products</Link></div> :
-      <div className="cart-list">
-        {cart.items.map(item => <div className="cart-line" key={item.product_id}>
-          <div className="cart-product">{item.product?.image_url && <img src={item.product.image_url} alt=""/>}<span>{item.product?.name || item.product_id}</span></div>
-          <div className="quantity"><button aria-label="Decrease quantity" disabled={item.quantity <= 1} onClick={() => update(item.product_id, item.quantity - 1)}><Minus size={15}/></button><span>{item.quantity}</span><button aria-label="Increase quantity" onClick={() => update(item.product_id, item.quantity + 1)}><Plus size={15}/></button></div>
-          <strong>{money(item.total ?? Number(item.unit_price ?? 0) * item.quantity)}</strong>
-          <button aria-label={`Remove ${item.product?.name || 'item'}`} onClick={() => remove(item.product_id)}><Trash2 size={17}/></button>
-        </div>)}
-        <div className="cart-total"><span>Total</span><strong>{money(cart.total ?? cart.subtotal)}</strong></div>
-        <Link className="button button-dark" to="/checkout">Continue to checkout <ArrowRight size={17}/></Link>
+      <div className="cart-layout">
+        <div className="cart-list">
+          {cart.items.map(item => <div className="cart-line" key={item.id || item.product_id}>
+            <div className="cart-product">
+              {item.image_url ? <img src={item.image_url} alt="" loading="lazy"/> : <div className="cart-product-placeholder">{item.name.slice(0, 1)}</div>}
+              <div>
+                <Link to={item.slug ? `/product/${item.slug}` : '/shop'}><strong>{item.name}</strong></Link>
+                <small className="muted">₹{Number(item.unit_price ?? 0).toLocaleString('en-IN')} each</small>
+                {item.price_changed && <small className="cart-warning">Price changed since this item was added.</small>}
+                {item.in_stock === false && <small className="cart-warning">Currently unavailable at this quantity.</small>}
+              </div>
+            </div>
+            <div className="quantity"><button aria-label={`Decrease ${item.name}`} disabled={item.quantity <= 1} onClick={() => update(item.product_id, item.quantity - 1)}><Minus size={15}/></button><span>{item.quantity}</span><button aria-label={`Increase ${item.name}`} disabled={item.in_stock === false} onClick={() => update(item.product_id, item.quantity + 1)}><Plus size={15}/></button></div>
+            <strong>{money(item.line_total)}</strong>
+            <button aria-label={`Remove ${item.name}`} onClick={() => remove(item.product_id)}><Trash2 size={17}/></button>
+          </div>)}
+        </div>
+
+        <aside className="cart-summary">
+          <h2>Order summary</h2>
+          <div><span>Items</span><strong>{money(subtotal)}</strong></div>
+          <div><span>GST on products</span><strong>{money(tax)}</strong></div>
+          <div><span>Shipping</span><strong>Calculated at checkout</strong></div>
+          <hr/>
+          <div className="summary-total"><span>Current total</span><strong>{money(total)}</strong></div>
+          <p className="muted summary-note">Live courier shipping is calculated after you select your delivery PIN and payment method.</p>
+          {unavailable && <ErrorState message="One or more cart items are unavailable. Update your cart before checkout."/>}
+          <Link className={`button button-dark ${unavailable ? 'disabled-link' : ''}`} aria-disabled={unavailable} onClick={e => unavailable && e.preventDefault()} to="/checkout">Continue to checkout <ArrowRight size={17}/></Link>
+        </aside>
       </div>}
   </section>
 }
@@ -237,10 +282,16 @@ function AddressForm({ onSaved }: { onSaved: (address: Address) => void }) {
 
 function Checkout() {
   const navigate = useNavigate()
+  const [cart, setCart] = useState<Cart | null>(null)
   const [addresses, setAddresses] = useState<Address[]>([])
   const [selected, setSelected] = useState('')
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [coupon, setCoupon] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online')
+  const [shipping, setShipping] = useState<{ quotes: ShippingQuote[]; selected?: ShippingQuote } | null>(null)
+  const [selectedCourierId, setSelectedCourierId] = useState<number | null>(null)
+  const [shippingLoading, setShippingLoading] = useState(false)
+  const [shippingError, setShippingError] = useState('')
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [payment, setPayment] = useState<{ clientSecret: string; paymentIntentId: string; orderNumber?: string } | null>(null)
@@ -248,8 +299,53 @@ function Checkout() {
   const [cardError, setCardError] = useState('')
   const cardElementRef = useRef<StripeCardElement | null>(null)
 
-  const loadAddresses = useCallback(() => userApi.addresses().then(items => { setAddresses(items); setSelected(current => current || items.find(item => item.is_default)?.id || items[0]?.id || '') }).catch(e => setMessage(readableError(e))), [])
-  useEffect(() => { loadAddresses() }, [loadAddresses])
+  const loadCheckout = useCallback(async () => {
+    try {
+      const [currentCart, items] = await Promise.all([cartApi.get(), userApi.addresses()])
+      setCart(currentCart)
+      setAddresses(items)
+      setSelected(current => current || items.find(item => item.is_default)?.id || items[0]?.id || '')
+    } catch (e) {
+      setMessage(readableError(e))
+    }
+  }, [])
+
+  useEffect(() => { loadCheckout() }, [loadCheckout])
+
+  const selectedAddress = addresses.find(address => address.id === selected)
+  const totalWeightKg = cart?.items.reduce((sum, item) => sum + cartItemWeightKg(item) * item.quantity, 0) || 0.5
+  const declaredValue = Number(cart?.subtotal ?? 0)
+
+  const loadShipping = useCallback(async () => {
+    if (!selectedAddress?.postal_code || !cart?.items.length) {
+      setShipping(null)
+      setSelectedCourierId(null)
+      return
+    }
+    setShippingLoading(true)
+    setShippingError('')
+    try {
+      const result = await shippingApi.rate(selectedAddress.postal_code, Math.max(totalWeightKg, 0.5), paymentMethod === 'cod', declaredValue)
+      const quotes = result.quotes || result.couriers || (result.selected ? [result.selected] : [])
+      const preferred = quotes.find(q => String(q.courier_id) === String(selectedCourierId)) || result.selected || quotes[0]
+      setShipping({ quotes, selected: preferred })
+      if (preferred?.courier_id != null) setSelectedCourierId(Number(preferred.courier_id))
+    } catch (e) {
+      setShipping(null)
+      setSelectedCourierId(null)
+      setShippingError(readableError(e))
+    } finally { setShippingLoading(false) }
+  }, [cart?.items.length, declaredValue, paymentMethod, selectedAddress?.postal_code, selectedCourierId, totalWeightKg])
+
+  useEffect(() => {
+    if (!payment) loadShipping()
+  }, [loadShipping, payment])
+
+  useEffect(() => {
+    if (selectedCourierId == null || !shipping?.quotes.length) return
+    const selectedQuote = shipping.quotes.find(q => String(q.courier_id) === String(selectedCourierId))
+    if (selectedQuote) setShipping(current => current ? { ...current, selected: selectedQuote } : current)
+  }, [selectedCourierId, shipping?.quotes])
 
   useEffect(() => {
     if (!payment?.clientSecret || !window.Stripe || !import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) return
@@ -269,12 +365,17 @@ function Checkout() {
     setShowAddressForm(false)
   }
 
+  const selectedCourier = shipping?.quotes.find(q => String(q.courier_id) === String(selectedCourierId)) || shipping?.selected
+  const shippingCost = Number(selectedCourier?.shipping_cost ?? 0)
+  const estimatedTotal = Number(cart?.subtotal ?? 0) + shippingCost + Number(cart?.tax_amount ?? 0)
+  const canCheckout = Boolean(selected && selectedCourierId && !shippingLoading && !shippingError && cart?.items.length && !cart.has_unavailable_items)
+
   const createPayment = async () => {
-    if (!selected) { setMessage('Select or add a delivery address first.'); return }
+    if (!selected || !selectedCourierId) { setMessage('Select a delivery address and courier first.'); return }
     if (!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || !window.Stripe) { setMessage('Online payment is not configured in this frontend deployment. Use COD or configure the Stripe publishable key.'); return }
     setSubmitting(true); setMessage(''); setCardError('')
     try {
-      const result = await paymentsApi.createIntent({ shipping_address_id: selected, idempotency_key: crypto.randomUUID(), coupon_code: coupon.trim() || undefined, provider_key: 'stripe' })
+      const result = await paymentsApi.createIntent({ shipping_address_id: selected, shipping_courier_id: selectedCourierId, idempotency_key: crypto.randomUUID(), coupon_code: coupon.trim() || undefined, provider_key: 'stripe' })
       if (!result.client_secret || !result.payment_intent_id) throw new Error('Payment session was not returned by the backend.')
       setPayment({ clientSecret: result.client_secret, paymentIntentId: result.payment_intent_id, orderNumber: result.order_number })
     } catch (e) { setMessage(readableError(e)) } finally { setSubmitting(false) }
@@ -295,74 +396,142 @@ function Checkout() {
       const confirmed = await paymentsApi.confirm(payment.paymentIntentId, 'stripe')
       await cartApi.clear().catch(() => undefined)
       emitCartChanged()
-      navigate(`/orders/${encodeURIComponent(confirmed.order_number || payment.orderNumber || '')}`)
-    } catch (e) { setMessage(readableError(e)) } finally { setSubmitting(false) }
-  }
+      navigate(`/orders/${encodeURICompofunction formatStatus(status?: string) {
+  return String(status || 'processing').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+}
 
-  const placeCod = async () => {
-    if (!selected) { setMessage('Select or add a delivery address first.'); return }
-    setSubmitting(true); setMessage('')
-    try {
-      const result = await ordersApi.cod(selected, crypto.randomUUID(), coupon.trim() || undefined)
-      await cartApi.clear().catch(() => undefined)
-      emitCartChanged()
-      navigate(`/orders/${encodeURIComponent(result.order_number || '')}`)
-    } catch (e) { setMessage(readableError(e)) } finally { setSubmitting(false) }
-  }
-
-  return <section className="checkout-page section">
-    <p className="eyebrow">Secure checkout</p><h1>Deliver it right.</h1>
-    <p className="muted">Shipping, taxes, inventory and totals are confirmed by the LUVIIO backend.</p>
-    <div className="checkout-panel">
-      <div className="panel-heading"><h2>Delivery address</h2><button className="button button-outline" onClick={() => setShowAddressForm(v => !v)}>{showAddressForm ? 'Close' : 'Add address'}</button></div>
-      {showAddressForm && <AddressForm onSaved={addAddress}/>} 
-      {addresses.length ? <div className="address-list">{addresses.map(address => <label className="address-option" key={address.id}><input type="radio" name="address" checked={selected === address.id} onChange={() => setSelected(address.id)}/><span><strong>{address.full_name || 'Delivery address'}</strong><br/>{addressLine1(address)}{addressLine2(address) ? `, ${addressLine2(address)}` : ''}<br/>{address.city}, {address.state} {address.postal_code}</span></label>)}</div> : !showAddressForm && <p className="muted">No saved addresses. Add a delivery address to continue.</p>}
-      <label className="coupon-field">Coupon code<input value={coupon} onChange={e => setCoupon(e.target.value)} placeholder="Optional"/></label>
-      {!payment ? <div className="checkout-actions"><button className="button button-dark" disabled={submitting || !selected} onClick={createPayment}>{submitting ? 'Preparing payment…' : 'Pay online'} <ArrowRight size={17}/></button><button className="button button-outline" disabled={submitting || !selected} onClick={placeCod}>Cash on delivery</button></div> :
-        <div className="payment-box"><h2>Complete payment</h2><p className="muted">Enter your card details. Your payment is processed by Stripe.</p><div id="luviio-card-element" className="card-element"/>{cardError && <ErrorState message={cardError}/>}<button className="button button-dark" disabled={submitting || !cardReady || !!cardError} onClick={confirmPayment}>{submitting ? 'Processing…' : 'Confirm payment'} <Check size={17}/></button></div>}
-      {message && <ErrorState message={message}/>} 
-    </div>
-  </section>
+function orderAmount(order?: Order) {
+  return Number(order?.total_amount ?? 0)
 }
 
 function Orders() {
   const [orders, setOrders] = useState<Order[]>([])
   const [error, setError] = useState('')
-  useEffect(() => { ordersApi.mine().then(response => setOrders(response.items || [])).catch(e => setError(readableError(e))) }, [])
-  return <section className="orders-page section"><p className="eyebrow">Account / Orders</p><h1>Your orders.</h1>{error ? <ErrorState message={`${error}. Please sign in first.`}/> : orders.length ? <div className="order-list">{orders.map(order => <Link className="order-card" to={`/orders/${encodeURIComponent(order.order_number || '')}`} key={order.order_number || order.id}><div><strong>{order.order_number || order.id}</strong><p className="muted">{order.created_at ? new Date(order.created_at).toLocaleDateString('en-IN') : 'Recent order'}</p></div><span className="status-pill">{order.status || 'Processing'}</span><strong>{money(order.total)}</strong></Link>)}</div> : <div className="empty-state large">No orders yet. <Link to="/shop">Start shopping</Link></div>}</section>
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    let active = true
+    ordersApi.mine().then(response => {
+      if (active) setOrders(response.items || [])
+    }).catch(e => active && setError(readableError(e))).finally(() => active && setLoading(false))
+    return () => { active = false }
+  }, [])
+
+  if (loading) return <section className="section"><div className="loading">Loading your orders…</div></section>
+
+  return <section className="orders-page section">
+    <div className="section-heading"><div><p className="eyebrow">Account / Orders</p><h1>Your orders.</h1><p className="muted">Track orders, invoices and delivery status from one place.</p></div><Link className="button button-dark" to="/shop">Shop again <ArrowRight size={16}/></Link></div>
+    {error ? <ErrorState message={`${error}. Please sign in first.`}/> : orders.length ? <div className="order-list">{orders.map(order => <Link className="order-card" to={`/orders/${encodeURIComponent(order.order_number || '')}`} key={order.order_number || order.id}>
+      <div><strong>{order.order_number || order.id}</strong><p className="muted">{order.created_at ? new Date(order.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent order'} · {order.shipping_city || 'Delivery address saved'}</p></div>
+      <span className="status-pill">{formatStatus(order.status)}</span>
+      <strong>{money(orderAmount(order))}</strong>
+    </Link>)}</div> : <div className="empty-state large">No orders yet. <Link to="/shop">Start shopping</Link></div>}
+  </section>
 }
 
 function OrderDetail() {
   const { orderNumber = '' } = useParams()
   const [order, setOrder] = useState<Order | null>(null)
+  const [shipment, setShipment] = useState<Shipment | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
 
-  useEffect(() => { ordersApi.detail(orderNumber).then(setOrder).catch(e => setError(readableError(e))) }, [orderNumber])
+  const load = useCallback(async () => {
+    if (!orderNumber) return
+    setError('')
+    try {
+      const [currentOrder, currentShipment] = await Promise.all([
+        ordersApi.detail(orderNumber),
+        shippingApi.mine(orderNumber).catch(() => ({ status: 'not_booked' } as Shipment)),
+      ])
+      setOrder(currentOrder)
+      setShipment(currentShipment as Shipment)
+    } catch (e) {
+      setError(readableError(e))
+    }
+  }, [orderNumber])
+
+  useEffect(() => { load() }, [load])
 
   const invoice = async () => {
     setBusy(true)
     try {
       const blob = await ordersApi.invoice(orderNumber)
       const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a'); anchor.href = url; anchor.download = `Luviio-Invoice-${orderNumber}.pdf`; anchor.click(); URL.revokeObjectURL(url)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `Luviio-Invoice-${orderNumber}.pdf`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
     } catch (e) { setNotice(readableError(e)) } finally { setBusy(false) }
   }
 
   const cancel = async () => {
     if (!window.confirm('Cancel this order?')) return
     setBusy(true)
-    try { setOrder(await ordersApi.cancel(orderNumber)); setNotice('Order cancellation requested successfully.') } catch (e) { setNotice(readableError(e)) } finally { setBusy(false) }
+    try {
+      await ordersApi.cancel(orderNumber)
+      setNotice('Order cancellation requested successfully.')
+      await load()
+    } catch (e) { setNotice(readableError(e)) } finally { setBusy(false) }
   }
+
+  const items = order?.order_items || order?.items || []
+  const deliveryAddress = [order?.shipping_line1, order?.shipping_line2, order?.shipping_landmark].filter(Boolean).join(', ')
+  const shipmentStatus = shipment?.status || shipment?.workflow_status || shipment?.provider_status
+  const timeline = [
+    ['Order placed', true],
+    ['Paid / confirmed', ['paid', 'processing', 'shipped', 'delivered'].includes(String(order?.status || '').toLowerCase())],
+    ['Processing', ['processing', 'shipped', 'delivered'].includes(String(order?.status || '').toLowerCase())],
+    ['Shipped', Boolean(order?.shipped_at || shipment?.shipped_at || ['shipped', 'delivered'].includes(String(order?.status || '').toLowerCase()))],
+    ['Delivered', Boolean(order?.delivered_at || shipment?.delivered_at || String(order?.status || '').toLowerCase() === 'delivered')],
+  ]
 
   if (error) return <section className="placeholder section"><ErrorState message={error}/><Link className="button button-dark" to="/orders">Back to orders</Link></section>
   if (!order) return <section className="section"><div className="loading">Loading order…</div></section>
 
   return <section className="order-detail section">
     <Link className="text-link" to="/orders"><ArrowLeft size={15}/> Orders</Link>
-    <div className="order-detail-header"><div><p className="eyebrow">Order</p><h1>{order.order_number}</h1><span className="status-pill">{order.status || 'Processing'}</span></div><div className="order-actions"><button className="button button-outline" onClick={invoice} disabled={busy}><Download size={16}/> Invoice</button>{!['cancelled', 'delivered', 'completed'].includes(String(order.status).toLowerCase()) && <button className="button button-outline danger" onClick={cancel} disabled={busy}>Cancel order</button>}</div></div>
-    <div className="order-detail-grid"><div className="order-items">{(order.items || []).map((item, i) => <div className="order-item" key={i}><span><strong>{item.product_name || 'Product'}</strong><small>Qty {item.quantity || 0}</small></span><strong>{money(item.total)}</strong></div>)}</div><aside className="order-summary"><span>Subtotal <strong>{money(order.subtotal)}</strong></span><span>Tax <strong>{money(order.tax)}</strong></span><span>Shipping <strong>{money(order.shipping)}</strong></span><span>Discount <strong>-{money(order.discount)}</strong></span><hr/><span>Total <strong>{money(order.total)}</strong></span></aside></div>
+    <div className="order-detail-header"><div><p className="eyebrow">Order</p><h1>{order.order_number}</h1><span className="status-pill">{formatStatus(order.status)}</span></div><div className="order-actions"><button className="button button-outline" onClick={invoice} disabled={busy}><Download size={16}/> Invoice</button>{!['cancelled', 'delivered', 'completed'].includes(String(order.status).toLowerCase()) && <button className="button button-outline danger" onClick={cancel} disabled={busy}>Cancel order</button>}</div></div>
+
+    <div className="order-info-grid">
+      <section className="order-items">
+        <div className="panel-heading"><h2>Items</h2><span className="muted">{items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)} units</span></div>
+        {items.map((item, i) => <div className="order-item" key={i}>
+          <div className="order-item-main">{item.product_image_url ? <img src={item.product_image_url} alt="" loading="lazy"/> : <div className="cart-product-placeholder">{(item.name || item.product_name || 'P').slice(0, 1)}</div>}<span><strong>{item.name || item.product_name || 'Product'}</strong><small>Qty {item.quantity || 0} · ₹{Number(item.unit_price || 0).toLocaleString('en-IN')}</small></span></div>
+          <strong>{money(item.line_total ?? item.total)}</strong>
+        </div>)}
+      </section>
+
+      <aside className="order-summary">
+        <h2>Order summary</h2>
+        <span>Subtotal <strong>{money(order.subtotal)}</strong></span>
+        <span>Shipping <strong>{money(order.shipping_cost)}</strong></span>
+        <span>GST <strong>{money(order.tax_amount)}</strong></span>
+        <span>Discount <strong>-{money(order.discount_amount)}</strong></span>
+        <hr/>
+        <span className="summary-total">Total <strong>{money(order.total_amount)}</strong></span>
+      </aside>
+    </div>
+
+    <div className="order-info-grid order-info-grid-secondary">
+      <section className="delivery-card">
+        <div className="panel-heading"><h2>Delivery</h2>{order.shipping_provider && <span className="status-pill">{order.shipping_provider}</span>}</div>
+        <p><strong>{order.shipping_name || 'Delivery address'}</strong>{order.shipping_company_name ? ` · ${order.shipping_company_name}` : ''}</p>
+        <p className="muted">{deliveryAddress}<br/>{order.shipping_city}, {order.shipping_state} {order.shipping_postal_code}<br/>{order.shipping_phone || ''}</p>
+        <div className="shipment-meta"><span>Courier <strong>{order.shipping_courier_name || shipment?.courier_name || 'Assigned after order processing'}</strong></span><span>Service <strong>{order.shipping_service_type || shipment?.service_type || '—'}</strong></span>{(order.tracking_number || shipment?.tracking_number) && <span>AWB / Tracking <strong>{order.tracking_number || shipment?.tracking_number}</strong></span>}</div>
+        {shipment?.tracking_url && <a className="button button-outline" href={shipment.tracking_url} target="_blank" rel="noreferrer">Track shipment <ArrowRight size={15}/></a>}
+        {shipmentStatus === 'not_booked' && <p className="muted">Courier booking is still being prepared.</p>}
+      </section>
+
+      <section className="timeline-card">
+        <div className="panel-heading"><h2>Order progress</h2><span className="muted">{formatStatus(shipment?.workflow_status || order.status)}</span></div>
+        <div className="order-timeline">{timeline.map(([label, done]) => <div className={`timeline-step ${done ? 'done' : ''}`} key={String(label)}><span className="timeline-dot"/><span>{label}</span></div>)}</div>
+      </section>
+    </div>
+
     {notice && <p className="form-message">{notice}</p>}
   </section>
 }
