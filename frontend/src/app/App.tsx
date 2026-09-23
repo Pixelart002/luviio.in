@@ -114,7 +114,11 @@ function Shop() {
   const submit = (e: FormEvent) => {
     e.preventDefault()
     const next = new URLSearchParams(params)
-    query.trim() ? next.set('search', query.trim()) : next.delete('search')
+    if (query.trim()) {
+      next.set('search', query.trim())
+    } else {
+      next.delete('search')
+    }
     setParams(next)
   }
 
@@ -123,7 +127,7 @@ function Shop() {
       <div><p className="eyebrow">Catalog / {category || 'All products'}</p><h1>{search ? `Results for “${search}”` : 'Shop all hardware'}</h1><p className="muted">Live products, prices and availability from the LUVIIO catalog.</p></div>
       <form className="catalog-search" onSubmit={submit}><input aria-label="Search catalog" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search products"/><button className="button button-dark" type="submit">Search</button></form>
     </div>
-    {loading ? <div className="loading" aria-live="polite">Loading the catalog…</div> : error ? <ErrorState message={error}/> : products.length ? <div className="product-grid">{products.map(p => <ProductCard key={p.id} product={p} onAdd={async id => { try { await cartApi.add(id); emitCartChanged() } catch (e) { setError(readableError(e)) } }}/>)}</div> : <div className="empty-state large">No products found. Try another search or category.</div>}
+    {loading ? <div className="loading" aria-live="polite">Loading the catalog…</div> : error ? <ErrorState message={error}/> : products.length ? <div className="product-grid">{products.map(p => <ProductCard key={p.id} product={p} onAdd={async id => { try { await cartApi.add(id); emitCartChanged() } catch (e) { setError(readableError(e)) }}/>)}</div> : <div className="empty-state large">No products found. Try another search or category.</div>}
   </section>
 }
 
@@ -160,7 +164,7 @@ function ProductDetail() {
         <p className="muted">{product.description || 'Reliable hardware for professional and home projects.'}</p>
         <p className="stock">{product.stock_status || 'Availability verified at checkout'}</p>
         <button className="button button-dark" disabled={adding} onClick={add}>{added ? 'Added to cart' : adding ? 'Adding…' : 'Add to cart'} <Plus size={17}/></button>
-        {error && <ErrorState message={error}/>}
+        {error && <ErrorState message={error}/>} 
       </div>
     </div>
   </section>
@@ -226,7 +230,7 @@ function AddressForm({ onSaved }: { onSaved: (address: Address) => void }) {
       <label>PIN / Postal code<input required inputMode="numeric" value={form.postal_code} onChange={e => setForm({...form, postal_code: e.target.value})}/></label>
     </div>
     <label className="checkbox"><input type="checkbox" checked={form.is_default} onChange={e => setForm({...form, is_default: e.target.checked})}/> Make this my default address</label>
-    {error && <ErrorState message={error}/>}
+    {error && <ErrorState message={error}/>} 
     <button className="button button-dark" disabled={saving}>{saving ? 'Saving…' : 'Save address'}</button>
   </form>
 }
@@ -311,12 +315,12 @@ function Checkout() {
     <p className="muted">Shipping, taxes, inventory and totals are confirmed by the LUVIIO backend.</p>
     <div className="checkout-panel">
       <div className="panel-heading"><h2>Delivery address</h2><button className="button button-outline" onClick={() => setShowAddressForm(v => !v)}>{showAddressForm ? 'Close' : 'Add address'}</button></div>
-      {showAddressForm && <AddressForm onSaved={addAddress}/>}
+      {showAddressForm && <AddressForm onSaved={addAddress}/>} 
       {addresses.length ? <div className="address-list">{addresses.map(address => <label className="address-option" key={address.id}><input type="radio" name="address" checked={selected === address.id} onChange={() => setSelected(address.id)}/><span><strong>{address.full_name || 'Delivery address'}</strong><br/>{addressLine1(address)}{addressLine2(address) ? `, ${addressLine2(address)}` : ''}<br/>{address.city}, {address.state} {address.postal_code}</span></label>)}</div> : !showAddressForm && <p className="muted">No saved addresses. Add a delivery address to continue.</p>}
       <label className="coupon-field">Coupon code<input value={coupon} onChange={e => setCoupon(e.target.value)} placeholder="Optional"/></label>
       {!payment ? <div className="checkout-actions"><button className="button button-dark" disabled={submitting || !selected} onClick={createPayment}>{submitting ? 'Preparing payment…' : 'Pay online'} <ArrowRight size={17}/></button><button className="button button-outline" disabled={submitting || !selected} onClick={placeCod}>Cash on delivery</button></div> :
         <div className="payment-box"><h2>Complete payment</h2><p className="muted">Enter your card details. Your payment is processed by Stripe.</p><div id="luviio-card-element" className="card-element"/>{cardError && <ErrorState message={cardError}/>}<button className="button button-dark" disabled={submitting || !cardReady || !!cardError} onClick={confirmPayment}>{submitting ? 'Processing…' : 'Confirm payment'} <Check size={17}/></button></div>}
-      {message && <ErrorState message={message}/>}
+      {message && <ErrorState message={message}/>} 
     </div>
   </section>
 }
