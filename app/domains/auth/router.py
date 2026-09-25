@@ -40,7 +40,6 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 
 _REFRESH_COOKIE_KWARGS = dict(key="refresh_token", httponly=True, secure=True, samesite="none", path="/api/v1/auth")
 _LEGACY_ACCESS_COOKIE_KWARGS = dict(key="access_token", secure=True, httponly=True, samesite="none", path="/api/v1")
-_ACCESS_COOKIE_MAX_AGE = 60 * 60
 _REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
 
