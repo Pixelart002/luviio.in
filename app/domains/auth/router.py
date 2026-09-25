@@ -63,7 +63,7 @@ async def login(request: Request, response: Response, payload: LoginRequest):
     client_ip = get_remote_address(request) or "0.0.0.0"
     session_data = await AuthService().login_user(payload.email, payload.password, client_ip)
     if hasattr(request.state, "actions"):
-        request.state.actions.extend([f"Identity verified -> UID: {session_data['user_id'][:8]}...", "Issued secure HttpOnly auth cookies"])
+        request.state.actions.extend([f"Identity verified -> UID: {session_data['user_id'][:8]}...", "Issued secure HttpOnly refresh cookie"])
     response.set_cookie(**_REFRESH_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=_REFRESH_COOKIE_MAX_AGE)
     # Access tokens are returned to the SPA for in-memory Authorization headers only.
     # The browser must not persist a second authentication token in an auth cookie.
