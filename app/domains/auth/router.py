@@ -39,7 +39,7 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 _REFRESH_COOKIE_KWARGS = dict(key="refresh_token", httponly=True, secure=True, samesite="none", path="/api/v1/auth")
-_ACCESS_COOKIE_KWARGS = dict(key="access_token", httponly=True, secure=True, samesite="none", path="/api/v1")
+_LEGACY_ACCESS_COOKIE_KWARGS = dict(key="access_token", secure=True, httponly=True, samesite="none", path="/api/v1")
 _ACCESS_COOKIE_MAX_AGE = 60 * 60
 _REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
@@ -66,7 +66,9 @@ async def login(request: Request, response: Response, payload: LoginRequest):
     if hasattr(request.state, "actions"):
         request.state.actions.extend([f"Identity verified -> UID: {session_data['user_id'][:8]}...", "Issued secure HttpOnly auth cookies"])
     response.set_cookie(**_REFRESH_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=_REFRESH_COOKIE_MAX_AGE)
-    response.set_cookie(**_ACCESS_COOKIE_KWARGS, value=session_data["access_token"], max_age=_ACCESS_COOKIE_MAX_AGE)
+    # Access tokens are returned to the SPA for in-memory Authorization headers only.
+    # The browser must not persist a second authentication token in an auth cookie.
+    response.delete_cookie(**_LEGACY_ACCESS_COOKIE_KWARGS)
     data = {"access_token": session_data["access_token"], "token_type": "bearer", "expires_in": session_data["expires_in"], "user": {"id": session_data["user_id"], "email": session_data["email"]}}
     return success_response(data=data)
 
@@ -78,19 +80,19 @@ async def refresh(request: Request, response: Response, refresh_token: str | Non
         request.state.actions.append("Intercepted session refresh cookie")
     if not refresh_token:
         response.delete_cookie(**_REFRESH_COOKIE_KWARGS)
-        response.delete_cookie(**_ACCESS_COOKIE_KWARGS)
+        response.delete_cookie(**_LEGACY_ACCESS_COOKIE_KWARGS)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.INVALID_REFRESH_TOKEN)
     try:
         session_data = await AuthService().refresh_user_session(refresh_token)
     except HTTPException as exc:
         if exc.status_code == status.HTTP_401_UNAUTHORIZED:
             response.delete_cookie(**_REFRESH_COOKIE_KWARGS)
-            response.delete_cookie(**_ACCESS_COOKIE_KWARGS)
+            response.delete_cookie(**_LEGACY_ACCESS_COOKIE_KWARGS)
         raise
     if hasattr(request.state, "actions"):
         request.state.actions.append("Session successfully refreshed & prolonged")
     response.set_cookie(**_REFRESH_COOKIE_KWARGS, value=session_data["refresh_token"], max_age=_REFRESH_COOKIE_MAX_AGE)
-    response.set_cookie(**_ACCESS_COOKIE_KWARGS, value=session_data["access_token"], max_age=_ACCESS_COOKIE_MAX_AGE)
+    response.delete_cookie(**_LEGACY_ACCESS_COOKIE_KWARGS)
     return success_response(data={"access_token": session_data["access_token"], "token_type": "bearer", "expires_in": session_data["expires_in"]})
 
 
@@ -155,7 +157,7 @@ async def mfa_verify_code(
     access_token = session_data.get("access_token")
     refresh_token = session_data.get("refresh_token")
     if access_token:
-        response.set_cookie(**_ACCESS_COOKIE_KWARGS, value=access_token, max_age=_ACCESS_COOKIE_MAX_AGE)
+        response.delete_cookie(**_LEGACY_ACCESS_COOKIE_KWARGS)
     if refresh_token:
         response.set_cookie(**_REFRESH_COOKIE_KWARGS, value=refresh_token, max_age=_REFRESH_COOKIE_MAX_AGE)
 
