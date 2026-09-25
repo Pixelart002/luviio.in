@@ -235,7 +235,7 @@ async def logout(request: Request, response: Response, refresh_token: str | None
         request.state.actions.append("Executing user sign-out sequence")
     await AuthService().logout_user(refresh_token)
     response.delete_cookie(**_REFRESH_COOKIE_KWARGS)
-    response.delete_cookie(**_ACCESS_COOKIE_KWARGS)
+    response.delete_cookie(**_LEGACY_ACCESS_COOKIE_KWARGS)
     if hasattr(request.state, "actions"):
         request.state.actions.extend(["Revoked active token in Supabase Vault", "Destroyed local HttpOnly auth cookies"])
     return success_response(message=AuthMessages.LOGOUT_SUCCESS)
