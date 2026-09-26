@@ -885,16 +885,26 @@ class ShippingProviderService:
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Unable to schedule courier pickup.") from exc
         pickup_id = _find(response, "pickup_id", "pickup_token", "pickupid", "pickup_token_number")
-        if not pickup_id:
+        pickup_confirmed = bool(
+            pickup_id
+            or _find(
+                response,
+                "pickup_status",
+                "pickup_scheduled_date",
+                "pickup_scheduled_time",
+                "pickup_date",
+            )
+        )
+        if not pickup_confirmed:
             raise HTTPException(
                 status_code=502,
-                detail="Shiprocket pickup API returned no pickup reference.",
+                detail="Shiprocket pickup API returned no successful pickup confirmation.",
             )
         metadata = dict(row.get("metadata") or {})
         metadata["pickup"] = response
         metadata["workflow"] = {**(metadata.get("workflow") or {}), "step": "pickup_scheduled", "updated_at": _now()}
         return await self.repo.update(shipment_id, {
-            "pickup_id": str(pickup_id),
+            "pickup_id": str(pickup_id) if pickup_id else None,
             "status": "pickup_scheduled", "provider_status": "pickup_scheduled",
             "workflow_status": "pickup_scheduled",
             "pickup_scheduled_at": _now(), "pickup_requested_at": _now(),
@@ -907,7 +917,7 @@ class ShippingProviderService:
             return row
         if not row.get("tracking_number"):
             raise HTTPException(status_code=409, detail="Assign an AWB before generating the shipping label.")
-        if not row.get("pickup_id"):
+        if not row.get("pickup_id") and not row.get("pickup_scheduled_at"):
             raise HTTPException(status_code=409, detail="Schedule pickup before generating the shipping label.")
         try:
             response = await get_shipping_provider(row["provider_key"]).generate_label(
@@ -934,7 +944,7 @@ class ShippingProviderService:
             return row
         if not row.get("tracking_number"):
             raise HTTPException(status_code=409, detail="Assign an AWB before generating the manifest.")
-        if not row.get("pickup_id"):
+        if not row.get("pickup_id") and not row.get("pickup_scheduled_at"):
             raise HTTPException(status_code=409, detail="Schedule pickup before generating the manifest.")
         try:
             response = await get_shipping_provider(row["provider_key"]).generate_manifest(
@@ -975,7 +985,7 @@ class ShippingProviderService:
             row = await self.print_invoice(shipment_id)
         if not row.get("tracking_number"):
             raise HTTPException(status_code=409, detail="Shipment workflow cannot complete without an AWB.")
-        if not row.get("pickup_id"):
+        if not row.get("pickup_id") and not row.get("pickup_scheduled_at"):
             raise HTTPException(status_code=409, detail="Shipment workflow cannot complete until pickup is scheduled.")
         if not row.get("manifest_url") or not row.get("label_url") or not row.get("provider_invoice_url"):
             raise HTTPException(status_code=409, detail="Shipment workflow is incomplete; required documents were not generated.")
@@ -1132,6 +1142,30 @@ class ShippingProviderService:
 
     async def cancel(self, shipment_id: str) -> dict[str, Any]:
         row = await self._get_provider_row(shipment_id)
-        try: response = await get_shipping_provider(row["provider_key"]).cancel_shipment(str(row["external_shipment_id"]))
-        except Exception as exc: raise HTTPException(status_code=502, detail="Unable to cancel provider shipment.") from exc
-        return await self.repo.update(shipment_id, {"status": "cancelled", "provider_status": "cancelled", "workflow_status": "cancelled", "metadata": {**(row.get("metadata") or {}), "cancel": response}, "updated_at": _now()})
+        current = str(row.get("workflow_status") or row.get("status") or "").strip().lower()
+        if current in _TERMINAL_PROVIDER_STATUSES:
+            return row
+        try:
+            response = await get_shipping_provider(row["provider_key"]).cancel_shipment(
+                shipment_id=str(row.get("external_shipment_id") or ""),
+                tracking_number=str(row.get("tracking_number") or "").strip() or None,
+                order_id=str(row.get("external_order_id") or "").strip() or None,
+            )
+        except Exception as exc:
+            logger.error(
+                "[SHIPMENT] Provider cancellation failed | shipment=%s provider=%s",
+                shipment_id[:8],
+                row.get("provider_key"),
+                exc_info=True,
+            )
+            raise HTTPException(status_code=502, detail="Unable to cancel provider shipment.") from exc
+        return await self.repo.update(
+            shipment_id,
+            {
+                "status": "cancelled",
+                "provider_status": "cancelled",
+                "workflow_status": "cancelled",
+                "metadata": {**(row.get("metadata") or {}), "cancel": response},
+                "updated_at": _now(),
+            },
+        )

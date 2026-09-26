@@ -145,11 +145,35 @@ async def cancel_provider_shipment(shipment_id: str):
 async def provider_tracking(tracking_number: str, provider: str = "shiprocket"):
     return success_response(data=await _provider_service.track(provider, tracking_number), message="Shipping provider tracking fetched.")
 
-@router.post("/provider/webhook/{provider}", status_code=200)
-async def provider_webhook(provider: str, payload: dict[str, Any], x_luviio_shipping_secret: str | None = Header(default=None)):
+async def _validate_shipping_webhook_secret(x_api_key: str | None, x_luviio_shipping_secret: str | None) -> None:
     expected = os.getenv("LUVIIO_SHIPPING_WEBHOOK_SECRET")
-    if not expected or not x_luviio_shipping_secret or not hmac.compare_digest(x_luviio_shipping_secret, expected):
+    supplied = x_api_key or x_luviio_shipping_secret
+    if not expected or not supplied or not hmac.compare_digest(supplied, expected):
         raise HTTPException(status_code=401, detail="Invalid shipping webhook signature.")
+
+
+@router.post("/provider/webhook", status_code=200)
+async def shiprocket_webhook(
+    payload: dict[str, Any],
+    x_api_key: str | None = Header(default=None, alias="x-api-key"),
+    x_luviio_shipping_secret: str | None = Header(default=None),
+):
+    # Shiprocket requires the webhook URL to avoid provider-name keywords and
+    # sends its configured security token in x-api-key. Keep the public URL
+    # provider-neutral while retaining the legacy header for migration.
+    await _validate_shipping_webhook_secret(x_api_key, x_luviio_shipping_secret)
+    data = await _provider_service.handle_webhook("shiprocket", payload)
+    return success_response(data=data, message="Shipping webhook processed.")
+
+
+@router.post("/provider/webhook/{provider}", status_code=200)
+async def provider_webhook(
+    provider: str,
+    payload: dict[str, Any],
+    x_api_key: str | None = Header(default=None, alias="x-api-key"),
+    x_luviio_shipping_secret: str | None = Header(default=None),
+):
+    await _validate_shipping_webhook_secret(x_api_key, x_luviio_shipping_secret)
     data = await _provider_service.handle_webhook(provider, payload)
     return success_response(data=data, message="Shipping webhook processed.")
 

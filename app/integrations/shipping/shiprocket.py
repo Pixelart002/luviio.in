@@ -206,5 +206,36 @@ class ShiprocketProvider(ShippingProvider):
     async def track(self, tracking_number: str) -> dict[str, Any]:
         return await self._request("GET", f"/courier/track/awb/{tracking_number}")
 
-    async def cancel_shipment(self, shipment_id: str) -> dict[str, Any]:
-        return await self._request("POST", "/orders/cancel", json={"ids": [int(shipment_id)]})
+    async def cancel_shipment(
+        self,
+        *,
+        shipment_id: str,
+        tracking_number: str | None = None,
+        order_id: str | None = None,
+    ) -> dict[str, Any]:
+        # Shiprocket has two distinct cancellation APIs:
+        # - an already-AWB'd shipment is cancelled by AWB;
+        # - a created order without an AWB is cancelled by Shiprocket order ID.
+        # Never send Luviio's internal shipment UUID or Shiprocket shipment ID
+        # to /orders/cancel/shipment/awbs; that endpoint expects AWBs.
+        awb = str(tracking_number or "").strip()
+        if awb:
+            return await self._request(
+                "POST",
+                "/orders/cancel/shipment/awbs",
+                json={"awbs": [awb]},
+            )
+
+        raw_order_id = str(order_id or "").strip()
+        if raw_order_id:
+            try:
+                provider_order_id = int(raw_order_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Shiprocket order ID is invalid for cancellation.") from exc
+            return await self._request(
+                "POST",
+                "/orders/cancel",
+                json={"ids": [provider_order_id]},
+            )
+
+        raise ValueError("A Shiprocket AWB or provider order ID is required for cancellation.")

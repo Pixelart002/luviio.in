@@ -32,5 +32,11 @@ class ShippingProvider(ABC):
     @abstractmethod
     async def track(self, tracking_number: str) -> dict[str, Any]: ...
 
-    async def cancel_shipment(self, shipment_id: str) -> dict[str, Any]:
-        raise NotImplementedError
+    @abstractmethod
+    async def cancel_shipment(
+        self,
+        *,
+        shipment_id: str,
+        tracking_number: str | None = None,
+        order_id: str | None = None,
+    ) -> dict[str, Any]: ...
