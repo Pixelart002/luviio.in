@@ -66,3 +66,17 @@ def test_legacy_cancel_overload_does_not_restore_cart():
     assert "p_target_status" not in migration
     assert "RETURN public.cancel_order_and_release_stock(" in migration
     assert "'cancelled'::text" in migration
+
+def test_cancel_rpc_authoritative_signature_has_no_default_target_status():
+    migration = (
+        REPO_ROOT
+        / "migrations/20260926000100_fix_cancel_order_rpc_overload.sql"
+    ).read_text(encoding="utf-8")
+    signature = (
+        "p_order_id uuid,\n"
+        "    p_reason text,\n"
+        "    p_target_status text\n"
+    )
+    assert signature in migration
+    assert "p_target_status text DEFAULT" not in migration
+
