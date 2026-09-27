@@ -39,7 +39,6 @@ async def get_me(request: Request, current: Dict[str, Any] = Depends(get_current
 
 
 @router.patch("/me", status_code=status.HTTP_200_OK)
-@limiter.limit("20/minute")
 async def update_me(request: Request, payload: ProfileUpdate, current: Dict[str, Any] = Depends(get_current_user), user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Validating profile update schema for -> UID: {user_id[:8]}...")
@@ -57,7 +56,6 @@ async def list_addresses(request: Request, user_id: str = Depends(get_user_id_st
 
 
 @router.post("/me/addresses", status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/minute")
 async def add_address(request: Request, payload: AddressCreate, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
         request.state.actions.append("Validating address limits against global maximum")
