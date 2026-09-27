@@ -53,6 +53,7 @@ class AuthService:
             if not session_data:
                 await AuthPolicy.record_failed_attempt(client_ip, email)
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.INVALID_CREDENTIALS)
+            await AuthPolicy.reset_attempts(client_ip, email)
             return session_data
         except AuthApiError as exc:
             await AuthPolicy.record_failed_attempt(client_ip, email)
