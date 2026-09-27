@@ -21,7 +21,7 @@ def test_product_share_page_contains_dynamic_og_metadata(client, monkeypatch):
     assert response.headers["content-type"].startswith("text/html")
     assert '<meta property="og:title" content="Premium Drain Cover | Luviio">' in response.text
     assert '<meta property="og:description" content="Durable drain cover for everyday use.">' in response.text
-    assert '<meta property="og:image" content="https://cdn.example.com/products/drain-cover.webp">' in response.text
+    assert '<meta property="og:image" content="https://www.luviio.in/share/products/premium-drain-cover/image">' in response.text
     assert '<meta property="og:url" content="https://www.luviio.in/product/premium-drain-cover">' in response.text
     assert '<meta name="twitter:card" content="summary_large_image">' in response.text
 
