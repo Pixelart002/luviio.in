@@ -49,7 +49,6 @@ class AuthService:
             session_data = await self.auth_repo.sign_in(email, password)
             if not session_data:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.INVALID_CREDENTIALS)
-            await AuthPolicy.reset_attempts(client_ip, email)
             return session_data
         except AuthApiError as exc:
             logger.info("Login failed for %s from IP %s", email, client_ip)
