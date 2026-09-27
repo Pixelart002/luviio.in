@@ -3,7 +3,6 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
-from app.core.rate_limit import _get_client_ip
 
 from app.constants.auth_messages import AuthMessages, AuthSecurityMessages
 from app.core.dependencies import get_current_user
@@ -46,7 +45,7 @@ _REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 async def register(request: Request, payload: RegisterRequest):
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Initiating registration for: {payload.email}")
-    client_ip = _get_client_ip(request) or "0.0.0.0"
+    client_ip = get_client_ip(request) or "0.0.0.0"
     await AuthService().register_user(payload.email, payload.password, payload.full_name or "", client_ip)
     if hasattr(request.state, "actions"):
         request.state.actions.extend(["Supabase Auth identity established", "Created profile metadata in DB", "Queued async Welcome Email"])
