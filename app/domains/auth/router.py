@@ -3,6 +3,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from slowapi.util import get_remote_address
 
 from app.constants.auth_messages import AuthMessages, AuthSecurityMessages
 from app.core.dependencies import get_current_user
