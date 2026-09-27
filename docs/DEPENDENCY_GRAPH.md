@@ -31,7 +31,7 @@ Python 3.13
   |      |
   |      +-- invoice PDF + image handling
   |
-  +-- slowapi / cachetools / APScheduler / Sentry
+  +-- cachetools / APScheduler / Sentry
          |
          +-- rate limits / caches / scheduled jobs / observability
 ```
@@ -47,7 +47,7 @@ The production dependency contract is declared in `pyproject.toml` and locked by
 | Database/backend | `supabase` | Supabase/Postgres/Auth/Storage access |
 | HTTP | `httpx`, `requests` | outbound HTTP boundaries |
 | Payments | `stripe` | Stripe provider |
-| Abuse controls | `slowapi` | endpoint rate limiting |
+| Abuse controls | Postgres token bucket | shared cross-worker rate limiting |
 | Email | `resend` | email delivery |
 | Push | `pywebpush` | Web Push delivery |
 | Media/PDF | `Pillow`, `reportlab` | image and invoice processing |
