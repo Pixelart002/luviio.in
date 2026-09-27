@@ -8,7 +8,6 @@ from typing import Any, Dict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from slowapi import Limiter
 from starlette.concurrency import run_in_threadpool
 
 from app.core.dependencies import get_current_user, get_user_id_strict
@@ -84,9 +83,6 @@ async def _public_payment_data(data: Dict[str, Any]) -> Dict[str, Any]:
         if order:
             public["order_number"] = order.get("order_number", "")
     return public
-
-
-limiter = Limiter(key_func=get_real_ip)
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
 
