@@ -24,7 +24,7 @@ def test_untrusted_peer_cannot_spoof_forwarded_client_ip(monkeypatch):
         },
     )
 
-    assert rate_limit._get_client_ip(request) == "10.0.0.10"
+    assert rate_limit.get_client_ip(request) == "10.0.0.10"
 
 
 def test_trusted_proxy_uses_valid_cloudflare_client_ip(monkeypatch):
@@ -34,7 +34,7 @@ def test_trusted_proxy_uses_valid_cloudflare_client_ip(monkeypatch):
         headers={"CF-Connecting-IP": "203.0.113.50"},
     )
 
-    assert rate_limit._get_client_ip(request) == "203.0.113.50"
+    assert rate_limit.get_client_ip(request) == "203.0.113.50"
 
 
 def test_trusted_proxy_rejects_invalid_forwarded_ip(monkeypatch):
@@ -44,7 +44,7 @@ def test_trusted_proxy_rejects_invalid_forwarded_ip(monkeypatch):
         headers={"X-Forwarded-For": "not-an-ip"},
     )
 
-    assert rate_limit._get_client_ip(request) == "10.0.0.10"
+    assert rate_limit.get_client_ip(request) == "10.0.0.10"
 
 
 def test_trusted_proxy_supports_cidr(monkeypatch):
@@ -54,7 +54,7 @@ def test_trusted_proxy_supports_cidr(monkeypatch):
         headers={"X-Real-IP": "203.0.113.60"},
     )
 
-    assert rate_limit._get_client_ip(request) == "203.0.113.60"
+    assert rate_limit.get_client_ip(request) == "203.0.113.60"
 
 
 def test_invalid_proxy_configuration_never_trusts_peer(monkeypatch):
@@ -65,7 +65,7 @@ def test_invalid_proxy_configuration_never_trusts_peer(monkeypatch):
     )
 
     assert not rate_limit._peer_is_trusted(request)
-    assert rate_limit._get_client_ip(request) == "10.0.0.25"
+    assert rate_limit.get_client_ip(request) == "10.0.0.25"
 
 
 def test_trusted_forwarded_chain_uses_leftmost_address(monkeypatch):
@@ -75,4 +75,4 @@ def test_trusted_forwarded_chain_uses_leftmost_address(monkeypatch):
         headers={"X-Forwarded-For": "203.0.113.61, 10.0.0.24"},
     )
 
-    assert rate_limit._get_client_ip(request) == "203.0.113.61"
+    assert rate_limit.get_client_ip(request) == "203.0.113.61"
