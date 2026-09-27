@@ -3,6 +3,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.constants.auth_messages import AuthMessages, AuthSecurityMessages
@@ -35,6 +36,7 @@ from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Auth"])
+limiter = Limiter(key_func=get_remote_address)
 
 _REFRESH_COOKIE_KWARGS = dict(key="refresh_token", httponly=True, secure=True, samesite="none", path="/api/v1/auth")
 _LEGACY_ACCESS_COOKIE_KWARGS = dict(key="access_token", secure=True, httponly=True, samesite="none", path="/api/v1")
@@ -53,7 +55,6 @@ async def register(request: Request, payload: RegisterRequest):
 
 
 @router.post("/login", status_code=status.HTTP_200_OK)
-@limiter.limit("5/minute")
 async def login(request: Request, response: Response, payload: LoginRequest):
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Authenticating credentials for: {payload.email}")
