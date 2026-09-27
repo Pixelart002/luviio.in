@@ -42,7 +42,7 @@ This ledger distinguishes verified application fixes from external release gates
 
 ### D-008 — Process-local global rate limit / proxy IP ambiguity
 **Status:** fixed for the global API ceiling.
-**Fix:** explicit trusted proxy IP/CIDR handling plus service-role-only Postgres-backed global rate-limit state. Endpoint-specific SlowAPI limits remain intentionally separate and process-local.
+**Fix:** trusted proxy IP/CIDR handling plus one Postgres-backed token-bucket enforcement mechanism shared across Koyeb workers. Endpoint-specific SlowAPI limits were removed; authentication uses the same token-bucket model with IP/email buckets.
 
 ### D-009 — Stripe intent may exist without a persisted pending order
 **Status:** mitigated with durable compensation + reconciliation.
