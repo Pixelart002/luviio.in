@@ -3,8 +3,6 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.constants.auth_messages import AuthMessages, AuthSecurityMessages
 from app.core.dependencies import get_current_user
@@ -36,7 +34,6 @@ from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Auth"])
-limiter = Limiter(key_func=get_remote_address)
 
 _REFRESH_COOKIE_KWARGS = dict(key="refresh_token", httponly=True, secure=True, samesite="none", path="/api/v1/auth")
 _LEGACY_ACCESS_COOKIE_KWARGS = dict(key="access_token", secure=True, httponly=True, samesite="none", path="/api/v1")
@@ -71,7 +68,6 @@ async def login(request: Request, response: Response, payload: LoginRequest):
 
 
 @router.post("/refresh", status_code=status.HTTP_200_OK)
-@limiter.limit("10/minute")
 async def refresh(request: Request, response: Response, refresh_token: str | None = Cookie(None)):
     if hasattr(request.state, "actions"):
         request.state.actions.append("Intercepted session refresh cookie")
@@ -110,7 +106,6 @@ async def mfa_status(current: dict[str, Any] = Depends(get_current_user)):
 
 
 @router.post("/mfa/enroll", status_code=status.HTTP_200_OK)
-@limiter.limit("3/minute")
 async def mfa_enroll(
     request: Request,
     payload: MFAEnrollRequest,
@@ -129,7 +124,6 @@ async def mfa_enroll(
 
 
 @router.post("/mfa/verify", status_code=status.HTTP_200_OK)
-@limiter.limit("10/minute")
 async def mfa_verify_code(
     request: Request,
     response: Response,
@@ -172,7 +166,6 @@ async def mfa_verify_code(
 
 
 @router.post("/mfa/reset-pending", status_code=status.HTTP_200_OK)
-@limiter.limit("3/minute")
 async def mfa_reset_pending(
     request: Request,
     payload: MFAUnenrollRequest,
@@ -191,7 +184,6 @@ async def mfa_reset_pending(
 
 
 @router.post("/mfa/unenroll", status_code=status.HTTP_200_OK)
-@limiter.limit("3/minute")
 async def mfa_unenroll_endpoint(
     request: Request,
     payload: MFAUnenrollRequest,
