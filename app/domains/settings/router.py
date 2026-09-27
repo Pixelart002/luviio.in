@@ -26,7 +26,6 @@ async def list_settings(request: Request, category: Optional[str] = Query(None, 
 
 
 @router.patch("/{key}", status_code=status.HTTP_200_OK, response_model=Dict[str, Any], dependencies=[Depends(require_permission(SettingsPermissions.UPDATE))])
-@limiter.limit("20/minute")
 async def update_setting(request: Request, key: str, payload: SettingUpdate, user_id: str = Depends(get_user_id_strict), current_user: Dict[str, Any] = Depends(get_current_user)):
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Initiating setting mutation -> Key: '{key}' | Reason: {payload.reason or 'None'}")
@@ -42,7 +41,6 @@ async def update_setting(request: Request, key: str, payload: SettingUpdate, use
 
 
 @router.post("/business-profile/assets/{asset_type}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(SettingsPermissions.UPDATE))])
-@limiter.limit("10/minute")
 async def upload_business_profile_asset(request: Request, asset_type: str, file: UploadFile = File(...), user_id: str = Depends(get_user_id_strict), current_user: Dict[str, Any] = Depends(get_current_user)):
     if asset_type not in {"logo", "signature"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported business asset type.")
@@ -74,7 +72,6 @@ async def upload_business_profile_asset(request: Request, asset_type: str, file:
 
 
 @router.post("/{key}/reset", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(SettingsPermissions.RESET))])
-@limiter.limit("10/minute")
 async def reset_setting(request: Request, key: str, user_id: str = Depends(get_user_id_strict), current_user: Dict[str, Any] = Depends(get_current_user)):
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Admin restoring setting '{key}' to factory default...")
