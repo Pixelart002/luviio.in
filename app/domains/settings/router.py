@@ -3,8 +3,6 @@ import logging
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.constants.settings_messages import SettingsMessages
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
@@ -16,7 +14,6 @@ from app.utils.business_asset import delete_business_asset, upload_business_asse
 from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)
-limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/settings", tags=["System Settings"])
 
 
