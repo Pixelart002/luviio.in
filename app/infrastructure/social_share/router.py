@@ -10,9 +10,10 @@ Mounted at app root so the frontend middleware can fetch it directly.
 import logging
 from html import escape
 from typing import Any, Dict
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
-from fastapi import APIRouter, Request, status
+import httpx
+from fastapi import APIRouter, Request, Response, status
 from fastapi.exceptions import HTTPException
 from fastapi.responses import HTMLResponse
 
@@ -40,6 +41,88 @@ def _first_image(product: Dict[str, Any]) -> str | None:
         if isinstance(img, str) and img.startswith("http"):
             return img
     return None
+
+
+@router.get("/share/products/{slug}/image", include_in_schema=False)
+async def product_share_image(slug: str) -> Response:
+    """Proxy a product image from the trusted public Supabase storage host."""
+    try:
+        product = await ProductService().get_product(slug)
+        source_image = _first_image(product)
+        if not source_image:
+            return Response(
+                status_code=status.HTTP_302_FOUND,
+                headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
+            )
+
+        parsed = urlparse(source_image)
+        configured_host = urlparse(settings.SB_URL).hostname
+        if parsed.scheme != "https" or not parsed.hostname or parsed.hostname != configured_host:
+            logger.warning("social_share.image_rejected slug=%s host=%s", slug, parsed.hostname)
+            return Response(
+                status_code=status.HTTP_302_FOUND,
+                headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
+            )
+
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(5.0, connect=2.0),
+            follow_redirects=False,
+        ) as client:
+            upstream = await client.get(
+                source_image,
+                headers={"Accept": "image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9"},
+            )
+
+        if upstream.status_code != 200:
+            logger.warning("social_share.image_fetch_failed slug=%s status=%s", slug, upstream.status_code)
+            return Response(
+                status_code=status.HTTP_302_FOUND,
+                headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
+            )
+
+        media_type = (upstream.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+        allowed_types = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+        if media_type not in allowed_types:
+            logger.warning("social_share.image_type_rejected slug=%s content_type=%s", slug, media_type)
+            return Response(
+                status_code=status.HTTP_302_FOUND,
+                headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
+            )
+
+        content_length = upstream.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > 5 * 1024 * 1024:
+                    raise ValueError("image too large")
+            except ValueError:
+                logger.warning("social_share.image_too_large slug=%s", slug)
+                return Response(
+                    status_code=status.HTTP_302_FOUND,
+                    headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
+                )
+
+        body = upstream.content
+        if len(body) > 5 * 1024 * 1024:
+            logger.warning("social_share.image_too_large_after_fetch slug=%s bytes=%s", slug, len(body))
+            return Response(
+                status_code=status.HTTP_302_FOUND,
+                headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
+            )
+
+        return Response(
+            content=body,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+    except Exception:
+        logger.exception("social_share.image_proxy_error slug=%s", slug)
+        return Response(
+            status_code=status.HTTP_302_FOUND,
+            headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
+        )
 
 
 @router.get("/share/products/{slug}", response_class=HTMLResponse, include_in_schema=False)
@@ -78,7 +161,7 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
     )
 
     canonical_url = _frontend_product_url(slug)
-    image_url = _first_image(product) or _DEFAULT_IMAGE
+    image_url = f"{settings.FRONTEND_URL.rstrip('/')}/share/products/{quote(slug, safe='')}/image"
     display_title = seo_title or f"{name} | Luviio"
 
     escaped_title = escape(display_title, quote=True)
