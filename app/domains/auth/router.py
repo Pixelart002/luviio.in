@@ -56,7 +56,7 @@ async def register(request: Request, payload: RegisterRequest):
 async def login(request: Request, response: Response, payload: LoginRequest):
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Authenticating credentials for: {payload.email}")
-    client_ip = _get_client_ip(request) or "0.0.0.0"
+    client_ip = get_client_ip(request) or "0.0.0.0"
     session_data = await AuthService().login_user(payload.email, payload.password, client_ip)
     if hasattr(request.state, "actions"):
         request.state.actions.extend([f"Identity verified -> UID: {session_data['user_id'][:8]}...", "Issued secure HttpOnly refresh cookie"])
@@ -236,7 +236,7 @@ async def logout(request: Request, response: Response, refresh_token: str | None
 async def forgot_password(request: Request, payload: ForgotPasswordRequest):
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Requesting password recovery dispatch for: {payload.email}")
-    client_ip = _get_client_ip(request) or "0.0.0.0"
+    client_ip = get_client_ip(request) or "0.0.0.0"
     await AuthService().process_forgot_password(payload.email, client_ip)
     return success_response(message=AuthMessages.FORGOT_PWD_SUCCESS)
 
