@@ -20,7 +20,6 @@ async def list_product_reviews(request: Request, product_id: UUID) -> dict[str, 
 
 
 @router.post("/products/{product_id}", status_code=status.HTTP_201_CREATED)
-@limiter.limit("5/minute")
 async def create_product_review(request: Request, product_id: UUID, payload: ReviewCreate, user_id: str = Depends(get_user_id_strict)) -> dict[str, Any]:
     result = await ReviewService().create(str(product_id), user_id, payload.model_dump())
     return success_response(data=result, message="Review submitted for moderation.")
