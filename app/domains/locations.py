@@ -139,7 +139,6 @@ async def _ola_get(path: str, params: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/autocomplete", status_code=status.HTTP_200_OK)
-@limiter.limit("30/minute")
 async def autocomplete(
     request: Request,
     input: str = Query(..., min_length=2, max_length=120),
@@ -164,7 +163,6 @@ async def autocomplete(
 
 
 @router.get("/details", status_code=status.HTTP_200_OK)
-@limiter.limit("30/minute")
 async def details(
     request: Request,
     place_id: str = Query(..., min_length=1, max_length=200),
