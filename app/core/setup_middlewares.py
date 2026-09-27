@@ -4,8 +4,6 @@ Middleware Stack Setup
 Path: app/core/setup_middlewares.py
 """
 from fastapi import FastAPI
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
 
 from app.api.middlewares.cors import cors_middleware
 from app.api.middlewares.csrf import csrf_middleware
@@ -16,7 +14,7 @@ from app.api.middlewares.security import (
     MaxBodySizeMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.core.rate_limit import SharedRateLimitMiddleware, limiter
+from app.core.rate_limit import SharedRateLimitMiddleware
 
 
 def apply_middlewares(app: FastAPI) -> None:
@@ -29,5 +27,3 @@ def apply_middlewares(app: FastAPI) -> None:
     app.add_middleware(PureWindowLoggerMiddleware)
     app.add_middleware(SharedRateLimitMiddleware)
 
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
