@@ -8,7 +8,6 @@ from typing import Any, Dict, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, status
-from slowapi import Limiter
 
 from app.constants.user_messages import UserMessages
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
@@ -28,9 +27,6 @@ def get_real_ip(request: Request) -> str:
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "127.0.0.1"
-
-
-limiter = Limiter(key_func=get_real_ip)
 
 
 @router.get("/me", status_code=status.HTTP_200_OK)
