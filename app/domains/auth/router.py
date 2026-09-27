@@ -3,7 +3,6 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
-from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.constants.auth_messages import AuthMessages, AuthSecurityMessages
@@ -35,7 +34,6 @@ from app.domains.auth.service import AuthService
 from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)
-limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 _REFRESH_COOKIE_KWARGS = dict(key="refresh_token", httponly=True, secure=True, samesite="none", path="/api/v1/auth")
@@ -44,7 +42,6 @@ _REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-@limiter.limit("5/minute")
 async def register(request: Request, payload: RegisterRequest):
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Initiating registration for: {payload.email}")
@@ -242,7 +239,6 @@ async def logout(request: Request, response: Response, refresh_token: str | None
 
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)
-@limiter.limit("3/minute")
 async def forgot_password(request: Request, payload: ForgotPasswordRequest):
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Requesting password recovery dispatch for: {payload.email}")
