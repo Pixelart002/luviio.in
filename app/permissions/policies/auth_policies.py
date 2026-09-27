@@ -53,35 +53,3 @@ class AuthPolicy:
                 detail=AuthSecurityMessages.TOO_MANY_REQUESTS,
             )
 
-    @staticmethod
-    async def record_failed_attempt(ip: str, email: str = "") -> None:
-        ip_key = _key(ip, "ip")
-        email_key = _key(email, "email")
-        try:
-            sb = await get_async_admin_supabase()
-            await sb.rpc(
-                "auth_throttle_record_failure",
-                {
-                    "p_ip_key": ip_key,
-                    "p_email_key": email_key,
-                    "p_window_seconds": AuthRules.LOGIN_WINDOW_SECONDS,
-                    "p_max_attempts": AuthRules.MAX_LOGIN_ATTEMPTS,
-                    "p_cooldown_seconds": AuthRules.LOGIN_COOLDOWN_SECONDS,
-                },
-            ).execute()
-        except Exception as exc:
-            logger.error("Auth throttle failure recording failed: %s", exc, exc_info=True)
-
-    @staticmethod
-    async def reset_attempts(ip: str, email: str = "") -> None:
-        ip_key = _key(ip, "ip")
-        email_key = _key(email, "email")
-        try:
-            sb = await get_async_admin_supabase()
-            await sb.rpc(
-                "auth_throttle_reset",
-                {"p_ip_key": ip_key, "p_email_key": email_key},
-            ).execute()
-        except Exception as exc:
-            logger.error("Auth throttle reset failed: %s", exc, exc_info=True)
-
