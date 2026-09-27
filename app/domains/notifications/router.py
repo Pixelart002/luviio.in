@@ -21,7 +21,6 @@ async def get_vapid_key(request: Request) -> Dict[str, Any]:
     return success_response(data=PushService().get_vapid_key())
 
 @router.post("/subscribe", status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/minute")
 async def subscribe(request: Request, payload: PushSubscription, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     result = await PushService().subscribe(user_id, payload.endpoint, payload.keys.p256dh, payload.keys.auth)
     return success_response(data=result, message=result["message"])
@@ -36,7 +35,6 @@ async def subscription_status(request: Request, user_id: str = Depends(get_user_
     return success_response(data=await PushService().get_status(user_id))
 
 @router.post("/test", status_code=status.HTTP_200_OK)
-@limiter.limit("5/minute")
 async def send_test_notification(request: Request, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     result = await PushService().send_test_notification(user_id)
     return success_response(data=result, message=getattr(PushMessages, "TEST_SENT", "Test notification dispatched"))
