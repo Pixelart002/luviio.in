@@ -3,8 +3,6 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.core.dependencies import get_user_id_strict, require_permission
 from app.domains.reviews.schemas import ReviewCreate, ReviewModerationUpdate
@@ -13,7 +11,6 @@ from app.permissions.reviews import ReviewPermissions
 from app.utils.response import success_response
 
 router = APIRouter(prefix="/reviews", tags=["Reviews"])
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.get("/products/{product_id}", status_code=status.HTTP_200_OK)
