@@ -3,8 +3,6 @@ import logging
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.constants.push_messages import PushMessages
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
@@ -15,7 +13,6 @@ from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/push", tags=["Push Notifications"])
-limiter = Limiter(key_func=get_remote_address)
 
 @router.get("/vapid-key", status_code=status.HTTP_200_OK)
 async def get_vapid_key(request: Request) -> Dict[str, Any]:
