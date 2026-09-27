@@ -7,7 +7,6 @@ import logging
 from typing import Any, Dict
 
 from fastapi import HTTPException, status
-from starlette.concurrency import run_in_threadpool
 
 from app.constants.auth_messages import AuthSecurityMessages
 from app.domains.auth.repository import AsyncAuthRepository
@@ -32,16 +31,14 @@ class AuthService:
             logger.warning("Supabase registration rejected for %s: %s", email, exc)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=AuthSecurityMessages.REGISTRATION_FAILED) from exc
         if not auth_user_id:
-            await AuthPolicy.record_failed_attempt(client_ip, email)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=AuthSecurityMessages.REGISTRATION_FAILED)
-        await AuthPolicy.reset_attempts(client_ip, email)
         try:
             await self.user_repo.upsert_profile(user_id=auth_user_id, email=email, full_name=full_name)
         except Exception as exc:
             logger.error("Critical: Profile ledger sync failed for auth ID %s: %s", auth_user_id, exc, exc_info=True)
         try:
             email_service = get_email_provider("resend")
-            await run_in_threadpool(email_service.send_welcome_email, email, full_name)
+            await email_service.send_welcome_email(email, full_name)
         except Exception as exc:
             logger.warning("Welcome email dispatch failed for %s: %s", email, exc)
         return True
@@ -51,12 +48,10 @@ class AuthService:
         try:
             session_data = await self.auth_repo.sign_in(email, password)
             if not session_data:
-                await AuthPolicy.record_failed_attempt(client_ip, email)
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.INVALID_CREDENTIALS)
             await AuthPolicy.reset_attempts(client_ip, email)
             return session_data
         except AuthApiError as exc:
-            await AuthPolicy.record_failed_attempt(client_ip, email)
             logger.info("Login failed for %s from IP %s", email, client_ip)
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.INVALID_CREDENTIALS) from exc
 
