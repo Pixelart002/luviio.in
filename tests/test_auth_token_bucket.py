@@ -27,6 +27,8 @@ def test_auth_router_does_not_keep_fixed_window_login_register_limits():
     assert '@router.post("/login"' in router
     assert '@router.post("/register"' in router
     assert '@limiter.limit("5/minute")' not in router
+    assert "from slowapi import Limiter" not in router
+    assert "limiter =" not in router
 
 
 def test_auth_policy_has_no_legacy_fixed_window_methods():
@@ -36,3 +38,6 @@ def test_auth_policy_has_no_legacy_fixed_window_methods():
     assert "auth_throttle_reset" not in policy
     assert "AuthPolicy.record_failed_attempt" not in service
     assert "AuthPolicy.reset_attempts" not in service
+    assert "AuthPolicy.record_failed_attempt" not in service
+    assert "await email_service.send_welcome_email" in service
+    assert "run_in_threadpool(email_service.send_welcome_email" not in service
