@@ -29,7 +29,6 @@ class AuthService:
         try:
             auth_user_id = await self.auth_repo.sign_up(email, password, full_name)
         except AuthApiError as exc:
-            await AuthPolicy.record_failed_attempt(client_ip, email)
             logger.warning("Supabase registration rejected for %s: %s", email, exc)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=AuthSecurityMessages.REGISTRATION_FAILED) from exc
         if not auth_user_id:
@@ -54,7 +53,6 @@ class AuthService:
             if not session_data:
                 await AuthPolicy.record_failed_attempt(client_ip, email)
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.INVALID_CREDENTIALS)
-            await AuthPolicy.reset_attempts(client_ip, email)
             return session_data
         except AuthApiError as exc:
             await AuthPolicy.record_failed_attempt(client_ip, email)
@@ -84,7 +82,6 @@ class AuthService:
         try:
             await self.auth_repo.reset_password_email(email)
         except Exception as exc:
-            await AuthPolicy.record_failed_attempt(client_ip)
             logger.warning("Password reset email trigger failed for %s: %s", email, exc)
 
     async def process_reset_password(self, access_token: str, new_password: str) -> None:
