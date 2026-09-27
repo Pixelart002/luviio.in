@@ -87,7 +87,6 @@ router = APIRouter(prefix="/payments", tags=["Payments"])
 
 
 @router.get("/public-config")
-@limiter.limit("60/minute")
 async def public_payment_config(request: Request) -> Dict[str, Any]:
     """Return browser-safe payment configuration only; never expose provider secrets."""
     try:
@@ -101,7 +100,6 @@ async def public_payment_config(request: Request) -> Dict[str, Any]:
 
 
 @router.post("/create-intent")
-@limiter.limit("10/minute")
 async def create_payment_intent(request: Request, payload: PaymentIntentRequest, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     provider_key = (payload.provider_key or "stripe").strip().lower()
     await _require_provider_enabled(provider_key)
@@ -152,7 +150,6 @@ async def create_payment_intent(request: Request, payload: PaymentIntentRequest,
 
 
 @router.post("/confirm")
-@limiter.limit("10/minute")
 async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, current: Dict[str, Any] = Depends(get_current_user), user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     provider_key = (payload.provider_key or "stripe").strip().lower()
     await _require_provider_enabled(provider_key)
@@ -167,7 +164,6 @@ async def confirm_payment(request: Request, payload: ConfirmPaymentRequest, curr
 
 
 @router.post("/retry/{order_number}")
-@limiter.limit("10/minute")
 async def retry_payment(request: Request, order_number: str, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     order_number = _require_public_order_number(order_number)
     order_repo = AsyncOrderRepository()
@@ -188,7 +184,6 @@ async def retry_payment(request: Request, order_number: str, user_id: str = Depe
 
 
 @router.post("/cancel/{order_number}")
-@limiter.limit("10/minute")
 async def cancel_checkout_payment(request: Request, order_number: str, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     order_number = _require_public_order_number(order_number)
     repo = AsyncOrderRepository()
@@ -223,7 +218,6 @@ async def cancel_checkout_payment(request: Request, order_number: str, user_id: 
 
 
 @router.post("/switch-method/{order_number}")
-@limiter.limit("10/minute")
 async def switch_pending_payment_method(request: Request, order_number: str, method: str, user_id: str = Depends(get_user_id_strict)) -> Dict[str, Any]:
     """Switch a still-pending checkout without rebuilding or restoring its cart payload."""
     order_number = _require_public_order_number(order_number)
