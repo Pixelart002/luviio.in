@@ -126,7 +126,3 @@ revoke all on function private.cleanup_http_token_bucket_state()
 from public, anon, authenticated;
 grant execute on function private.cleanup_http_token_bucket_state()
 to service_role;
-
--- Retire the old global fixed-window enforcement function. The historical
--- table/migration is intentionally retained for migration history.
-drop function if exists private.consume_http_rate_limit(text, integer, integer);
