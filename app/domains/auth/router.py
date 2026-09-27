@@ -7,6 +7,7 @@ from app.core.rate_limit import _get_client_ip
 
 from app.constants.auth_messages import AuthMessages, AuthSecurityMessages
 from app.core.dependencies import get_current_user
+from app.core.rate_limit import get_client_ip
 from app.domains.auth.mfa import (
     MFAError,
     enroll_totp,
