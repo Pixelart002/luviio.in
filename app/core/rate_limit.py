@@ -124,14 +124,36 @@ class SharedRateLimitMiddleware:
                 await response(scope, receive, send)
                 return
         except asyncio.TimeoutError:
-            logger.warning(
-                "Shared token-bucket RPC timed out; allowing request | timeout_s=%s",
+            logger.error(
+                "Shared token-bucket RPC timed out; rejecting request | timeout_s=%s",
                 _RATE_LIMIT_RPC_TIMEOUT_SECONDS,
             )
+            response = JSONResponse(
+                status_code=503,
+                content={
+                    "success": False,
+                    "error": "rate_limit_unavailable",
+                    "message": "Request protection is temporarily unavailable. Please retry shortly.",
+                },
+                headers={"Retry-After": "1"},
+            )
+            await response(scope, receive, send)
+            return
         except Exception as exc:
-            logger.warning(
-                "Shared token-bucket state unavailable; allowing request | error_type=%s",
+            logger.error(
+                "Shared token-bucket state unavailable; rejecting request | error_type=%s",
                 type(exc).__name__,
             )
+            response = JSONResponse(
+                status_code=503,
+                content={
+                    "success": False,
+                    "error": "rate_limit_unavailable",
+                    "message": "Request protection is temporarily unavailable. Please retry shortly.",
+                },
+                headers={"Retry-After": "1"},
+            )
+            await response(scope, receive, send)
+            return
 
         await self.app(scope, receive, send)
