@@ -278,6 +278,10 @@ class ProductService:
 
         spec_fields_present = any(field in data for field in self._SPEC_FIELDS) or "specifications" in data
         spec_rows = self._extract_product_specifications(data) if spec_fields_present else None
+        # Specifications are persisted in product_specifications, not products.
+        # Never forward the internal _spec_rows transport key to PostgREST.
+        if spec_fields_present:
+            data.pop("_spec_rows", None)
         seo_data = {key: data.pop(key) for key in ("seo_title", "seo_description", "canonical_url") if key in data}
         if "images" in data:
             imgs = data["images"] or []
