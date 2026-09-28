@@ -29,7 +29,6 @@ class AuthSecurityMessages:
 class AuthRules:
     MAX_LOGIN_ATTEMPTS = 5
     LOGIN_WINDOW_SECONDS = 300
-    LOGIN_COOLDOWN_SECONDS = 900
     COMMON_PASSWORDS = {
         "password", "password123", "12345678", "qwerty123", 
         "admin123", "letmein123", "luviio123", "welcome123"
