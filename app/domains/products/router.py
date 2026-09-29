@@ -73,6 +73,11 @@ async def hsn_suggestions(request: Request, q: str = Query(..., min_length=2, ma
     return success_response(data={"items": suggestions})
 
 
+@router.get("/products/admin/{product_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
+async def get_admin_product(request: Request, product_id: uuid.UUID) -> Dict[str, Any]:
+    return success_response(data=await ProductService().get_admin_product(str(product_id)))
+
+
 @router.get("/products/{slug}", status_code=status.HTTP_200_OK)
 async def get_product(request: Request, slug: str) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
