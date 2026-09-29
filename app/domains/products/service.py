@@ -112,6 +112,14 @@ class ProductService:
         products, total = await self.repo.get_products(page, page_size, category, search, min_p, max_p, in_stock)
         return [self._project_product(self._enrich_discount(p)) for p in products], total
 
+    async def get_admin_product(self, product_id: str) -> Dict[str, Any]:
+        """Return the complete product record for an authorized admin editor."""
+        product = await self.repo.get_product_by_id(product_id)
+        if not product:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ProductSecurityMessages.PRODUCT_NOT_FOUND)
+        product["images"] = product.get("images") or []
+        return self._project_product(self._enrich_discount(product))
+
     async def get_product(self, slug: str) -> Dict[str, Any]:
         product = await self.repo.get_product_by_slug(slug)
         if not product:
