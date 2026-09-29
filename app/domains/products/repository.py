@@ -121,7 +121,7 @@ class AsyncProductRepository:
 
     async def get_product_by_id(self, product_id: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
-        res = await admin_sb.table("products").select("id, name, slug, sku, price, compare_price, stock, hsn_code, gst_percentage, image_url, is_active, product_specifications(id, specification_code, value_text, value_numeric, unit_code, position), product_seo(product_id, title, description, canonical_url, robots_index, robots_follow), product_images(id, url, alt, position)").eq("id", product_id).limit(1).execute()
+        res = await admin_sb.table("products").select("id, name, slug, sku, category_id, description, short_description, price, compare_price, stock, weight, weight_unit, measurement_type, measurement_value, measurement_unit, image_url, is_active, hsn_code, gst_percentage, country_of_origin, product_specifications(id, specification_code, value_text, value_numeric, unit_code, position), product_seo(product_id, title, description, canonical_url, robots_index, robots_follow), product_images(id, url, alt, position), categories(name, slug)").eq("id", product_id).limit(1).execute()
         data_list = getattr(res, "data", None)
         return self._format_product_images(data_list[0]) if data_list else None
 
