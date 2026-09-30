@@ -100,8 +100,10 @@ class ShippingProviderService:
         if weight <= 0:
             raise HTTPException(status_code=422, detail="Shipment weight must be greater than zero.")
 
+        provider_key = os.getenv("SHIPPING_PROVIDER", "shiprocket").strip().lower()
         cache_key = hashlib.sha256(
             "|".join((
+                provider_key,
                 pickup_postcode,
                 delivery_postcode,
                 f"{weight:.3f}",
@@ -109,8 +111,6 @@ class ShippingProviderService:
                 f"{float(declared_value or 0):.2f}",
             )).encode("utf-8")
         ).hexdigest()
-
-        provider_key = os.getenv("SHIPPING_PROVIDER", "shiprocket").strip().lower()
         if provider_key not in {"shiprocket", "rapidshyp"}:
             raise HTTPException(status_code=503, detail="Configured shipping provider is unsupported.")
 
