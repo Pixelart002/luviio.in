@@ -21,6 +21,10 @@ from app.permissions.shipping import ShippingPermissions
 from app.utils.response import success_response
 
 router = APIRouter(prefix="/shipping", tags=["Shipping"])
+
+
+def _configured_provider() -> str:
+    return os.getenv("SHIPPING_PROVIDER", "shiprocket").strip().lower() or "shiprocket"
 _service = ShippingService()
 _provider_service = ShippingProviderService()
 _provider_repo = ShippingProviderRepository()
@@ -49,11 +53,11 @@ async def compute_rate(payload: ShippingRateRequest):
             "shipping_cost": selected["shipping_cost"],
             "method": selected,
             "method_id": selected.get("courier_id"),
-            "applied_type": "shiprocket_live",
-            "provider": "shiprocket",
+            "applied_type": f"{data.get('provider', _configured_provider())}_live",
+            "provider": data.get("provider", _configured_provider()),
             "quotes": data.get("quotes", []),
         },
-        message="Live Shiprocket shipping rate fetched.",
+        message=f"Live {data.get('provider', _configured_provider())} shipping rate fetched.",
     )
 
 @router.post("/manage", status_code=201, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
@@ -83,7 +87,7 @@ async def provider_rate(delivery_postcode: str, weight_kg: float = 0.5, cod: boo
         cod=cod,
         declared_value=declared_value,
     )
-    return success_response(data=data, message="Live Shiprocket shipping rates fetched.")
+    return success_response(data=data, message=f"Live {data.get('provider', _configured_provider())} shipping rates fetched.")
 
 @router.get("/provider/shipments", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
 async def list_provider_shipments(status_filter: str | None = None, limit: int = 100):
@@ -97,8 +101,9 @@ async def create_provider_shipment(
     length_cm: float | None = None,
     breadth_cm: float | None = None,
     height_cm: float | None = None,
-    provider: str = "shiprocket",
+    provider: str | None = None,
 ):
+    provider = (provider or _configured_provider()).strip().lower()
     # All values are optional because the backend now derives shipment data
     # from the saved order/product records and Shiprocket defaults/config.
     data = await _provider_service.create_for_order(
@@ -142,7 +147,8 @@ async def cancel_provider_shipment(shipment_id: str):
     return success_response(data=await _provider_service.cancel(shipment_id), message="Provider shipment cancelled.")
 
 @router.get("/provider/track/{tracking_number}", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
-async def provider_tracking(tracking_number: str, provider: str = "shiprocket"):
+async def provider_tracking(tracking_number: str, provider: str | None = None):
+    provider = (provider or _configured_provider()).strip().lower()
     return success_response(data=await _provider_service.track(provider, tracking_number), message="Shipping provider tracking fetched.")
 
 async def _validate_shipping_webhook_secret(x_api_key: str | None, x_luviio_shipping_secret: str | None) -> None:
