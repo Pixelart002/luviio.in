@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import time
 from ipaddress import ip_address, ip_network
 from typing import Any, Awaitable, Callable
 
@@ -24,7 +25,27 @@ ASGIApp = Callable[
     [dict[str, Any], Callable[..., Awaitable[Any]], Callable[..., Awaitable[Any]]],
     Awaitable[None],
 ]
-_RATE_LIMIT_RPC_TIMEOUT_SECONDS = 0.75
+_RATE_LIMIT_RPC_TIMEOUT_SECONDS = 0.35
+_LOCAL_FALLBACK_MAX_KEYS = 4096
+_LOCAL_FALLBACK_STATE: dict[str, tuple[float, float]] = {}
+_LOCAL_FALLBACK_LOCK = asyncio.Lock()
+
+
+async def _local_fallback_allow(rate_key: str, capacity: int) -> bool:
+    """Degraded-mode per-worker token bucket used only when Postgres RPC is unavailable."""
+    now = time.monotonic()
+    refill = max(capacity, 1) / 60.0
+    async with _LOCAL_FALLBACK_LOCK:
+        if len(_LOCAL_FALLBACK_STATE) >= _LOCAL_FALLBACK_MAX_KEYS and rate_key not in _LOCAL_FALLBACK_STATE:
+            oldest_key = min(_LOCAL_FALLBACK_STATE, key=lambda key: _LOCAL_FALLBACK_STATE[key][0])
+            _LOCAL_FALLBACK_STATE.pop(oldest_key, None)
+        last, tokens = _LOCAL_FALLBACK_STATE.get(rate_key, (now, float(max(capacity, 1))))
+        tokens = min(float(max(capacity, 1)), tokens + max(0.0, now - last) * refill)
+        if tokens < 1.0:
+            _LOCAL_FALLBACK_STATE[rate_key] = (now, tokens)
+            return False
+        _LOCAL_FALLBACK_STATE[rate_key] = (now, tokens - 1.0)
+        return True
 
 
 def _peer_is_trusted(request: Request) -> bool:
@@ -123,37 +144,27 @@ class SharedRateLimitMiddleware:
                 )
                 await response(scope, receive, send)
                 return
-        except asyncio.TimeoutError:
-            logger.error(
-                "Shared token-bucket RPC timed out; rejecting request | timeout_s=%s",
-                _RATE_LIMIT_RPC_TIMEOUT_SECONDS,
-            )
-            response = JSONResponse(
-                status_code=503,
-                content={
-                    "success": False,
-                    "error": "rate_limit_unavailable",
-                    "message": "Request protection is temporarily unavailable. Please retry shortly.",
-                },
-                headers={"Retry-After": "1"},
-            )
-            await response(scope, receive, send)
-            return
-        except Exception as exc:
-            logger.error(
-                "Shared token-bucket state unavailable; rejecting request | error_type=%s",
+        except (asyncio.TimeoutError, Exception) as exc:
+            # Keep a bounded per-worker limiter active during a transient
+            # Postgres/RPC outage. This is degraded protection, not fail-open.
+            allowed = await _local_fallback_allow(rate_key, self.capacity)
+            logger.warning(
+                "Shared token-bucket unavailable; using local degraded limiter | error_type=%s timeout_s=%s allowed=%s",
                 type(exc).__name__,
+                _RATE_LIMIT_RPC_TIMEOUT_SECONDS,
+                allowed,
             )
-            response = JSONResponse(
-                status_code=503,
-                content={
-                    "success": False,
-                    "error": "rate_limit_unavailable",
-                    "message": "Request protection is temporarily unavailable. Please retry shortly.",
-                },
-                headers={"Retry-After": "1"},
-            )
-            await response(scope, receive, send)
-            return
+            if not allowed:
+                response = JSONResponse(
+                    status_code=429,
+                    content={
+                        "success": False,
+                        "error": "rate_limit_exceeded",
+                        "message": "Too many requests. Please retry later.",
+                    },
+                    headers={"Retry-After": "1"},
+                )
+                await response(scope, receive, send)
+                return
 
         await self.app(scope, receive, send)
