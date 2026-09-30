@@ -5,9 +5,11 @@ from app.integrations.shipping.base import ShippingProvider
 from functools import lru_cache
 
 from app.integrations.shipping.shiprocket import ShiprocketProvider
+from app.integrations.shipping.rapidshyp import RapidShypProvider
 
 SHIPPING_PROVIDER_REGISTRY: dict[str, type[ShippingProvider]] = {
     "shiprocket": ShiprocketProvider,
+    "rapidshyp": RapidShypProvider,
 }
 
 
