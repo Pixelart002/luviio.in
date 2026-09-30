@@ -299,7 +299,7 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
     story += [meta, Spacer(1,10)]
 
     widths = [18, 138, 34, 48, 20, 48, 60, 104, 65]
-    rows = [[Paragraph("Sl.",ST["head"]),Paragraph("Description",ST["head_l"]),Paragraph("HSN",ST["head"]),Paragraph("Unit Price",ST["head_r"]),Paragraph("Qty",ST["head"]),Paragraph("Discount",ST["head_r"]),Paragraph("Taxable Value",ST["head_r"]),Paragraph("GST (CGST + SGST)",ST["head"]),Paragraph("Total",ST["head_r"])]]
+    rows = [[Paragraph("Sl.",ST["head"]),Paragraph("Description",ST["head_l"]),Paragraph("HSN",ST["head"]),Paragraph("Unit Price",ST["head_r"]),Paragraph("Qty",ST["head"]),Paragraph("Discount",ST["head_r"]),Paragraph("Taxable Value",ST["head_r"]),Paragraph("GST (CGST + SGST)" if gst_registered else "GST",ST["head"]),Paragraph("Total",ST["head_r"])]]
     items = order.get("order_items") or []
     run_tax = 0.0
     run_net = 0.0
