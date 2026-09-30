@@ -24,7 +24,7 @@ router = APIRouter(prefix="/shipping", tags=["Shipping"])
 
 
 def _configured_provider() -> str:
-    return os.getenv("SHIPPING_PROVIDER", "shiprocket").strip().lower() or "shiprocket"
+    return os.getenv("SHIPPING_PROVIDER", "manual").strip().lower() or "manual"
 _service = ShippingService()
 _provider_service = ShippingProviderService()
 _provider_repo = ShippingProviderRepository()
@@ -57,7 +57,7 @@ async def compute_rate(payload: ShippingRateRequest):
             "provider": data.get("provider", _configured_provider()),
             "quotes": data.get("quotes", []),
         },
-        message=f"Live {data.get('provider', _configured_provider())} shipping rate fetched.",
+        message="Manual shipping selected; no external rate was requested.",
     )
 
 @router.post("/manage", status_code=201, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
@@ -88,7 +88,7 @@ async def provider_rate(delivery_postcode: str, weight_kg: float = 0.5, cod: boo
         cod=cod,
         declared_value=declared_value,
     )
-    return success_response(data=data, message=f"Live {data.get('provider', _configured_provider())} shipping rates fetched.")
+    return success_response(data=data, message="Manual shipping selected; no external rate was requested.")
 
 @router.get("/provider/shipments", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
 async def list_provider_shipments(status_filter: str | None = None, limit: int = 100):
@@ -160,16 +160,13 @@ async def _validate_shipping_webhook_secret(x_api_key: str | None, x_luviio_ship
 
 
 @router.post("/provider/webhook", status_code=200)
-async def shiprocket_webhook(
+async def external_shipping_webhook(
     payload: dict[str, Any],
     x_api_key: str | None = Header(default=None, alias="x-api-key"),
     x_luviio_shipping_secret: str | None = Header(default=None),
 ):
-    # Shiprocket requires the webhook URL to avoid provider-name keywords and
-    # sends its configured security token in x-api-key. Keep the public URL
-    # provider-neutral while retaining the legacy header for migration.
     await _validate_shipping_webhook_secret(x_api_key, x_luviio_shipping_secret)
-    data = await _provider_service.handle_webhook("shiprocket", payload)
+    data = await _provider_service.handle_webhook("manual", payload)
     return success_response(data=data, message="Shipping webhook processed.")
 
 
@@ -193,5 +190,5 @@ async def my_shipment(order_number: str, user_id: str = Depends(get_user_id_stri
     order = order_res.data if order_res else None
     if not order:
         raise HTTPException(status_code=404, detail="Order not found.")
-    row = await _provider_repo.get_by_order(str(order["id"]), "shiprocket")
+    row = await _provider_repo.get_by_order(str(order["id"]), "manual")
     return success_response(data=row or {"status": "not_booked"}, message="Shipment status fetched.")
