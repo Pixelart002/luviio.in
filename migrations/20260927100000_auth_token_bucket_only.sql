@@ -2,6 +2,9 @@
 -- Removes the legacy fixed-window/cooldown state so auth has one
 -- enforcement algorithm: the shared Postgres token bucket.
 
+ALTER TABLE public.auth_throttle_state
+    ADD COLUMN IF NOT EXISTS last_refill_at timestamptz NOT NULL DEFAULT now();
+
 DROP FUNCTION IF EXISTS public.auth_throttle_record_failure(text,text,integer,integer,integer);
 DROP FUNCTION IF EXISTS public.auth_throttle_reset(text,text);
 
@@ -42,8 +45,6 @@ BEGIN
         CEIL(p_window_seconds::numeric / p_max_attempts::numeric)
     );
 
-    -- Lock every applicable bucket before making the decision. If either
-    -- bucket is empty, nothing is consumed from either bucket.
     FOREACH v_kind IN ARRAY ARRAY['ip','email'] LOOP
         v_key := CASE WHEN v_kind = 'ip' THEN p_ip_key ELSE p_email_key END;
         IF v_key IS NULL OR v_key = '' THEN
@@ -85,7 +86,6 @@ BEGIN
         RETURN false;
     END IF;
 
-    -- Consume exactly one token from every applicable bucket atomically.
     FOREACH v_kind IN ARRAY ARRAY['ip','email'] LOOP
         v_key := CASE WHEN v_kind = 'ip' THEN p_ip_key ELSE p_email_key END;
         IF v_key IS NULL OR v_key = '' THEN
