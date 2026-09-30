@@ -144,7 +144,7 @@ class SharedRateLimitMiddleware:
                 )
                 await response(scope, receive, send)
                 return
-        except (asyncio.TimeoutError, Exception) as exc:
+        except Exception as exc:
             # Keep a bounded per-worker limiter active during a transient
             # Postgres/RPC outage. This is degraded protection, not fail-open.
             allowed = await _local_fallback_allow(rate_key, self.capacity)
