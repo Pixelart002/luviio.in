@@ -33,7 +33,7 @@ The courier shipment has the granular operational status. This prevents provider
 
 ## Provider API lifecycle
 
-Shiprocket's documented external API lifecycle includes order creation, courier/AWB assignment, pickup generation, manifest generation, label generation, invoice generation and AWB tracking. LUVIIO now has provider-neutral boundaries for these operations.
+External courier API lifecycle is not used; manual shipping handles order creation, courier/AWB assignment, pickup generation, manifest generation, label generation, invoice generation and AWB tracking. LUVIIO now has provider-neutral boundaries for these operations.
 
 ## Webhooks
 
@@ -58,8 +58,8 @@ All admin mutation endpoints remain permission protected.
 
 ## Required production configuration
 
-- `SHIPROCKET_EMAIL`
-- `SHIPROCKET_PASSWORD`
+- `(removed)`
+- `(removed)`
 - `LUVIIO_SHIPPING_WEBHOOK_SECRET`
 - `RESEND_API_KEY`
 - `RESEND_FROM`
