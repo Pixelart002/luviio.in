@@ -1072,31 +1072,40 @@ class ShippingProviderService:
         blindly repeat earlier stages.
         """
         row = await self._get_provider_row(shipment_id)
+        provider = get_shipping_provider(row["provider_key"])
         if not row.get("tracking_number"):
             row = await self.assign_awb(shipment_id)
         if not row.get("pickup_id"):
             row = await self.schedule_pickup(shipment_id)
-        if not row.get("manifest_url"):
+        if getattr(provider, "supports_manifest", True) and not row.get("manifest_url"):
             row = await self.generate_manifest(shipment_id)
-        if not row.get("label_url"):
+        if getattr(provider, "supports_label", True) and not row.get("label_url"):
             row = await self.generate_label(shipment_id)
-        if not row.get("provider_invoice_url"):
+        if getattr(provider, "supports_invoice", True) and not row.get("provider_invoice_url"):
             row = await self.print_invoice(shipment_id)
         if not row.get("tracking_number"):
             raise HTTPException(status_code=409, detail="Shipment workflow cannot complete without an AWB.")
         if not row.get("pickup_id") and not row.get("pickup_scheduled_at"):
             raise HTTPException(status_code=409, detail="Shipment workflow cannot complete until pickup is scheduled.")
-        if not row.get("manifest_url") or not row.get("label_url") or not row.get("provider_invoice_url"):
-            raise HTTPException(status_code=409, detail="Shipment workflow is incomplete; required documents were not generated.")
+        if getattr(provider, "supports_manifest", True) and not row.get("manifest_url"):
+            raise HTTPException(status_code=409, detail="Shipment workflow is incomplete; manifest was not generated.")
+        if getattr(provider, "supports_label", True) and not row.get("label_url"):
+            raise HTTPException(status_code=409, detail="Shipment workflow is incomplete; shipping label was not generated.")
+        if getattr(provider, "supports_invoice", True) and not row.get("provider_invoice_url"):
+            raise HTTPException(status_code=409, detail="Shipment workflow is incomplete; courier invoice was not generated.")
         metadata = dict(row.get("metadata") or {})
         metadata["workflow"] = {
             **(metadata.get("workflow") or {}),
-            "step": "documents_ready",
+            "step": "documents_ready" if (
+                (not getattr(provider, "supports_manifest", True) or bool(row.get("manifest_url")))
+                and (not getattr(provider, "supports_label", True) or bool(row.get("label_url")))
+                and (not getattr(provider, "supports_invoice", True) or bool(row.get("provider_invoice_url")))
+            ) else "pickup_scheduled",
             "completed": True,
             "completed_at": _now(),
         }
         return await self.repo.update(shipment_id, {
-            "workflow_status": "documents_ready",
+            "workflow_status": metadata["workflow"]["step"],
             "metadata": metadata,
             "updated_at": _now(),
         })
