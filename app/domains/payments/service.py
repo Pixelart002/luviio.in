@@ -169,18 +169,8 @@ class PaymentService:
         except EmailNotValidError:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
 
-        # Shipping is handled manually. No external courier API is called at checkout.
-        provider_shipping = Decimal("0")
-        product_tax = breakdown.tax - breakdown.shipping_tax
-        provider_shipping_tax = _shipping_tax(items_to_deduct, provider_shipping, subtotal)
-        breakdown = PriceBreakdown(
-            subtotal=breakdown.subtotal,
-            shipping=provider_shipping,
-            tax=product_tax + provider_shipping_tax,
-            total=breakdown.subtotal + provider_shipping + product_tax + provider_shipping_tax,
-            currency=breakdown.currency,
-            shipping_tax=provider_shipping_tax,
-        )
+        # Manual shipping is already included by the canonical pricing strategy.
+        # No external courier API is called at checkout.
         amount_paise = self._paise(breakdown.total)
         PaymentPolicy.assert_minimum_amount(amount_paise)
         coupon_id, coupon_code_resolved = None, coupon_code
