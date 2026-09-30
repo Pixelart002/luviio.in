@@ -12,6 +12,7 @@ from fastapi import HTTPException, status
 
 from app.core.supabase import get_async_admin_supabase
 from app.domains.shipping.provider_repository import ShippingProviderRepository
+from app.domains.shipping.service import ShippingService
 
 MANUAL_PROVIDER = "manual"
 
@@ -54,15 +55,23 @@ class ShippingProviderService:
         delivery_postcode = str(delivery_postcode or "").strip()
         if not delivery_postcode.isdigit() or len(delivery_postcode) != 6:
             raise HTTPException(status_code=422, detail="A valid 6-digit delivery PIN code is required.")
+        rate = await ShippingService().compute_rate(
+            subtotal=float(declared_value or 0),
+            item_count=1,
+            weight_kg=float(weight_kg or 0),
+        )
+        shipping_cost = float(rate.get("shipping_cost") or 0.0)
         selected = {
             "courier_id": None,
             "courier_name": "Manual shipping",
             "service_type": "manual",
             "delivery_mode": "manual",
             "vehicle_type": None,
-            "shipping_cost": 0.0,
-            "provider_rate": 0.0,
+            "shipping_cost": shipping_cost,
+            "provider_rate": shipping_cost,
             "estimated_delivery_days": None,
+            "free_shipping_threshold": rate.get("free_shipping_threshold"),
+            "applied_type": rate.get("applied_type", "settings_default"),
         }
         return {
             "provider": MANUAL_PROVIDER,
