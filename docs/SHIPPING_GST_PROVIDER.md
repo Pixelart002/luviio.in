@@ -1,60 +1,38 @@
-# Shipping + GST + Provider
+# Shipping + GST + Manual Fulfillment
 
 ## GST treatment
 
-Luviio now treats charged shipping/freight as part of the taxable checkout value when it is incidental/ancillary to the goods supply.
+Luviio treats charged shipping/freight as part of the taxable checkout value when it is incidental/ancillary to the goods supply.
 
-- Shipping below the free-shipping threshold is charged by the shipping policy.
+- Shipping below the free-shipping threshold is charged by the store shipping policy.
 - Charged shipping is allocated across cart lines by taxable line value.
 - Each allocated freight portion uses that line's GST rate.
-- The resulting shipping GST is included in order tax_amount and separately snapshotted as shipping_tax_amount.
-- Invoice snapshots contain shipping allocation lines using SAC 9965 and the applicable GST rate for each allocation.
+- Shipping GST is included in the order tax snapshot.
 - Free shipping has zero shipping taxable value and zero shipping GST.
-- Intra-state/inter-state split remains controlled by the order place-of-supply GST context.
 
-Primary Indian source: CBIC CGST Act, Section 15(2)(c), plus CBIC FAQ guidance on cartage/loading/transport as ancillary to the principal supply.
+## Manual shipping SSOT
 
-## Store settings
-
-Current production SSOT:
+Production checkout uses Luviio-owned manual shipping settings:
 
 - shipping_enabled = true
-- flat_shipping_rate = 45.90
-- free_shipping_threshold = 1499
-- shipping provider = manual
+- flat_shipping_rate = 45.90 INR
+- free_shipping_threshold = 1499 INR
+- shipping provider/mode = manual
 
-- shipping_enabled = true
-- flat_shipping_rate = 45.90
-- free_shipping_threshold = 1499
+No external courier API is called for checkout rates, serviceability, shipment creation, pickup, labels, manifests, or tracking synchronization.
 
-## Provider
+## Fulfillment
 
-The backend uses a manual-shipping fulfillment boundary.
+Orders are persisted with shipping_provider = manual. Admin staff can create and update the internal shipment record and manually enter courier/tracking details when the parcel is actually handed to a courier or local delivery service.
 
-Capabilities:
+## Customer tracking
 
-- courier/serviceability lookup
-- shipment creation
-- AWB/tracking lookup
-- provider shipment persistence
+GET /api/v1/shipping/my/{order_number} returns the authenticated customer's manual shipment record.
 
-Required server-side environment variables:
+## Admin APIs
 
-- (removed)
-- (removed)
+The existing /api/v1/shipping/provider/* routes are retained as stable internal fulfillment boundaries. Provider operations that require an external courier API are intentionally disabled in manual mode; staff update the shipment record manually.
 
-No provider credential is accepted from the browser.
+## Environment
 
-manual shipping account setup requires an API user and pickup location. Configure the credentials in the backend deployment before using provider shipment creation.
-
-## Admin API
-
-- GET /api/v1/shipping/provider/serviceability
-- POST /api/v1/shipping/provider/orders/{order_id}
-- GET /api/v1/shipping/provider/track/{tracking_number}
-
-Provider shipment records are stored in public.shipping_shipments and are blocked from direct client writes by RLS.
-
-## Regulatory limitation
-
-Ansvar Gateway was checked for India GST coverage before implementation. Its current corpus has no IN jurisdiction, so it cannot provide India-GST provisions directly. Indian GST treatment was therefore verified against CBIC primary sources rather than treating an unrelated Ansvar jurisdiction as authoritative.
+The production environment does not require Shiprocket credentials or courier-provider credentials for shipping.
