@@ -56,6 +56,20 @@ class ShiprocketProvider(ShippingProvider):
         self._token: str | None = None
         self._token_expires_at = 0.0
         self._lock = asyncio.Lock()
+        self._auth_timeout = httpx.Timeout(
+            float(os.getenv("SHIPROCKET_AUTH_TIMEOUT_SECONDS", "4.0")),
+            connect=float(os.getenv("SHIPROCKET_CONNECT_TIMEOUT_SECONDS", "2.0")),
+            read=float(os.getenv("SHIPROCKET_AUTH_READ_TIMEOUT_SECONDS", "4.0")),
+            write=float(os.getenv("SHIPROCKET_WRITE_TIMEOUT_SECONDS", "4.0")),
+            pool=float(os.getenv("SHIPROCKET_POOL_TIMEOUT_SECONDS", "1.0")),
+        )
+        self._request_timeout = httpx.Timeout(
+            float(os.getenv("SHIPROCKET_REQUEST_TIMEOUT_SECONDS", "4.0")),
+            connect=float(os.getenv("SHIPROCKET_CONNECT_TIMEOUT_SECONDS", "2.0")),
+            read=float(os.getenv("SHIPROCKET_READ_TIMEOUT_SECONDS", "4.0")),
+            write=float(os.getenv("SHIPROCKET_WRITE_TIMEOUT_SECONDS", "4.0")),
+            pool=float(os.getenv("SHIPROCKET_POOL_TIMEOUT_SECONDS", "1.0")),
+        )
 
     def _configured(self) -> None:
         if not self.email or not self.password:
@@ -68,7 +82,7 @@ class ShiprocketProvider(ShippingProvider):
         async with self._lock:
             if self._token and time.time() < self._token_expires_at:
                 return self._token
-            async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
+            async with httpx.AsyncClient(timeout=self._auth_timeout) as client:
                 response = await client.post(
                     f"{self.base_url}/auth/login",
                     json={"email": self.email, "password": self.password},
@@ -97,7 +111,7 @@ class ShiprocketProvider(ShippingProvider):
         headers = dict(kwargs.pop("headers", {}) or {})
         headers["Authorization"] = f"Bearer {token}"
         headers["Content-Type"] = "application/json"
-        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as client:
+        async with httpx.AsyncClient(timeout=self._request_timeout) as client:
             response = await client.request(method, f"{request_base_url}{path}", headers=headers, **kwargs)
             if response.status_code == 401:
                 self._token = None
