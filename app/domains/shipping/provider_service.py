@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -22,6 +23,12 @@ logger = logging.getLogger(__name__)
 _SHIPPED_PROVIDER_STATUSES = {"picked_up", "in_transit", "out_for_delivery", "shipped", "dispatched"}
 _DELIVERED_PROVIDER_STATUSES = {"delivered"}
 _TERMINAL_PROVIDER_STATUSES = {"delivered", "cancelled", "canceled", "rto_delivered", "rto"}
+
+_SHIPPING_QUOTE_CACHE_TTL_SECONDS = max(
+    30,
+    int(os.getenv("SHIPROCKET_QUOTE_CACHE_TTL_SECONDS", "120")),
+)
+_SHIPPING_QUOTE_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -60,7 +67,7 @@ class ShippingProviderService:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Shipping provider unavailable: {provider_key}.") from exc
 
     async def quote_for_checkout(self, delivery_postcode: str, weight_kg: float, cod: bool, declared_value: float | None = None, selected_courier_id: int | None = None) -> dict[str, Any]:
-        """Return live Shiprocket courier rates for checkout; never use the store flat-rate setting."""
+        """Return live Shiprocket courier rates with a short-lived outage fallback."""
 
         # Business Profile is the seller SSOT. Shiprocket pickup postcode must
         # come from the configured seller/business profile, not a duplicate env value.
@@ -93,6 +100,16 @@ class ShippingProviderService:
         if weight <= 0:
             raise HTTPException(status_code=422, detail="Shipment weight must be greater than zero.")
 
+        cache_key = hashlib.sha256(
+            "|".join((
+                pickup_postcode,
+                delivery_postcode,
+                f"{weight:.3f}",
+                "1" if cod else "0",
+                f"{float(declared_value or 0):.2f}",
+            )).encode("utf-8")
+        ).hexdigest()
+
         try:
             response = await get_shipping_provider("shiprocket").serviceability(
                 pickup_postcode=pickup_postcode,
@@ -102,8 +119,32 @@ class ShippingProviderService:
                 declared_value=declared_value,
             )
         except Exception as exc:
-            logger.error("[SHIPROCKET] Serviceability failed", exc_info=True)
-            raise HTTPException(status_code=502, detail="Shiprocket could not calculate shipping for this address.") from exc
+            cached = _SHIPPING_QUOTE_CACHE.get(cache_key)
+            age = time.monotonic() - cached[0] if cached else None
+            if cached and age is not None and age <= _SHIPPING_QUOTE_CACHE_TTL_SECONDS:
+                fallback = dict(cached[1])
+                fallback["source"] = "stale_cache"
+                fallback["stale"] = True
+                fallback["cache_age_seconds"] = round(age, 1)
+                fallback["retryable"] = True
+                logger.warning(
+                    "[SHIPROCKET] Provider unavailable; serving recent cached checkout quote | age_s=%.1f",
+                    age,
+                )
+                return fallback
+
+            logger.warning(
+                "[SHIPROCKET] Serviceability unavailable with no usable cached quote | error_type=%s",
+                type(exc).__name__,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "shipping_provider_unavailable",
+                    "message": "Live delivery rates are temporarily unavailable. Please retry shortly.",
+                    "retryable": True,
+                },
+            ) from exc
 
         data = response.get("data") if isinstance(response, dict) else None
         couriers = data.get("available_courier_companies", []) if isinstance(data, dict) else data
@@ -261,6 +302,26 @@ class ShippingProviderService:
         else:
             selection = "fastest_available"
 
+        quote_payload = {
+            "provider": "shiprocket",
+            "pickup_postcode": pickup_postcode,
+            "delivery_postcode": delivery_postcode,
+            "weight_kg": weight,
+            "cod": cod,
+            "declared_value": declared_value,
+            "selected": selected,
+            "selection": selection,
+            "quotes": quotes,
+            "couriers": quotes,
+            "source": "live",
+            "stale": False,
+            "retryable": False,
+        }
+        _SHIPPING_QUOTE_CACHE[cache_key] = (time.monotonic(), dict(quote_payload))
+        if len(_SHIPPING_QUOTE_CACHE) > 2048:
+            oldest_key = min(_SHIPPING_QUOTE_CACHE, key=lambda key: _SHIPPING_QUOTE_CACHE[key][0])
+            _SHIPPING_QUOTE_CACHE.pop(oldest_key, None)
+
         # Safe rate diagnostics: no credentials/tokens or customer address details.
         provider = get_shipping_provider("shiprocket")
         logger.info(
@@ -277,18 +338,7 @@ class ShippingProviderService:
             float(selected.get("other_charges") or 0),
             float(selected.get("discount") or 0),
         )
-        return {
-            "provider": "shiprocket",
-            "pickup_postcode": pickup_postcode,
-            "delivery_postcode": delivery_postcode,
-            "weight_kg": weight,
-            "cod": cod,
-            "declared_value": declared_value,
-            "selected": selected,
-            "selection": selection,
-            "quotes": quotes,
-            "couriers": quotes,
-        }
+        return quote_payload
 
     async def _mark_paid_order_processing(self, order_id: str, order: dict[str, Any]) -> None:
         """Atomically move a paid order into fulfillment processing after shipment creation."""
