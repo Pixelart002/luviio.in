@@ -67,9 +67,9 @@ class CartService:
                 raise HTTPException(status_code=500, detail="Cart contains a product without GST configuration.")
             enriched.append({"id": str(row["id"]), "product_id": str(row["product_id"]), "name": str(prod.get("name", "")), "slug": str(prod.get("slug", "")), "image_url": prod.get("image_url"), "hsn_code": hsn_code, "gst_percentage": int(gst_raw), "quantity": qty, "unit_price": float(snapshot), "current_unit_price": float(current_price), "compare_price": compare_price, "weight": prod.get("weight"), "weight_unit": prod.get("weight_unit"), "price_snapshot": float(snapshot), "line_total": float(line_total), "stock": int(prod.get("stock", 0)), "in_stock": in_stock, "is_active": prod.get("is_active", True), "price_changed": price_changed, "added_at": str(row["added_at"])})
         breakdown = pricing_engine.calculate(items=enriched)
-        # Never expose the legacy flat-rate shipping in the cart. Shiprocket
-        # needs the delivery PIN and payment method, so live shipping is resolved
-        # only after the customer enters/selects an address at checkout.
+        # Cart totals intentionally omit shipping until checkout because the
+        # customer address is required. Checkout applies the same manual-shipping
+        # settings as the cart pricing configuration.
         product_tax = breakdown.tax - breakdown.shipping_tax
         pricing_dict = {
             **breakdown.as_dict(),
