@@ -5,7 +5,6 @@ Path: app/domains/payments/service.py
 """
 import asyncio
 import logging
-import os
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Dict, List, Optional
 from uuid import UUID
