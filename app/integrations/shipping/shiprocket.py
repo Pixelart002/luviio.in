@@ -18,7 +18,6 @@ class ShiprocketProvider(ShippingProvider):
     # console. Keep the URLs explicit so sandbox traffic can never hit production.
     production_base_url = "https://apiv2.shiprocket.in/v1/external"
     sandbox_base_url = "https://api-sandbox.shiprocket.in/v1/external"
-    sandbox_serviceability_url = "https://serviceability-sandbox.shiprocket.in"
 
     def __init__(self) -> None:
         self.environment = os.getenv("SHIPROCKET_ENV", "sandbox").strip().lower()
@@ -37,22 +36,25 @@ class ShiprocketProvider(ShippingProvider):
             self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
             self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
 
-        # Explicit override is useful for provider-issued environments. For
-        # sandbox, default to Shiprocket's sandbox hosts shown by the sandbox API
-        # console: api-sandbox for auth/order APIs and the dedicated
-        # serviceability-sandbox host for courier serviceability.
+        # Keep serviceability on the same configured API environment unless
+        # an explicit provider-issued override is supplied. The public Shiprocket
+        # API documentation documents courier serviceability under the external
+        # API host; do not route sandbox traffic to an undocumented host.
         if self.environment == "sandbox":
-            self.base_url = os.getenv("SHIPROCKET_BASE_URL", self.sandbox_base_url).strip().rstrip("/")
-            self.serviceability_base_url = os.getenv(
-                "SHIPROCKET_SERVICEABILITY_BASE_URL",
-                self.sandbox_serviceability_url,
+            self.base_url = os.getenv(
+                "SHIPROCKET_BASE_URL",
+                self.sandbox_base_url,
             ).strip().rstrip("/")
         else:
-            self.base_url = os.getenv("SHIPROCKET_BASE_URL", self.production_base_url).strip().rstrip("/")
-            self.serviceability_base_url = os.getenv(
-                "SHIPROCKET_SERVICEABILITY_BASE_URL",
-                self.base_url,
+            self.base_url = os.getenv(
+                "SHIPROCKET_BASE_URL",
+                self.production_base_url,
             ).strip().rstrip("/")
+
+        self.serviceability_base_url = os.getenv(
+            "SHIPROCKET_SERVICEABILITY_BASE_URL",
+            self.base_url,
+        ).strip().rstrip("/")
         self._token: str | None = None
         self._token_expires_at = 0.0
         self._token_refresh_margin_seconds = max(
@@ -176,14 +178,9 @@ class ShiprocketProvider(ShippingProvider):
         }
         if declared_value is not None:
             params["declared_value"] = declared_value
-        # Shiprocket documents the production endpoint with a trailing slash.
-        # The sandbox serviceability host currently canonicalizes the opposite
-        # way (trailing slash -> no slash), so keep the two endpoint forms explicit.
-        serviceability_path = (
-            "/courier/serviceability"
-            if self.environment == "sandbox"
-            else "/courier/serviceability/"
-        )
+        # Shiprocket's published external API contract uses the
+        # courier serviceability endpoint with a trailing slash.
+        serviceability_path = "/courier/serviceability/"
         return await self._request(
             "GET",
             serviceability_path,
