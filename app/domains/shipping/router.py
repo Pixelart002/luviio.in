@@ -36,9 +36,8 @@ async def list_methods(active_only: bool = True):
 
 @router.post("/rate", status_code=200)
 async def compute_rate(payload: ShippingRateRequest):
-    # Legacy flat-rate calculation is no longer a checkout source of truth.
-    # Keep this endpoint compatible for existing callers, but route it to the
-    # same live configured-provider quote used by payment/COD checkout.
+    # Keep this endpoint compatible for existing callers and return the
+    # same canonical manual-shipping quote used by payment/COD checkout.
     if not payload.pincode:
         raise HTTPException(status_code=422, detail="Delivery PIN code is required for live shipping.")
     data = await _provider_service.quote_for_checkout(
@@ -57,7 +56,7 @@ async def compute_rate(payload: ShippingRateRequest):
             "provider": data.get("provider", _configured_provider()),
             "quotes": data.get("quotes", []),
         },
-        message="Manual shipping selected; no external rate was requested.",
+        message="Manual shipping selected using Luviio shipping settings.",
     )
 
 @router.post("/manage", status_code=201, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
