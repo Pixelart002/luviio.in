@@ -143,7 +143,9 @@ class ShippingProviderService:
                     "code": "shipping_provider_unavailable",
                     "message": "Live delivery rates are temporarily unavailable. Please retry shortly.",
                     "retryable": True,
+                    "shipping_options": [],
                 },
+                headers={"Retry-After": "3"},
             ) from exc
 
         data = response.get("data") if isinstance(response, dict) else None
