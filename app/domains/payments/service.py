@@ -20,7 +20,6 @@ from app.core.supabase import get_async_admin_supabase
 from app.domains.inventory.service import InventoryService
 from app.domains.payments.repository import AsyncPaymentRepository
 from app.domains.pricing.service import PriceBreakdown, _shipping_tax, get_pricing_from_config
-from app.domains.shipping.provider_service import ShippingProviderService
 from app.enums.order_status import OrderStatus
 from app.events.bus import (
     OrderCreatedEvent,
@@ -171,33 +170,8 @@ class PaymentService:
         except EmailNotValidError:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=PaymentSecurityMessages.ADDRESS_EMAIL_MISSING)
 
-        total_weight = Decimal("0")
-        for item in cart_items:
-            product = item.get("products") or {}
-            raw_weight = product.get("weight")
-            if raw_weight is None:
-                continue
-            try:
-                weight = Decimal(str(raw_weight))
-                if str(product.get("weight_unit") or "g").lower() == "g":
-                    weight /= Decimal("1000")
-                if weight > 0:
-                    total_weight += weight * int(item.get("quantity") or 0)
-            except (ArithmeticError, ValueError, TypeError):
-                raise HTTPException(status_code=409, detail="Product shipping weight is invalid.")
-        if total_weight <= 0:
-            try:
-                total_weight = Decimal(str(os.getenv("SHIPROCKET_RATE_DEFAULT_WEIGHT_KG", "0.5")))
-            except (ArithmeticError, ValueError, TypeError):
-                raise HTTPException(status_code=503, detail="Shiprocket default rate weight is misconfigured.")
-        quote = await ShippingProviderService().quote_for_checkout(
-            delivery_postcode=str(addr.get("postal_code") or ""),
-            weight_kg=float(total_weight),
-            cod=False,
-            declared_value=float(subtotal),
-            selected_courier_id=shipping_courier_id,
-        )
-        provider_shipping = Decimal(str(quote["selected"]["shipping_cost"]))
+        # Shipping is handled manually. No external courier API is called at checkout.
+        provider_shipping = Decimal("0")
         product_tax = breakdown.tax - breakdown.shipping_tax
         provider_shipping_tax = _shipping_tax(items_to_deduct, provider_shipping, subtotal)
         breakdown = PriceBreakdown(
@@ -283,7 +257,7 @@ class PaymentService:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=PaymentSecurityMessages.PAYMENT_FAILED) from exc
 
         order_number = self._generate_clean_order_number()
-        order_data = {"customer_id": user_id, "status": OrderStatus.PENDING.value, "order_number": order_number, "idempotency_key": clean_idem_key, "stripe_payment_intent": intent["id"], "coupon_id": coupon_id, "coupon_code": coupon_code_resolved, "discount_amount": float(coupon_discount), **breakdown.as_dict(), "total_amount": float(max(breakdown.total - coupon_discount, Decimal("0"))), "shipping_provider": os.getenv("SHIPPING_PROVIDER", "shiprocket").strip().lower(), "shipping_courier_id": quote["selected"].get("courier_id"), "shipping_courier_name": quote["selected"].get("courier_name"), "shipping_service_type": quote["selected"].get("service_type") or quote["selected"].get("service"),
+        order_data = {"customer_id": user_id, "status": OrderStatus.PENDING.value, "order_number": order_number, "idempotency_key": clean_idem_key, "stripe_payment_intent": intent["id"], "coupon_id": coupon_id, "coupon_code": coupon_code_resolved, "discount_amount": float(coupon_discount), **breakdown.as_dict(), "total_amount": float(max(breakdown.total - coupon_discount, Decimal("0"))), "shipping_provider": "manual", "shipping_courier_id": None, "shipping_courier_name": "Manual shipping", "shipping_service_type": "manual",
             "shipping_delivery_mode": quote["selected"].get("delivery_mode"),
             "shipping_vehicle_type": quote["selected"].get("vehicle_type"), "shipping_address_id": address_id, "shipping_name": addr.get("full_name"), "shipping_phone": shipping_phone, "shipping_email": addr.get("email"), "shipping_line1": addr.get("line1"), "shipping_line2": addr.get("line2"), "shipping_landmark": addr.get("landmark"), "shipping_city": addr.get("city"), "shipping_state": addr.get("state"), "shipping_postal_code": addr.get("postal_code"), "shipping_country": addr.get("country", "IN"), "shipping_company_name": addr.get("company_name"), "shipping_gstin": addr.get("gstin"), "billing_same_as_shipping": is_same_as_shipping, "billing_address_id": billing_addr.get("id"), "billing_name": billing_addr.get("full_name"), "billing_phone": billing_phone, "billing_email": billing_addr.get("email"), "billing_line1": billing_addr.get("line1"), "billing_line2": billing_addr.get("line2"), "billing_landmark": billing_addr.get("landmark"), "billing_city": billing_addr.get("city"), "billing_state": billing_addr.get("state"), "billing_postal_code": billing_addr.get("postal_code"), "billing_country": billing_addr.get("country", "IN"), "billing_company_name": billing_addr.get("company_name"), "billing_gstin": billing_addr.get("gstin")}
         try:
