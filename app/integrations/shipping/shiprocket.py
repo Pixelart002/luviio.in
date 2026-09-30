@@ -53,10 +53,22 @@ class ShiprocketProvider(ShippingProvider):
                 self.production_base_url,
             ).strip().rstrip("/")
 
-        self.serviceability_base_url = os.getenv(
+        configured_serviceability_base = os.getenv(
             "SHIPROCKET_SERVICEABILITY_BASE_URL",
-            self.base_url,
+            "",
         ).strip().rstrip("/")
+
+        # Older Koyeb deployments may still have the retired/dedicated
+        # sandbox serviceability host configured. Ignore that stale override
+        # and keep courier serviceability on the supported API base.
+        if (
+            not configured_serviceability_base
+            or configured_serviceability_base
+            == "https://serviceability-sandbox.shiprocket.in"
+        ):
+            self.serviceability_base_url = self.base_url
+        else:
+            self.serviceability_base_url = configured_serviceability_base
         self._token: str | None = None
         self._token_expires_at = 0.0
         self._token_refresh_margin_seconds = max(
