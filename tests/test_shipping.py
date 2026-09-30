@@ -13,9 +13,9 @@ SHIPPING_WEIGHT = "weight"
 def _settings(enabled=True):
     settings = AsyncMock()
     values = {
-        "shipping_enabled": enabled,
-        "free_shipping_threshold": "1499",
-        "flat_shipping_rate": "45.90",
+        "shipping_enabled": {"key": "shipping_enabled", "value": enabled},
+        "free_shipping_threshold": {"key": "free_shipping_threshold", "value": "1499"},
+        "flat_shipping_rate": {"key": "flat_shipping_rate", "value": "45.90"},
     }
     settings.fetch_by_key = AsyncMock(side_effect=lambda key: values[key])
     return settings
