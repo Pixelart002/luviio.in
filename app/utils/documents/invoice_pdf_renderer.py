@@ -328,7 +328,9 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
         run_net += shipping_cost
 
     grand = _f(order.get("total_amount"), run_net + run_tax)
-    rows.append([Paragraph("Total",ST["cell_b"]),"","","","","",Paragraph(_money(run_net),ST["head_r"]),Paragraph(f"<b>{\"Total GST\" if gst_registered else \"GST\"}</b><br/>{_money(run_tax) if gst_registered else \"Not charged\"}",ST["head_r"]),Paragraph(_money(grand),ST["head_r"])])
+    total_tax_label = "Total GST" if gst_registered else "GST"
+    total_tax_value = _money(run_tax) if gst_registered else "Not charged"
+    rows.append([Paragraph("Total",ST["cell_b"]),"","","","","",Paragraph(_money(run_net),ST["head_r"]),Paragraph(f"<b>{total_tax_label}</b><br/>{total_tax_value}",ST["head_r"]),Paragraph(_money(grand),ST["head_r"])])
     items_table = Table(rows,colWidths=widths,repeatRows=1)
     items_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),HEADER),("LINEBELOW",(0,0),(-1,0),.8,BORDER),("ROWBACKGROUNDS",(0,1),(-1,-2),[colors.white,ALT]),("BACKGROUND",(0,-1),(-1,-1),TOTAL),("SPAN",(0,-1),(5,-1)),("BOX",(0,0),(-1,-1),.5,BORDER),("INNERGRID",(0,0),(-1,-1),.25,colors.HexColor("#dddddd")),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2),("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
     story += [items_table,Spacer(1,10)]
