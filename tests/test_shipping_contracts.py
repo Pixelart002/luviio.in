@@ -18,7 +18,7 @@ def test_shipping_webhook_has_provider_neutral_route_and_x_api_key():
     source = read("app/domains/shipping/router.py")
     assert '@router.post("/provider/webhook", status_code=200)' in source
     assert 'alias="x-api-key"' in source
-    assert 'handle_webhook("shiprocket", payload)' in source
+    assert 'handle_webhook("manual", payload)' in source
 
 
 def test_pickup_workflow_accepts_success_without_pickup_id():
