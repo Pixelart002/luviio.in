@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 repo = ShippingProviderRepository()
 service = ShippingProviderService()
 
-# Tracking is meaningful only after Shiprocket has accepted/scheduled the pickup
+# Tracking is meaningful only after manual shipping has accepted/scheduled the pickup
 # workflow. AWB assignment alone does not mean the parcel is physically moving.
 # In sandbox, polling an AWB that is still waiting for pickup can return a
 # provider-side 500 ("Connection refused") and creates noisy retry logs.
@@ -34,7 +34,7 @@ async def synchronize_active_shipments() -> None:
     active = [
         r for r in rows
         if (
-            r.get("provider_key") == "shiprocket"
+            r.get("provider_key") == "manual"
             and r.get("tracking_number")
             and str(r.get("workflow_status") or "").lower() in _TRACKING_READY_WORKFLOWS
             and str(r.get("status") or "").lower() not in {
