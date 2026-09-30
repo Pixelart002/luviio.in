@@ -149,8 +149,6 @@ class RapidShypProvider(ShippingProvider):
         }
         # The provider API allows a pickup location to be created on order
         # creation. Luviio's seller Business Profile remains the source of truth.
-        # The fulfillment service will supply the seller fields in the normalized
-        # payload in a later provider-specific mapping pass.
 
         shipping = {
             "firstName": shipping_first,
@@ -215,7 +213,11 @@ class RapidShypProvider(ShippingProvider):
         return await self._request("POST", "/schedule_pickup", json=body)
 
     async def generate_label(self, *, shipment_id: str) -> dict[str, Any]:
-        response = await self.track(shipment_id)
+        response = await self._request(
+            "POST",
+            "/b2b/orders/get_tracking_info",
+            json={"shipmentID": str(shipment_id)},
+        )
         label_url = _find(response, "master_label_url", "mps_label_url", "label_url")
         if not label_url:
             raise RuntimeError("RapidShyp tracking response did not include a label URL.")
