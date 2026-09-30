@@ -66,10 +66,12 @@ class ShiprocketProvider(ShippingProvider):
                 "SHIPROCKET_PRODUCTION_BASE_URL",
                 os.getenv("SHIPROCKET_BASE_URL", self.documented_base_url),
             ).strip().rstrip("/")
-            self.serviceability_base_url = os.getenv(
-                "SHIPROCKET_PRODUCTION_SERVICEABILITY_BASE_URL",
-                os.getenv("SHIPROCKET_SERVICEABILITY_BASE_URL", self.base_url),
-            ).strip().rstrip("/")
+            # Shiprocket's current documented production serviceability
+            # endpoint is on the same apiv2 host as authentication and the
+            # other external APIs. Do not honor a separate production
+            # serviceability host: a stale/misconfigured override can make
+            # authentication succeed while courier rates time out.
+            self.serviceability_base_url = self.base_url
         self._token: str | None = None
         self._token_expires_at = 0.0
         self._token_refresh_margin_seconds = max(
