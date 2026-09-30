@@ -103,22 +103,37 @@ class ShiprocketProvider(ShippingProvider):
         async with self._lock:
             if self._token and time.time() < self._token_expires_at:
                 return self._token
-            async with httpx.AsyncClient(timeout=self._auth_timeout) as client:
-                response = await client.post(
-                    f"{self.base_url}/auth/login",
-                    json={"email": self.email, "password": self.password},
-                )
-                if response.is_error:
-                    # Safe diagnostic only: never log credentials or tokens.
-                    import logging
-                    logging.getLogger(__name__).error(
-                        "[SHIPROCKET] Authentication failed | env=%s status=%s body=%s",
-                        self.environment,
-                        response.status_code,
-                        response.text[:500].replace("\n", " "),
+            auth_url = f"{self.base_url}/auth/login"
+            try:
+                async with httpx.AsyncClient(timeout=self._auth_timeout) as client:
+                    response = await client.post(
+                        auth_url,
+                        json={"email": self.email, "password": self.password},
                     )
-                    response.raise_for_status()
-                data = response.json()
+            except (httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadTimeout, httpx.PoolTimeout) as exc:
+                # Never log credentials/tokens. Log only the configured host so
+                # Koyeb can distinguish a bad sandbox endpoint from bad creds.
+                logger.error(
+                    "[SHIPROCKET] Authentication connection failed | env=%s host=%s error_type=%s",
+                    self.environment,
+                    self.base_url,
+                    type(exc).__name__,
+                )
+                raise RuntimeError(
+                    f"Shiprocket authentication endpoint is unreachable ({type(exc).__name__})."
+                ) from exc
+
+            if response.is_error:
+                # Safe diagnostic only: never log credentials or tokens.
+                logger.error(
+                    "[SHIPROCKET] Authentication failed | env=%s status=%s host=%s body=%s",
+                    self.environment,
+                    response.status_code,
+                    self.base_url,
+                    response.text[:500].replace("\n", " "),
+                )
+                response.raise_for_status()
+            data = response.json()
             token = str(data.get("token") or "").strip()
             if not token:
                 raise RuntimeError("Shiprocket authentication returned no token.")
@@ -140,15 +155,18 @@ class ShiprocketProvider(ShippingProvider):
                     headers=headers,
                     **kwargs,
                 )
-            except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.PoolTimeout) as exc:
+            except (httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadTimeout, httpx.PoolTimeout) as exc:
                 logger.warning(
-                    "[SHIPROCKET] bounded request timeout | env=%s method=%s path=%s error=%s",
+                    "[SHIPROCKET] provider request connection failed | env=%s host=%s method=%s path=%s error_type=%s",
                     self.environment,
+                    request_base_url,
                     method,
                     path,
                     type(exc).__name__,
                 )
-                raise RuntimeError("Shiprocket request timed out.") from exc
+                raise RuntimeError(
+                    f"Shiprocket request failed ({type(exc).__name__})."
+                ) from exc
 
             if response.status_code == 401:
                 self._token = None
@@ -162,15 +180,18 @@ class ShiprocketProvider(ShippingProvider):
                         headers=headers,
                         **kwargs,
                     )
-                except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.PoolTimeout) as exc:
+                except (httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadTimeout, httpx.PoolTimeout) as exc:
                     logger.warning(
-                        "[SHIPROCKET] bounded retry timeout | env=%s method=%s path=%s error=%s",
+                        "[SHIPROCKET] provider retry connection failed | env=%s host=%s method=%s path=%s error_type=%s",
                         self.environment,
+                        request_base_url,
                         method,
                         path,
                         type(exc).__name__,
                     )
-                    raise RuntimeError("Shiprocket request timed out.") from exc
+                    raise RuntimeError(
+                        f"Shiprocket request failed ({type(exc).__name__})."
+                    ) from exc
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError:
