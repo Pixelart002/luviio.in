@@ -116,13 +116,44 @@ class ShiprocketProvider(ShippingProvider):
         headers["Authorization"] = f"Bearer {token}"
         headers["Content-Type"] = "application/json"
         async with httpx.AsyncClient(timeout=self._request_timeout) as client:
-            response = await client.request(method, f"{request_base_url}{path}", headers=headers, **kwargs)
+            try:
+                response = await client.request(
+                    method,
+                    f"{request_base_url}{path}",
+                    headers=headers,
+                    **kwargs,
+                )
+            except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.PoolTimeout) as exc:
+                logger.warning(
+                    "[SHIPROCKET] bounded request timeout | env=%s method=%s path=%s error=%s",
+                    self.environment,
+                    method,
+                    path,
+                    type(exc).__name__,
+                )
+                raise RuntimeError("Shiprocket request timed out.") from exc
+
             if response.status_code == 401:
                 self._token = None
                 self._token_expires_at = 0
                 token = await self._token_value()
                 headers["Authorization"] = f"Bearer {token}"
-                response = await client.request(method, f"{request_base_url}{path}", headers=headers, **kwargs)
+                try:
+                    response = await client.request(
+                        method,
+                        f"{request_base_url}{path}",
+                        headers=headers,
+                        **kwargs,
+                    )
+                except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.PoolTimeout) as exc:
+                    logger.warning(
+                        "[SHIPROCKET] bounded retry timeout | env=%s method=%s path=%s error=%s",
+                        self.environment,
+                        method,
+                        path,
+                        type(exc).__name__,
+                    )
+                    raise RuntimeError("Shiprocket request timed out.") from exc
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError:
