@@ -31,8 +31,8 @@ GET /api/v1/shipping/my/{order_number} returns the authenticated customer's manu
 
 ## Admin APIs
 
-The existing /api/v1/shipping/provider/* routes are retained as stable internal fulfillment boundaries. Provider operations that require an external courier API are intentionally disabled in manual mode; staff update the shipment record manually.
+The existing /api/v1/shipping/provider/* routes are retained as stable internal fulfillment boundaries. External courier operations are disabled; staff update the shipment record manually.
 
 ## Environment
 
-The production environment does not require Shiprocket credentials or courier-provider credentials for shipping.
+The production environment does not require external courier-provider credentials for shipping.
