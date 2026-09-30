@@ -110,11 +110,19 @@ class ShippingService:
 
         settings = SettingsCoreEngine()
         try:
-            shipping_enabled_raw, threshold_raw, flat_raw = await asyncio.gather(
+            shipping_enabled_setting, threshold_setting, flat_setting = await asyncio.gather(
                 settings.fetch_by_key("shipping_enabled"),
                 settings.fetch_by_key("free_shipping_threshold"),
                 settings.fetch_by_key("flat_shipping_rate"),
             )
+
+            # SettingsCoreEngine.fetch_by_key() returns the complete setting
+            # record, not the raw value. Normalize here before validation so
+            # manual shipping works for both cached and freshly loaded settings.
+            shipping_enabled_raw = shipping_enabled_setting.get("value")
+            threshold_raw = threshold_setting.get("value")
+            flat_raw = flat_setting.get("value")
+
             shipping_enabled = self._enabled(shipping_enabled_raw)
             threshold = self._number(threshold_raw, "free_shipping_threshold")
             base = self._number(flat_raw, "flat_shipping_rate")
