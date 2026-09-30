@@ -22,7 +22,7 @@ values
   (
     'flat_shipping_rate',
     'financial',
-    'number',
+    'decimal',
     '45.90'::jsonb,
     '45.90'::jsonb,
     'Manual shipping charge below the free-shipping threshold (INR)',
@@ -32,9 +32,9 @@ values
   (
     'free_shipping_threshold',
     'financial',
-    'number',
-    '1499'::jsonb,
-    '1499'::jsonb,
+    'decimal',
+    '1499.00'::jsonb,
+    '1499.00'::jsonb,
     'Order subtotal at or above which manual shipping is free (INR)',
     false,
     true
@@ -49,8 +49,6 @@ set
   is_system_locked = excluded.is_system_locked,
   is_public = excluded.is_public;
 
--- Keep the pricing compatibility projection synchronized with the restored
--- canonical system settings.
 update public.pricing_config
 set
   shipping_enabled = true,
