@@ -865,6 +865,15 @@ class ShippingProviderService:
             "sub_total": max(float(order.get("subtotal") or 0) - float(order.get("discount_amount") or 0), 0),
             "length": length_cm, "breadth": breadth_cm,
             "height": height_cm, "weight": weight_kg,
+            "pickup_contact_name": _profile_text("business_legal_name") or pickup_location or "Luviio",
+            "pickup_email": _profile_text("business_email"),
+            "pickup_phone": _profile_text("business_phone"),
+            "pickup_address": _profile_text("seller_address_line1"),
+            "pickup_address_2": _profile_text("seller_address_line2"),
+            "pickup_city": _profile_text("seller_city"),
+            "pickup_state": _profile_text("seller_state"),
+            "pickup_country": _profile_text("seller_country") or "India",
+            "pickup_pincode": _profile_text("seller_pincode"),
         }
         try:
             response = await get_shipping_provider(provider_key).create_shipment(payload)
