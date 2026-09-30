@@ -32,7 +32,7 @@ _LOCAL_FALLBACK_LOCK = asyncio.Lock()
 
 
 async def _local_fallback_allow(rate_key: str, capacity: int) -> bool:
-    """Degraded-mode per-worker token bucket used only when Postgres RPC is unavailable."""
+    """Bounded per-worker emergency token bucket used only when Postgres RPC is unavailable."""
     now = time.monotonic()
     refill = max(capacity, 1) / 60.0
     async with _LOCAL_FALLBACK_LOCK:
@@ -145,11 +145,11 @@ class SharedRateLimitMiddleware:
                 await response(scope, receive, send)
                 return
         except Exception as exc:
-            # Keep a bounded per-worker limiter active during a transient
-            # Postgres/RPC outage. This is degraded protection, not fail-open.
+            # Keep bounded local protection during a transient Postgres/RPC
+            # outage without emitting noisy emergency-mode warnings.
             allowed = await _local_fallback_allow(rate_key, self.capacity)
-            logger.warning(
-                "Shared token-bucket unavailable; using local degraded limiter | error_type=%s timeout_s=%s allowed=%s",
+            logger.debug(
+                "Shared token-bucket unavailable; using local emergency limiter | error_type=%s timeout_s=%s allowed=%s",
                 type(exc).__name__,
                 _RATE_LIMIT_RPC_TIMEOUT_SECONDS,
                 allowed,
