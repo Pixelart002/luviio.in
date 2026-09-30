@@ -21,10 +21,15 @@ Current production SSOT:
 - shipping_enabled = true
 - flat_shipping_rate = 45.90
 - free_shipping_threshold = 1499
+- shipping provider = manual
+
+- shipping_enabled = true
+- flat_shipping_rate = 45.90
+- free_shipping_threshold = 1499
 
 ## Provider
 
-The backend now has a provider-neutral shipping boundary with Shiprocket as the first adapter.
+The backend uses a manual-shipping fulfillment boundary.
 
 Capabilities:
 
@@ -35,12 +40,12 @@ Capabilities:
 
 Required server-side environment variables:
 
-- SHIPROCKET_EMAIL
-- SHIPROCKET_PASSWORD
+- (removed)
+- (removed)
 
 No provider credential is accepted from the browser.
 
-Shiprocket account setup requires an API user and pickup location. Configure the credentials in the backend deployment before using provider shipment creation.
+manual shipping account setup requires an API user and pickup location. Configure the credentials in the backend deployment before using provider shipment creation.
 
 ## Admin API
 
