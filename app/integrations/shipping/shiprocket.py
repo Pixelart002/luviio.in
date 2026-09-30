@@ -16,8 +16,7 @@ class ShiprocketProvider(ShippingProvider):
     key = "shiprocket"
     # Production and Sandbox use different API hosts in the Shiprocket sandbox
     # console. Keep the URLs explicit so sandbox traffic can never hit production.
-    production_base_url = "https://apiv2.shiprocket.in/v1/external"
-    sandbox_base_url = "https://api-sandbox.shiprocket.in/v1/external"
+    documented_base_url = "https://apiv2.shiprocket.in/v1/external"
 
     def __init__(self) -> None:
         # Production is the safe default for a production checkout. Sandbox
@@ -42,33 +41,24 @@ class ShiprocketProvider(ShippingProvider):
         # an explicit provider-issued override is supplied. The public Shiprocket
         # API documentation documents courier serviceability under the external
         # API host; do not route sandbox traffic to an undocumented host.
-        if self.environment == "sandbox":
-            self.base_url = os.getenv(
-                "SHIPROCKET_BASE_URL",
-                self.sandbox_base_url,
-            ).strip().rstrip("/")
-        else:
-            self.base_url = os.getenv(
-                "SHIPROCKET_BASE_URL",
-                self.production_base_url,
-            ).strip().rstrip("/")
+        # Shiprocket documents the External API on apiv2.shiprocket.in.
+        # No separate public sandbox host is documented for these endpoints.
+        self.base_url = os.getenv(
+            "SHIPROCKET_BASE_URL",
+            self.documented_base_url,
+        ).strip().rstrip("/")
 
         configured_serviceability_base = os.getenv(
             "SHIPROCKET_SERVICEABILITY_BASE_URL",
             "",
         ).strip().rstrip("/")
 
-        # Older Koyeb deployments may still have the retired/dedicated
-        # sandbox serviceability host configured. Ignore that stale override
-        # and keep courier serviceability on the supported API base.
-        if (
-            not configured_serviceability_base
-            or configured_serviceability_base
-            == "https://serviceability-sandbox.shiprocket.in"
-        ):
+        if configured_serviceability_base == "https://serviceability-sandbox.shiprocket.in":
             self.serviceability_base_url = self.base_url
-        else:
+        elif configured_serviceability_base:
             self.serviceability_base_url = configured_serviceability_base
+        else:
+            self.serviceability_base_url = self.base_url
         self._token: str | None = None
         self._token_expires_at = 0.0
         self._token_refresh_margin_seconds = max(
