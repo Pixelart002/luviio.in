@@ -274,7 +274,7 @@ class ShiprocketProvider(ShippingProvider):
             body["courier_id"] = int(courier_id)
         return await self._request("POST", "/courier/assign/awb", json=body)
 
-    async def generate_pickup(self, *, shipment_id: str) -> dict[str, Any]:
+    async def generate_pickup(self, *, shipment_id: str, tracking_number: str | None = None) -> dict[str, Any]:
         return await self._request("POST", "/courier/generate/pickup", json={"shipment_id": [int(shipment_id)]})
 
     async def generate_label(self, *, shipment_id: str) -> dict[str, Any]:
