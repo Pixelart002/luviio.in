@@ -21,9 +21,9 @@ class ShiprocketProvider(ShippingProvider):
     documented_base_url = "https://apiv2.shiprocket.in/v1/external"
 
     def __init__(self) -> None:
-        # Production is the safe default for a production checkout. Sandbox
-        # must be explicitly opted into with SHIPROCKET_ENV=sandbox.
-        self.environment = os.getenv("SHIPROCKET_ENV", "production").strip().lower()
+        # Luviio is currently testing Shiprocket in sandbox. Production must
+        # be explicitly selected with SHIPROCKET_ENV=production.
+        self.environment = os.getenv("SHIPROCKET_ENV", "sandbox").strip().lower()
         if self.environment == "test":
             # Backward-compatible alias for older deployments; keep the log label explicit.
             self.environment = "sandbox"
