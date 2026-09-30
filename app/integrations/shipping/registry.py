@@ -1,22 +1,16 @@
-"""Shipping provider registry."""
+"""Shipping provider registry.
+
+External courier integrations are intentionally disabled. Luviio currently
+uses manual shipping fulfillment.
+"""
 from __future__ import annotations
 
-from app.integrations.shipping.base import ShippingProvider
-from functools import lru_cache
-
-from app.integrations.shipping.shiprocket import ShiprocketProvider
-from app.integrations.shipping.rapidshyp import RapidShypProvider
-
-SHIPPING_PROVIDER_REGISTRY: dict[str, type[ShippingProvider]] = {
-    "shiprocket": ShiprocketProvider,
-    "rapidshyp": RapidShypProvider,
-}
+from fastapi import HTTPException, status
 
 
-@lru_cache(maxsize=16)
-def get_shipping_provider(key: str = "shiprocket") -> ShippingProvider:
-    normalized = (key or "shiprocket").strip().lower()
-    provider_cls = SHIPPING_PROVIDER_REGISTRY.get(normalized)
-    if not provider_cls:
-        raise ValueError(f"Unsupported shipping provider: {normalized}")
-    return provider_cls()
+def get_shipping_provider(key: str = "manual"):
+    normalized = (key or "manual").strip().lower()
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=f"External shipping provider '{normalized}' is disabled. Shipping is handled manually.",
+    )
