@@ -1,4 +1,4 @@
-"""Immutable-snapshot GST invoice PDF renderer for Luviio."""
+"""Immutable-snapshot commercial/tax invoice PDF renderer for Luviio."""
 from __future__ import annotations
 
 import datetime
@@ -248,11 +248,12 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
     order_no = _s(order.get("order_number")) or _s(order.get("id")) or "—"
     website = _s(seller.get("website"), "https://luviio.in")
     seller_name = _s(seller.get("legal_name"), _s(seller.get("brand_name"), "LUVIIO"))
-    tax_mode = _tax_mode(order, seller, shipping)
+    gst_registered = bool(seller.get("gst_registered"))
+    tax_mode = _tax_mode(order, seller, shipping) if gst_registered else ""
 
     logo = _asset_image(seller.get("logo_url"), 98, 42)
     brand_cell = logo or Paragraph("LUVIIO", ST["logo"])
-    hdr = Table([[brand_cell, Paragraph("TAX INVOICE", ST["title"])], [Paragraph(website, ST["site"]), Paragraph("Original for Recipient", ST["small_right"])]], colWidths=[W*.58, W*.42])
+    hdr = Table([[brand_cell, Paragraph("TAX INVOICE" if gst_registered else "COMMERCIAL INVOICE", ST["title"])], [Paragraph(website, ST["site"]), Paragraph("Original for Recipient", ST["small_right"])]], colWidths=[W*.58, W*.42])
     hdr.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"BOTTOM"),("BOTTOMPADDING",(0,0),(-1,-1),2),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0)]))
     story += [hdr, HRFlowable(width="100%", thickness=2.2, color=GOLD, spaceAfter=8)]
 
@@ -262,7 +263,8 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
         if value: seller_rows.append([Paragraph(value, ST["body"])])
     if _s(seller.get("email")): seller_rows += [[Spacer(1,2)], [Paragraph(_s(seller.get("email")), ST["small"])]]
     if _s(seller.get("pan")): seller_rows.append([Paragraph(f"<b>PAN:</b> {_s(seller.get('pan'))}", ST["body"])])
-    if _s(seller.get("gstin")): seller_rows.append([Paragraph(f"<b>GSTIN:</b> {_s(seller.get('gstin'))}", ST["body"])])
+    if gst_registered and _s(seller.get("gstin")): seller_rows.append([Paragraph(f"<b>GSTIN:</b> {_s(seller.get('gstin'))}", ST["body"])])
+    elif not gst_registered: seller_rows.append([Paragraph("<b>GST:</b> Not charged — seller is not registered under GST.", ST["body"])])
     billing_rows = [[Paragraph("Billed To:", ST["label"])]] + _address_rows(billing, _s(customer.get("full_name"), "Valued Customer"))
     shipping_rows = [[Paragraph("Shipped To:", ST["label"])]] + _address_rows(shipping, _s(customer.get("full_name"), "Valued Customer"))
 
@@ -286,7 +288,7 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
         [Paragraph(f"<b>Invoice Date:</b> {_date(order.get('issued_at'),True)}",ST["body"])],
         [Paragraph(f"<b>Tracking:</b> {_s(order.get('tracking_number'),'—')}",ST["body"])],
         [Paragraph(f"<b>Place of Supply:</b> {place_of_supply}",ST["body"])],
-        [Paragraph(f"<b>Tax:</b> {tax_mode}",ST["body"])],
+        [Paragraph(f"<b>Tax:</b> {tax_mode}" if gst_registered else "<b>GST:</b> Not charged",ST["body"])],
         [Paragraph(f"<b>Reverse Charge:</b> {reverse_charge}",ST["body"])],
     ]
     qr_payload = _s(order.get("qr_payload")) or f"INV:{invoice_no}|ORD:{order_no}|TOTAL:{_f(order.get('total_amount')):.2f}"
@@ -308,9 +310,9 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
         net = _f(item.get("taxable_value"))
         if net <= 0: net = _f(item.get("subtotal"), unit * qty)
         if net <= 0: net = unit * qty
-        rate = _f(item.get("gst_percentage"))
-        item_tax = max(0.0, _f(item.get("tax_amount")))
-        if item_tax == 0 and rate > 0 and net > 0: item_tax = round(net * rate / 100,2)
+        rate = _f(item.get("gst_percentage")) if gst_registered else 0.0
+        item_tax = max(0.0, _f(item.get("tax_amount"))) if gst_registered else 0.0
+        if gst_registered and item_tax == 0 and rate > 0 and net > 0: item_tax = round(net * rate / 100,2)
         line_total = _f(item.get("line_total"))
         if line_total <= 0: line_total = net + item_tax
         tax_display = _tax_breakdown(rate, item_tax, tax_mode)
@@ -326,15 +328,14 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
         run_net += shipping_cost
 
     grand = _f(order.get("total_amount"), run_net + run_tax)
-    rows.append([Paragraph("Total",ST["cell_b"]),"","","","","",Paragraph(_money(run_net),ST["head_r"]),Paragraph(f"<b>Total GST</b><br/>{_money(run_tax)}",ST["head_r"]),Paragraph(_money(grand),ST["head_r"])])
+    rows.append([Paragraph("Total",ST["cell_b"]),"","","","","",Paragraph(_money(run_net),ST["head_r"]),Paragraph(f"<b>{\"Total GST\" if gst_registered else \"GST\"}</b><br/>{_money(run_tax) if gst_registered else \"Not charged\"}",ST["head_r"]),Paragraph(_money(grand),ST["head_r"])])
     items_table = Table(rows,colWidths=widths,repeatRows=1)
     items_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),HEADER),("LINEBELOW",(0,0),(-1,0),.8,BORDER),("ROWBACKGROUNDS",(0,1),(-1,-2),[colors.white,ALT]),("BACKGROUND",(0,-1),(-1,-1),TOTAL),("SPAN",(0,-1),(5,-1)),("BOX",(0,0),(-1,-1),.5,BORDER),("INNERGRID",(0,0),(-1,-1),.25,colors.HexColor("#dddddd")),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2),("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
     story += [items_table,Spacer(1,10)]
 
     subtotal = _f(order.get("subtotal"), run_net-shipping_cost)
     tax_total = _f(order.get("tax_amount"), run_tax)
-    summary_tax_label = "GST (CGST + SGST)" if tax_mode == "CGST+SGST" else "GST (IGST)"
-    summary = Table([[Paragraph("Price Summary:",ST["label"]),""],[Paragraph("Subtotal",ST["sum_l"]),Paragraph(_money(subtotal),ST["sum_v"])],[Paragraph("Shipping",ST["sum_l"]),Paragraph(_money(shipping_cost) if shipping_cost else "FREE",ST["sum_v"])],[Paragraph(summary_tax_label,ST["sum_l"]),Paragraph(_money(tax_total),ST["sum_v"])],["",""] ,[Paragraph("Grand Total",ST["sum_l"]),Paragraph(_money(grand),ST["sum_v"]) ]],colWidths=[150,84])
+,
     summary.setStyle(TableStyle([("LINEABOVE",(0,-1),(-1,-1),.8,BORDER),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2)]))
 
     sign_name = _s(seller.get("authorised_signatory_name"))
@@ -351,7 +352,8 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
     bottom.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.5,BORDER),("LINEBEFORE",(1,0),(1,0),.5,BORDER),("TOPPADDING",(0,0),(-1,-1),8),("BOTTOMPADDING",(0,0),(-1,-1),8),("LEFTPADDING",(0,0),(-1,-1),8),("RIGHTPADDING",(0,0),(-1,-1),8),("VALIGN",(0,0),(-1,-1),"TOP")]))
     story += [KeepTogether(bottom),Spacer(1,8),HRFlowable(width="100%",thickness=.4,color=BORDER,spaceAfter=4)]
     footer = f"This is a computer-generated invoice and does not require a physical signature. For queries, contact {_s(seller.get('email'),'support@luviio.in')} | {website}"
-    if _s(seller.get("gstin")): footer += f"   GSTIN: {_s(seller.get('gstin'))}"
+    if gst_registered and _s(seller.get("gstin")): footer += f"   GSTIN: {_s(seller.get('gstin'))}"
+    elif not gst_registered: footer += "   GST not charged — seller is not registered under GST."
     story.append(Paragraph(footer,ST["foot"]))
     doc.build(story)
     return buf.getvalue()
