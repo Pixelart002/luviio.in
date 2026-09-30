@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 class RapidShypProvider(ShippingProvider):
     key = "rapidshyp"
+    supports_label = True
+    supports_manifest = False
+    supports_invoice = False
     default_base_url = "https://api.rapidshyp.com/rapidshyp/apis/v1"
 
     def __init__(self) -> None:
