@@ -49,11 +49,4 @@ set
   is_system_locked = excluded.is_system_locked,
   is_public = excluded.is_public;
 
-update public.pricing_config
-set
-  shipping_enabled = true,
-  shipping_flat = 45.90,
-  shipping_threshold = 1499,
-  updated_at = now();
-
 commit;
