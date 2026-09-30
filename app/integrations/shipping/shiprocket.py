@@ -21,57 +21,39 @@ class ShiprocketProvider(ShippingProvider):
     documented_base_url = "https://apiv2.shiprocket.in/v1/external"
 
     def __init__(self) -> None:
-        # Luviio is currently testing Shiprocket in sandbox. Production must
-        # be explicitly selected with SHIPROCKET_ENV=production.
-        self.environment = os.getenv("SHIPROCKET_ENV", "sandbox").strip().lower()
+        # Shiprocket's documented External API host is used for both test/sandbox
+        # credentials and production credentials. The account credentials select
+        # the environment; sandbox must not invent a separate API hostname.
+        self.environment = os.getenv("SHIPROCKET_ENV", "production").strip().lower()
+        if self.environment == "sandbox":
+            self.environment = "test"
+        if self.environment not in {"test", "production"}:
+            raise RuntimeError(
+                "SHIPROCKET_ENV must be 'test' or 'production' "
+                "(sandbox is accepted as an alias for test)."
+            )
+
         if self.environment == "test":
-            # Backward-compatible alias for older deployments; keep the log label explicit.
-            self.environment = "sandbox"
-        if self.environment not in {"sandbox", "production"}:
-            raise RuntimeError("SHIPROCKET_ENV must be 'sandbox' (or legacy 'test') or 'production'.")
-        # Sandbox is intentionally supported even when Luviio itself runs with
-        # APP_ENV=production. SHIPROCKET_ENV is the source of truth; never
-        # silently rewrite sandbox traffic to production.
-        if self.environment == "sandbox":
-            self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
-            self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
+            self.email = (
+                os.getenv("SHIPROCKET_TEST_EMAIL")
+                or os.getenv("SHIPROCKET_EMAIL")
+                or ""
+            ).strip()
+            self.password = (
+                os.getenv("SHIPROCKET_TEST_PASSWORD")
+                or os.getenv("SHIPROCKET_PASSWORD")
+                or ""
+            ).strip()
         else:
             self.email = os.getenv("SHIPROCKET_EMAIL", "").strip()
             self.password = os.getenv("SHIPROCKET_PASSWORD", "").strip()
 
-        # Shiprocket sandbox uses the sandbox API hosts already configured for
-        # Luviio's integration. Keep sandbox and production selection explicit.
-        # These sandbox hosts are intentionally overridable because Shiprocket
-        # may issue environment-specific endpoints to an account.
-        self.sandbox_base_url = os.getenv(
-            "SHIPROCKET_SANDBOX_BASE_URL",
-            "https://api-sandbox.shiprocket.in/v1/external",
+        self.base_url = os.getenv(
+            "SHIPROCKET_BASE_URL",
+            "https://apiv2.shiprocket.in/v1/external",
         ).strip().rstrip("/")
-        self.sandbox_serviceability_base_url = os.getenv(
-            "SHIPROCKET_SANDBOX_SERVICEABILITY_BASE_URL",
-            "https://serviceability-sandbox.shiprocket.in",
-        ).strip().rstrip("/")
+        self.serviceability_base_url = self.base_url
 
-        if self.environment == "sandbox":
-            self.base_url = os.getenv(
-                "SHIPROCKET_SANDBOX_BASE_URL",
-                os.getenv("SHIPROCKET_BASE_URL", self.sandbox_base_url),
-            ).strip().rstrip("/")
-            self.serviceability_base_url = os.getenv(
-                "SHIPROCKET_SANDBOX_SERVICEABILITY_BASE_URL",
-                os.getenv("SHIPROCKET_SERVICEABILITY_BASE_URL", self.sandbox_serviceability_base_url),
-            ).strip().rstrip("/")
-        else:
-            self.base_url = os.getenv(
-                "SHIPROCKET_PRODUCTION_BASE_URL",
-                os.getenv("SHIPROCKET_BASE_URL", self.documented_base_url),
-            ).strip().rstrip("/")
-            # Shiprocket's current documented production serviceability
-            # endpoint is on the same apiv2 host as authentication and the
-            # other external APIs. Do not honor a separate production
-            # serviceability host: a stale/misconfigured override can make
-            # authentication succeed while courier rates time out.
-            self.serviceability_base_url = self.base_url
         self._token: str | None = None
         self._token_expires_at = 0.0
         self._token_refresh_margin_seconds = max(
@@ -80,18 +62,18 @@ class ShiprocketProvider(ShippingProvider):
         )
         self._lock = asyncio.Lock()
         self._auth_timeout = httpx.Timeout(
-            float(os.getenv("SHIPROCKET_AUTH_TIMEOUT_SECONDS", "4.0")),
-            connect=float(os.getenv("SHIPROCKET_CONNECT_TIMEOUT_SECONDS", "2.0")),
-            read=float(os.getenv("SHIPROCKET_AUTH_READ_TIMEOUT_SECONDS", "4.0")),
-            write=float(os.getenv("SHIPROCKET_WRITE_TIMEOUT_SECONDS", "4.0")),
-            pool=float(os.getenv("SHIPROCKET_POOL_TIMEOUT_SECONDS", "1.0")),
+            float(os.getenv("SHIPROCKET_AUTH_TIMEOUT_SECONDS", "15.0")),
+            connect=float(os.getenv("SHIPROCKET_CONNECT_TIMEOUT_SECONDS", "5.0")),
+            read=float(os.getenv("SHIPROCKET_AUTH_READ_TIMEOUT_SECONDS", "15.0")),
+            write=float(os.getenv("SHIPROCKET_WRITE_TIMEOUT_SECONDS", "15.0")),
+            pool=float(os.getenv("SHIPROCKET_POOL_TIMEOUT_SECONDS", "2.0")),
         )
         self._request_timeout = httpx.Timeout(
-            float(os.getenv("SHIPROCKET_REQUEST_TIMEOUT_SECONDS", "4.0")),
-            connect=float(os.getenv("SHIPROCKET_CONNECT_TIMEOUT_SECONDS", "2.0")),
-            read=float(os.getenv("SHIPROCKET_READ_TIMEOUT_SECONDS", "4.0")),
-            write=float(os.getenv("SHIPROCKET_WRITE_TIMEOUT_SECONDS", "4.0")),
-            pool=float(os.getenv("SHIPROCKET_POOL_TIMEOUT_SECONDS", "1.0")),
+            float(os.getenv("SHIPROCKET_REQUEST_TIMEOUT_SECONDS", "20.0")),
+            connect=float(os.getenv("SHIPROCKET_CONNECT_TIMEOUT_SECONDS", "5.0")),
+            read=float(os.getenv("SHIPROCKET_READ_TIMEOUT_SECONDS", "20.0")),
+            write=float(os.getenv("SHIPROCKET_WRITE_TIMEOUT_SECONDS", "20.0")),
+            pool=float(os.getenv("SHIPROCKET_POOL_TIMEOUT_SECONDS", "2.0")),
         )
 
     def _configured(self) -> None:
@@ -113,8 +95,6 @@ class ShiprocketProvider(ShippingProvider):
                         json={"email": self.email, "password": self.password},
                     )
             except (httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadTimeout, httpx.PoolTimeout) as exc:
-                # Never log credentials/tokens. Log only the configured host so
-                # Koyeb can distinguish a bad sandbox endpoint from bad creds.
                 logger.error(
                     "[SHIPROCKET] Authentication connection failed | env=%s host=%s error_type=%s",
                     self.environment,
@@ -126,7 +106,6 @@ class ShiprocketProvider(ShippingProvider):
                 ) from exc
 
             if response.is_error:
-                # Safe diagnostic only: never log credentials or tokens.
                 logger.error(
                     "[SHIPROCKET] Authentication failed | env=%s status=%s host=%s body=%s",
                     self.environment,
@@ -135,12 +114,15 @@ class ShiprocketProvider(ShippingProvider):
                     response.text[:500].replace("\n", " "),
                 )
                 response.raise_for_status()
+
             data = response.json()
             token = str(data.get("token") or "").strip()
             if not token:
                 raise RuntimeError("Shiprocket authentication returned no token.")
             self._token = token
-            self._token_expires_at = time.time() + (240 * 60 * 60) - self._token_refresh_margin_seconds
+            self._token_expires_at = (
+                time.time() + (240 * 60 * 60) - self._token_refresh_margin_seconds
+            )
             return token
 
     async def _request(self, method: str, path: str, *, base_url: str | None = None, **kwargs: Any) -> dict[str, Any]:
@@ -216,18 +198,10 @@ class ShiprocketProvider(ShippingProvider):
         }
         if declared_value is not None:
             params["declared_value"] = declared_value
-        # Sandbox and production expose the same logical operation but the
-        # sandbox serviceability host uses the non-trailing-slash path.
-        serviceability_path = (
-            "/courier/serviceability"
-            if self.environment == "sandbox"
-            else "/courier/serviceability/"
-        )
         return await self._request(
             "GET",
-            serviceability_path,
+            "/courier/serviceability/",
             params=params,
-            base_url=self.serviceability_base_url,
         )
 
     async def list_pickup_locations(self) -> list[dict[str, Any]]:
