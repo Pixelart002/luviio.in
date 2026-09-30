@@ -123,13 +123,44 @@ class ShippingProviderService:
             age = time.monotonic() - cached[0] if cached else None
             if cached and age is not None and age <= _SHIPPING_QUOTE_CACHE_TTL_SECONDS:
                 fallback = dict(cached[1])
+
+                # Never silently replace a customer's explicit courier choice
+                # with the cached default/fastest courier during an outage.
+                # The live path already revalidates selected_courier_id; the
+                # degraded path must preserve the same selection semantics.
+                if selected_courier_id is not None:
+                    cached_quotes = fallback.get("quotes") or fallback.get("couriers") or []
+                    selected_match = next(
+                        (
+                            quote
+                            for quote in cached_quotes
+                            if str(quote.get("courier_id") or "").strip()
+                            == str(selected_courier_id).strip()
+                        ),
+                        None,
+                    )
+                    if selected_match is None:
+                        raise HTTPException(
+                            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail={
+                                "code": "selected_shipping_courier_unavailable",
+                                "message": "The selected delivery partner cannot be revalidated right now. Please refresh shipping options.",
+                                "retryable": True,
+                                "shipping_options": [],
+                            },
+                            headers={"Retry-After": "3"},
+                        ) from exc
+                    fallback["selected"] = selected_match
+                    fallback["selection"] = "customer_selected_stale_cache"
+
                 fallback["source"] = "stale_cache"
                 fallback["stale"] = True
                 fallback["cache_age_seconds"] = round(age, 1)
                 fallback["retryable"] = True
                 logger.warning(
-                    "[SHIPROCKET] Provider unavailable; serving recent cached checkout quote | age_s=%.1f",
+                    "[SHIPROCKET] Provider unavailable; serving recent cached checkout quote | age_s=%.1f selected_courier_id=%s",
                     age,
+                    selected_courier_id,
                 )
                 return fallback
 
