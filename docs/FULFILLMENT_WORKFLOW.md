@@ -38,10 +38,10 @@ GET /api/v1/shipping/my/{order_number} returns only the authenticated customer's
 - POST /api/v1/shipping/provider/shipments/{shipment_id}/cancel
 - GET /api/v1/shipping/provider/track/{tracking_number}
 
-The existing provider route namespace is retained for API compatibility, but the configured provider is always manual.
+The existing shipping route namespace is retained for API compatibility, but the shipping mode is always manual.
 
 ## Production configuration
 
-No Shiprocket or other courier-provider credentials are required for shipping. The backend defaults to:
+No external courier-provider credentials are required for shipping. The backend defaults to:
 
 SHIPPING_PROVIDER=manual
