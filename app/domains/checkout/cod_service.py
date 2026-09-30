@@ -18,7 +18,6 @@ from app.constants.payment_messages import PaymentSecurityMessages
 from app.domains.checkout.repository import AsyncCheckoutRepository
 from app.domains.coupons.service import CouponService
 from app.domains.pricing.service import PriceBreakdown, _shipping_tax, get_pricing_from_config
-from app.domains.shipping.provider_service import ShippingProviderService
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderCreatedEvent, get_event_bus
 from app.integrations.payments.registry import get_payment_provider
@@ -147,33 +146,8 @@ class CodOrderService:
         if not addr:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
 
-        total_weight = Decimal("0")
-        for item in cart_items:
-            product = item.get("products") or {}
-            raw_weight = product.get("weight")
-            if raw_weight is None:
-                continue
-            try:
-                weight = Decimal(str(raw_weight))
-                if str(product.get("weight_unit") or "g").lower() == "g":
-                    weight /= Decimal("1000")
-                if weight > 0:
-                    total_weight += weight * int(item.get("quantity") or 0)
-            except (ArithmeticError, ValueError, TypeError):
-                raise HTTPException(status_code=409, detail="Product shipping weight is invalid.")
-        if total_weight <= 0:
-            try:
-                total_weight = Decimal(str(os.getenv("SHIPROCKET_RATE_DEFAULT_WEIGHT_KG", "0.5")))
-            except (ArithmeticError, ValueError, TypeError):
-                raise HTTPException(status_code=503, detail="Shiprocket default rate weight is misconfigured.")
-        quote = await ShippingProviderService().quote_for_checkout(
-            delivery_postcode=str(addr.get("postal_code") or ""),
-            weight_kg=float(total_weight),
-            cod=True,
-            declared_value=float(subtotal),
-            selected_courier_id=shipping_courier_id,
-        )
-        provider_shipping = Decimal(str(quote["selected"]["shipping_cost"]))
+        # Shipping is handled manually. No external courier API is called at checkout.
+        provider_shipping = Decimal("0")
         product_tax = breakdown.tax - breakdown.shipping_tax
         provider_shipping_tax = _shipping_tax(items_to_deduct, provider_shipping, subtotal)
         breakdown = PriceBreakdown(
@@ -241,10 +215,7 @@ class CodOrderService:
             "discount_amount": float(coupon_discount),
             **breakdown.as_dict(),
             "total_amount": float(total),
-            "shipping_provider": os.getenv("SHIPPING_PROVIDER", "shiprocket").strip().lower(),
-            "shipping_courier_id": quote["selected"].get("courier_id"),
-            "shipping_courier_name": quote["selected"].get("courier_name"),
-            "shipping_service_type": quote["selected"].get("service_type") or quote["selected"].get("service"),
+            "shipping_provider": "manual", "shipping_courier_id": None, "shipping_courier_name": "Manual shipping", "shipping_service_type": "manual",
             "shipping_delivery_mode": quote["selected"].get("delivery_mode"),
             "shipping_vehicle_type": quote["selected"].get("vehicle_type"),
             "shipping_address_id": address_id,
