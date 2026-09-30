@@ -251,7 +251,7 @@ class OrderService:
 
         seller_snapshot = invoice.get("seller_snapshot") or {}
         if not seller_snapshot:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Invoice seller configuration is incomplete. Configure the registered seller legal details before generating GST invoices.")
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Invoice seller configuration is incomplete. Configure the seller legal/business details before generating the invoice.")
 
         customer = await self.user_repo.get_user_by_id(raw_order.get("customer_id", "")) or {}
         try:
