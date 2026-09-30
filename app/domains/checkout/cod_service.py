@@ -145,18 +145,8 @@ class CodOrderService:
         if not addr:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PaymentSecurityMessages.ADDRESS_NOT_FOUND)
 
-        # Shipping is handled manually. No external courier API is called at checkout.
-        provider_shipping = Decimal("0")
-        product_tax = breakdown.tax - breakdown.shipping_tax
-        provider_shipping_tax = _shipping_tax(items_to_deduct, provider_shipping, subtotal)
-        breakdown = PriceBreakdown(
-            subtotal=breakdown.subtotal,
-            shipping=provider_shipping,
-            tax=product_tax + provider_shipping_tax,
-            total=breakdown.subtotal + provider_shipping + product_tax + provider_shipping_tax,
-            currency=breakdown.currency,
-            shipping_tax=provider_shipping_tax,
-        )
+        # Manual shipping is already included by the canonical pricing strategy.
+        # No external courier API is called at checkout.
         coupon_id = None
         coupon_discount = Decimal("0")
         coupon_resolved = coupon_code
