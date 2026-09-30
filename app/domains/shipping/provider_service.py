@@ -67,7 +67,7 @@ class ShippingProviderService:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Shipping provider unavailable: {provider_key}.") from exc
 
     async def quote_for_checkout(self, delivery_postcode: str, weight_kg: float, cod: bool, declared_value: float | None = None, selected_courier_id: int | None = None) -> dict[str, Any]:
-        """Return live Shiprocket courier rates with a short-lived outage fallback."""
+        """Return live courier rates with a short-lived outage fallback."""
 
         # Business Profile is the seller SSOT. Shiprocket pickup postcode must
         # come from the configured seller/business profile, not a duplicate env value.
@@ -110,8 +110,12 @@ class ShippingProviderService:
             )).encode("utf-8")
         ).hexdigest()
 
+        provider_key = os.getenv("SHIPPING_PROVIDER", "shiprocket").strip().lower()
+        if provider_key not in {"shiprocket", "rapidshyp"}:
+            raise HTTPException(status_code=503, detail="Configured shipping provider is unsupported.")
+
         try:
-            response = await get_shipping_provider("shiprocket").serviceability(
+            response = await get_shipping_provider(provider_key).serviceability(
                 pickup_postcode=pickup_postcode,
                 delivery_postcode=delivery_postcode,
                 weight_kg=weight,
@@ -180,9 +184,12 @@ class ShippingProviderService:
             ) from exc
 
         data = response.get("data") if isinstance(response, dict) else None
-        couriers = data.get("available_courier_companies", []) if isinstance(data, dict) else data
+        if provider_key == "rapidshyp":
+            couriers = response.get("serviceable_courier_list", []) if isinstance(response, dict) else []
+        else:
+            couriers = data.get("available_courier_companies", []) if isinstance(data, dict) else data
         if not isinstance(couriers, list) or not couriers:
-            raise HTTPException(status_code=422, detail="No Shiprocket courier is serviceable for this address.")
+            raise HTTPException(status_code=422, detail="No courier is serviceable for this address.")
 
         def _money(value: Any) -> float:
             """Parse a Shiprocket monetary field without letting malformed data break checkout."""
@@ -202,7 +209,7 @@ class ShippingProviderService:
             # component fields are retained for audit/diagnostics and must not
             # be blindly summed because some components are not additive to
             # the displayed shipment rate.
-            raw_rate = courier.get("rate")
+            raw_rate = courier.get("total_freight") if provider_key == "rapidshyp" else courier.get("rate")
             if isinstance(raw_rate, dict):
                 raw_rate = raw_rate.get("rate") or raw_rate.get("total")
             rate = _money(raw_rate)
@@ -254,9 +261,9 @@ class ShippingProviderService:
                 continue
 
             quotes.append({
-                "courier_id": courier.get("courier_company_id") or courier.get("id"),
-                "courier_name": courier.get("courier_name") or "Shiprocket courier",
-                "service_type": courier.get("service_type") or courier.get("courier_type") or courier.get("shipment_type") or courier.get("service"),
+                "courier_id": courier.get("courier_code") if provider_key == "rapidshyp" else courier.get("courier_company_id") or courier.get("id"),
+                "courier_name": courier.get("courier_name") or "Shipping courier",
+                "service_type": courier.get("freight_mode") if provider_key == "rapidshyp" else courier.get("service_type") or courier.get("courier_type") or courier.get("shipment_type") or courier.get("service"),
                 # Preserve provider-declared delivery metadata. Shiprocket's
                 # standard courier serviceability response exposes fields such
                 # as mode/service_type, but "Surface"/"Air" is not a vehicle.
@@ -281,13 +288,13 @@ class ShippingProviderService:
                 "coverage_charges": round(coverage_charges, 2),
                 "entry_tax": round(entry_tax, 2),
                 "chargeable_weight_kg": courier.get("charge_weight"),
-                "estimated_delivery_days": courier.get("estimated_delivery_days"),
+                "estimated_delivery_days": courier.get("edd") if provider_key == "rapidshyp" else courier.get("estimated_delivery_days"),
                 "etd_hours": courier.get("etd_hours"),
-                "etd": courier.get("etd"),
+                "etd": courier.get("edd") if provider_key == "rapidshyp" else courier.get("etd"),
                 "rating": courier.get("rating"),
             })
         if not quotes:
-            raise HTTPException(status_code=422, detail="Shiprocket returned no usable courier rate.")
+            raise HTTPException(status_code=422, detail="Shipping provider returned no usable courier rate.")
         # Checkout uses the fastest serviceable courier, not the cheapest legacy/store rate.
         # Shiprocket serviceability returns both shipment rate and delivery-time fields.
         # Never hardcode a courier charge: the selected shipping_cost always comes from
@@ -336,7 +343,7 @@ class ShippingProviderService:
             selection = "fastest_available"
 
         quote_payload = {
-            "provider": "shiprocket",
+            "provider": provider_key,
             "pickup_postcode": pickup_postcode,
             "delivery_postcode": delivery_postcode,
             "weight_kg": weight,
