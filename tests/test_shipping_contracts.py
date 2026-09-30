@@ -7,11 +7,11 @@ def read(path: str) -> str:
     return (REPO_ROOT / path).read_text(encoding="utf-8")
 
 
-def test_shiprocket_cancel_uses_awb_endpoint_for_awb_shipments():
-    source = read("app/integrations/shipping/shiprocket.py")
-    assert '/orders/cancel/shipment/awbs' in source
-    assert 'json={"awbs": [awb]}' in source
-    assert 'json={"ids": [provider_order_id]}' in source
+def test_checkout_shipping_is_manual_and_has_no_external_provider():
+    source = read("app/domains/shipping/provider_service.py")
+    assert 'MANUAL_PROVIDER = "manual"' in source
+    assert '"shipping_mode": MANUAL_PROVIDER' in source
+    assert 'External shipping providers are disabled' in source
 
 
 def test_shipping_webhook_has_provider_neutral_route_and_x_api_key():
