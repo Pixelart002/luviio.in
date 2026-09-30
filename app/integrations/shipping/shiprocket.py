@@ -55,6 +55,10 @@ class ShiprocketProvider(ShippingProvider):
             ).strip().rstrip("/")
         self._token: str | None = None
         self._token_expires_at = 0.0
+        self._token_refresh_margin_seconds = max(
+            300,
+            int(os.getenv("SHIPROCKET_TOKEN_REFRESH_MARGIN_SECONDS", "900")),
+        )
         self._lock = asyncio.Lock()
         self._auth_timeout = httpx.Timeout(
             float(os.getenv("SHIPROCKET_AUTH_TIMEOUT_SECONDS", "4.0")),
@@ -102,7 +106,7 @@ class ShiprocketProvider(ShippingProvider):
             if not token:
                 raise RuntimeError("Shiprocket authentication returned no token.")
             self._token = token
-            self._token_expires_at = time.time() + (240 * 60 * 60) - 300
+            self._token_expires_at = time.time() + (240 * 60 * 60) - self._token_refresh_margin_seconds
             return token
 
     async def _request(self, method: str, path: str, *, base_url: str | None = None, **kwargs: Any) -> dict[str, Any]:
