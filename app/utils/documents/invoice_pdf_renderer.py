@@ -337,7 +337,16 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
 
     subtotal = _f(order.get("subtotal"), run_net-shipping_cost)
     tax_total = _f(order.get("tax_amount"), run_tax)
-,
+    summary_tax_label = "GST (CGST + SGST)" if tax_mode == "CGST+SGST" else "GST (IGST)"
+    summary_tax_value = _money(tax_total) if gst_registered else "Not charged"
+    summary = Table([
+        [Paragraph("Price Summary:",ST["label"])," "],
+        [Paragraph("Subtotal",ST["sum_l"]),Paragraph(_money(subtotal),ST["sum_v"])],
+        [Paragraph("Shipping",ST["sum_l"]),Paragraph(_money(shipping_cost) if shipping_cost else "FREE",ST["sum_v"])],
+        [Paragraph(summary_tax_label if gst_registered else "GST",ST["sum_l"]),Paragraph(summary_tax_value,ST["sum_v"])],
+        ["",""],
+        [Paragraph("Grand Total",ST["sum_l"]),Paragraph(_money(grand),ST["sum_v"])]
+    ],colWidths=[150,84])
     summary.setStyle(TableStyle([("LINEABOVE",(0,-1),(-1,-1),.8,BORDER),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2)]))
 
     sign_name = _s(seller.get("authorised_signatory_name"))
