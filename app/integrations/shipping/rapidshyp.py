@@ -136,13 +136,13 @@ class RapidShypProvider(ShippingProvider):
             raise ValueError("RapidShyp order requires at least one order item.")
 
         pickup = {
-            "contactName": str(payload.get("billing_customer_name") or "Luviio"),
+            "contactName": str(payload.get("pickup_contact_name") or "Luviio"),
             "pickupName": str(payload.get("pickup_location") or "Luviio"),
-            "pickupEmail": str(payload.get("billing_email") or ""),
-            "pickupPhone": str(payload.get("billing_phone") or ""),
-            "pickupAddress1": str(payload.get("billing_address") or ""),
-            "pickupAddress2": str(payload.get("billing_address_2") or ""),
-            "pinCode": str(payload.get("billing_pincode") or ""),
+            "pickupEmail": str(payload.get("pickup_email") or ""),
+            "pickupPhone": str(payload.get("pickup_phone") or ""),
+            "pickupAddress1": str(payload.get("pickup_address") or ""),
+            "pickupAddress2": str(payload.get("pickup_address_2") or ""),
+            "pinCode": str(payload.get("pickup_pincode") or ""),
         }
         # The provider API allows a pickup location to be created on order
         # creation. Luviio's seller Business Profile remains the source of truth.
