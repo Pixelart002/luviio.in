@@ -6,7 +6,7 @@ from contextvars import ContextVar
 _provider_key: ContextVar[str | None] = ContextVar("luviio_shipping_provider", default=None)
 
 
-def get_current_shipping_provider_key(default: str = "shiprocket") -> str:
+def get_current_shipping_provider_key(default: str = "manual") -> str:
     return (_provider_key.get() or default).strip().lower()
 
 
