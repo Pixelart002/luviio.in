@@ -241,7 +241,7 @@ class CodOrderService:
             "discount_amount": float(coupon_discount),
             **breakdown.as_dict(),
             "total_amount": float(total),
-            "shipping_provider": "shiprocket",
+            "shipping_provider": os.getenv("SHIPPING_PROVIDER", "shiprocket").strip().lower(),
             "shipping_courier_id": quote["selected"].get("courier_id"),
             "shipping_courier_name": quote["selected"].get("courier_name"),
             "shipping_service_type": quote["selected"].get("service_type") or quote["selected"].get("service"),
