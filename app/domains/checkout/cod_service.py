@@ -5,7 +5,6 @@ same server-side cart pricing, stock validation, address ownership and atomic
 reservation path as card checkout.
 """
 import logging
-import os
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Dict, List, Optional
 
