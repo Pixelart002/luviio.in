@@ -38,7 +38,7 @@ async def list_methods(active_only: bool = True):
 async def compute_rate(payload: ShippingRateRequest):
     # Legacy flat-rate calculation is no longer a checkout source of truth.
     # Keep this endpoint compatible for existing callers, but route it to the
-    # same live Shiprocket quote used by payment/COD checkout.
+    # same live configured-provider quote used by payment/COD checkout.
     if not payload.pincode:
         raise HTTPException(status_code=422, detail="Delivery PIN code is required for live shipping.")
     data = await _provider_service.quote_for_checkout(
@@ -73,7 +73,8 @@ async def activate_method(method_id: str):
     return success_response(data=await _service.activate(method_id), message="Shipping method activated successfully.")
 
 @router.get("/provider/serviceability", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
-async def provider_serviceability(pickup_postcode: str, delivery_postcode: str, weight_kg: float = 0.5, cod: bool = False, declared_value: float | None = None, provider: str = "shiprocket"):
+async def provider_serviceability(pickup_postcode: str, delivery_postcode: str, weight_kg: float = 0.5, cod: bool = False, declared_value: float | None = None, provider: str | None = None):
+    provider = (provider or _configured_provider()).strip().lower()
     data = await _provider_service.serviceability(provider, pickup_postcode, delivery_postcode, weight_kg, cod, declared_value)
     return success_response(data=data, message="Shipping provider serviceability fetched.")
 
@@ -105,7 +106,7 @@ async def create_provider_shipment(
 ):
     provider = (provider or _configured_provider()).strip().lower()
     # All values are optional because the backend now derives shipment data
-    # from the saved order/product records and Shiprocket defaults/config.
+    # from the saved order/product records and provider defaults/config.
     data = await _provider_service.create_for_order(
         order_id, provider, pickup_location, weight_kg, length_cm, breadth_cm, height_cm
     )
