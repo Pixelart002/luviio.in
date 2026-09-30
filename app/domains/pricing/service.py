@@ -167,8 +167,7 @@ class StandardPricing(PricingStrategy):
             product_tax += item_sub * (gst_percentage / Decimal("100"))
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
-        # Cart previews use the configured flat estimate. Checkout replaces this
-        # estimate with the address-specific Shiprocket quote before payment.
+        # Cart and checkout use the same configured manual-shipping rate.
         shipping = self._flat if self._threshold <= 0 or calc_subtotal < self._threshold else Decimal("0.00")
         shipping_tax = _shipping_tax(items, shipping, calc_subtotal)
         total_tax = product_tax + shipping_tax
@@ -221,9 +220,8 @@ class ZeroTaxPricing(PricingStrategy):
             calc_subtotal += item_price * item_qty
         if calc_subtotal <= Decimal("0"):
             return PriceBreakdown(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"), self._currency)
-        # Shipping is resolved only after address/payment context is available.
-        # Shiprocket is the sole checkout shipping source of truth.
-        shipping = Decimal("0.00")
+        # Tax-disabled checkout still uses the configured manual-shipping rate.
+        shipping = self._flat if self._threshold <= 0 or calc_subtotal < self._threshold else Decimal("0.00")
         return PriceBreakdown(
             subtotal=calc_subtotal,
             shipping=shipping,
