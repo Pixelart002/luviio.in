@@ -28,6 +28,10 @@ from app.utils.timestamp import ts_to_iso
 
 logger = logging.getLogger(__name__)
 
+# Customer-side operations remain available to staff accounts without
+# requiring an AAL2 step-up. These endpoints are not privileged mutations.
+_NON_PRIVILEGED_PERMISSIONS = frozenset({"coupons.apply"})
+
 bearer_scheme = HTTPBearer(auto_error=False)
 _token_cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
 _profile_cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
@@ -216,7 +220,11 @@ def require_permission(required_perm: str) -> Callable:
         )
         static_base = get_static_role_permissions(role)
         user_perms = await get_effective_permissions(role, static_base)
-        if role != UserRole.CUSTOMER.value and current_user.get("aal", "aal1") != "aal2":
+        if (
+            role != UserRole.CUSTOMER.value
+            and required_perm not in _NON_PRIVILEGED_PERMISSIONS
+            and current_user.get("aal", "aal1") != "aal2"
+        ):
             logger.warning(
                 "MFA Block | Privileged user %s attempted %s at %s",
                 current_user.get("sub"),
