@@ -67,25 +67,27 @@ class CartService:
                 raise HTTPException(status_code=500, detail="Cart contains a product without GST configuration.")
             enriched.append({"id": str(row["id"]), "product_id": str(row["product_id"]), "name": str(prod.get("name", "")), "slug": str(prod.get("slug", "")), "image_url": prod.get("image_url"), "hsn_code": hsn_code, "gst_percentage": int(gst_raw), "quantity": qty, "unit_price": float(snapshot), "current_unit_price": float(current_price), "compare_price": compare_price, "weight": prod.get("weight"), "weight_unit": prod.get("weight_unit"), "price_snapshot": float(snapshot), "line_total": float(line_total), "stock": int(prod.get("stock", 0)), "in_stock": in_stock, "is_active": prod.get("is_active", True), "price_changed": price_changed, "added_at": str(row["added_at"])})
         breakdown = pricing_engine.calculate(items=enriched)
-        # Cart totals intentionally omit shipping until checkout because the
-        # customer address is required. Checkout applies the same manual-shipping
-        # settings as the cart pricing configuration.
-        product_tax = breakdown.tax - breakdown.shipping_tax
-        pricing_dict = {
-            **breakdown.as_dict(),
-            "shipping_cost": 0.0,
-            "shipping_tax_amount": 0.0,
-            "tax_amount": float(product_tax),
-            "total_amount": float(subtotal + product_tax),
-        }
+        shipping_threshold = float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0
+        shipping_cost = float(breakdown.shipping)
+        free_shipping_eligible = (
+            bool(pricing_engine.shipping_enabled)
+            and shipping_threshold > 0
+            and float(breakdown.subtotal) >= shipping_threshold
+        )
+        amount_to_free_shipping = (
+            max(0.0, shipping_threshold - float(breakdown.subtotal))
+            if pricing_engine.shipping_enabled and shipping_threshold > 0
+            else 0.0
+        )
+
         return {
             "items": enriched,
             "item_count": total_item_count,
-            **pricing_dict,
-            "free_shipping_eligible": False,
-            "amount_to_free_shipping": 0.0,
-            "free_shipping_threshold": 0.0,
-            "shipping_calculated_at_checkout": True,
+            **breakdown.as_dict(),
+            "free_shipping_eligible": free_shipping_eligible,
+            "amount_to_free_shipping": round(amount_to_free_shipping, 2),
+            "free_shipping_threshold": shipping_threshold,
+            "shipping_calculated_at_checkout": False,
             "has_unavailable_items": has_unavailable,
             "currency": breakdown.currency,
         }
