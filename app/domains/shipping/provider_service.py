@@ -102,9 +102,29 @@ class ShippingProviderService:
     ) -> dict[str, Any]:
         if (provider_key or MANUAL_PROVIDER).strip().lower() != MANUAL_PROVIDER:
             raise HTTPException(status_code=409, detail="External shipping providers are disabled. Shipping is handled manually.")
+        sb = await get_async_admin_supabase()
+        order_res = await (
+            sb.table("orders")
+            .select("id,status")
+            .eq("id", str(order_id))
+            .maybe_single()
+            .execute()
+        )
+        order = order_res.data if order_res else None
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found.")
+
+        order_status = str(order.get("status") or "").strip().lower()
+        if order_status not in {"paid", "processing", "shipped", "delivered"}:
+            raise HTTPException(
+                status_code=409,
+                detail="A manual shipment record can only be created for an active fulfillment order.",
+            )
+
         existing = await self.repo.get_by_order(order_id, MANUAL_PROVIDER)
         if existing:
             return existing
+
         row = await self.repo.create({
             "order_id": order_id,
             "provider_key": MANUAL_PROVIDER,
