@@ -73,3 +73,12 @@ async def test_customer_permission_does_not_require_mfa():
     with patch("app.core.dependencies.get_effective_permissions", new=AsyncMock(return_value={"coupons.apply"})):
         result = await checker(current)
     assert result is current
+
+
+@pytest.mark.asyncio
+async def test_coupon_apply_does_not_require_mfa_for_staff_accounts():
+    checker = require_permission("coupons.apply")
+    current = {"sub": "staff-1", "aal": "aal1", "profile": {"role": "admin"}}
+    with patch("app.core.dependencies.get_effective_permissions", new=AsyncMock(return_value={"coupons.apply"})):
+        result = await checker(current)
+    assert result is current
