@@ -20,7 +20,7 @@ from app.core.config import settings
 from app.core.supabase import get_async_admin_supabase
 
 logger = logging.getLogger(__name__)
-_RATE_LIMIT_RPC_TIMEOUT_SECONDS = 0.35
+_RATE_LIMIT_RPC_TIMEOUT_SECONDS = 2.0
 ASGIApp = Callable[
     [dict[str, Any], Callable[..., Awaitable[Any]], Callable[..., Awaitable[Any]]],
     Awaitable[None],
