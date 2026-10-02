@@ -152,7 +152,7 @@ async def delete_product(request: Request, product_id: uuid.UUID) -> Dict[str, A
     return success_response(message=ProductMessages.PRODUCT_DELETED)
 
 
-@router.post("/products/{product_id}/images", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
+@router.post("/products/{product_id}/images", status_code=status.HTTP_200_OK, response_model=None, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
 async def upload_image_endpoint(request: Request, product_id: uuid.UUID) -> Dict[str, Any] | JSONResponse:
     try:
         form = await request.form()
