@@ -89,7 +89,7 @@ def _delete_from_storage(path: str) -> None:
     except Exception as exc:
         logger.warning("Storage delete failed (non-critical) | path=%s: %s", path, exc)
 
-def upload_product_image(file_bytes: bytes, product_id: str, *, filename: str = "unknown", generate_thumbnail: bool = True) -> str:
+def upload_product_image(file_bytes: bytes, product_id: str, *, filename: str = "unknown", generate_thumbnail: bool = False) -> str:
     _validate_image(file_bytes, filename)
     optimized = _process_image(file_bytes, size=THUMB_SIZE, quality=WEBP_QUALITY)
     unique_id = uuid.uuid4().hex[:12]
