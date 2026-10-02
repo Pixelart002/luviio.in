@@ -68,7 +68,6 @@ class CartService:
             enriched.append({"id": str(row["id"]), "product_id": str(row["product_id"]), "name": str(prod.get("name", "")), "slug": str(prod.get("slug", "")), "image_url": prod.get("image_url"), "hsn_code": hsn_code, "gst_percentage": int(gst_raw), "quantity": qty, "unit_price": float(snapshot), "current_unit_price": float(current_price), "compare_price": compare_price, "weight": prod.get("weight"), "weight_unit": prod.get("weight_unit"), "price_snapshot": float(snapshot), "line_total": float(line_total), "stock": int(prod.get("stock", 0)), "in_stock": in_stock, "is_active": prod.get("is_active", True), "price_changed": price_changed, "added_at": str(row["added_at"])})
         breakdown = pricing_engine.calculate(items=enriched)
         shipping_threshold = float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0
-        shipping_cost = float(breakdown.shipping)
         free_shipping_eligible = (
             bool(pricing_engine.shipping_enabled)
             and shipping_threshold > 0
