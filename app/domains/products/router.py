@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
+from starlette.requests import ClientDisconnect
 
 from app.constants.product_messages import ProductMessages
 from app.core.dependencies import require_permission
@@ -152,16 +153,19 @@ async def delete_product(request: Request, product_id: uuid.UUID) -> Dict[str, A
 
 @router.post("/products/{product_id}/images", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
 async def upload_image_endpoint(request: Request, product_id: uuid.UUID) -> Dict[str, Any]:
-    form = await request.form()
-    image_files: List[tuple[bytes, str]] = []
-    for value in form.getlist("files"):
-        if isinstance(value, UploadFile):
-            image_files.append((await value.read(), value.filename or "unknown"))
+    try:
+        form = await request.form()
+        image_files: List[tuple[bytes, str]] = []
+        for value in form.getlist("files"):
+            if isinstance(value, UploadFile):
+                image_files.append((await value.read(), value.filename or "unknown"))
+    except ClientDisconnect:
+        logger.info("product.image_upload.client_disconnect product_id=%s", str(product_id)[:8])
+        return success_response(message="Image upload connection closed by client.")
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Receiving {len(image_files)} asset upload(s) for Product: {str(product_id)[:8]}...")
     result = await ProductService().upload_images(str(product_id), image_files)
     return success_response(data=result, message=ProductMessages.IMAGE_UPLOADED)
-
 
 @router.delete("/products/{product_id}/images/{index}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_permission(ProductPermissions.UPDATE))])
 async def delete_image_endpoint(request: Request, product_id: uuid.UUID, index: int) -> Dict[str, Any]:
