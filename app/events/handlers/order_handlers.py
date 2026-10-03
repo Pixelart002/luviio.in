@@ -249,6 +249,27 @@ async def handle_shipped_push(event: OrderShippedEvent) -> None:
     )
 
 
+async def handle_status_email(event: OrderStatusChangedEvent) -> None:
+    if event.new_status != "delivered" or not event.customer_email or not event.order:
+        return
+
+    provider = get_email_provider("resend")
+    try:
+        await provider.send_order_delivered(event.customer_email, event.order)
+        logger.info(
+            "[EMAIL] order_delivered sent | order=%s recipient=%s",
+            _safe_oid(event.order),
+            _safe_email(event.customer_email),
+        )
+    except Exception:
+        logger.exception(
+            "[EMAIL] order_delivered failed | order=%s recipient=%s",
+            _safe_oid(event.order),
+            _safe_email(event.customer_email),
+        )
+        raise
+
+
 async def handle_status_push(event: OrderStatusChangedEvent) -> None:
     config = {
         "processing": ("Your order is being prepared", "Order #{oid} is now being prepared for dispatch.", _Icon.PAID),
