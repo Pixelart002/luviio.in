@@ -24,8 +24,19 @@ class ResendAdapter:
     async def send_order_confirmation(self, to: str, order: dict) -> None:
         await send_order_confirmation(to, order)
         
-    async def send_order_delivered(self, to: str, order: dict) -> None:
-        await send_order_delivered(to, order)
+    async def send_order_delivered(
+        self,
+        to: str,
+        order: dict,
+        invoice_pdf: bytes | None = None,
+        invoice_number: str | None = None,
+    ) -> None:
+        await send_order_delivered(
+            to,
+            order,
+            invoice_pdf=invoice_pdf,
+            invoice_number=invoice_number,
+        )
 
     async def send_order_shipped(self, to: str, order: dict, tracking_number: str) -> None:
         await send_order_shipped(to, order, tracking_number)
