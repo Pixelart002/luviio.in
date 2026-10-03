@@ -24,8 +24,8 @@ from app.utils.documents.snapshot_invoice_pdf import build_snapshot_invoice_pdf
 logger = logging.getLogger(__name__)
 
 STATUS_TRANSITIONS = {
-    # COD orders are already accepted at checkout; payment is collected on delivery.
-    # Stripe pending orders must remain in the payment lifecycle until settled/cancelled.
+    # COD: pending -> processing -> paid -> shipped.
+    # Online: pending -> paid -> processing -> shipped.
     OrderStatus.PENDING: {
         OrderStatus.PAID,
         OrderStatus.PROCESSING,
@@ -166,10 +166,33 @@ class OrderService:
                     status_code=status.HTTP_409_CONFLICT,
                     detail=OrderSecurityMessages.INVALID_TRANSITION,
                 )
+            payment_method = str(current_res.get("payment_method") or "").strip().lower()
+            is_cod_order = payment_method in {"cod", "cash_on_delivery"}
+
+            if (
+                current_status_enum == OrderStatus.PENDING
+                and target_status_enum == OrderStatus.PAID
+                and is_cod_order
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=OrderSecurityMessages.INVALID_TRANSITION,
+                )
+
             if (
                 current_status_enum == OrderStatus.PENDING
                 and target_status_enum == OrderStatus.PROCESSING
-                and str(current_res.get("payment_method") or "").strip().lower() != "cod"
+                and not is_cod_order
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=OrderSecurityMessages.INVALID_TRANSITION,
+                )
+
+            if (
+                current_status_enum == OrderStatus.PAID
+                and target_status_enum == OrderStatus.SHIPPED
+                and not is_cod_order
             ):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
