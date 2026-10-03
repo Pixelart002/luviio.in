@@ -105,7 +105,7 @@ class ShippingProviderService:
         sb = await get_async_admin_supabase()
         order_res = await (
             sb.table("orders")
-            .select("id,status")
+            .select("id,status,payment_method")
             .eq("id", str(order_id))
             .maybe_single()
             .execute()
@@ -115,10 +115,12 @@ class ShippingProviderService:
             raise HTTPException(status_code=404, detail="Order not found.")
 
         order_status = str(order.get("status") or "").strip().lower()
-        if order_status not in {"paid", "processing", "shipped", "delivered"}:
+        payment_method = str(order.get("payment_method") or "").strip().lower()
+        is_cod_pending = order_status == "pending" and payment_method in {"cod", "cash_on_delivery"}
+        if order_status not in {"paid", "processing", "shipped", "delivered"} and not is_cod_pending:
             raise HTTPException(
                 status_code=409,
-                detail="A manual shipment record can only be created for an active fulfillment order.",
+                detail="A manual shipment record can only be created for an active fulfillment order or a COD order ready for processing.",
             )
 
         existing = await self.repo.get_by_order(order_id, MANUAL_PROVIDER)
@@ -129,9 +131,37 @@ class ShippingProviderService:
             "order_id": order_id,
             "provider_key": MANUAL_PROVIDER,
             "status": "manual_pending",
+            "workflow_status": "created",
             "metadata": {"shipping_mode": MANUAL_PROVIDER},
         })
         return row
+
+    async def sync_order_status(self, order_id: str, order_status: str) -> dict[str, Any] | None:
+        """Mirror the authoritative order lifecycle onto its internal manual shipment record."""
+        row = await self.repo.get_by_order(str(order_id), MANUAL_PROVIDER)
+        if not row:
+            return None
+
+        normalized = str(order_status or "").strip().lower()
+        mapping = {
+            "pending": ("manual_pending", "created"),
+            "processing": ("manual_processing", "created"),
+            "shipped": ("manual_shipped", "shipped"),
+            "delivered": ("manual_delivered", "delivered"),
+            "cancelled": ("cancelled", "cancelled"),
+            "refunded": ("refunded", None),
+        }
+        target = mapping.get(normalized)
+        if not target:
+            return row
+
+        data = {"status": target[0]}
+        if target[1] is not None:
+            data["workflow_status"] = target[1]
+        elif normalized == "refunded":
+            data["workflow_status"] = row.get("workflow_status")
+
+        return await self.repo.update(str(row["id"]), data)
 
     async def _manual_operation(self, operation: str) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail=f"{operation} is unavailable in manual shipping mode. Update the order tracking details manually.")
