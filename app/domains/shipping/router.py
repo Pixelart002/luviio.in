@@ -95,7 +95,7 @@ async def list_provider_shipments(status_filter: str | None = None, limit: int =
 
 @router.get("/provider/orders/{order_id}", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
 async def get_provider_shipment(order_id: str):
-    row = await _provider_repo.get_by_order(order_id, "manual")
+    row = await _provider_service.get_for_order(order_id)
     return success_response(
         data=row or {"status": "not_booked", "shipping_mode": "manual"},
         message="Order fulfillment record fetched.",
@@ -198,5 +198,5 @@ async def my_shipment(order_number: str, user_id: str = Depends(get_user_id_stri
     order = order_res.data if order_res else None
     if not order:
         raise HTTPException(status_code=404, detail="Order not found.")
-    row = await _provider_repo.get_by_order(str(order["id"]), "manual")
+    row = await _provider_service.get_for_order(str(order["id"]))
     return success_response(data=row or {"status": "not_booked"}, message="Shipment status fetched.")
