@@ -198,6 +198,38 @@ async def send_order_confirmation(to: str, order: dict | None) -> None:
     }
     await _async_safe_send(params, f"order_confirmation to={to} order={oid}")
 
+async def send_order_delivered(to: str, order: dict | None) -> None:
+    order = order or {}
+    oid = _order_ref(order)
+    customer_name = _esc(order.get("shipping_name") or order.get("billing_name") or "Customer")
+    content = f"""
+      <p style="color:{TEXT_MUTED};line-height:1.8;font-size:14px;margin:0 0 20px;">
+        Hi <strong style="color:{TEXT};">{customer_name}</strong>, your order <strong style="color:{TEXT};">#{_esc(oid)}</strong> has been delivered successfully. 📦
+      </p>
+      <div style="background-color:{BG_DARK};border:1px solid {BORDER};border-radius:10px;padding:18px 20px;margin:20px 0;">
+        <p style="color:{TEXT_MUTED};font-size:12px;margin:0;line-height:1.8;">
+          We hope you enjoy your purchase. If you need any help with your order, please contact our support team.
+        </p>
+      </div>
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+        <tr><td align="center" style="padding:28px 0 0;">
+          <a href="{BASE_URL}/orders.html" style="display:inline-block;padding:12px 28px;background-color:{GOLD};color:{BG_DARK};border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">View Order →</a>
+        </td></tr>
+      </table>
+    """
+    params: resend.Emails.SendParams = {
+        "from": FROM,
+        "to": [to],
+        "subject": f"Order #{oid} Delivered 📦 — {APP}",
+        "html": _email_template(
+            title="Your Order Has Been Delivered 📦",
+            content=content,
+            preheader=f"Order #{oid} has been delivered",
+        ),
+    }
+    await _async_safe_send(params, f"delivered to={to} order={oid}")
+
+
 async def send_order_shipped(to: str, order: dict | None, tracking_number: str | None) -> None:
     order = order or {}
     oid = _order_ref(order)
