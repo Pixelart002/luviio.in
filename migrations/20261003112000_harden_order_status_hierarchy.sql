@@ -69,11 +69,14 @@ begin
       raise exception 'Online orders must enter processing before shipping.';
     end if;
   elsif v_current_status = 'processing' then
-    if v_new_status not in ('paid', 'shipped', 'refunded') then
+    if v_new_status not in ('paid', 'shipped', 'refunded', 'cancelled') then
       raise exception 'Invalid order transition: processing -> %', v_new_status;
     end if;
     if v_new_status = 'paid' and not v_is_cod then
       raise exception 'Only COD orders can be marked paid from processing.';
+    end if;
+    if v_new_status = 'cancelled' and (not v_is_cod or coalesce(nullif(trim(v_order.provider_payment_id), ''), '') <> '') then
+      raise exception 'Only unpaid COD orders can be cancelled while processing.';
     end if;
   elsif v_current_status = 'shipped' then
     if v_new_status not in ('delivered', 'refunded') then
