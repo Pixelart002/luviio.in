@@ -36,5 +36,11 @@ class EmailProvider(ABC):
         pass
 
     @abstractmethod
-    async def send_order_delivered(self, to: str, order: Dict[str, Any]) -> None:
+    async def send_order_delivered(
+        self,
+        to: str,
+        order: Dict[str, Any],
+        invoice_pdf: bytes | None = None,
+        invoice_number: str | None = None,
+    ) -> None:
         pass
