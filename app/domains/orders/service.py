@@ -208,7 +208,33 @@ class OrderService:
                     status_code=status.HTTP_409_CONFLICT,
                     detail=OrderSecurityMessages.INVALID_TRANSITION,
                 )
-            if target_status_enum not in allowed_transitions:
+            payment_method = str(current_res.get("payment_method") or "").strip().lower()
+            is_cod_order = payment_method in {"cod", "cash_on_delivery"}
+            if (
+                target_status_enum == OrderStatus.CANCELLED
+                and current_status_enum == OrderStatus.PROCESSING
+                and not is_cod_order
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=OrderSecurityMessages.INVALID_CANCEL_STATE,
+                )
+            if (
+                target_status_enum == OrderStatus.CANCELLED
+                and current_status_enum == OrderStatus.PROCESSING
+                and is_cod_order
+                and str(current_res.get("provider_payment_id") or "").strip()
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=OrderSecurityMessages.INVALID_CANCEL_STATE,
+                )
+
+            if target_status_enum not in allowed_transitions and not (
+                target_status_enum == OrderStatus.CANCELLED
+                and current_status_enum == OrderStatus.PROCESSING
+                and is_cod_order
+            ):
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.INVALID_TRANSITION)
             if target_status_enum == OrderStatus.REFUNDED and current_res.get("stripe_payment_intent"):
                 if self.payment_port is None:
