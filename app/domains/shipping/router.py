@@ -93,6 +93,15 @@ async def provider_rate(delivery_postcode: str, weight_kg: float = 0.5, cod: boo
 async def list_provider_shipments(status_filter: str | None = None, limit: int = 100):
     return success_response(data={"items": await _provider_repo.list_recent(status_filter, limit)}, message="Fulfillment shipments fetched.")
 
+@router.get("/provider/orders/{order_id}", status_code=200, dependencies=[Depends(require_permission(ShippingPermissions.READ))])
+async def get_provider_shipment(order_id: str):
+    row = await _provider_repo.get_by_order(order_id, "manual")
+    return success_response(
+        data=row or {"status": "not_booked", "shipping_mode": "manual"},
+        message="Order fulfillment record fetched.",
+    )
+
+
 @router.post("/provider/orders/{order_id}", status_code=201, dependencies=[Depends(require_permission(ShippingPermissions.UPDATE))])
 async def create_provider_shipment(
     order_id: str,
