@@ -8,6 +8,7 @@ from .followups import send_delivery_care_followup, send_review_followup
 from .resend_impl import (
     send_cart_reminder_email,
     send_order_confirmation,
+    send_order_delivered,
     send_order_shipped,
     send_payment_success,
     send_welcome_email,
@@ -23,6 +24,9 @@ class ResendAdapter:
     async def send_order_confirmation(self, to: str, order: dict) -> None:
         await send_order_confirmation(to, order)
         
+    async def send_order_delivered(self, to: str, order: dict) -> None:
+        await send_order_delivered(to, order)
+
     async def send_order_shipped(self, to: str, order: dict, tracking_number: str) -> None:
         await send_order_shipped(to, order, tracking_number)
         
