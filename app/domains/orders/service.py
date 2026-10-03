@@ -23,7 +23,13 @@ from app.utils.documents.snapshot_invoice_pdf import build_snapshot_invoice_pdf
 logger = logging.getLogger(__name__)
 
 STATUS_TRANSITIONS = {
-    OrderStatus.PENDING: {OrderStatus.PAID, OrderStatus.CANCELLED},
+    # COD orders are already accepted at checkout; payment is collected on delivery.
+    # Stripe pending orders must remain in the payment lifecycle until settled/cancelled.
+    OrderStatus.PENDING: {
+        OrderStatus.PAID,
+        OrderStatus.PROCESSING,
+        OrderStatus.CANCELLED,
+    },
     OrderStatus.PAID: {OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.REFUNDED},
     OrderStatus.PROCESSING: {OrderStatus.SHIPPED, OrderStatus.REFUNDED},
     OrderStatus.SHIPPED: {OrderStatus.DELIVERED},
@@ -149,6 +155,15 @@ class OrderService:
             except ValueError:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=OrderSecurityMessages.INVALID_TRANSITION)
             allowed_transitions = STATUS_TRANSITIONS.get(current_status_enum, set())
+            if (
+                current_status_enum == OrderStatus.PENDING
+                and target_status_enum == OrderStatus.PROCESSING
+                and str(current_res.get("payment_method") or "").strip().lower() != "cod"
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=OrderSecurityMessages.INVALID_TRANSITION,
+                )
             if target_status_enum not in allowed_transitions:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.INVALID_TRANSITION)
             if target_status_enum == OrderStatus.REFUNDED and current_res.get("stripe_payment_intent"):
