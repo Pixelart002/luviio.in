@@ -175,6 +175,16 @@ class OrderService:
                     status_code=status.HTTP_409_CONFLICT,
                     detail=OrderSecurityMessages.INVALID_TRANSITION,
                 )
+            if (
+                current_status_enum == OrderStatus.PROCESSING
+                and target_status_enum == OrderStatus.SHIPPED
+                and str(current_res.get("payment_method") or "").strip().lower() in {"cod", "cash_on_delivery"}
+                and not str(current_res.get("provider_payment_id") or "").strip()
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=OrderSecurityMessages.INVALID_TRANSITION,
+                )
             if target_status_enum not in allowed_transitions:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.INVALID_TRANSITION)
             if target_status_enum == OrderStatus.REFUNDED and current_res.get("stripe_payment_intent"):
