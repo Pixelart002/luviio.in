@@ -25,6 +25,7 @@ from app.events.handlers.order_handlers import (
     handle_paid_email,
     handle_paid_push,
     handle_shipped_push,
+    handle_status_email,
     handle_status_push,
 )
 from app.events.handlers.settings_handlers import handle_setting_reset, handle_setting_updated
@@ -79,6 +80,7 @@ def register_all_event_handlers() -> None:
     bus.subscribe(OrderPaidEvent, handle_paid_push)
     bus.subscribe(OrderFailedEvent, handle_failed_push)
     bus.subscribe(OrderShippedEvent, handle_shipped_push)
+    bus.subscribe(OrderStatusChangedEvent, handle_status_email)
     bus.subscribe(OrderStatusChangedEvent, handle_status_push)
     bus.subscribe(LowStockEvent, handle_low_stock_push)
 
