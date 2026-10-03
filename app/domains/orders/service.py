@@ -14,6 +14,7 @@ from app.domains.orders.exceptions import OrderRepositoryError
 from app.domains.orders.payment_port import OrderPaymentPort
 from app.domains.orders.repository import AsyncOrderRepository
 from app.domains.payments.repository import AsyncPaymentRepository
+from app.domains.shipping.provider_service import ShippingProviderService
 from app.domains.users.repository import AsyncUserRepository
 from app.enums.order_status import OrderStatus
 from app.events.bus import OrderShippedEvent, OrderStatusChangedEvent, get_event_bus
@@ -32,7 +33,7 @@ STATUS_TRANSITIONS = {
     },
     OrderStatus.PAID: {OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.REFUNDED},
     OrderStatus.PROCESSING: {OrderStatus.SHIPPED, OrderStatus.REFUNDED},
-    OrderStatus.SHIPPED: {OrderStatus.DELIVERED},
+    OrderStatus.SHIPPED: {OrderStatus.DELIVERED, OrderStatus.REFUNDED},
     OrderStatus.DELIVERED: {OrderStatus.REFUNDED},
     OrderStatus.REFUNDED: set(),
     OrderStatus.CANCELLED: set(),
@@ -50,6 +51,7 @@ class OrderService:
         self.payment_port = payment_port
         self.payment_repo = AsyncPaymentRepository()
         self.checkout_repo = AsyncCheckoutRepository()
+        self.shipping_provider = ShippingProviderService()
 
     def _sanitize(self, order: Dict[str, Any]) -> Dict[str, Any]:
         if not order:
@@ -235,6 +237,19 @@ class OrderService:
             result = await self.repo.update_order_status_safe(internal_order_id, payload_data, current_status_enum.value)
             if not result:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OrderSecurityMessages.CONCURRENCY_CONFLICT)
+        if target_status_str:
+            try:
+                await self.shipping_provider.sync_order_status(
+                    internal_order_id,
+                    target_status_enum.value,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to synchronize manual shipment status | order=%s status=%s",
+                    internal_order_id,
+                    target_status_enum.value,
+                )
+
         if target_status_str == OrderStatus.SHIPPED.value:
             email = await self.repo.get_user_email(current_res["customer_id"])
             if email:
