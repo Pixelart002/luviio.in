@@ -137,7 +137,7 @@ begin
          cancelled_at = case when v_new_status = 'cancelled' then now() else cancelled_at end,
          fulfilled_at = case when v_new_status = 'processing' then now() else fulfilled_at end
    where id = p_order_id
-   returning to_jsonb(orders.*)
+   returning *
    into v_order;
 
   return to_jsonb(v_order);
