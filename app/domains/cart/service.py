@@ -27,7 +27,7 @@ class CartService:
         config, raw_items = await asyncio.gather(self.repo.get_pricing_config(), self.repo.get_cart_items_with_products(cart_id))
         pricing_engine = get_pricing_from_config(config)
         if not raw_items:
-            return {"items": [], "item_count": 0, "subtotal": 0.0, "shipping_cost": 0.0, "tax_amount": 0.0, "total_amount": 0.0, "free_shipping_eligible": False, "amount_to_free_shipping": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0, "free_shipping_threshold": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0, "has_unavailable_items": False, "currency": "INR"}
+            return {"items": [], "item_count": 0, "subtotal": 0.0, "shipping_cost": 0.0, "tax_amount": 0.0, "total_amount": 0.0, "shipping_enabled": bool(pricing_engine.shipping_enabled), "tax_enabled": bool(config.get("tax_enabled", False)), "free_shipping_eligible": False, "amount_to_free_shipping": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0, "free_shipping_threshold": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0, "has_unavailable_items": False, "currency": "INR"}
         enriched = []
         subtotal = Decimal("0")
         total_item_count = 0
@@ -87,6 +87,8 @@ class CartService:
             "amount_to_free_shipping": round(amount_to_free_shipping, 2),
             "free_shipping_threshold": shipping_threshold,
             "shipping_calculated_at_checkout": False,
+            "shipping_enabled": bool(pricing_engine.shipping_enabled),
+            "tax_enabled": bool(config.get("tax_enabled", False)),
             "has_unavailable_items": has_unavailable,
             "currency": breakdown.currency,
         }
