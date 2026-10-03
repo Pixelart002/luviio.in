@@ -136,6 +136,26 @@ class ShippingProviderService:
         })
         return row
 
+    async def get_for_order(self, order_id: str) -> dict[str, Any] | None:
+        """Load the manual shipment and repair its lifecycle from the authoritative order status."""
+        row = await self.repo.get_by_order(str(order_id), MANUAL_PROVIDER)
+        if not row:
+            return None
+
+        sb = await get_async_admin_supabase()
+        order_res = await (
+            sb.table("orders")
+            .select("status")
+            .eq("id", str(order_id))
+            .maybe_single()
+            .execute()
+        )
+        order = order_res.data if order_res else None
+        if not order:
+            return row
+
+        return await self.sync_order_status(str(order_id), str(order.get("status") or ""))
+
     async def sync_order_status(self, order_id: str, order_status: str) -> dict[str, Any] | None:
         """Mirror the authoritative order lifecycle onto its internal manual shipment record."""
         row = await self.repo.get_by_order(str(order_id), MANUAL_PROVIDER)
