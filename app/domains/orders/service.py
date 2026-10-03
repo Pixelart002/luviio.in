@@ -9,6 +9,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.constants.order_messages import OrderMessages, OrderSecurityMessages
 from app.domains.inventory.service import InventoryService
+from app.domains.checkout.repository import AsyncCheckoutRepository
 from app.domains.orders.exceptions import OrderRepositoryError
 from app.domains.orders.payment_port import OrderPaymentPort
 from app.domains.orders.repository import AsyncOrderRepository
@@ -42,6 +43,7 @@ class OrderService:
         self.inventory = InventoryService()
         self.payment_port = payment_port
         self.payment_repo = AsyncPaymentRepository()
+        self.checkout_repo = AsyncCheckoutRepository()
 
     def _sanitize(self, order: Dict[str, Any]) -> Dict[str, Any]:
         if not order:
@@ -80,7 +82,11 @@ class OrderService:
     async def get_order(self, order_identifier: str, user_id: str, is_admin: bool = False) -> Dict[str, Any]:
         raw_order = await self.repo.get_order_by_id(order_identifier)
         order = OrderPolicy.assert_can_view(raw_order, user_id, is_admin=is_admin)
-        return self._sanitize(order)
+        sanitized = self._sanitize(order)
+        pricing_config = await self.checkout_repo.get_pricing_config()
+        sanitized["shipping_enabled"] = bool(pricing_config.get("shipping_enabled", False))
+        sanitized["tax_enabled"] = bool(pricing_config.get("tax_enabled", False))
+        return sanitized
 
     async def cancel_order(self, order_identifier: str, user_id: str, is_admin: bool = False) -> Dict[str, Any]:
         raw_order = await self.repo.get_order_by_id(order_identifier)
