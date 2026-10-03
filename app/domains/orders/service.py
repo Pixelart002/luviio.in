@@ -32,7 +32,7 @@ STATUS_TRANSITIONS = {
         OrderStatus.CANCELLED,
     },
     OrderStatus.PAID: {OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.REFUNDED},
-    OrderStatus.PROCESSING: {OrderStatus.SHIPPED, OrderStatus.REFUNDED},
+    OrderStatus.PROCESSING: {OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.REFUNDED},
     OrderStatus.SHIPPED: {OrderStatus.DELIVERED, OrderStatus.REFUNDED},
     OrderStatus.DELIVERED: {OrderStatus.REFUNDED},
     OrderStatus.REFUNDED: set(),
@@ -157,6 +157,15 @@ class OrderService:
             except ValueError:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=OrderSecurityMessages.INVALID_TRANSITION)
             allowed_transitions = STATUS_TRANSITIONS.get(current_status_enum, set())
+            if (
+                current_status_enum == OrderStatus.PROCESSING
+                and target_status_enum == OrderStatus.PAID
+                and str(current_res.get("payment_method") or "").strip().lower() not in {"cod", "cash_on_delivery"}
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=OrderSecurityMessages.INVALID_TRANSITION,
+                )
             if (
                 current_status_enum == OrderStatus.PENDING
                 and target_status_enum == OrderStatus.PROCESSING
