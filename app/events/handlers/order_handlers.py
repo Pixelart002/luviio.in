@@ -254,19 +254,57 @@ async def handle_status_email(event: OrderStatusChangedEvent) -> None:
         return
 
     provider = get_email_provider("resend")
+    oid = _safe_oid(event.order)
+    email = _safe_email(event.customer_email)
+    invoice_pdf = None
+    invoice_number = None
     try:
-        await provider.send_order_delivered(event.customer_email, event.order)
+        order_id = str(event.order.get("id") or "").strip()
+        if order_id:
+            invoice = await AsyncOrderRepository().get_invoice_snapshot(order_id)
+            if invoice:
+                invoice_items = invoice.get("invoice_items") or []
+                seller_snapshot = invoice.get("seller_snapshot") or {}
+                if invoice_items and seller_snapshot:
+                    invoice_order = dict(event.order)
+                    invoice_order["invoice_number"] = invoice.get("invoice_number") or event.order.get("invoice_number")
+                    invoice_order["issued_at"] = invoice.get("issued_at")
+                    invoice_order["currency"] = invoice.get("currency") or event.order.get("currency")
+                    invoice_order["tax_type"] = invoice.get("tax_type") or event.order.get("tax_type")
+                    invoice_order["qr_payload"] = invoice.get("qr_payload")
+                    invoice_order["order_items"] = invoice_items
+                    invoice_order.update(invoice.get("totals_snapshot") or {})
+                    customer = {
+                        "full_name": event.order.get("shipping_name") or event.order.get("billing_name") or "Customer",
+                        "email": event.customer_email,
+                    }
+                    invoice_pdf = await run_in_threadpool(
+                        build_snapshot_invoice_pdf,
+                        invoice_order,
+                        customer,
+                        seller_snapshot,
+                        invoice.get("billing_snapshot") or {},
+                        invoice.get("shipping_snapshot") or {},
+                    )
+                    invoice_number = invoice_order.get("invoice_number")
+                else:
+                    logger.warning("[EMAIL] delivered invoice snapshot incomplete | order=%s", oid)
+            else:
+                logger.warning("[EMAIL] delivered invoice snapshot missing | order=%s", oid)
+        await provider.send_order_delivered(
+            event.customer_email,
+            event.order,
+            invoice_pdf=invoice_pdf,
+            invoice_number=invoice_number,
+        )
         logger.info(
-            "[EMAIL] order_delivered sent | order=%s recipient=%s",
-            _safe_oid(event.order),
-            _safe_email(event.customer_email),
+            "[EMAIL] order_delivered sent | order=%s recipient=%s invoice_attachment=%s",
+            oid,
+            email,
+            bool(invoice_pdf),
         )
     except Exception:
-        logger.exception(
-            "[EMAIL] order_delivered failed | order=%s recipient=%s",
-            _safe_oid(event.order),
-            _safe_email(event.customer_email),
-        )
+        logger.exception("[EMAIL] order_delivered failed | order=%s recipient=%s", oid, email)
         raise
 
 
