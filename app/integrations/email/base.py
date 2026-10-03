@@ -34,3 +34,7 @@ class EmailProvider(ABC):
         invoice_number: str | None = None,
     ) -> None:
         pass
+
+    @abstractmethod
+    async def send_order_delivered(self, to: str, order: Dict[str, Any]) -> None:
+        pass
