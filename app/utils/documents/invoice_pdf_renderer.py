@@ -291,9 +291,10 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
         [Paragraph(f"<b>Invoice Date:</b> {_date(order.get('issued_at'),True)}",ST["body"])],
         [Paragraph(f"<b>Tracking:</b> {_s(order.get('tracking_number'),'—')}",ST["body"])],
         [Paragraph(f"<b>Place of Supply:</b> {place_of_supply}",ST["body"])],
-        [Paragraph(f"<b>Tax:</b> {tax_mode}",ST["body"])] if tax_visible else [],
-        [Paragraph(f"<b>Reverse Charge:</b> {reverse_charge}",ST["body"])],
     ]
+    if tax_visible:
+        invoice_meta.append([Paragraph(f"<b>Tax:</b> {tax_mode}",ST["body"])])
+    invoice_meta.append([Paragraph(f"<b>Reverse Charge:</b> {reverse_charge}",ST["body"])])
     qr_payload = _s(order.get("qr_payload")) or f"INV:{invoice_no}|ORD:{order_no}|TOTAL:{_f(order.get('total_amount')):.2f}"
     qr_cell = Table([[Paragraph("SCAN TO VERIFY",ST["head"])],[_qr(qr_payload,72)]], colWidths=[105])
     qr_cell.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0)]))
@@ -301,7 +302,7 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
     meta.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.5,BORDER),("LINEBEFORE",(1,0),(1,0),.5,BORDER),("LINEBEFORE",(2,0),(2,0),.5,BORDER),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
     story += [meta, Spacer(1,10)]
 
-    widths = [18, 138, 34, 48, 20, 48, 60, 104, 65]
+    widths = [18, 138, 34, 48, 20, 48, 60] + ([104] if tax_visible else []) + [65]
     rows = [[Paragraph("Sl.",ST["head"]),Paragraph("Description",ST["head_l"]),Paragraph("HSN",ST["head"]),Paragraph("Unit Price",ST["head_r"]),Paragraph("Qty",ST["head"]),Paragraph("Discount",ST["head_r"]),Paragraph("Taxable Value",ST["head_r"])] + ([Paragraph("GST (CGST + SGST)" if tax_mode == "CGST+SGST" else "GST (IGST)",ST["head"])] if tax_visible else []) + [Paragraph("Total",ST["head_r"])]]
     items = order.get("order_items") or []
     run_tax = 0.0
