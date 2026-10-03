@@ -45,6 +45,8 @@ class CartResponse(BaseModel):
     subtotal: float
     shipping_cost: float
     tax_amount: float
+    shipping_enabled: bool
+    tax_enabled: bool
     total_amount: float
     free_shipping_eligible: bool
     amount_to_free_shipping: float
