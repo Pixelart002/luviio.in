@@ -80,6 +80,7 @@ class OrderStatusChangedEvent:
     customer_id: str
     old_status: str
     new_status: str
+    customer_email: str = ""
 
 
 @dataclass
