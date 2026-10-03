@@ -17,7 +17,7 @@ from app.domains.payments.repository import AsyncPaymentRepository
 from app.domains.shipping.provider_service import ShippingProviderService
 from app.domains.users.repository import AsyncUserRepository
 from app.enums.order_status import OrderStatus
-from app.events.bus import OrderShippedEvent, OrderStatusChangedEvent, get_event_bus
+from app.events.bus import OrderPaidEvent, OrderShippedEvent, OrderStatusChangedEvent, get_event_bus
 from app.permissions.policies.order_policies import OrderPolicy
 from app.utils.documents.snapshot_invoice_pdf import build_snapshot_invoice_pdf
 
@@ -259,7 +259,17 @@ class OrderService:
                     target_status_enum.value,
                 )
 
-        if target_status_str == OrderStatus.SHIPPED.value:
+        if target_status_str == OrderStatus.PAID.value:
+            email = await self.repo.get_user_email(current_res["customer_id"])
+            if email:
+                await get_event_bus().publish_durable(
+                    OrderPaidEvent(
+                        order=result,
+                        customer_email=email,
+                        customer_id=current_res["customer_id"],
+                    )
+                )
+        elif target_status_str == OrderStatus.SHIPPED.value:
             email = await self.repo.get_user_email(current_res["customer_id"])
             if email:
                 await get_event_bus().publish_durable(
@@ -271,12 +281,14 @@ class OrderService:
                     )
                 )
         elif target_status_str in (OrderStatus.PROCESSING.value, OrderStatus.DELIVERED.value, OrderStatus.REFUNDED.value, OrderStatus.CANCELLED.value):
+            email = await self.repo.get_user_email(current_res["customer_id"])
             await get_event_bus().publish_durable(
                 OrderStatusChangedEvent(
                     order=result,
                     customer_id=current_res["customer_id"],
                     old_status=current_status_enum.value,
                     new_status=target_status_str,
+                    customer_email=email or "",
                 )
             )
         return self._sanitize(result)
