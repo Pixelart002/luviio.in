@@ -140,7 +140,7 @@ begin
    returning to_jsonb(orders.*)
    into v_order;
 
-  return v_order;
+  return to_jsonb(v_order);
 end;
 $function$;
 
