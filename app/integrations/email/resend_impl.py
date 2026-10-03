@@ -198,7 +198,12 @@ async def send_order_confirmation(to: str, order: dict | None) -> None:
     }
     await _async_safe_send(params, f"order_confirmation to={to} order={oid}")
 
-async def send_order_delivered(to: str, order: dict | None) -> None:
+async def send_order_delivered(
+    to: str,
+    order: dict | None,
+    invoice_pdf: bytes | None = None,
+    invoice_number: str | None = None,
+) -> None:
     order = order or {}
     oid = _order_ref(order)
     customer_name = _esc(order.get("shipping_name") or order.get("billing_name") or "Customer")
@@ -217,6 +222,22 @@ async def send_order_delivered(to: str, order: dict | None) -> None:
         </td></tr>
       </table>
     """
+    invoice_no = str(invoice_number or order.get("invoice_number") or "").strip()
+    attachment_note = (
+        '<div style="margin:18px 0 0;padding:12px 14px;background-color:#12100d;border:1px solid #2b251d;border-radius:10px;'
+        f'color:{TEXT_MUTED};font-size:12px;line-height:1.6;">Your invoice PDF is attached to this email.</div>'
+        if invoice_pdf
+        else ""
+    )
+    content += attachment_note
+
+    attachments = []
+    if invoice_pdf:
+        attachments.append({
+            "filename": f"Luviio_Invoice_{str(invoice_no or oid).replace("/", "-")}.pdf",
+            "content": base64.b64encode(invoice_pdf).decode("ascii"),
+        })
+
     params: resend.Emails.SendParams = {
         "from": FROM,
         "to": [to],
@@ -227,7 +248,12 @@ async def send_order_delivered(to: str, order: dict | None) -> None:
             preheader=f"Order #{oid} has been delivered",
         ),
     }
-    await _async_safe_send(params, f"delivered to={to} order={oid}")
+    if attachments:
+        params["attachments"] = attachments
+    await _async_safe_send(
+        params,
+        f"delivered to={to} order={oid} attachment={'yes' if attachments else 'no'}",
+    )
 
 
 async def send_order_shipped(to: str, order: dict | None, tracking_number: str | None) -> None:
