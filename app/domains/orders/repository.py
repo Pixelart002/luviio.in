@@ -140,7 +140,7 @@ class AsyncOrderRepository:
     async def get_order_for_admin_update(self, order_id: str) -> Optional[dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         try:
-            res = await admin_sb.table("orders").select("status, payment_method, stripe_payment_intent, customer_id").eq("id", order_id).maybe_single().execute()
+            res = await admin_sb.table("orders").select("status, payment_method, stripe_payment_intent, payment_provider, provider_payment_id, total_amount, currency, order_number, customer_id").eq("id", order_id).maybe_single().execute()
             return res.data if res else None
         except Exception as e:
             logger.error(f"[REPO:ORDERS] Error fetching order for admin update {order_id}: {e}", exc_info=True)
