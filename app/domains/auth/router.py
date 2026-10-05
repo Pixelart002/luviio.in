@@ -132,7 +132,33 @@ async def mfa_verify_code(
     current: dict[str, Any] = Depends(get_current_user),
 ):
     try:
-        factor_id = await get_verified_totp_factor_id(current["access_token"])
+        factors = await list_factors(current["access_token"])
+        all_factors = factors.get("totp", [])
+        selected_factor = None
+
+        if payload.factor_id:
+            selected_factor = next(
+                (
+                    factor
+                    for factor in all_factors
+                    if factor.get("id") == payload.factor_id
+                ),
+                None,
+            )
+            if not selected_factor:
+                raise MFAError("MFA factor not found.")
+        else:
+            selected_factor_id = await get_verified_totp_factor_id(current["access_token"])
+            selected_factor = next(
+                (
+                    factor
+                    for factor in all_factors
+                    if factor.get("id") == selected_factor_id
+                ),
+                None,
+            )
+
+        factor_id = str(selected_factor["id"])
         challenge_data = await mfa_challenge(current["access_token"], factor_id)
         challenge_id = str(challenge_data.get("id") or "")
         if not challenge_id:
