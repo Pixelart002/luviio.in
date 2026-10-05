@@ -302,7 +302,16 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
     meta.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.5,BORDER),("LINEBEFORE",(1,0),(1,0),.5,BORDER),("LINEBEFORE",(2,0),(2,0),.5,BORDER),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
     story += [meta, Spacer(1,10)]
 
-    widths = [18, 138, 34, 48, 20, 48, 60] + ([104] if tax_visible else []) + [65]
+    # Keep the invoice item table at the full content width.  The previous
+    # fixed widths totalled only 431pt when GST was hidden, leaving a large
+    # unused area and making the table look visually compressed on mobile/PDF
+    # viewers.  Use the available 555pt canvas deliberately and give the
+    # description/value columns the space they actually need.
+    widths = (
+        [22, 195, 42, 60, 25, 65, 70, 76]
+        if not tax_visible
+        else [20, 140, 34, 52, 22, 50, 62, 100, 75]
+    )
     rows = [[Paragraph("Sl.",ST["head"]),Paragraph("Description",ST["head_l"]),Paragraph("HSN",ST["head"]),Paragraph("Unit Price",ST["head_r"]),Paragraph("Qty",ST["head"]),Paragraph("Discount",ST["head_r"]),Paragraph("Taxable Value",ST["head_r"])] + ([Paragraph("GST (CGST + SGST)" if tax_mode == "CGST+SGST" else "GST (IGST)",ST["head"])] if tax_visible else []) + [Paragraph("Total",ST["head_r"])]]
     items = order.get("order_items") or []
     run_tax = 0.0
@@ -340,7 +349,7 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
     total_row.append(Paragraph(_money(grand),ST["head_r"]))
     rows.append(total_row)
     items_table = Table(rows,colWidths=widths,repeatRows=1)
-    items_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),HEADER),("LINEBELOW",(0,0),(-1,0),.8,BORDER),("ROWBACKGROUNDS",(0,1),(-1,-2),[colors.white,ALT]),("BACKGROUND",(0,-1),(-1,-1),TOTAL),("SPAN",(0,-1),(5,-1)),("BOX",(0,0),(-1,-1),.5,BORDER),("INNERGRID",(0,0),(-1,-1),.25,colors.HexColor("#dddddd")),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2),("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
+    items_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),HEADER),("LINEBELOW",(0,0),(-1,0),.8,BORDER),("ROWBACKGROUNDS",(0,1),(-1,-2),[colors.white,ALT]),("BACKGROUND",(0,-1),(-1,-1),TOTAL),("SPAN",(0,-1),(5,-1)),("BOX",(0,0),(-1,-1),.5,BORDER),("INNERGRID",(0,0),(-1,-1),.25,colors.HexColor("#dddddd")),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),("LEFTPADDING",(0,0),(-1,-1),1.5),("RIGHTPADDING",(0,0),(-1,-1),1.5),("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
     story += [items_table,Spacer(1,10)]
 
     subtotal = _f(order.get("subtotal"), run_net-shipping_cost)
