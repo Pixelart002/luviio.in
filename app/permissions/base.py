@@ -47,6 +47,7 @@ ROLE_PERMISSIONS = {
     ],
     UserRole.MANAGER: [
         AP.ACCESS_CONSOLE,
+        SP.READ,
         PP.CREATE, PP.READ, PP.UPDATE,
         OP.READ, OP.UPDATE, OP.CANCEL,
         UP.READ,
