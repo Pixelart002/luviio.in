@@ -69,6 +69,7 @@ ROLE_PERMISSIONS = {
         UP.READ,
         PP.READ,
         ShipP.READ,
+        SP.READ,
     ],
     UserRole.CUSTOMER: [
         CP.APPLY,
