@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class AdminPolicy:
     @staticmethod
     def assert_is_active_admin(profile: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        """ABAC Guard: Strictly verifies if the user profile exists, is active, and holds the Admin role."""
+        """ABAC Guard: verifies that an active staff profile may enter the admin workspace."""
         if not profile:
             logger.warning("ABAC Block | Admin verification failed: No profile found.")
             raise HTTPException(
@@ -27,11 +27,15 @@ class AdminPolicy:
         user_role = profile.get("role", "")
         is_active = profile.get("is_active", False)
 
-        admin_role_val = UserRole.ADMIN.value if hasattr(UserRole.ADMIN, "value") else "admin"
-        super_admin_val = UserRole.SUPER_ADMIN.value if hasattr(UserRole, "SUPER_ADMIN") else "super_admin"
+        staff_roles = {
+            UserRole.ADMIN.value if hasattr(UserRole.ADMIN, "value") else "admin",
+            UserRole.SUPER_ADMIN.value if hasattr(UserRole, "SUPER_ADMIN") else "super_admin",
+            UserRole.MANAGER.value if hasattr(UserRole.MANAGER, "value") else "manager",
+            UserRole.SUPPORT.value if hasattr(UserRole, "SUPPORT") else "support",
+        }
 
-        if user_role not in {admin_role_val, super_admin_val} or not is_active:
-            logger.warning("ABAC Block | Unauthorized admin access attempt. Role: %s, Active: %s", user_role, is_active)
+        if user_role not in staff_roles or not is_active:
+            logger.warning("ABAC Block | Unauthorized staff-console access attempt. Role: %s, Active: %s", user_role, is_active)
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, 
                 detail=AdminSecurityMessages.UNAUTHORIZED_ROLE
