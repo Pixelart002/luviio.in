@@ -10,6 +10,7 @@ class MFAEnrollRequest(BaseModel):
 
 class MFAVerifyRequest(BaseModel):
     code: str = Field(min_length=6, max_length=8, pattern=r"^\d{6,8}$")
+    factor_id: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 class MFAUnenrollRequest(BaseModel):
