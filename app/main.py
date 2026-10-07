@@ -35,16 +35,35 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Application startup | service=%s env=%s", settings.APP_NAME, settings.APP_ENV)
-    await init_auth_http_client()
-    logger.info("Auth HTTP client ready | pooled=true keep_alive=true")
-    register_all_event_handlers()
-    logger.info("Event bus ready | durable_outbox=true")
+
+    # These are required runtime dependencies. Fail fast so the platform can
+    # restart an unhealthy worker instead of serving a partially initialized app.
+    try:
+        await init_auth_http_client()
+        logger.info("Auth HTTP client ready | pooled=true keep_alive=true")
+    except Exception:
+        logger.critical("Auth HTTP client initialization failed", exc_info=True)
+        raise
+
+    try:
+        register_all_event_handlers()
+        logger.info("Event bus ready | durable_outbox=true")
+    except Exception:
+        logger.critical("Event handler registration failed", exc_info=True)
+        raise
+
     scheduler_started = start_cron_jobs()
-    logger.info(
-        "Background scheduler ready | tasks=%s started=%s",
-        len(CRON_JOBS),
-        scheduler_started,
-    )
+    if not scheduler_started:
+        logger.error(
+            "Background scheduler failed to start | tasks=%s",
+            len(CRON_JOBS),
+        )
+    else:
+        logger.info(
+            "Background scheduler ready | tasks=%s",
+            len(CRON_JOBS),
+        )
+
     try:
         yield
     finally:
@@ -55,10 +74,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(
     title=settings.APP_NAME,
-    version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    version=settings.APP_VERSION,
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
     lifespan=lifespan,
 )
 
@@ -66,6 +85,9 @@ app = FastAPI(
 @app.get("/", include_in_schema=False)
 async def root() -> dict[str, str]:
     """Minimal public endpoint used to verify that the API process is reachable."""
+    if settings.is_production:
+        return {"status": "ok"}
+
     return {
         "service": settings.APP_NAME,
         "status": "ok",
@@ -74,9 +96,16 @@ async def root() -> dict[str, str]:
     }
 
 
-apply_middlewares(app)
-app.add_middleware(AdminAuditMiddleware)
+# Middleware is intentionally registered from outermost policy gates to
+# inner request processing. FastAPI/Starlette makes the last registered
+# middleware the outermost layer.
+#
+# Maintenance must run before audit/rate-limit/business middleware so a
+# maintenance response does not execute unnecessary inner processing.
 app.middleware("http")(maintenance_middleware)
+app.add_middleware(AdminAuditMiddleware)
+apply_middlewares(app)
+
 register_exception_handlers(app)
 app.include_router(health_router)
 app.include_router(social_share_router)
