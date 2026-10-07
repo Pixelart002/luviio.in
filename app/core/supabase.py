@@ -78,9 +78,10 @@ async def get_async_supabase_on_demand() -> AsyncClient:
 
 def get_admin_supabase() -> Client:
     """Returns the globally shared Sync Admin Client."""
-    if not _initialized_admins:
-        opts = ClientOptions(auto_refresh_token=False, persist_session=False)
-        return create_client(settings.SB_URL, settings.SB_SERVICE_ROLE_KEY, options=opts)
+    if not _initialized_admins or _admin_supabase is None:
+        raise RuntimeError(
+            "Supabase admin clients not initialized. Call init_admin_clients() first."
+        )
     return _admin_supabase
 
 
