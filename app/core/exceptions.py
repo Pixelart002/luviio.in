@@ -81,9 +81,23 @@ def register_exception_handlers(app):
     @app.exception_handler(PostgrestError)
     async def postgrest_error_handler(request: Request, exc: PostgrestError):
         logger.error("Database Error | code=%s | path=%s | msg=%s", exc.code, request.url.path, exc.message)
+        pg_code = str(exc.code or "")
+        if pg_code.startswith("23"):
+            status_code = status.HTTP_409_CONFLICT
+        elif pg_code.startswith("08") or pg_code == "57P01":
+            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        elif pg_code == "42501":
+            status_code = status.HTTP_403_FORBIDDEN
+        else:
+            status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+
         return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=error_response(code="DB_ERROR", message="Database operation failed", details={"pg_code": exc.code}),
+            status_code=status_code,
+            content=error_response(
+                code="DB_ERROR",
+                message="Database operation failed",
+                details={"pg_code": exc.code},
+            ),
         )
 
     @app.exception_handler(Exception)
