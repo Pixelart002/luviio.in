@@ -12,7 +12,6 @@ import time
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional
 
-from cachetools import TTLCache
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from gotrue.errors import AuthApiError
@@ -33,15 +32,6 @@ logger = logging.getLogger(__name__)
 _NON_PRIVILEGED_PERMISSIONS = frozenset({"coupons.apply"})
 
 bearer_scheme = HTTPBearer(auto_error=False)
-_token_cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
-_profile_cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
-
-
-def invalidate_profile_cache(user_id: str) -> None:
-    """Invalidate cached profile/RBAC context after an administrative mutation."""
-    if user_id:
-        _profile_cache.pop(str(user_id), None)
-
 
 def _extract_token(request: Request, credentials: Optional[HTTPAuthorizationCredentials]) -> str:
     if credentials and credentials.credentials:
@@ -128,12 +118,8 @@ def _validate_token_locally(token: str) -> Optional[Any]:
 
 
 async def _validate_token_natively(token: str) -> Any:
-    if token in _token_cache:
-        return _token_cache[token]
-
     local_user = _validate_token_locally(token)
     if local_user is not None:
-        _token_cache[token] = local_user
         return local_user
 
     sb = await get_async_admin_supabase()
@@ -142,7 +128,6 @@ async def _validate_token_natively(token: str) -> Any:
         user = getattr(result, "user", result)
         if not user or not hasattr(user, "id"):
             raise UnauthenticatedUser("Invalid token structure")
-        _token_cache[token] = user
         return user
     except AuthApiError as e:
         logger.warning("Native Auth Block: %s", e)
@@ -165,10 +150,12 @@ async def _get_or_create_profile(user_id: str, email: str, user_metadata: dict) 
             )
         except Exception as e:
             logger.error("Profile auto-create failed for %s: %s", user_id, e)
-            return {}
-    if profile:
-        _profile_cache[user_id] = profile
-    return profile or {}
+            raise UnauthenticatedUser(
+                "Account setup incomplete. Please try again."
+            ) from e
+    if not profile:
+        raise UnauthenticatedUser("Account profile is unavailable. Please try again.")
+    return profile
 
 
 async def get_current_user(
