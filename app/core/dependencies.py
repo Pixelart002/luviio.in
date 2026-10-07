@@ -33,6 +33,11 @@ _NON_PRIVILEGED_PERMISSIONS = frozenset({"coupons.apply"})
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
+
+def invalidate_profile_cache(user_id: str) -> None:
+    """Compatibility hook; profile authorization context is no longer cached."""
+    return None
+
 def _extract_token(request: Request, credentials: Optional[HTTPAuthorizationCredentials]) -> str:
     if credentials and credentials.credentials:
         return credentials.credentials
