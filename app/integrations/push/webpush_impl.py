@@ -373,7 +373,7 @@ async def broadcast_push_to_admins(
         admins = (
             await sb_admin.table("users")
             .select("id")
-            .eq("role", "admin")
+            .in_("role", ["admin", "super_admin"])
             .eq("is_active", True)
             .execute()
         )
