@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Application startup | service=%s env=%s", settings.APP_NAME, settings.APP_ENV)
 
-    # These are required runtime dependencies. Fail fast so the platform can
-    # restart an unhealthy worker instead of serving a partially initialized app.
+    # Required runtime dependency: fail fast rather than serving a partially
+    # initialized worker.
     try:
         await init_auth_http_client()
         logger.info("Auth HTTP client ready | pooled=true keep_alive=true")
@@ -45,6 +45,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.critical("Auth HTTP client initialization failed", exc_info=True)
         raise
 
+    # Event handlers are required for the application's durable event flow.
     try:
         register_all_event_handlers()
         logger.info("Event bus ready | durable_outbox=true")
@@ -74,7 +75,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(
     title=settings.APP_NAME,
-    version=settings.APP_VERSION,
+    version="1.0.0",
     docs_url=None if settings.is_production else "/docs",
     redoc_url=None if settings.is_production else "/redoc",
     openapi_url=None if settings.is_production else "/openapi.json",
@@ -96,15 +97,12 @@ async def root() -> dict[str, str]:
     }
 
 
-# Middleware is intentionally registered from outermost policy gates to
-# inner request processing. FastAPI/Starlette makes the last registered
-# middleware the outermost layer.
-#
-# Maintenance must run before audit/rate-limit/business middleware so a
-# maintenance response does not execute unnecessary inner processing.
-app.middleware("http")(maintenance_middleware)
-app.add_middleware(AdminAuditMiddleware)
+# FastAPI/Starlette makes the last registered middleware the outermost layer.
+# Keep maintenance last so it short-circuits requests before audit, rate
+# limiting, CORS and other inner request processing.
 apply_middlewares(app)
+app.add_middleware(AdminAuditMiddleware)
+app.middleware("http")(maintenance_middleware)
 
 register_exception_handlers(app)
 app.include_router(health_router)
