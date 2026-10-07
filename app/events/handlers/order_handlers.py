@@ -95,6 +95,26 @@ async def handle_created_email(event: OrderCreatedEvent) -> None:
     await provider.send_order_confirmation(event.customer_email, order)
 
 
+async def handle_created_customer_push(event: OrderCreatedEvent) -> None:
+    """Notify a customer immediately when a COD order is successfully created."""
+    order = event.order or {}
+    payment_method = str(order.get("payment_method") or "").strip().lower()
+    uid = event.customer_id or order.get("customer_id", "")
+    if payment_method not in {"cod", "cash_on_delivery"} or not uid:
+        return
+
+    await send_push_to_user(
+        uid,
+        title="Order placed successfully",
+        body="Your COD order #{oid} has been placed successfully. We'll start processing it soon.".format(
+            oid=_safe_oid(order)
+        ),
+        icon=_Icon.NEW_ORDER,
+        url=_Copy.URL_ORDERS,
+    )
+    logger.info("[PUSH] customer order-created notification | user=%s order=%s", uid, _safe_oid(order))
+
+
 async def handle_new_order_admin_push(event: OrderCreatedEvent) -> None:
     oid = _safe_oid(event.order or {})
     amt = (event.order or {}).get("total_amount", 0)
