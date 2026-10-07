@@ -19,6 +19,7 @@ from app.events.bus import (
 )
 from app.events.handlers.order_handlers import (
     handle_created_email,
+    handle_created_customer_push,
     handle_failed_push,
     handle_low_stock_push,
     handle_new_order_admin_push,
@@ -75,6 +76,7 @@ def register_all_event_handlers() -> None:
     bus = get_event_bus()
 
     bus.subscribe(OrderCreatedEvent, handle_new_order_admin_push)
+    bus.subscribe(OrderCreatedEvent, handle_created_customer_push)
     bus.subscribe(OrderCreatedEvent, handle_created_email)
     bus.subscribe(OrderPaidEvent, handle_paid_email)
     bus.subscribe(OrderPaidEvent, handle_paid_push)
