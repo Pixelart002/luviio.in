@@ -53,6 +53,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.critical("Event handler registration failed", exc_info=True)
         raise
 
+    if not settings.email_configured:
+        logger.warning("EMAIL NOT CONFIGURED — transactional emails are disabled")
+    if not settings.push_configured:
+        logger.warning("PUSH NOT CONFIGURED — web push notifications are disabled")
+
     scheduler_started = start_cron_jobs()
     if not scheduler_started:
         logger.error(
