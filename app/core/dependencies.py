@@ -9,6 +9,8 @@ import hmac
 import json
 import logging
 import time
+
+from cachetools import TTLCache
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional
 
@@ -33,10 +35,15 @@ _NON_PRIVILEGED_PERMISSIONS = frozenset({"coupons.apply"})
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
+# Request-local worker cache retained for compatibility with the existing profile path.
+# Auth token caching is intentionally not restored.
+_profile_cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
+
 
 def invalidate_profile_cache(user_id: str) -> None:
-    """Compatibility hook; profile authorization context is no longer cached."""
-    return None
+    """Invalidate cached profile data after a user/profile mutation."""
+    if user_id:
+        _profile_cache.pop(str(user_id), None)
 
 def _extract_token(request: Request, credentials: Optional[HTTPAuthorizationCredentials]) -> str:
     if credentials and credentials.credentials:
@@ -160,6 +167,7 @@ async def _get_or_create_profile(user_id: str, email: str, user_metadata: dict) 
             ) from e
     if not profile:
         raise UnauthenticatedUser("Account profile is unavailable. Please try again.")
+    _profile_cache[user_id] = profile
     return profile
 
 
