@@ -48,12 +48,13 @@ class Settings(BaseSettings):
 
     @field_validator(
         "SB_URL", "SB_KEY", "SB_SERVICE_ROLE_KEY",
+        "SUPABASE_JWT_SECRET",
         "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET",
     )
     @classmethod
     def require_keys_in_production(cls, v: str, info: ValidationInfo) -> str:
         app_env = info.data.get("APP_ENV", "production")
-        if app_env != "development" and not v:
+        if app_env not in ("development", "test") and not v:
             raise ValueError(f"{info.field_name} is required in production")
         return v
 
