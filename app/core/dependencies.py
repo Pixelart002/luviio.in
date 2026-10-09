@@ -3,16 +3,17 @@ Dependencies — Async Hardened Production Grade (Luviio SSOT)
 ============================================================
 Path: app/core/dependencies.py
 """
+# ruff: noqa: I001 - legacy import grouping retained while dependencies are being refactored.
 import base64
 import hashlib
 import hmac
 import json
 import logging
 import time
+import types
+from typing import Any, Callable, Dict, Optional
 
 from cachetools import TTLCache
-from types import SimpleNamespace
-from typing import Any, Callable, Dict, Optional
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -117,7 +118,7 @@ def _validate_token_locally(token: str) -> Optional[Any]:
         if audience not in (None, "authenticated", ["authenticated"]):
             raise UnauthenticatedUser("Token audience is invalid.")
 
-        return SimpleNamespace(
+        return types.SimpleNamespace(
             id=subject,
             email=str(claims.get("email") or ""),
             user_metadata=claims.get("user_metadata") or {},

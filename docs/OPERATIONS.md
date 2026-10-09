@@ -1,6 +1,6 @@
 # Operations, CI and Release Flow
 
-Last reviewed: 2026-09-16
+Last reviewed: 2026-10-09
 
 ## CI pipeline
 
@@ -9,22 +9,22 @@ The current GitHub Actions workflow runs on pushes and pull requests targeting `
 ```text
 Checkout
   -> Python 3.13
-  -> install uv
-  -> uv lock
-  -> uv sync --dev
+  -> pinned uv
+  -> resolve dependencies using the pinned resolver
+  -> locked dependency sync
   -> compileall app
-  -> Ruff
+  -> Ruff (read-only)
   -> Mypy
   -> pip-audit --strict
   -> pytest -q + coverage artifact
 ```
 
-The dependency contract is `pyproject.toml` + `uv.lock`.
+The intended dependency contract is `pyproject.toml` + `uv.lock`. The committed lockfile is currently stale against the project manifest, so CI temporarily resolves it with pinned uv 0.12.24 before a locked sync. This is an explicit reproducibility debt: regenerate and commit `uv.lock`, then replace `uv lock` with `uv lock --check` to make CI strictly lockfile-enforcing.
 
 ## Local verification
 
 ```bash
-uv lock --check
+uv lock
 uv sync --locked --dev
 uv run python -m compileall -q app
 uv run ruff check app tests
@@ -132,7 +132,7 @@ The global API rate-limit gate is implemented in `app/core/rate_limit.py` and ba
 - Bucket capacity is `RATE_LIMIT_PER_MINUTE` and refill duration is 60 seconds. Each allowed request consumes one token; tokens refill continuously up to capacity.
 - State is shared across Koyeb workers in `private.http_token_bucket_state`; it is not a process-local counter.
 - The application RPC timeout is 2 seconds. If the RPC is unavailable, malformed, or times out, the middleware fails closed with HTTP 503 and `error=rate_limiter_unavailable`. A valid bucket denial returns HTTP 429 with `error=rate_limit_exceeded` and a `Retry-After` header.
-- The database cleanup function removes bucket rows not updated for 24 hours. Verify how/when cleanup is scheduled in the deployed database; do not assume the function runs automatically merely because it exists.
+- The database cleanup function removes bucket rows not updated for 24 hours. The application scheduler runs its service-role-only public RPC wrapper every six hours; the cleanup remains safe to retry. The database does not have `pg_cron` installed, so do not expect a Supabase database cron job to run it.
 
 ### Verify the database migration
 
@@ -147,15 +147,14 @@ select
   pg_get_function_identity_arguments(p.oid) as arguments
 from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
-where n.nspname = 'private'
-  and p.proname in (
-    'consume_http_token_bucket',
-    'cleanup_http_token_bucket_state'
-  )
-order by p.proname;
+where p.proname in (
+  'consume_http_token_bucket',
+  'cleanup_http_token_bucket_state'
+)
+order by n.nspname, p.proname;
 ```
 
-Expected: the private state table and both private functions exist. The application calls the RPC name `consume_http_token_bucket`; confirm the Supabase RPC schema/exposure configuration resolves it to the private function in the current deployment. Do not grant `anon` or `authenticated` direct access to the private table or function.
+Expected: the private state table and both private functions exist. The application calls the public `consume_http_token_bucket` RPC wrapper and the public `cleanup_http_token_bucket_state` wrapper. Both public wrappers must be executable by `service_role` only; do not grant `anon` or `authenticated` direct access to the private table or functions.
 
 ### Inspect bucket state safely
 
@@ -189,7 +188,7 @@ The table stores current token count and refill timestamps, not a complete reque
 1. Check Koyeb logs for `Shared token-bucket unavailable`. This indicates the limiter RPC path failed or exceeded the 2-second timeout; it is not a normal rate-limit denial.
 2. A normal denial is HTTP 429 with `rate_limit_exceeded` and `Retry-After`. A limiter infrastructure failure is HTTP 503 with `rate_limiter_unavailable`.
 3. Confirm `RATE_LIMIT_PER_MINUTE`, `TRUSTED_PROXY_IPS`, Supabase connectivity, service-role client initialization and migration state before changing capacity.
-4. If testing, use a staging environment or a controlled low-volume test from one client IP. Do not run aggressive loops against production; the bucket is shared across workers and requests from the same IP consume the same bucket.
+4. For rate-limit behavior tests, use staging or a controlled low-volume test from one client IP. Do not run aggressive loops against production; the bucket is shared across workers and requests from the same IP consume the same bucket.
 5. Do not add a process-local fallback without an explicit security/availability decision: it would no longer provide one consistent global limit across workers.
 
 ### Troubleshooting
@@ -201,5 +200,3 @@ The table stores current token count and refill timestamps, not a complete reque
 | Slow API requests near the limiter warning | The RPC wait or other downstream work may be contributing; correlation is not proof of sole cause | Compare request duration, RPC timeout warnings, database query latency and Supabase health |
 | Many bucket rows | Many distinct client-IP hashes have been seen recently | Check cleanup execution and traffic patterns; do not expose raw keys |
 | Unexpected shared-IP throttling | Several users may appear behind one NAT/proxy address | Verify trusted proxy configuration and actual peer IP; never trust arbitrary forwarded headers |
-
-

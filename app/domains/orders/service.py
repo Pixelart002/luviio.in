@@ -8,8 +8,8 @@ from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 
 from app.constants.order_messages import OrderMessages, OrderSecurityMessages
-from app.domains.inventory.service import InventoryService
 from app.domains.checkout.repository import AsyncCheckoutRepository
+from app.domains.inventory.service import InventoryService
 from app.domains.orders.exceptions import OrderRepositoryError
 from app.domains.orders.payment_port import OrderPaymentPort
 from app.domains.orders.repository import AsyncOrderRepository

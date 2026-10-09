@@ -18,7 +18,7 @@ from app.constants.payment_messages import PaymentMessages, PaymentRules, Paymen
 from app.core.supabase import get_async_admin_supabase
 from app.domains.inventory.service import InventoryService
 from app.domains.payments.repository import AsyncPaymentRepository
-from app.domains.pricing.service import PriceBreakdown, _shipping_tax, get_pricing_from_config
+from app.domains.pricing.service import get_pricing_from_config
 from app.enums.order_status import OrderStatus
 from app.events.bus import (
     OrderCreatedEvent,

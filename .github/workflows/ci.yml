@@ -26,21 +26,19 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: latest
+          version: "0.12.24"
           enable-cache: true
 
       - name: Resolve and install dependencies
         run: |
           uv lock
-          uv sync --dev
+          uv sync --locked --dev
 
       - name: Compile application
         run: uv run python -m compileall -q app
 
-      - name: Ruff autofix + gate
-        run: |
-          uv run ruff check --fix app tests
-          uv run ruff check app tests
+      - name: Ruff lint gate
+        run: uv run ruff check app tests
 
       - name: Mypy
         run: uv run mypy app --config-file mypy.ini

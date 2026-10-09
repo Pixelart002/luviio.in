@@ -18,8 +18,8 @@ from app.events.bus import (
     get_event_bus,
 )
 from app.events.handlers.order_handlers import (
-    handle_created_email,
     handle_created_customer_push,
+    handle_created_email,
     handle_failed_push,
     handle_low_stock_push,
     handle_new_order_admin_push,
