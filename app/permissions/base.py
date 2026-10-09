@@ -68,9 +68,9 @@ ROLE_PERMISSIONS = {
         PP.READ,
         OP.READ, OP.UPDATE,
         UP.READ,
-        PP.READ,
         ShipP.READ,
         SP.READ,
+        INVENTORY_READ, INVENTORY_HISTORY_READ, INVENTORY_LOW_STOCK_READ,
     ],
     UserRole.CUSTOMER: [
         CP.APPLY,
