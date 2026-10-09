@@ -49,13 +49,6 @@ jobs:
       - name: Run tests with coverage
         run: uv run pytest -q
 
-      - name: Upload generated lockfile for one-time lock refresh
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: generated-uv-lock
-          path: uv.lock
-
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
