@@ -3,6 +3,7 @@ Dependencies — Async Hardened Production Grade (Luviio SSOT)
 ============================================================
 Path: app/core/dependencies.py
 """
+# ruff: noqa: I001 - legacy import grouping retained while dependencies are being refactored.
 import base64
 import hashlib
 import hmac
