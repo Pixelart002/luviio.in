@@ -9,7 +9,7 @@ import hmac
 import json
 import logging
 import time
-from types import SimpleNamespace
+import types
 from typing import Any, Callable, Dict, Optional
 
 from cachetools import TTLCache
@@ -117,7 +117,7 @@ def _validate_token_locally(token: str) -> Optional[Any]:
         if audience not in (None, "authenticated", ["authenticated"]):
             raise UnauthenticatedUser("Token audience is invalid.")
 
-        return SimpleNamespace(
+        return types.SimpleNamespace(
             id=subject,
             email=str(claims.get("email") or ""),
             user_metadata=claims.get("user_metadata") or {},
