@@ -9,10 +9,10 @@ import hmac
 import json
 import logging
 import time
-
-from cachetools import TTLCache
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional
+
+from cachetools import TTLCache
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
