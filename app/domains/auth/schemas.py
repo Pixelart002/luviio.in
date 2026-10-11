@@ -13,6 +13,14 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     full_name: str | None = Field(default=None, max_length=255)
+    terms_accepted: bool = Field(default=False)
+
+    @field_validator("terms_accepted")
+    @classmethod
+    def require_terms_acceptance(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("You must accept the Terms & Conditions and Privacy Policy to register.")
+        return value
 
     @field_validator("email")
     @classmethod
@@ -63,3 +71,14 @@ class ResetPasswordRequest(BaseModel):
         if len(v) < 8: raise ValueError(AuthSecurityMessages.PWD_LENGTH)
         if v.lower() in AuthRules.COMMON_PASSWORDS: raise ValueError(AuthSecurityMessages.PWD_COMMON)
         return v
+
+class DeleteAccountRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=128)
+    confirmation: str = Field(min_length=1, max_length=40)
+
+    @field_validator("confirmation")
+    @classmethod
+    def require_confirmation_phrase(cls, value: str) -> str:
+        if value.strip() != "DELETE MY ACCOUNT":
+            raise ValueError("Type DELETE MY ACCOUNT to confirm account deletion.")
+        return value.strip()
