@@ -124,8 +124,9 @@ class AsyncUserRepository:
 
     async def soft_delete_all_addresses(self, user_id: str) -> None:
         """Hide saved addresses without breaking historical order references."""
+        from datetime import datetime, timezone
         admin_sb = await get_async_admin_supabase()
-        await admin_sb.table("addresses").update({"deleted_at": "now()", "is_default": False}).eq("user_id", user_id).is_("deleted_at", "null").execute()
+        await admin_sb.table("addresses").update({"deleted_at": datetime.now(timezone.utc).isoformat(), "is_default": False}).eq("user_id", user_id).is_("deleted_at", "null").execute()
 
     async def count_user_orders(self, user_id: str) -> int:
         admin_sb = await get_async_admin_supabase()
