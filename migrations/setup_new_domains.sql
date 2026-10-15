@@ -192,6 +192,32 @@ ALTER TABLE public.orders
 COMMENT ON COLUMN public.orders.coupon_id IS 'Applied coupon (coupons.id), resolved at checkout.';
 COMMENT ON COLUMN public.orders.discount_amount IS 'Monetary discount applied via coupon (INR).';
 
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 7c. Subscription reminders (idempotent; required by subscription reminder API)
+-- ──────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.subscription_reminders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    subscription_id UUID NOT NULL REFERENCES public.user_subscriptions(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
+    reminder_type TEXT NOT NULL CHECK (reminder_type IN ('7d', '1d', 'expired')),
+    due_at TIMESTAMPTZ NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'processing', 'sent', 'dismissed')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    sent_at TIMESTAMPTZ,
+    dismissed_at TIMESTAMPTZ,
+    CONSTRAINT uq_subscription_reminders_subscription_type
+        UNIQUE (subscription_id, reminder_type)
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_reminders_user_status
+    ON public.subscription_reminders (user_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_subscription_reminders_due_status
+    ON public.subscription_reminders (due_at, status);
+ALTER TABLE public.subscription_reminders ENABLE ROW LEVEL SECURITY;
+
 -- ──────────────────────────────────────────────────────────────────────────────
 -- 8. ROW LEVEL SECURITY
 --    Admin service role bypasses RLS (service_role key). Public/app users read
