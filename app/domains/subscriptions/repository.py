@@ -30,8 +30,9 @@ class AsyncSubscriptionRepository:
     async def get_plan(self, plan_id: str) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await sb.table("subscription_plans").select("*").eq("id", plan_id).maybe_single().execute()
-            return res.data if res else None
+            res = await sb.table("subscription_plans").select("*").eq("id", plan_id).limit(1).execute()
+            rows = res.data or []
+            return rows[0] if rows else None
         except Exception as exc:
             logger.error("[REPO:SUB] get_plan failed: %s", exc)
             return None
@@ -39,8 +40,9 @@ class AsyncSubscriptionRepository:
     async def create_plan(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await sb.table("subscription_plans").insert(data).maybe_single().execute()
-            return res.data if res else None
+            res = await sb.table("subscription_plans").insert(data).select("*").execute()
+            rows = res.data or []
+            return rows[0] if rows else None
         except Exception as exc:
             logger.error("[REPO:SUB] create_plan failed: %s", exc)
             return None
@@ -63,9 +65,10 @@ class AsyncSubscriptionRepository:
                 sb.table("user_subscriptions").select("*")
                 .eq("user_id", user_id).eq("status", "active")
                 .gt("ends_at", now)
-                .order("ends_at", desc=True).limit(1).maybe_single().execute()
+                .order("ends_at", desc=True).limit(1).execute()
             )
-            return res.data if res else None
+            rows = res.data or []
+            return rows[0] if rows else None
         except Exception as exc:
             logger.error("[REPO:SUB] get_active_for_user failed: %s", exc)
             return None
@@ -76,9 +79,10 @@ class AsyncSubscriptionRepository:
             res = await (
                 sb.table("user_subscriptions").select("*")
                 .eq("user_id", user_id)
-                .order("starts_at", desc=True).limit(1).maybe_single().execute()
+                .order("starts_at", desc=True).limit(1).execute()
             )
-            return res.data if res else None
+            rows = res.data or []
+            return rows[0] if rows else None
         except Exception as exc:
             logger.error("[REPO:SUB] get_latest_for_user failed: %s", exc)
             return None
@@ -89,9 +93,10 @@ class AsyncSubscriptionRepository:
             res = await (
                 sb.table("user_subscriptions").update(data).select("*")
                 .eq("id", subscription_id).eq("status", "active")
-                .maybe_single().execute()
+                .execute()
             )
-            return res.data if res else None
+            rows = res.data or []
+            return rows[0] if rows else None
         except Exception as exc:
             logger.error("[REPO:SUB] cancel failed: %s", exc)
             return None
@@ -99,8 +104,9 @@ class AsyncSubscriptionRepository:
     async def upsert_subscription(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await sb.table("user_subscriptions").insert(data).maybe_single().execute()
-            return res.data if res else None
+            res = await sb.table("user_subscriptions").insert(data).select("*").execute()
+            rows = res.data or []
+            return rows[0] if rows else None
         except Exception as exc:
             logger.error("[REPO:SUB] upsert failed: %s", exc)
             return None
@@ -128,9 +134,10 @@ class AsyncSubscriptionRepository:
             res = await (
                 sb.table("subscription_reminders")
                 .upsert(data, on_conflict="subscription_id,reminder_type", ignore_duplicates=True)
-                .select("*").maybe_single().execute()
+                .select("*").execute()
             )
-            return res.data if res else None
+            rows = res.data or []
+            return rows[0] if rows else None
         except Exception as exc:
             logger.error("[REPO:SUB] create_reminder_if_missing failed: %s", exc)
             return None
@@ -155,7 +162,7 @@ class AsyncSubscriptionRepository:
                 sb.table("subscription_reminders")
                 .update({"status": "sent", "sent_at": datetime.now(timezone.utc).isoformat()})
                 .select("id").eq("id", reminder_id).eq("status", "pending")
-                .maybe_single().execute()
+                .execute()
             )
             return bool(res and res.data)
         except Exception as exc:
@@ -182,7 +189,7 @@ class AsyncSubscriptionRepository:
                 sb.table("subscription_reminders")
                 .update({"status": "dismissed", "dismissed_at": datetime.now(timezone.utc).isoformat()})
                 .select("id").eq("id", reminder_id).eq("user_id", user_id)
-                .neq("status", "dismissed").maybe_single().execute()
+                .neq("status", "dismissed").execute()
             )
             return bool(res and res.data)
         except Exception as exc:
