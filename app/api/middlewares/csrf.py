@@ -23,8 +23,9 @@ def _origin_from_referer(referer: str) -> str | None:
 
 
 def _allowed(origin: str) -> bool:
-    allowed_origins = settings.cors_origins
-    return "*" in allowed_origins or origin in allowed_origins
+    # Wildcard CORS is never a valid trust signal for cookie-authenticated
+    # state changes. Authenticated browser requests require an explicit origin.
+    return origin in settings.cors_origins and origin != "*"
 
 
 async def csrf_middleware(request: Request, call_next):
