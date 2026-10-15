@@ -104,7 +104,7 @@ class AsyncSubscriptionRepository:
     async def upsert_subscription(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await sb.table("user_subscriptions").insert(data).select("*").execute()
+            res = await sb.table("user_subscriptions").insert(data).execute()
             rows = res.data or []
             return rows[0] if rows else None
         except Exception as exc:
