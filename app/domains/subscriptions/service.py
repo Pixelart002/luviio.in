@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -76,6 +77,15 @@ class SubscriptionService:
         plan = await self.repo.get_plan(plan_id)
         SubscriptionPolicy.assert_plan(plan)
         SubscriptionPolicy.assert_plan_active(plan)
+        try:
+            price = Decimal(str(plan.get("price_inr", 0)))
+        except (InvalidOperation, TypeError, ValueError):
+            raise HTTPException(status_code=500, detail="Subscription plan has an invalid price.")
+        if price > 0:
+            raise HTTPException(
+                status_code=402,
+                detail="Payment is required. Paid membership activation is unavailable until verified checkout is enabled.",
+            )
         existing = await self.repo.get_active_for_user(user_id)
         if existing:
             raise HTTPException(status_code=409, detail="User already has an active subscription.")
