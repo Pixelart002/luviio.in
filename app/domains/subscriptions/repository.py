@@ -40,7 +40,7 @@ class AsyncSubscriptionRepository:
     async def create_plan(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await sb.table("subscription_plans").insert(data).select("*").execute()
+            res = await sb.table("subscription_plans").insert(data).execute()
             rows = res.data or []
             return rows[0] if rows else None
         except Exception as exc:
@@ -50,7 +50,7 @@ class AsyncSubscriptionRepository:
     async def update_plan(self, plan_id: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await sb.table("subscription_plans").update(data).select("*").eq("id", plan_id).execute()
+            res = await sb.table("subscription_plans").update(data).eq("id", plan_id).execute()
             rows = res.data or []
             return rows[0] if rows else None
         except Exception as exc:
@@ -91,7 +91,7 @@ class AsyncSubscriptionRepository:
         sb = await get_async_admin_supabase()
         try:
             res = await (
-                sb.table("user_subscriptions").update(data).select("*")
+                sb.table("user_subscriptions").update(data)
                 .eq("id", subscription_id).eq("status", "active")
                 .execute()
             )
@@ -134,7 +134,7 @@ class AsyncSubscriptionRepository:
             res = await (
                 sb.table("subscription_reminders")
                 .upsert(data, on_conflict="subscription_id,reminder_type", ignore_duplicates=True)
-                .select("*").execute()
+                .execute()
             )
             rows = res.data or []
             return rows[0] if rows else None
@@ -161,7 +161,7 @@ class AsyncSubscriptionRepository:
             res = await (
                 sb.table("subscription_reminders")
                 .update({"status": "sent", "sent_at": datetime.now(timezone.utc).isoformat()})
-                .select("id").eq("id", reminder_id).eq("status", "pending")
+                .eq("id", reminder_id).eq("status", "pending")
                 .execute()
             )
             return bool(res and res.data)
@@ -188,7 +188,7 @@ class AsyncSubscriptionRepository:
             res = await (
                 sb.table("subscription_reminders")
                 .update({"status": "dismissed", "dismissed_at": datetime.now(timezone.utc).isoformat()})
-                .select("id").eq("id", reminder_id).eq("user_id", user_id)
+                .eq("id", reminder_id).eq("user_id", user_id)
                 .neq("status", "dismissed").execute()
             )
             return bool(res and res.data)
