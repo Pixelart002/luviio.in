@@ -2,6 +2,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from fastapi import HTTPException
+
 from app.domains.subscriptions.service import SubscriptionService
 
 
@@ -46,9 +48,22 @@ async def test_subscribe():
     service = SubscriptionService()
     service.repo = AsyncMock()
     service.repo.get_active_for_user = AsyncMock(return_value=None)
-    service.repo.get_plan = AsyncMock(return_value={"id": "plan-1", "tier": "premium", "duration_days": 30})
+    service.repo.get_plan = AsyncMock(return_value={"id": "plan-1", "tier": "free", "price_inr": 0, "duration_days": 30})
     service.repo.upsert_subscription = AsyncMock(
         return_value={"id": "sub-1", "status": "active", "plan_id": "plan-1"})
     result = await service.subscribe("user-1", "plan-1")
     assert result["status"] == "active"
     assert result["plan_id"] == "plan-1"
+
+
+@pytest.mark.asyncio
+async def test_paid_subscribe_requires_payment():
+    service = SubscriptionService()
+    service.repo = AsyncMock()
+    service.repo.get_plan = AsyncMock(return_value={
+        "id": "plan-paid", "tier": "premium", "price_inr": 199, "duration_days": 30, "is_active": True
+    })
+    with pytest.raises(HTTPException) as exc:
+        await service.subscribe("user-1", "plan-paid")
+    assert exc.value.status_code == 402
+    service.repo.upsert_subscription.assert_not_called()
