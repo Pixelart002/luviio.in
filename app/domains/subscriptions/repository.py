@@ -48,8 +48,9 @@ class AsyncSubscriptionRepository:
     async def update_plan(self, plan_id: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         sb = await get_async_admin_supabase()
         try:
-            res = await sb.table("subscription_plans").update(data).select("*").eq("id", plan_id).maybe_single().execute()
-            return res.data if res else None
+            res = await sb.table("subscription_plans").update(data).select("*").eq("id", plan_id).execute()
+            rows = res.data or []
+            return rows[0] if rows else None
         except Exception as exc:
             logger.error("[REPO:SUB] update_plan failed: %s", exc)
             return None
