@@ -1,8 +1,7 @@
 from unittest.mock import AsyncMock
 
-import pytest
-
 from fastapi import HTTPException
+import pytest
 
 from app.domains.subscriptions.service import SubscriptionService
 
