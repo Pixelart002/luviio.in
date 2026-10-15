@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from app.core.dependencies import get_user_id_strict, require_permission
+from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
 from app.domains.subscriptions.schemas import (
     SubscribeRequest,
     SubscriptionCancelRequest,
@@ -45,18 +45,33 @@ async def update_plan(plan_id: str, payload: SubscriptionPlanUpdate, _ = Depends
 
 
 @router.post("/subscribe", response_model=dict[str, Any])
-async def subscribe(payload: SubscribeRequest, user_id: str = Depends(get_user_id_strict), _ = Depends(require_permission(SubscriptionPermissions.SUBSCRIBE))):
+async def subscribe(payload: SubscribeRequest, user_id: str = Depends(get_user_id_strict), current_user: dict[str, Any] = Depends(get_current_user), _ = Depends(require_permission(SubscriptionPermissions.SUBSCRIBE))):
+    role = str((current_user.get("profile") or {}).get("role") or "").strip().lower()
+    if role in {"super_admin", "superadmin"}:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Super admin accounts do not need a customer membership.")
     return await service.subscribe(user_id, payload.plan_id)
 
 
 @router.post("/cancel", response_model=dict[str, Any])
-async def cancel_subscription(payload: SubscriptionCancelRequest, user_id: str = Depends(get_user_id_strict), _ = Depends(require_permission(SubscriptionPermissions.SUBSCRIBE))):
+async def cancel_subscription(payload: SubscriptionCancelRequest, user_id: str = Depends(get_user_id_strict), current_user: dict[str, Any] = Depends(get_current_user), _ = Depends(require_permission(SubscriptionPermissions.SUBSCRIBE))):
+    role = str((current_user.get("profile") or {}).get("role") or "").strip().lower()
+    if role in {"super_admin", "superadmin"}:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Super admin accounts do not have customer memberships to cancel.")
     return await service.cancel(user_id, payload.reason)
 
 
 @router.get("/me", response_model=dict[str, Any])
-async def my_subscription(user_id: str = Depends(get_user_id_strict), _ = Depends(require_permission(SubscriptionPermissions.READ_MINE))):
-    return await service.get_tier_for_user(user_id)
+async def my_subscription(user_id: str = Depends(get_user_id_strict), current_user: dict[str, Any] = Depends(get_current_user), _ = Depends(require_permission(SubscriptionPermissions.READ_MINE))):
+    role = str((current_user.get("profile") or {}).get("role") or "").strip().lower()
+    if role in {"super_admin", "superadmin"}:
+        return service._tier_result("platinum", is_super_admin=True, membership_required=False, active=False)
+    result = await service.get_tier_for_user(user_id)
+    result.setdefault("membership_required", True)
+    result.setdefault("is_super_admin", False)
+    result["active"] = bool(result.get("plan_id") and result.get("ends_at"))
+    return result
 
 
 @router.get("/reminders", response_model=list[dict[str, Any]])
