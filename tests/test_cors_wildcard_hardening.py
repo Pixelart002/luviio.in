@@ -58,3 +58,50 @@ def test_production_cors_rejects_wildcard_configuration(monkeypatch):
     response = asyncio.run(run())
     assert response.status_code == 403
     assert response.headers.get("access-control-allow-origin") == "null"
+
+
+def test_production_wildcard_falls_back_to_exact_luviio_origins(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "*")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://www.luviio.in/store/")
+
+    origins = settings.cors_origins
+
+    assert "https://www.luviio.in" in origins
+    assert "https://luviio.in" in origins
+    assert "*" not in origins
+    assert csrf_origin_allowed("https://www.luviio.in") is True
+    assert csrf_origin_allowed("https://luviio.in") is True
+    assert csrf_origin_allowed("https://attacker.example") is False
+
+
+def test_production_cors_allows_frontend_when_deployed_allowlist_is_wildcard(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "*")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://www.luviio.in")
+
+    async def run():
+        async def call_next(_request):
+            return Response("ok")
+
+        return await cors_middleware(_request("https://www.luviio.in"), call_next)
+
+    response = asyncio.run(run())
+
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "https://www.luviio.in"
+    assert response.headers.get("access-control-allow-credentials") == "true"
+
+
+def test_production_cors_normalizes_explicit_origin_trailing_slash(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(
+        settings,
+        "ALLOWED_ORIGINS",
+        "https://luviio.in/,https://www.luviio.in/",
+    )
+
+    origins = settings.cors_origins
+
+    assert "https://luviio.in" in origins
+    assert "https://www.luviio.in" in origins
