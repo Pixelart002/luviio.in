@@ -50,8 +50,25 @@ jobs:
             -H 'Origin: https://www.luviio.in' \
             -H 'Access-Control-Request-Method: POST' \
             -H 'Access-Control-Request-Headers: content-type')"
-          test "$code" = "200"
+          if [ "$code" != "200" ]; then
+            echo "ALLOWED ORIGIN REJECTED: https://www.luviio.in"
+            cat "$TMP/headers"
+            cat "$TMP/body"
+            exit 1
+          fi
           grep -qi '^access-control-allow-origin: https://www.luviio.in' "$TMP/headers"
+
+          code="$(request 'Apex-origin preflight' -X OPTIONS "$BACKEND/api/v1/auth/refresh" \
+            -H 'Origin: https://luviio.in' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type')"
+          if [ "$code" != "200" ]; then
+            echo "ALLOWED ORIGIN REJECTED: https://luviio.in"
+            cat "$TMP/headers"
+            cat "$TMP/body"
+            exit 1
+          fi
+          grep -qi '^access-control-allow-origin: https://luviio.in' "$TMP/headers"
 
           code="$(request 'Untrusted-origin preflight' -X OPTIONS "$BACKEND/api/v1/auth/refresh" \
             -H 'Origin: https://attacker.example' \
