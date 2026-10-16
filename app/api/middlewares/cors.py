@@ -62,7 +62,7 @@ async def cors_middleware(request: Request, call_next):
         allowed = True
         final_origin = None
 
-    elif "*" in allowed_origins or origin in allowed_origins:
+    elif origin in allowed_origins:
         # ── Explicit wildcard or whitelisted origin ──────────────────────────
         # With credentials enabled we must echo the request origin; returning
         # `*` makes browsers reject the response as a network/CORS error.
