@@ -1,3 +1,4 @@
+# Rerun after merged production CORS fallback fix; checks are read-only.
 name: One-time Luviio live security smoke test
 
 on:
