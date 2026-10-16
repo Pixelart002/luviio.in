@@ -26,7 +26,7 @@ jobs:
             local name="$1"; shift
             local code
             code="$(curl --silent --show-error --max-time 20 -D "$TMP/headers" -o "$TMP/body" -w '%{http_code}' "$@")"
-            printf '%-42s HTTP %s\n' "$name" "$code"
+            printf '%-42s HTTP %s\n' "$name" "$code" >&2
             printf '%s' "$code"
           }
 
