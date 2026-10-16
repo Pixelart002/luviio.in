@@ -277,11 +277,29 @@ class SecurityHeadersMiddleware:
 
         async def send_with_security(message):
             if message["type"] == "http.response.start":
-                existing = {k.lower() for k, _ in message.get("headers", [])}
                 headers = list(message.get("headers", []))
+                existing = {k.lower() for k, _ in headers}
                 for key, value in self._HEADERS:
                     if key not in existing:
                         headers.append((key, value))
+
+                # API responses may contain customer-specific data even when a
+                # route is accidentally omitted from frontend cache rules.
+                # Fail closed at the backend boundary for the versioned API.
+                path = str(scope.get("path", ""))
+                if path == "/api/v1" or path.startswith("/api/v1/"):
+                    headers = [
+                        (key, value)
+                        for key, value in headers
+                        if key.lower() not in (b"cache-control", b"pragma", b"expires")
+                    ]
+                    headers.extend([
+                        (b"cache-control", b"private, no-store, max-age=0, must-revalidate"),
+                        (b"pragma", b"no-cache"),
+                        (b"expires", b"0"),
+                    ])
+
+                existing = {k.lower() for k, _ in headers}
                 if scope.get("scheme") == "https" and b"strict-transport-security" not in existing:
                     headers.append((b"strict-transport-security", b"max-age=31536000; includeSubDomains; preload"))
                 message = {**message, "headers": headers}
