@@ -477,7 +477,7 @@ def get_event_bus() -> EventBus:
 
 
 def _shutdown_thread_pool() -> None:
-    logger.info("Atexit: shutting down event handler thread pool")
+    # Logging handlers (including test capture streams) may already be closed at interpreter exit.
     _handler_pool.shutdown(wait=True, cancel_futures=False)
 
 
