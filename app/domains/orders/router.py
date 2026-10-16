@@ -64,6 +64,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
 
+async def _invoice_admin_access(current_user: Dict[str, Any]) -> bool:
+    """Require normal order-read permission and MFA before staff can bypass ownership."""
+    role = current_user.get("profile", {}).get("role")
+    privileged_roles = {
+        UserRole.ADMIN.value,
+        UserRole.SUPER_ADMIN.value,
+        UserRole.MANAGER.value,
+    }
+    if role not in privileged_roles:
+        return False
+
+    # This route intentionally supports customer-owned invoices without requiring
+    # staff permissions. Cross-customer invoice access is privileged and must go
+    # through the same permission + AAL2 gate as other staff order operations.
+    await require_permission(OrderPermissions.READ)(current_user)
+    return True
+
+
 @router.post("/checkout", status_code=status.HTTP_201_CREATED)
 async def create_order_from_cart(request: Request, payload: OrderCreateFromCartRequest, user_id: str = Depends(get_user_id_strict)):
     if not payload.idempotency_key:
@@ -133,8 +151,7 @@ async def download_invoice(request: Request, order_number: str, current: dict = 
     """Generate an invoice using order_number; the internal order UUID never leaves the backend."""
     if hasattr(request.state, "actions"):
         request.state.actions.append(f"Targeting invoice for order reference: {order_number[:32]}")
-    role = current.get("profile", {}).get("role")
-    is_admin = role in [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value, UserRole.MANAGER.value]
+    is_admin = await _invoice_admin_access(current)
     pdf_bytes, invoice_number = await OrderService().generate_invoice_pdf(order_number, user_id, is_admin)
     filename = f"Luviio-Invoice-{invoice_number}.pdf"
     if hasattr(request.state, "actions"):
