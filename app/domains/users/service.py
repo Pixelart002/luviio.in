@@ -82,6 +82,24 @@ class UserService:
             except Exception as exc:
                 logger.warning("Non-fatal error setting new default address for %s: %s", user_id[:8], exc)
 
+    async def delete_account(self, user_id: str, email: str, password: str) -> None:
+        """Re-authenticate, anonymize the profile, hide saved addresses, then remove Auth identity."""
+        from app.domains.auth.service import AuthService
+
+        auth = AuthService()
+        if not email or not await auth.verify_password(email, password):
+            from fastapi import HTTPException, status
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Password verification failed. Your account was not deleted.")
+
+        try:
+            # Keep the users row so existing orders retain a valid customer reference.
+            await self.repo.anonymize_account_profile(user_id)
+            await self.repo.soft_delete_all_addresses(user_id)
+            await auth.delete_auth_user(user_id)
+        except Exception as exc:
+            logger.error("Account deletion workflow failed for user %s: %s", user_id[:8], exc, exc_info=True)
+            raise LuviioException("Account deletion could not be completed. Contact support before retrying.", "ACCOUNT_DELETION_FAILED", 500) from exc
+
     async def get_users_paginated(
         self,
         page: int,
