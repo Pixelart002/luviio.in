@@ -1,0 +1,77 @@
+name: One-time Luviio live security smoke test
+
+on:
+  push:
+    branches:
+      - security/stride-live-smoke-test
+
+permissions:
+  contents: read
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Test public production health and edge security
+        shell: bash
+        run: |
+          set -euo pipefail
+          BACKEND="https://apparent-jordanna-pixelart002-42e39ac6.koyeb.app"
+          WEB="https://www.luviio.in"
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+
+          request() {
+            local name="$1"; shift
+            local code
+            code="$(curl --silent --show-error --max-time 20 -D "$TMP/headers" -o "$TMP/body" -w '%{http_code}' "$@")"
+            printf '%-42s HTTP %s\n' "$name" "$code"
+            printf '%s' "$code"
+          }
+
+          code="$(request 'Frontend homepage' -L "$WEB/")"
+          test "$code" = "200"
+
+          code="$(request 'Backend root' "$BACKEND/")"
+          test "$code" = "200"
+          grep -q '"status"[[:space:]]*:[[:space:]]*"ok"' "$TMP/body"
+
+          code="$(request 'Backend liveness' "$BACKEND/health/live")"
+          test "$code" = "200"
+          grep -q '"status"[[:space:]]*:[[:space:]]*"ok"' "$TMP/body"
+          grep -q '"env"[[:space:]]*:[[:space:]]*"production"' "$TMP/body"
+
+          code="$(request 'Backend database health' "$BACKEND/health")"
+          test "$code" = "200"
+          grep -q '"status"[[:space:]]*:[[:space:]]*"ok"' "$TMP/body"
+
+          code="$(request 'Allowed-origin preflight' -X OPTIONS "$BACKEND/api/v1/auth/refresh" \
+            -H 'Origin: https://www.luviio.in' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type')"
+          test "$code" = "200"
+          grep -qi '^access-control-allow-origin: https://www.luviio.in' "$TMP/headers"
+
+          code="$(request 'Untrusted-origin preflight' -X OPTIONS "$BACKEND/api/v1/auth/refresh" \
+            -H 'Origin: https://attacker.example' \
+            -H 'Access-Control-Request-Method: POST')"
+          test "$code" = "403"
+          grep -qi '^access-control-allow-origin: null' "$TMP/headers"
+
+          code="$(request 'Cookie CSRF without Origin' -X POST "$BACKEND/api/v1/auth/refresh" \
+            -H 'Content-Type: application/json' \
+            -H 'Cookie: refresh_token=nonexistent-smoke-test-token' \
+            --data '{}')"
+          test "$code" = "403"
+
+          code="$(request 'Unauthenticated cart response' "$BACKEND/api/v1/cart" \
+            -H 'Origin: https://www.luviio.in')"
+          case "$code" in
+            401|403) ;;
+            *) echo "Expected unauthenticated cart request to be rejected; got HTTP $code" >&2; exit 1 ;;
+          esac
+          grep -qi '^cache-control:.*private' "$TMP/headers"
+          grep -qi '^cache-control:.*no-store' "$TMP/headers"
+
+          echo 'LIVE SMOKE RESULT: all configured assertions passed.'
