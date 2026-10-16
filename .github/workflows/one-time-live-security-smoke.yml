@@ -96,6 +96,28 @@ jobs:
             failures=1
           fi
 
+          # Authorization smoke checks use no credentials and make no mutations.
+          for path in "/api/v1/users/me" "/api/v1/orders/my" "/api/v1/admin/stats" "/api/v1/admin/verify"; do
+            code="$(request "Unauthenticated protected GET $path" "$BACKEND$path" -H 'Origin: https://www.luviio.in')"
+            case "$code" in
+              401|403) ;;
+              *) echo "Protected endpoint did not reject unauthenticated request: $path (HTTP $code)" >&2; cat "$TMP/body"; failures=1 ;;
+            esac
+          done
+
+          # A deliberately invalid Stripe signature must be rejected without settling or mutating an order.
+          code="$(request 'Stripe webhook invalid signature' -X POST "$BACKEND/api/v1/payments/webhook/stripe" \
+            -H 'Origin: https://www.luviio.in' \
+            -H 'Content-Type: application/json' \
+            -H 'Stripe-Signature: t=1,v1=invalid' \
+            --data '{"id":"evt_luviio_smoke_invalid","type":"payment_intent.succeeded","data":{"object":{"id":"pi_luviio_smoke_invalid"}}}')"
+          if [ "$code" != "400" ]; then
+            echo "Invalid Stripe signature was not rejected with HTTP 400 (got $code)" >&2
+            cat "$TMP/headers"
+            cat "$TMP/body"
+            failures=1
+          fi
+
           if [ "$failures" -ne 0 ]; then
             echo 'LIVE SMOKE RESULT: one or more security assertions failed.' >&2
             exit 1
