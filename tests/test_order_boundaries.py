@@ -80,3 +80,29 @@ def test_cancel_rpc_authoritative_signature_has_no_default_target_status():
     assert signature in migration
     assert "p_target_status text DEFAULT" not in migration
 
+
+def test_customer_cannot_view_another_customers_order():
+    with pytest.raises(HTTPException) as exc:
+        OrderPolicy.assert_can_view(
+            {"id": "order-2", "customer_id": "user-2", "status": OrderStatus.PAID.value},
+            "user-1",
+        )
+    assert exc.value.status_code == 403
+
+
+def test_customer_cannot_cancel_another_customers_pending_order():
+    with pytest.raises(HTTPException) as exc:
+        OrderPolicy.assert_can_cancel(
+            {"id": "order-2", "customer_id": "user-2", "status": OrderStatus.PENDING.value},
+            "user-1",
+        )
+    assert exc.value.status_code == 403
+
+
+def test_customer_cannot_download_another_customers_invoice():
+    with pytest.raises(HTTPException) as exc:
+        OrderPolicy.assert_can_download_invoice(
+            {"id": "order-2", "customer_id": "user-2", "status": OrderStatus.PAID.value},
+            "user-1",
+        )
+    assert exc.value.status_code == 403

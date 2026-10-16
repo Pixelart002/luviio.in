@@ -42,3 +42,25 @@ def test_checkout_rejects_inactive_product():
     with pytest.raises(HTTPException) as exc:
         PaymentPolicy.assert_stock_availability(1, product)
     assert exc.value.status_code == 409
+
+
+def test_customer_cannot_confirm_payment_for_another_customers_order():
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        PaymentPolicy.assert_can_confirm(
+            {"id": "order-2", "customer_id": "user-2", "status": "pending"},
+            "user-1",
+        )
+    assert exc.value.status_code == 403
+
+
+def test_customer_cannot_retry_payment_for_another_customers_order():
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        PaymentPolicy.assert_can_retry(
+            {"id": "order-2", "customer_id": "user-2", "status": "pending"},
+            "user-1",
+        )
+    assert exc.value.status_code == 404
