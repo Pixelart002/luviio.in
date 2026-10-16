@@ -24,6 +24,9 @@ def _origin_from_referer(referer: str) -> str | None:
 
 def _allowed(origin: str) -> bool:
     allowed_origins = settings.cors_origins
+    # A wildcard must never authorize cookie-authenticated state changes in production.
+    if settings.is_production:
+        return origin in allowed_origins and origin != "*"
     return "*" in allowed_origins or origin in allowed_origins
 
 
