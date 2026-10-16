@@ -6,6 +6,7 @@ Production defaults are deliberately restrictive; deployment-specific origins
 must be supplied explicitly through ALLOWED_ORIGINS.
 """
 from typing import List
+from urllib.parse import urlsplit
 
 from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -58,9 +59,72 @@ class Settings(BaseSettings):
             raise ValueError(f"{info.field_name} is required in production")
         return v
 
+    @staticmethod
+    def _normalized_https_origin(value: str) -> str | None:
+        """Return a canonical HTTPS origin, excluding paths and credentials."""
+        try:
+            parsed = urlsplit(str(value or "").strip())
+            # Production browser origins must be HTTPS and may not embed userinfo.
+            if (
+                parsed.scheme.lower() != "https"
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+            ):
+                return None
+            # Accessing .port validates that any port is numeric and in range.
+            _ = parsed.port
+            return f"https://{parsed.netloc.lower()}"
+        except (ValueError, TypeError):
+            return None
+
     @property
     def cors_origins(self) -> List[str]:
-        return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+        configured = [
+            origin.strip()
+            for origin in self.ALLOWED_ORIGINS.split(",")
+            if origin.strip()
+        ]
+
+        # Keep the previous non-production semantics so local/test setups that
+        # explicitly use '*' continue to work. Production never trusts '*'.
+        if not self.is_production:
+            return configured
+
+        origins: list[str] = []
+        for value in configured:
+            if value == "*":
+                continue
+            normalized = self._normalized_https_origin(value)
+            if normalized and normalized not in origins:
+                origins.append(normalized)
+
+        # FRONTEND_URL is already a trusted deployment setting. Include its
+        # exact origin even if ALLOWED_ORIGINS was accidentally set to '*',
+        # and normalize common trailing-slash/path mistakes to an origin.
+        frontend_origin = self._normalized_https_origin(self.FRONTEND_URL)
+        if frontend_origin and frontend_origin not in origins:
+            origins.append(frontend_origin)
+
+        # Luviio serves its canonical storefront on www.luviio.in and redirects
+        # the apex domain there. Both known HTTPS origins are safe exact
+        # allowlist entries; this does not authorize arbitrary wildcard origins.
+        try:
+            frontend = urlsplit(str(self.FRONTEND_URL or "").strip())
+            if (
+                frontend.scheme.lower() == "https"
+                and frontend.hostname in {"luviio.in", "www.luviio.in"}
+                and frontend.port is None
+                and frontend.username is None
+                and frontend.password is None
+            ):
+                for origin in ("https://luviio.in", "https://www.luviio.in"):
+                    if origin not in origins:
+                        origins.append(origin)
+        except (ValueError, TypeError):
+            pass
+
+        return origins
 
     @property
     def trusted_proxy_ips(self) -> List[str]:
