@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.domains.cart.service import CartService
 import app.domains.cart.repository as cart_repository
+from app.domains.cart.service import CartService
 
 
 PRICING_CONFIG = {
