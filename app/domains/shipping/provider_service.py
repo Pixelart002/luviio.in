@@ -136,32 +136,41 @@ class ShippingProviderService:
         })
         return row
 
-    async def get_for_order(self, order_id: str) -> dict[str, Any] | None:
-        """Load the manual shipment and repair its lifecycle from the authoritative order status."""
+    async def get_for_order(
+        self, order_id: str, *, order_status: str | None = None
+    ) -> dict[str, Any] | None:
+        """Load shipment state, optionally reusing the already-authorized order status."""
         row = await self.repo.get_by_order(str(order_id), MANUAL_PROVIDER)
         if not row:
             return None
 
-        sb = await get_async_admin_supabase()
-        order_res = await (
-            sb.table("orders")
-            .select("status")
-            .eq("id", str(order_id))
-            .maybe_single()
-            .execute()
-        )
-        order = order_res.data if order_res else None
-        if not order:
-            return row
+        if order_status is None:
+            sb = await get_async_admin_supabase()
+            order_res = await (
+                sb.table("orders")
+                .select("status")
+                .eq("id", str(order_id))
+                .maybe_single()
+                .execute()
+            )
+            order = order_res.data if order_res else None
+            if not order:
+                return row
+            order_status = str(order.get("status") or "")
 
-        return await self.sync_order_status(str(order_id), str(order.get("status") or ""))
+        return await self._sync_existing_row(row, order_status)
 
     async def sync_order_status(self, order_id: str, order_status: str) -> dict[str, Any] | None:
-        """Mirror the authoritative order lifecycle onto its internal manual shipment record."""
+        """Mirror the authoritative order lifecycle onto its shipment record."""
         row = await self.repo.get_by_order(str(order_id), MANUAL_PROVIDER)
         if not row:
             return None
+        return await self._sync_existing_row(row, order_status)
 
+    async def _sync_existing_row(
+        self, row: dict[str, Any], order_status: str
+    ) -> dict[str, Any]:
+        """Write only when the shipment lifecycle is actually out of sync."""
         normalized = str(order_status or "").strip().lower()
         mapping = {
             "pending": ("manual_pending", "created"),
@@ -175,11 +184,14 @@ class ShippingProviderService:
         if not target:
             return row
 
-        data = {"status": target[0]}
+        data: dict[str, Any] = {"status": target[0]}
         if target[1] is not None:
             data["workflow_status"] = target[1]
-        elif normalized == "refunded":
-            data["workflow_status"] = row.get("workflow_status")
+
+        if row.get("status") == target[0] and (
+            target[1] is None or row.get("workflow_status") == target[1]
+        ):
+            return row
 
         return await self.repo.update(str(row["id"]), data)
 
