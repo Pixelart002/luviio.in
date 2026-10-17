@@ -278,8 +278,15 @@ async def _validate_token_natively(token: str) -> Any:
 async def _get_or_create_profile(user_id: str, email: str, user_metadata: dict) -> Dict[str, Any]:
     if user_id in _profile_cache:
         return _profile_cache[user_id]
+    started = time.perf_counter()
     repo = AsyncUserRepository()
     profile = await repo.get_profile(user_id)
+    duration_ms = (time.perf_counter() - started) * 1000
+    if duration_ms >= 100:
+        logger.warning(
+            "auth_stage_slow stage=profile_lookup duration_ms=%.2f",
+            duration_ms,
+        )
     if not profile:
         try:
             profile = await repo.upsert_profile(
