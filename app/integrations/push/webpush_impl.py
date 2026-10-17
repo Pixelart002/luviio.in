@@ -114,6 +114,12 @@ def send_push(
     body: str,
     icon: str = "/icon-192.png",
     url: str = "/",
+    badge: str = "/icon-192.png",
+    image: str | None = None,
+    tag: str = "luviio-notification",
+    require_interaction: bool = False,
+    renotify: bool = False,
+    actions: list[dict[str, Any]] | None = None,
 ) -> PushResult:
     """Send one push and classify the result for safe subscription cleanup."""
     if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
@@ -135,15 +141,22 @@ def send_push(
     if not _shared_push_guard(endpoint_key):
         return "failed"
 
-    payload = json.dumps(
-        {
-            "title": title,
-            "body": body,
-            "icon": icon,
-            "url": url,
-            "timestamp": int(time.time()),
-        }
-    )
+    notification_payload: dict[str, Any] = {
+        "title": title,
+        "body": body,
+        "icon": icon,
+        "badge": badge,
+        "url": url,
+        "tag": tag,
+        "require_interaction": require_interaction,
+        "renotify": renotify,
+        "timestamp": int(time.time()),
+    }
+    if image:
+        notification_payload["image"] = image
+    if actions:
+        notification_payload["actions"] = actions[:2]
+    payload = json.dumps(notification_payload)
 
     session = _make_session()
     try:
@@ -241,6 +254,12 @@ async def _persist_failed_push(
     icon: str,
     url: str,
     subscription: dict[str, Any],
+    badge: str = "/icon-192.png",
+    image: str | None = None,
+    tag: str = "luviio-notification",
+    require_interaction: bool = False,
+    renotify: bool = False,
+    actions: list[dict[str, Any]] | None = None,
 ) -> None:
     endpoint = str(subscription.get("endpoint") or "").strip()
     endpoint_hash = _endpoint_key(endpoint) if endpoint else None
@@ -253,6 +272,15 @@ async def _persist_failed_push(
                 "title": title,
                 "body": body,
                 "target_url": url,
+                "payload": {
+                    "icon": icon,
+                    "badge": badge,
+                    "image": image,
+                    "tag": tag,
+                    "require_interaction": require_interaction,
+                    "renotify": renotify,
+                    "actions": actions or [],
+                },
                 "subscription_endpoint_hash": endpoint_hash,
                 "error_type": "delivery_failed",
                 "error_message": "Web push delivery failed after retry attempts.",
@@ -272,6 +300,12 @@ async def send_push_to_user(
     body: str,
     icon: str = "/icon-192.png",
     url: str = "/",
+    badge: str = "/icon-192.png",
+    image: str | None = None,
+    tag: str = "luviio-notification",
+    require_interaction: bool = False,
+    renotify: bool = False,
+    actions: list[dict[str, Any]] | None = None,
 ) -> int:
     if not user_id:
         return 0
@@ -300,7 +334,20 @@ async def send_push_to_user(
             return 0
 
         tasks = [
-            run_in_threadpool(send_push, sub, title, body, icon, url)
+            run_in_threadpool(
+                send_push,
+                sub,
+                title,
+                body,
+                icon,
+                url,
+                badge,
+                image,
+                tag,
+                require_interaction,
+                renotify,
+                actions,
+            )
             for sub in subs
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -336,6 +383,12 @@ async def send_push_to_user(
                         icon=icon,
                         url=url,
                         subscription=sub,
+                        badge=badge,
+                        image=image,
+                        tag=tag,
+                        require_interaction=require_interaction,
+                        renotify=renotify,
+                        actions=actions,
                     )
                     for sub in failed_subscriptions
                 ],

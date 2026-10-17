@@ -88,6 +88,13 @@ class PushService:
         body: str,
         icon: str,
         url: str,
+        *,
+        badge: str = "/icon-192.png",
+        image: str | None = None,
+        tag: str = "luviio-notification",
+        require_interaction: bool = False,
+        renotify: bool = False,
+        actions: list[dict[str, Any]] | None = None,
     ) -> Dict[str, Any]:
         audience = await self._resolve_audience(user_ids)
         PushPolicy.assert_valid_batch_size(audience)
@@ -97,7 +104,19 @@ class PushService:
         async def bounded_send(uid: str) -> Dict[str, Any]:
             async with semaphore:
                 try:
-                    sent = await send_push_to_user(user_id=uid, title=title, body=body, icon=icon, url=url)
+                    sent = await send_push_to_user(
+                        user_id=uid,
+                        title=title,
+                        body=body,
+                        icon=icon,
+                        url=url,
+                        badge=badge,
+                        image=image,
+                        tag=tag,
+                        require_interaction=require_interaction,
+                        renotify=renotify,
+                        actions=actions,
+                    )
                     return {"user_id": uid, "status": "sent" if sent > 0 else "no_subscription", "success": sent > 0}
                 except Exception as exc:
                     logger.warning("Push dispatch failed for user %s: %s", uid[:8], str(exc)[:100])
