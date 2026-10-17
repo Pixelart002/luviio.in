@@ -4,6 +4,7 @@ Dependencies — Async Hardened Production Grade (Luviio SSOT)
 Path: app/core/dependencies.py
 """
 # ruff: noqa: I001 - legacy import grouping retained while dependencies are being refactored.
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -13,6 +14,8 @@ import time
 import types
 from typing import Any, Callable, Dict, Optional
 
+import httpx
+import jwt
 from cachetools import TTLCache
 
 from fastapi import Depends, Request
@@ -39,6 +42,9 @@ bearer_scheme = HTTPBearer(auto_error=False)
 # Request-local worker cache retained for compatibility with the existing profile path.
 # Auth token caching is intentionally not restored.
 _profile_cache: TTLCache = TTLCache(maxsize=1024, ttl=60)
+_jwks_cache: TTLCache = TTLCache(maxsize=1, ttl=300)
+_jwks_lock = asyncio.Lock()
+_SUPPORTED_ASYMMETRIC_JWT_ALGORITHMS = frozenset({"RS256", "ES256"})
 
 
 def invalidate_profile_cache(user_id: str) -> None:
@@ -130,24 +136,143 @@ def _validate_token_locally(token: str) -> Optional[Any]:
         raise UnauthenticatedUser("Token is invalid or expired.") from exc
 
 
-async def _validate_token_natively(token: str) -> Any:
-    local_user = _validate_token_locally(token)
-    if local_user is not None:
-        return local_user
+async def _fetch_jwks(*, force_refresh: bool = False) -> Optional[dict[str, Any]]:
+    """Fetch and cache Supabase's public signing keys; never cache user tokens."""
+    if not force_refresh:
+        cached = _jwks_cache.get("document")
+        if isinstance(cached, dict):
+            return cached
 
-    sb = await get_async_admin_supabase()
+    async with _jwks_lock:
+        if not force_refresh:
+            cached = _jwks_cache.get("document")
+            if isinstance(cached, dict):
+                return cached
+        issuer = f"{settings.SB_URL.rstrip('/')}/auth/v1"
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(2.5, connect=1.0)) as client:
+                response = await client.get(f"{issuer}/.well-known/jwks.json")
+                response.raise_for_status()
+                document = response.json()
+            if not isinstance(document, dict) or not isinstance(document.get("keys"), list):
+                raise ValueError("Supabase JWKS response has an invalid shape")
+            _jwks_cache["document"] = document
+            return document
+        except Exception as exc:
+            logger.warning("JWT JWKS unavailable; using native Auth verification fallback: %s", exc)
+            return None
+
+
+async def _validate_asymmetric_token(token: str, algorithm: str) -> Optional[Any]:
+    """Verify asymmetric Supabase JWTs locally after retrieving the public JWKS."""
+    if algorithm not in _SUPPORTED_ASYMMETRIC_JWT_ALGORITHMS:
+        return None
+
     try:
+        header = jwt.get_unverified_header(token)
+    except jwt.PyJWTError as exc:
+        raise UnauthenticatedUser("Token is invalid or expired.") from exc
+
+    kid = header.get("kid")
+    if not isinstance(kid, str) or not kid:
+        raise UnauthenticatedUser("Token signing key is missing.")
+
+    document = await _fetch_jwks()
+    if document is None:
+        return None
+
+    keys = document.get("keys", [])
+    jwk = next(
+        (
+            item for item in keys
+            if isinstance(item, dict)
+            and item.get("kid") == kid
+            and item.get("alg", algorithm) == algorithm
+        ),
+        None,
+    )
+    if jwk is None:
+        # Handle key rotation once, then fail closed if the key remains unknown.
+        document = await _fetch_jwks(force_refresh=True)
+        if document is None:
+            return None
+        keys = document.get("keys", [])
+        jwk = next(
+            (
+                item for item in keys
+                if isinstance(item, dict)
+                and item.get("kid") == kid
+                and item.get("alg", algorithm) == algorithm
+            ),
+            None,
+        )
+    if jwk is None:
+        raise UnauthenticatedUser("Token signing key is unknown.")
+
+    issuer = f"{settings.SB_URL.rstrip('/')}/auth/v1"
+    try:
+        signing_key = jwt.PyJWK.from_dict(jwk, algorithm=algorithm).key
+        claims = jwt.decode(
+            token,
+            signing_key,
+            algorithms=[algorithm],
+            audience="authenticated",
+            issuer=issuer,
+            options={"require": ["exp", "sub", "aud", "iss"]},
+        )
+    except jwt.PyJWTError as exc:
+        raise UnauthenticatedUser("Token is invalid or expired.") from exc
+
+    subject = str(claims.get("sub") or "")
+    if not subject:
+        raise UnauthenticatedUser("Token subject is missing.")
+    return types.SimpleNamespace(
+        id=subject,
+        email=str(claims.get("email") or ""),
+        user_metadata=claims.get("user_metadata") or {},
+    )
+
+
+async def _validate_token_natively(token: str) -> Any:
+    started = time.perf_counter()
+    try:
+        local_user = _validate_token_locally(token)
+        if local_user is not None:
+            return local_user
+
+        try:
+            header = jwt.get_unverified_header(token)
+            algorithm = str(header.get("alg") or "")
+        except jwt.PyJWTError as exc:
+            raise UnauthenticatedUser("Token is invalid or expired.") from exc
+
+        asymmetric_user = await _validate_asymmetric_token(token, algorithm)
+        if asymmetric_user is not None:
+            return asymmetric_user
+
+        # Compatibility fallback for unsupported algorithms or temporary JWKS
+        # network failures; native Supabase Auth still verifies the token.
+        sb = await get_async_admin_supabase()
         result = await sb.auth.get_user(token)
         user = getattr(result, "user", result)
         if not user or not hasattr(user, "id"):
             raise UnauthenticatedUser("Invalid token structure")
         return user
-    except AuthApiError as e:
-        logger.warning("Native Auth Block: %s", e)
-        raise UnauthenticatedUser("Token is invalid or expired.")
-    except Exception as e:
-        logger.error("Token validation error: %s", e)
-        raise UnauthenticatedUser("Authentication failed.")
+    except AuthApiError as exc:
+        logger.warning("Native Auth Block: %s", exc)
+        raise UnauthenticatedUser("Token is invalid or expired.") from exc
+    except UnauthenticatedUser:
+        raise
+    except Exception as exc:
+        logger.error("Token validation error: %s", exc)
+        raise UnauthenticatedUser("Authentication failed.") from exc
+    finally:
+        duration_ms = (time.perf_counter() - started) * 1000
+        if duration_ms >= 100:
+            logger.warning(
+                "auth_stage_slow stage=token_validation duration_ms=%.2f",
+                duration_ms,
+            )
 
 
 async def _get_or_create_profile(user_id: str, email: str, user_metadata: dict) -> Dict[str, Any]:
