@@ -24,6 +24,8 @@ def test_product_share_page_contains_dynamic_og_metadata(client, monkeypatch):
     assert '<meta property="og:image" content="https://www.luviio.in/share/products/premium-drain-cover/image">' in response.text
     assert '<meta property="og:url" content="https://www.luviio.in/product/premium-drain-cover">' in response.text
     assert '<meta name="twitter:card" content="summary_large_image">' in response.text
+    assert '<img src="https://www.luviio.in/share/products/premium-drain-cover/image" alt="Premium Drain Cover"' in response.text
+    assert 'http-equiv="refresh"' not in response.text
 
 
 def test_product_share_page_escapes_metadata(client, monkeypatch):
