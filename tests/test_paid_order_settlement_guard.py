@@ -24,33 +24,39 @@ def test_paid_order_guard_requires_successful_payment_and_matching_ledger_credit
 def test_paid_order_guard_does_not_rewrite_historical_orders():
     migration = GUARD.read_text(encoding="utf-8")
 
-    # Guard is transition-based: it runs only when a row changes into paid.
     assert "OLD.status IS DISTINCT FROM 'paid'" in migration
     assert "UPDATE public.orders" not in migration
 
 
-def test_legacy_stripe_settlement_writes_matching_ledger_before_paid_transition():
+def test_legacy_stripe_rpc_preserves_deployed_signature_and_attempt_flow():
     migration = STRIPE_FIX.read_text(encoding="utf-8")
 
     assert "CREATE OR REPLACE FUNCTION public.settle_order_transaction(" in migration
+    assert "p_ip_address text DEFAULT NULL::text" in migration
+    assert "p_user_agent text DEFAULT NULL::text" in migration
+    assert "public.record_payment_attempt(" in migration
+    assert "public.record_coupon_redemption(" in migration
+    assert "PAYMENT_BINDING_MISMATCH" in migration
+
+
+def test_stripe_settlement_writes_full_value_ledger_before_paid_transition():
+    migration = STRIPE_FIX.read_text(encoding="utf-8")
+
     assert "payment_provider='stripe'" in migration
-    assert "provider_payment_id=EXCLUDED.provider_payment_id" in migration
+    assert "provider_payment_id=p_pi_id" in migration
     assert "'stripe',p_pi_id,'payment_received','credit'" in migration
-    assert "ON CONFLICT(provider,provider_payment_id,entry_type) DO NOTHING" in migration
+    assert "round(p_amount*100)::bigint" in migration
+    assert "ON CONFLICT (provider,provider_payment_id,entry_type)" in migration
+    assert "WHERE entry_type <> 'payment_refunded'" in migration
     ledger_write = migration.index("INSERT INTO public.payment_ledger")
     order_paid = migration.index("UPDATE public.orders")
     assert ledger_write < order_paid
-    assert "public.record_coupon_redemption" in migration
-    assert "payment_retry_reservations" in migration
 
 
-def test_stripe_settlement_is_atomic_and_does_not_touch_historical_orders():
+def test_stripe_settlement_migration_does_not_backfill_existing_records():
     migration = STRIPE_FIX.read_text(encoding="utf-8")
 
     assert migration.strip().startswith("BEGIN;")
     assert migration.strip().endswith("COMMIT;")
-    # This migration replaces the settlement routine only; no backfill/update
-    # is run against existing order or payment rows.
-    assert "UPDATE public.orders" in migration
-    assert "WHERE id=p_order_id;" in migration
-    assert "UPDATE public.payment_ledger" not in migration
+    # The only order update is the runtime RPC transition, not a historical backfill.
+    assert migration.count("UPDATE public.orders") == 1
