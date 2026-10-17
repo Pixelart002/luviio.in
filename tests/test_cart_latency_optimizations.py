@@ -1,3 +1,4 @@
+# ruff: noqa: I001 - keep test imports explicit for module-path monkeypatching.
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
