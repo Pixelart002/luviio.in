@@ -41,26 +41,36 @@ BEGIN
         DETAIL = 'A successful payment record and matching payment_received ledger credit are required before an order can become paid.';
     END IF;
 
-    -- If the order carries a provider identity, it must match the settled payment.
-    IF NOT EXISTS (
-      SELECT 1
-        FROM public.payments p
-       WHERE p.order_id = NEW.id
-         AND lower(coalesce(p.status, '')) = 'succeeded'
-         AND (
-           nullif(trim(NEW.provider_payment_id), '') =
-             coalesce(nullif(trim(p.provider_payment_id), ''), nullif(trim(p.stripe_payment_intent_id), ''))
-           OR (
-             lower(coalesce(NEW.payment_provider, '')) = 'stripe'
-             AND nullif(trim(NEW.stripe_payment_intent), '') =
-               coalesce(nullif(trim(p.stripe_payment_intent_id), ''), nullif(trim(p.provider_payment_id), ''))
+    -- Enforce identity consistency only when the order actually carries an identity.
+    IF nullif(trim(NEW.provider_payment_id), '') IS NOT NULL
+       OR (
+         lower(coalesce(NEW.payment_provider, '')) = 'stripe'
+         AND nullif(trim(NEW.stripe_payment_intent), '') IS NOT NULL
+       ) THEN
+      IF NOT EXISTS (
+        SELECT 1
+          FROM public.payments p
+         WHERE p.order_id = NEW.id
+           AND lower(coalesce(p.status, '')) = 'succeeded'
+           AND (
+             (
+               nullif(trim(NEW.provider_payment_id), '') IS NOT NULL
+               AND nullif(trim(NEW.provider_payment_id), '') =
+                 coalesce(nullif(trim(p.provider_payment_id), ''), nullif(trim(p.stripe_payment_intent_id), ''))
+             )
+             OR (
+               lower(coalesce(NEW.payment_provider, '')) = 'stripe'
+               AND nullif(trim(NEW.stripe_payment_intent), '') IS NOT NULL
+               AND nullif(trim(NEW.stripe_payment_intent), '') =
+                 coalesce(nullif(trim(p.stripe_payment_intent_id), ''), nullif(trim(p.provider_payment_id), ''))
+             )
            )
-         )
-    ) THEN
-      RAISE EXCEPTION USING
-        ERRCODE = '23514',
-        MESSAGE = 'ORDER_PAID_PROVIDER_IDENTITY_MISMATCH',
-        DETAIL = 'The order provider identity must match the successful payment record.';
+      ) THEN
+        RAISE EXCEPTION USING
+          ERRCODE = '23514',
+          MESSAGE = 'ORDER_PAID_PROVIDER_IDENTITY_MISMATCH',
+          DETAIL = 'The order provider identity must match the successful payment record.';
+      END IF;
     END IF;
   END IF;
 
