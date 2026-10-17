@@ -57,7 +57,7 @@ async def test_request_id_middleware_sets_context_and_response_headers():
     response_start = next(
         message for message in captured if message["type"] == "http.response.start"
     )
-    headers = {key.lower(): value.decode() for key, value in response_start["headers"]}
+    headers = {key.decode("latin-1").lower(): value.decode("latin-1") for key, value in response_start["headers"]}
 
     assert headers["x-request-id"] == context_seen["request_id"]
     assert headers["x-correlation-id"] == context_seen["correlation_id"]
