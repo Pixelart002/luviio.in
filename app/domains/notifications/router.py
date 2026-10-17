@@ -41,7 +41,19 @@ async def send_test_notification(request: Request, user_id: str = Depends(get_us
 
 @router.post("/admin/send", dependencies=[Depends(require_permission(AdminPermissions.MANAGE_SETTINGS))], status_code=status.HTTP_200_OK)
 async def send_batch_notification(request: Request, payload: BatchNotificationRequest) -> Dict[str, Any]:
-    results = await PushService().send_batch_notification(payload.user_ids, payload.title, payload.body, payload.icon, payload.url)
+    results = await PushService().send_batch_notification(
+        payload.user_ids,
+        payload.title,
+        payload.body,
+        payload.icon,
+        payload.url,
+        badge=payload.badge,
+        image=payload.image,
+        tag=payload.tag,
+        require_interaction=payload.require_interaction,
+        renotify=payload.renotify,
+        actions=[item.model_dump(exclude_none=True) for item in payload.actions],
+    )
     return success_response(data=results, message=PushMessages.BATCH_SENT)
 
 @router.get("/admin/stats", dependencies=[Depends(require_permission(AdminPermissions.VIEW_ANALYTICS))], status_code=status.HTTP_200_OK)
