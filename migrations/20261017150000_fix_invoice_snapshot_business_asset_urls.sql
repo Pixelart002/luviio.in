@@ -37,7 +37,416 @@ BEGIN
 
   IF position('v_logo_url text;' IN function_definition) > 0
      AND position('v_signature_url text;' IN function_definition) > 0
-     AND position('logo_url',nullif(v_logo_url,'')' IN function_definition) > 0
+     AND position($logo > 0
+     AND position($signature > 0 THEN
+    RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
+    RETURN;
+  END IF;
+
+  IF length(function_definition) - length(replace(function_definition, declaration_anchor, '')) <> length(declaration_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot declaration anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, setting_read_anchor, '')) <> length(setting_read_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot settings-read anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, snapshot_anchor, '')) <> length(snapshot_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot JSON anchor was not unique; refusing to overwrite function.';
+  END IF;
+
+  patched_definition := replace(function_definition, declaration_anchor, declaration_replacement);
+  patched_definition := replace(patched_definition, setting_read_anchor, setting_read_replacement);
+  patched_definition := replace(patched_definition, snapshot_anchor, snapshot_replacement);
+
+  IF position('v_logo_url text;' IN patched_definition) = 0
+     OR position('v_signature_url text;' IN patched_definition) = 0
+     OR position($logo = 0
+     OR position($signature = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+logo_url',nullif(v_logo_url,'')$logo$ IN function_definition) > 0
+     AND position('signature_url',nullif(v_signature_url,'')' IN function_definition) > 0 THEN
+    RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
+    RETURN;
+  END IF;
+
+  IF length(function_definition) - length(replace(function_definition, declaration_anchor, '')) <> length(declaration_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot declaration anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, setting_read_anchor, '')) <> length(setting_read_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot settings-read anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, snapshot_anchor, '')) <> length(snapshot_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot JSON anchor was not unique; refusing to overwrite function.';
+  END IF;
+
+  patched_definition := replace(function_definition, declaration_anchor, declaration_replacement);
+  patched_definition := replace(patched_definition, setting_read_anchor, setting_read_replacement);
+  patched_definition := replace(patched_definition, snapshot_anchor, snapshot_replacement);
+
+  IF position('v_logo_url text;' IN patched_definition) = 0
+     OR position('v_signature_url text;' IN patched_definition) = 0
+     OR position('logo_url',nullif(v_logo_url,'')' IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+signature_url',nullif(v_signature_url,'')$signature$ IN function_definition) > 0 THEN
+    RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
+    RETURN;
+  END IF;
+
+  IF length(function_definition) - length(replace(function_definition, declaration_anchor, '')) <> length(declaration_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot declaration anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, setting_read_anchor, '')) <> length(setting_read_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot settings-read anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, snapshot_anchor, '')) <> length(snapshot_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot JSON anchor was not unique; refusing to overwrite function.';
+  END IF;
+
+  patched_definition := replace(function_definition, declaration_anchor, declaration_replacement);
+  patched_definition := replace(patched_definition, setting_read_anchor, setting_read_replacement);
+  patched_definition := replace(patched_definition, snapshot_anchor, snapshot_replacement);
+
+  IF position('v_logo_url text;' IN patched_definition) = 0
+     OR position('v_signature_url text;' IN patched_definition) = 0
+     OR position('logo_url',nullif(v_logo_url,'')' IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+logo_url',nullif(v_logo_url,'')$logo$ IN function_definition) > 0
+     AND position('signature_url',nullif(v_signature_url,'')' IN function_definition) > 0 THEN
+    RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
+    RETURN;
+  END IF;
+
+  IF length(function_definition) - length(replace(function_definition, declaration_anchor, '')) <> length(declaration_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot declaration anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, setting_read_anchor, '')) <> length(setting_read_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot settings-read anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, snapshot_anchor, '')) <> length(snapshot_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot JSON anchor was not unique; refusing to overwrite function.';
+  END IF;
+
+  patched_definition := replace(function_definition, declaration_anchor, declaration_replacement);
+  patched_definition := replace(patched_definition, setting_read_anchor, setting_read_replacement);
+  patched_definition := replace(patched_definition, snapshot_anchor, snapshot_replacement);
+
+  IF position('v_logo_url text;' IN patched_definition) = 0
+     OR position('v_signature_url text;' IN patched_definition) = 0
+     OR position('logo_url',nullif(v_logo_url,'')' IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+logo_url',nullif(v_logo_url,'')$logo$ IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+logo_url',nullif(v_logo_url,'')$logo$ IN function_definition) > 0
+     AND position('signature_url',nullif(v_signature_url,'')' IN function_definition) > 0 THEN
+    RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
+    RETURN;
+  END IF;
+
+  IF length(function_definition) - length(replace(function_definition, declaration_anchor, '')) <> length(declaration_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot declaration anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, setting_read_anchor, '')) <> length(setting_read_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot settings-read anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, snapshot_anchor, '')) <> length(snapshot_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot JSON anchor was not unique; refusing to overwrite function.';
+  END IF;
+
+  patched_definition := replace(function_definition, declaration_anchor, declaration_replacement);
+  patched_definition := replace(patched_definition, setting_read_anchor, setting_read_replacement);
+  patched_definition := replace(patched_definition, snapshot_anchor, snapshot_replacement);
+
+  IF position('v_logo_url text;' IN patched_definition) = 0
+     OR position('v_signature_url text;' IN patched_definition) = 0
+     OR position('logo_url',nullif(v_logo_url,'')' IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+signature_url',nullif(v_signature_url,'')$signature$ IN function_definition) > 0 THEN
+    RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
+    RETURN;
+  END IF;
+
+  IF length(function_definition) - length(replace(function_definition, declaration_anchor, '')) <> length(declaration_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot declaration anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, setting_read_anchor, '')) <> length(setting_read_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot settings-read anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, snapshot_anchor, '')) <> length(snapshot_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot JSON anchor was not unique; refusing to overwrite function.';
+  END IF;
+
+  patched_definition := replace(function_definition, declaration_anchor, declaration_replacement);
+  patched_definition := replace(patched_definition, setting_read_anchor, setting_read_replacement);
+  patched_definition := replace(patched_definition, snapshot_anchor, snapshot_replacement);
+
+  IF position('v_logo_url text;' IN patched_definition) = 0
+     OR position('v_signature_url text;' IN patched_definition) = 0
+     OR position('logo_url',nullif(v_logo_url,'')' IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+logo_url',nullif(v_logo_url,'')$logo$ IN function_definition) > 0
+     AND position('signature_url',nullif(v_signature_url,'')' IN function_definition) > 0 THEN
+    RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
+    RETURN;
+  END IF;
+
+  IF length(function_definition) - length(replace(function_definition, declaration_anchor, '')) <> length(declaration_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot declaration anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, setting_read_anchor, '')) <> length(setting_read_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot settings-read anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, snapshot_anchor, '')) <> length(snapshot_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot JSON anchor was not unique; refusing to overwrite function.';
+  END IF;
+
+  patched_definition := replace(function_definition, declaration_anchor, declaration_replacement);
+  patched_definition := replace(patched_definition, setting_read_anchor, setting_read_replacement);
+  patched_definition := replace(patched_definition, snapshot_anchor, snapshot_replacement);
+
+  IF position('v_logo_url text;' IN patched_definition) = 0
+     OR position('v_signature_url text;' IN patched_definition) = 0
+     OR position('logo_url',nullif(v_logo_url,'')' IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+signature_url',nullif(v_signature_url,'')$signature$ IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+logo_url',nullif(v_logo_url,'')$logo$ IN function_definition) > 0
+     AND position('signature_url',nullif(v_signature_url,'')' IN function_definition) > 0 THEN
+    RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
+    RETURN;
+  END IF;
+
+  IF length(function_definition) - length(replace(function_definition, declaration_anchor, '')) <> length(declaration_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot declaration anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, setting_read_anchor, '')) <> length(setting_read_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot settings-read anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, snapshot_anchor, '')) <> length(snapshot_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot JSON anchor was not unique; refusing to overwrite function.';
+  END IF;
+
+  patched_definition := replace(function_definition, declaration_anchor, declaration_replacement);
+  patched_definition := replace(patched_definition, setting_read_anchor, setting_read_replacement);
+  patched_definition := replace(patched_definition, snapshot_anchor, snapshot_replacement);
+
+  IF position('v_logo_url text;' IN patched_definition) = 0
+     OR position('v_signature_url text;' IN patched_definition) = 0
+     OR position('logo_url',nullif(v_logo_url,'')' IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+signature_url',nullif(v_signature_url,'')$signature$ IN function_definition) > 0 THEN
+    RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
+    RETURN;
+  END IF;
+
+  IF length(function_definition) - length(replace(function_definition, declaration_anchor, '')) <> length(declaration_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot declaration anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, setting_read_anchor, '')) <> length(setting_read_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot settings-read anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, snapshot_anchor, '')) <> length(snapshot_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot JSON anchor was not unique; refusing to overwrite function.';
+  END IF;
+
+  patched_definition := replace(function_definition, declaration_anchor, declaration_replacement);
+  patched_definition := replace(patched_definition, setting_read_anchor, setting_read_replacement);
+  patched_definition := replace(patched_definition, snapshot_anchor, snapshot_replacement);
+
+  IF position('v_logo_url text;' IN patched_definition) = 0
+     OR position('v_signature_url text;' IN patched_definition) = 0
+     OR position('logo_url',nullif(v_logo_url,'')' IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+logo_url',nullif(v_logo_url,'')$logo$ IN function_definition) > 0
+     AND position('signature_url',nullif(v_signature_url,'')' IN function_definition) > 0 THEN
+    RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
+    RETURN;
+  END IF;
+
+  IF length(function_definition) - length(replace(function_definition, declaration_anchor, '')) <> length(declaration_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot declaration anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, setting_read_anchor, '')) <> length(setting_read_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot settings-read anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, snapshot_anchor, '')) <> length(snapshot_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot JSON anchor was not unique; refusing to overwrite function.';
+  END IF;
+
+  patched_definition := replace(function_definition, declaration_anchor, declaration_replacement);
+  patched_definition := replace(patched_definition, setting_read_anchor, setting_read_replacement);
+  patched_definition := replace(patched_definition, snapshot_anchor, snapshot_replacement);
+
+  IF position('v_logo_url text;' IN patched_definition) = 0
+     OR position('v_signature_url text;' IN patched_definition) = 0
+     OR position('logo_url',nullif(v_logo_url,'')' IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+logo_url',nullif(v_logo_url,'')$logo$ IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+logo_url',nullif(v_logo_url,'')$logo$ IN function_definition) > 0
+     AND position('signature_url',nullif(v_signature_url,'')' IN function_definition) > 0 THEN
+    RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
+    RETURN;
+  END IF;
+
+  IF length(function_definition) - length(replace(function_definition, declaration_anchor, '')) <> length(declaration_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot declaration anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, setting_read_anchor, '')) <> length(setting_read_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot settings-read anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, snapshot_anchor, '')) <> length(snapshot_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot JSON anchor was not unique; refusing to overwrite function.';
+  END IF;
+
+  patched_definition := replace(function_definition, declaration_anchor, declaration_replacement);
+  patched_definition := replace(patched_definition, setting_read_anchor, setting_read_replacement);
+  patched_definition := replace(patched_definition, snapshot_anchor, snapshot_replacement);
+
+  IF position('v_logo_url text;' IN patched_definition) = 0
+     OR position('v_signature_url text;' IN patched_definition) = 0
+     OR position('logo_url',nullif(v_logo_url,'')' IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+signature_url',nullif(v_signature_url,'')$signature$ IN function_definition) > 0 THEN
+    RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
+    RETURN;
+  END IF;
+
+  IF length(function_definition) - length(replace(function_definition, declaration_anchor, '')) <> length(declaration_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot declaration anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, setting_read_anchor, '')) <> length(setting_read_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot settings-read anchor was not unique; refusing to overwrite function.';
+  END IF;
+  IF length(function_definition) - length(replace(function_definition, snapshot_anchor, '')) <> length(snapshot_anchor) THEN
+    RAISE EXCEPTION 'Invoice snapshot JSON anchor was not unique; refusing to overwrite function.';
+  END IF;
+
+  patched_definition := replace(function_definition, declaration_anchor, declaration_replacement);
+  patched_definition := replace(patched_definition, setting_read_anchor, setting_read_replacement);
+  patched_definition := replace(patched_definition, snapshot_anchor, snapshot_replacement);
+
+  IF position('v_logo_url text;' IN patched_definition) = 0
+     OR position('v_signature_url text;' IN patched_definition) = 0
+     OR position('logo_url',nullif(v_logo_url,'')' IN patched_definition) = 0
+     OR position('signature_url',nullif(v_signature_url,'')' IN patched_definition) = 0 THEN
+    RAISE EXCEPTION 'Invoice snapshot asset patch did not produce the expected function definition.';
+  END IF;
+
+  EXECUTE patched_definition;
+END;
+$fix$;
+
+COMMIT;
+logo_url',nullif(v_logo_url,'')$logo$ IN function_definition) > 0
      AND position('signature_url',nullif(v_signature_url,'')' IN function_definition) > 0 THEN
     RAISE NOTICE 'Invoice snapshot function already captures business logo and signature; no change needed.';
     RETURN;
