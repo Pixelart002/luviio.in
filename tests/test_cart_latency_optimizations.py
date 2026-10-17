@@ -1,36 +1,88 @@
-import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
 from app.domains.cart.service import CartService
+import app.domains.cart.repository as cart_repository
+
+
+PRICING_CONFIG = {
+    "tax_enabled": False,
+    "shipping_enabled": False,
+    "currency": "INR",
+    "shipping_flat": 0,
+    "shipping_threshold": 1499,
+}
 
 
 @pytest.mark.asyncio
-async def test_get_cart_starts_cart_and_pricing_reads_concurrently():
+async def test_get_cart_uses_one_snapshot_and_reuses_all_read_data():
     service = CartService()
-    started = set()
-    both_started = asyncio.Event()
-    config = {"tax_enabled": False}
-
-    async def rendezvous(name, value):
-        started.add(name)
-        if len(started) == 2:
-            both_started.set()
-        await asyncio.wait_for(both_started.wait(), timeout=1)
-        return value
-
-    service.repo = SimpleNamespace(
-        get_or_create_cart=lambda user_id: rendezvous("cart", {"id": "cart-1"}),
-        get_pricing_config=lambda: rendezvous("pricing", config),
-    )
+    snapshot = {
+        "cart": {"id": "cart-1"},
+        "pricing_config": PRICING_CONFIG,
+        "items": [{"id": "item-1", "quantity": 1}],
+    }
+    service.repo = SimpleNamespace(get_cart_snapshot=AsyncMock(return_value=snapshot))
     service._calculate_cart_pricing = AsyncMock(return_value={"items": []})
 
     result = await service.get_cart("user-1")
 
     assert result == {"items": []}
-    assert started == {"cart", "pricing"}
+    service.repo.get_cart_snapshot.assert_awaited_once_with("user-1")
     service._calculate_cart_pricing.assert_awaited_once_with(
-        "cart-1", pricing_config=config
+        "cart-1",
+        pricing_config=PRICING_CONFIG,
+        raw_items=snapshot["items"],
     )
+
+
+@pytest.mark.asyncio
+async def test_snapshot_rpc_is_one_supabase_call(monkeypatch):
+    snapshot = {
+        "cart": {"id": "cart-1"},
+        "pricing_config": PRICING_CONFIG,
+        "items": [],
+    }
+    calls = []
+
+    class FakeRpc:
+        async def execute(self):
+            return SimpleNamespace(data=snapshot)
+
+    class FakeAdminClient:
+        def rpc(self, function_name, params):
+            calls.append((function_name, params))
+            return FakeRpc()
+
+    monkeypatch.setattr(
+        cart_repository,
+        "get_async_admin_supabase",
+        AsyncMock(return_value=FakeAdminClient()),
+    )
+
+    result = await cart_repository.AsyncCartRepository().get_cart_snapshot("user-1")
+
+    assert result == snapshot
+    assert calls == [("get_cart_snapshot", {"p_user_id": "user-1"})]
+
+
+@pytest.mark.asyncio
+async def test_pricing_does_not_fetch_again_when_snapshot_is_supplied():
+    service = CartService()
+    service.repo = SimpleNamespace(
+        get_pricing_config=AsyncMock(side_effect=AssertionError("unexpected config read")),
+        get_cart_items_with_products=AsyncMock(side_effect=AssertionError("unexpected item read")),
+    )
+
+    result = await service._calculate_cart_pricing(
+        "cart-1",
+        pricing_config=PRICING_CONFIG,
+        raw_items=[],
+    )
+
+    assert result["items"] == []
+    assert result["item_count"] == 0
+    service.repo.get_pricing_config.assert_not_awaited()
+    service.repo.get_cart_items_with_products.assert_not_awaited()
