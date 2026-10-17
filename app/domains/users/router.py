@@ -32,8 +32,9 @@ def get_real_ip(request: Request) -> str:
 @router.get("/me", status_code=status.HTTP_200_OK)
 async def get_me(request: Request, current: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
     if hasattr(request.state, "actions"):
-        request.state.actions.append("Extracting active profile payload from secure token session")
-    profile = current.get("profile", current)
+        request.state.actions.append("Loading authoritative profile from the user repository")
+    user_id = str(current.get("sub") or (current.get("profile") or {}).get("id") or "")
+    profile = await UserService().get_profile(user_id)
     safe_fields = {"id", "email", "full_name", "phone", "role", "is_active", "created_at"}
     return success_response(data={k: v for k, v in profile.items() if k in safe_fields})
 

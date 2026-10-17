@@ -18,6 +18,19 @@ class UserService:
     def __init__(self) -> None:
         self.repo = AsyncUserRepository()
 
+    async def get_profile(self, user_id: str) -> Dict[str, Any]:
+        """Return the authoritative profile from the repository, not the auth cache."""
+        try:
+            profile = await self.repo.get_profile(user_id)
+            if not profile:
+                raise ResourceNotFound("User")
+            return profile
+        except ResourceNotFound:
+            raise
+        except Exception as exc:
+            logger.error("Error fetching profile for %s: %s", user_id[:8], exc, exc_info=True)
+            raise LuviioException(UserSecurityMessages.DB_OPERATION_FAILED, "DB_ERROR", 500) from exc
+
     async def update_profile(self, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         if not data:
             return {}
@@ -25,6 +38,12 @@ class UserService:
             res = await self.repo.update_profile(user_id, data)
             if not res:
                 raise ResourceNotFound("User")
+
+            # /users/me and authorization dependencies share a per-worker
+            # profile cache. A successful self-service mutation must evict it.
+            from app.core.dependencies import invalidate_profile_cache
+
+            invalidate_profile_cache(user_id)
             return res
         except ResourceNotFound:
             raise
