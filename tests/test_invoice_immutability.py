@@ -49,7 +49,7 @@ def test_invoice_asset_repair_patches_live_function_without_mutating_issued_invo
     source = (
         REPO_ROOT
         / "migrations"
-        / "20261017150000_fix_invoice_snapshot_business_asset_urls.sql"
+        / "20261017171520_fix_invoice_snapshot_business_asset_urls.sql"
     ).read_text(encoding="utf-8").lower()
 
     assert "pg_get_functiondef" in source
@@ -67,7 +67,7 @@ def test_invoice_asset_repair_fails_closed_when_live_function_anchors_drift():
     source = (
         REPO_ROOT
         / "migrations"
-        / "20261017150000_fix_invoice_snapshot_business_asset_urls.sql"
+        / "20261017171520_fix_invoice_snapshot_business_asset_urls.sql"
     ).read_text(encoding="utf-8").lower()
 
     assert "declaration anchor was not unique" in source
