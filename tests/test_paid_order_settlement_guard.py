@@ -70,3 +70,26 @@ def test_stripe_settlement_migration_does_not_backfill_existing_records():
     assert migration.strip().endswith("COMMIT;")
     # The only order update is the runtime RPC transition, not a historical backfill.
     assert migration.count("UPDATE public.orders") == 1
+
+
+def test_provider_neutral_settlement_writes_ledger_before_paid_transition():
+    migration = Path(
+        "migrations/20261017130000_provider_neutral_settlement_ledger_guard.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "CREATE OR REPLACE FUNCTION public.settle_payment_transaction(" in migration
+    assert "INSERT INTO public.payment_ledger" in migration
+    assert "'payment_received', 'credit'" in migration
+    assert "ON CONFLICT (provider, provider_payment_id, entry_type) DO NOTHING" in migration
+    ledger_write = migration.index("INSERT INTO public.payment_ledger")
+    order_paid = migration.index("UPDATE public.orders")
+    assert ledger_write < order_paid
+    assert "PAYMENT_RECORD_NOT_FOUND" in migration
+
+
+def test_paid_order_insert_is_guarded_without_historical_backfill():
+    migration = GUARD.read_text(encoding="utf-8")
+
+    assert "CREATE TRIGGER zz_guard_order_paid_requires_settlement_insert" in migration
+    assert "BEFORE INSERT ON public.orders" in migration
+    assert "TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'paid'" in migration
