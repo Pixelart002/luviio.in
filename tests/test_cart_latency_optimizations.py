@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import app.domains.cart.repository as cart_repository
+from app.domains.cart.repository import AsyncCartRepository
 from app.domains.cart.service import CartService
 
 
@@ -57,12 +57,11 @@ async def test_snapshot_rpc_is_one_supabase_call(monkeypatch):
             return FakeRpc()
 
     monkeypatch.setattr(
-        cart_repository,
-        "get_async_admin_supabase",
+        "app.domains.cart.repository.get_async_admin_supabase",
         AsyncMock(return_value=FakeAdminClient()),
     )
 
-    result = await cart_repository.AsyncCartRepository().get_cart_snapshot("user-1")
+    result = await AsyncCartRepository().get_cart_snapshot("user-1")
 
     assert result == snapshot
     assert calls == [("get_cart_snapshot", {"p_user_id": "user-1"})]
