@@ -13,6 +13,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 
 from app.api.middlewares.audit import AdminAuditMiddleware
+from app.api.middlewares.security import RequestIDMiddleware
 from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
@@ -108,11 +109,12 @@ async def root() -> dict[str, str]:
 
 
 # FastAPI/Starlette makes the last registered middleware the outermost layer.
-# Keep maintenance last so it short-circuits requests before audit, rate
-# limiting, CORS and other inner request processing.
+# Request IDs must wrap the full HTTP lifecycle, including maintenance and
+# error responses, so register this ASGI middleware last.
 apply_middlewares(app)
 app.add_middleware(AdminAuditMiddleware)
 app.middleware("http")(maintenance_middleware)
+app.add_middleware(RequestIDMiddleware)
 
 register_exception_handlers(app)
 app.include_router(health_router)
