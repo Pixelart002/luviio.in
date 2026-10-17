@@ -73,9 +73,13 @@ async def refresh(request: Request, response: Response, refresh_token: str | Non
     if hasattr(request.state, "actions"):
         request.state.actions.append("Intercepted session refresh cookie")
     if not refresh_token:
+        # A missing cookie means the browser is signed out; this is normal for
+        # public pages and headless audits, not an authentication attack/error.
+        # Return the same response object so cookie-clearing headers are retained.
         response.delete_cookie(**_REFRESH_COOKIE_KWARGS)
         response.delete_cookie(**_LEGACY_ACCESS_COOKIE_KWARGS)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=AuthSecurityMessages.INVALID_REFRESH_TOKEN)
+        response.status_code = status.HTTP_204_NO_CONTENT
+        return response
     try:
         session_data = await AuthService().refresh_user_session(refresh_token)
     except HTTPException as exc:
