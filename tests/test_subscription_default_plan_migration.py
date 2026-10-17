@@ -29,6 +29,6 @@ def test_free_membership_is_provisioned_for_customer_profiles_only():
 def test_backfill_preserves_paid_memberships_and_cancels_staff_free_rows():
     sql = MIGRATION.read_text(encoding="utf-8")
     assert "WHERE u.role = 'customer'" in sql
-    assert "WHERE u.role <> 'customer'" in sql
+    assert "AND u.role <> 'customer'" in sql
     assert "AND s.tier = 'free'" in sql
     assert "WHERE s.user_id = u.id" in sql
