@@ -42,6 +42,7 @@ class CartService:
             raw_items = await self.repo.get_cart_items_with_products(cart_id)
         else:
             config = pricing_config
+        assert raw_items is not None
         pricing_engine = get_pricing_from_config(config)
         if not raw_items:
             return {"items": [], "item_count": 0, "subtotal": 0.0, "shipping_cost": 0.0, "tax_amount": 0.0, "total_amount": 0.0, "shipping_enabled": bool(pricing_engine.shipping_enabled), "tax_enabled": bool(config.get("tax_enabled", False)), "free_shipping_eligible": False, "amount_to_free_shipping": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0, "free_shipping_threshold": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0, "has_unavailable_items": False, "currency": "INR"}
