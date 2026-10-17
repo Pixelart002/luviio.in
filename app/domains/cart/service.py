@@ -23,8 +23,17 @@ class CartService:
     def __init__(self):
         self.repo = AsyncCartRepository()
 
-    async def _calculate_cart_pricing(self, cart_id: str) -> Dict[str, Any]:
-        config, raw_items = await asyncio.gather(self.repo.get_pricing_config(), self.repo.get_cart_items_with_products(cart_id))
+    async def _calculate_cart_pricing(
+        self, cart_id: str, pricing_config: Dict[str, Any] | None = None
+    ) -> Dict[str, Any]:
+        if pricing_config is None:
+            config, raw_items = await asyncio.gather(
+                self.repo.get_pricing_config(),
+                self.repo.get_cart_items_with_products(cart_id),
+            )
+        else:
+            config = pricing_config
+            raw_items = await self.repo.get_cart_items_with_products(cart_id)
         pricing_engine = get_pricing_from_config(config)
         if not raw_items:
             return {"items": [], "item_count": 0, "subtotal": 0.0, "shipping_cost": 0.0, "tax_amount": 0.0, "total_amount": 0.0, "shipping_enabled": bool(pricing_engine.shipping_enabled), "tax_enabled": bool(config.get("tax_enabled", False)), "free_shipping_eligible": False, "amount_to_free_shipping": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0, "free_shipping_threshold": float(pricing_engine.shipping_threshold) if pricing_engine.shipping_enabled else 0.0, "has_unavailable_items": False, "currency": "INR"}
@@ -94,8 +103,12 @@ class CartService:
         }
 
     async def get_cart(self, user_id: str) -> Dict[str, Any]:
-        cart = await self.repo.get_or_create_cart(user_id)
-        return await self._calculate_cart_pricing(cart["id"])
+        # Both reads are independent; overlap their network latency on the hot path.
+        cart, config = await asyncio.gather(
+            self.repo.get_or_create_cart(user_id),
+            self.repo.get_pricing_config(),
+        )
+        return await self._calculate_cart_pricing(cart["id"], pricing_config=config)
 
     async def add_item(self, user_id: str, product_id: str, quantity: int) -> Dict[str, Any]:
         prod, cart = await asyncio.gather(

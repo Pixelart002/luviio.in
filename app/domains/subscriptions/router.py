@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
 from app.domains.subscriptions.schemas import (
@@ -47,18 +47,16 @@ async def update_plan(plan_id: str, payload: SubscriptionPlanUpdate, _ = Depends
 @router.post("/subscribe", response_model=dict[str, Any])
 async def subscribe(payload: SubscribeRequest, user_id: str = Depends(get_user_id_strict), current_user: dict[str, Any] = Depends(get_current_user), _ = Depends(require_permission(SubscriptionPermissions.SUBSCRIBE))):
     role = str((current_user.get("profile") or {}).get("role") or "").strip().lower()
-    if role in {"super_admin", "superadmin"}:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Super admin accounts do not need a customer membership.")
+    if role != "customer":
+        raise HTTPException(status_code=403, detail="Staff accounts do not use customer memberships.")
     return await service.subscribe(user_id, payload.plan_id)
 
 
 @router.post("/cancel", response_model=dict[str, Any])
 async def cancel_subscription(payload: SubscriptionCancelRequest, user_id: str = Depends(get_user_id_strict), current_user: dict[str, Any] = Depends(get_current_user), _ = Depends(require_permission(SubscriptionPermissions.SUBSCRIBE))):
     role = str((current_user.get("profile") or {}).get("role") or "").strip().lower()
-    if role in {"super_admin", "superadmin"}:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Super admin accounts do not have customer memberships to cancel.")
+    if role != "customer":
+        raise HTTPException(status_code=403, detail="Staff accounts do not use customer memberships.")
     return await service.cancel(user_id, payload.reason)
 
 
@@ -67,6 +65,11 @@ async def my_subscription(user_id: str = Depends(get_user_id_strict), current_us
     role = str((current_user.get("profile") or {}).get("role") or "").strip().lower()
     if role in {"super_admin", "superadmin"}:
         return service._tier_result("platinum", is_super_admin=True, membership_required=False, active=False)
+    if role and role != "customer":
+        return service._tier_result(
+            "free", is_super_admin=False, is_staff=True,
+            membership_required=False, active=False,
+        )
     result = await service.get_tier_for_user(user_id)
     result.setdefault("membership_required", True)
     result.setdefault("is_super_admin", False)
