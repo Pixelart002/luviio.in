@@ -84,11 +84,27 @@ async def retry_notification_dlq(limit: int = 50) -> int:
                 resolved += 1
                 continue
 
+            saved_payload = row.get("payload") or {}
+            if isinstance(saved_payload, str):
+                try:
+                    saved_payload = json.loads(saved_payload)
+                except json.JSONDecodeError:
+                    saved_payload = {}
+            if not isinstance(saved_payload, dict):
+                saved_payload = {}
+
             push_result = send_push(
                 subscription,
                 str(row.get("title") or "Luviio"),
                 str(row.get("body") or ""),
-                url=str(row.get("target_url") or "/"),
+                str(saved_payload.get("icon") or "/icon-192.png"),
+                str(row.get("target_url") or "/"),
+                str(saved_payload.get("badge") or "/icon-192.png"),
+                saved_payload.get("image"),
+                str(saved_payload.get("tag") or "luviio-notification"),
+                bool(saved_payload.get("require_interaction", False)),
+                bool(saved_payload.get("renotify", False)),
+                saved_payload.get("actions") if isinstance(saved_payload.get("actions"), list) else [],
             )
 
             if push_result in ("sent", "dead"):
