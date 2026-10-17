@@ -13,7 +13,7 @@ AS $function$
 DECLARE
   v_amount_paise bigint;
 BEGIN
-  IF NEW.status = 'paid' AND OLD.status IS DISTINCT FROM 'paid' THEN
+  IF NEW.status = 'paid' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'paid') THEN
     v_amount_paise := round(NEW.total_amount * 100)::bigint;
 
     IF NOT EXISTS (
@@ -79,6 +79,11 @@ END;
 $function$;
 
 DROP TRIGGER IF EXISTS zz_guard_order_paid_requires_settlement ON public.orders;
+DROP TRIGGER IF EXISTS zz_guard_order_paid_requires_settlement_insert ON public.orders;
+CREATE TRIGGER zz_guard_order_paid_requires_settlement_insert
+BEFORE INSERT ON public.orders
+FOR EACH ROW
+EXECUTE FUNCTION public.guard_order_paid_requires_settlement();
 CREATE TRIGGER zz_guard_order_paid_requires_settlement
 BEFORE UPDATE OF status ON public.orders
 FOR EACH ROW
