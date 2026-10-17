@@ -254,7 +254,6 @@ async def _persist_failed_push(
     icon: str,
     url: str,
     subscription: dict[str, Any],
-    *,
     badge: str = "/icon-192.png",
     image: str | None = None,
     tag: str = "luviio-notification",
