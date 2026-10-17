@@ -52,7 +52,6 @@ def test_asymmetric_jwt_is_verified_locally_with_cached_jwks(monkeypatch):
 
 def test_asymmetric_jwt_rejects_wrong_issuer(monkeypatch):
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    issuer = "https://project.supabase.co/auth/v1"
     public_jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key()))
     public_jwk.update({"kid": "test-key", "alg": "RS256", "use": "sig"})
 
