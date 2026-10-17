@@ -18,10 +18,16 @@ class AsyncUserRepository:
     async def upsert_profile(self, user_id: str, email: str, full_name: str, phone: str = "") -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         try:
-            await admin_sb.table("users").upsert({
-                "id": user_id, "email": email, "full_name": full_name, "phone": phone,
-            }, on_conflict="id").execute()
-            return await self.get_user_by_id(user_id)
+            res = await (
+                admin_sb.table("users")
+                .upsert({
+                    "id": user_id, "email": email, "full_name": full_name, "phone": phone,
+                }, on_conflict="id")
+                .select("id, email, full_name, phone, role, is_active, created_at")
+                .execute()
+            )
+            rows = getattr(res, "data", None) or []
+            return rows[0] if rows else await self.get_user_by_id(user_id)
         except Exception as e:
             logger.error("Failed to upsert user profile | id=%s: %s", user_id[:8], e, exc_info=True)
             raise
