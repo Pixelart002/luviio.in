@@ -39,7 +39,7 @@ class RequestIDMiddleware:
         incoming_trace_id = next((value.decode("latin-1") for key, value in scope.get("headers", []) if key.lower() in (b"x-trace-id", b"trace-id")), None)
         incoming_traceparent = next((value.decode("latin-1") for key, value in scope.get("headers", []) if key.lower() == b"traceparent"), None)
         request_id = safe_id(incoming_request_id)
-        correlation_id = safe_id(incoming_correlation_id) if incoming_correlation_id else request_id
+        correlation_id = safe_id(incoming_correlation_id) if incoming_correlation_id else new_id()
         trace_id = None
         if incoming_traceparent:
             match = re.fullmatch(r"00-([0-9a-fA-F]{32})-([0-9a-fA-F]{16})-[0-9a-fA-F]{2}", incoming_traceparent.strip())
