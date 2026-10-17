@@ -42,3 +42,35 @@ def test_invoice_item_snapshot_captures_compare_price_without_mutating_legacy_ro
     assert "insert into public.invoice_items" in source
     assert "compare_price" in source
     assert "existing invoice_items remain immutable" in source
+
+
+
+def test_invoice_asset_repair_patches_live_function_without_mutating_issued_invoices():
+    source = (
+        REPO_ROOT
+        / "migrations"
+        / "20261017150000_fix_invoice_snapshot_business_asset_urls.sql"
+    ).read_text(encoding="utf-8").lower()
+
+    assert "pg_get_functiondef" in source
+    assert "execute patched_definition" in source
+    assert "'business_logo_url'" in source
+    assert "'business_signature_url'" in source
+    assert "'logo_url',nullif(v_logo_url,'')" in source
+    assert "'signature_url',nullif(v_signature_url,'')" in source
+    assert "'compare_price',round(coalesce(oi.compare_price,0),2)" in source
+    assert "shipping-tax allocation" in source
+    assert "update public.invoices" not in source
+
+
+def test_invoice_asset_repair_fails_closed_when_live_function_anchors_drift():
+    source = (
+        REPO_ROOT
+        / "migrations"
+        / "20261017150000_fix_invoice_snapshot_business_asset_urls.sql"
+    ).read_text(encoding="utf-8").lower()
+
+    assert "declaration anchor was not unique" in source
+    assert "settings-read anchor was not unique" in source
+    assert "snapshot json anchor was not unique" in source
+    assert "compare-price anchor was not unique" in source
