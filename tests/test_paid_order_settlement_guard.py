@@ -21,11 +21,12 @@ def test_paid_order_guard_requires_successful_payment_and_matching_ledger_credit
     assert "ORDER_PAID_PROVIDER_IDENTITY_MISMATCH" in migration
 
 
-def test_provider_identity_is_checked_only_when_order_has_identity():
+def test_stripe_provider_identity_is_mandatory_before_paid_transition():
     migration = GUARD.read_text(encoding="utf-8")
 
-    assert "IF nullif(trim(NEW.provider_payment_id), '') IS NOT NULL" in migration
-    assert "lower(coalesce(NEW.payment_provider, '')) = 'stripe'" in migration
+    assert "IF lower(coalesce(NEW.payment_provider, '')) = 'stripe'" in migration
+    assert "OR nullif(trim(NEW.provider_payment_id), '') IS NOT NULL" in migration
+    assert "OR nullif(trim(NEW.stripe_payment_intent), '') IS NOT NULL" in migration
     assert "The order provider identity must match the successful payment record." in migration
 
 
