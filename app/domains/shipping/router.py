@@ -194,9 +194,11 @@ async def my_shipment(order_number: str, user_id: str = Depends(get_user_id_stri
     from app.core.supabase import get_async_admin_supabase
 
     sb = await get_async_admin_supabase()
-    order_res = await sb.table("orders").select("id,order_number,customer_id").eq("order_number", order_number.strip()).eq("customer_id", user_id).maybe_single().execute()
+    order_res = await sb.table("orders").select("id,order_number,customer_id,status").eq("order_number", order_number.strip()).eq("customer_id", user_id).maybe_single().execute()
     order = order_res.data if order_res else None
     if not order:
         raise HTTPException(status_code=404, detail="Order not found.")
-    row = await _provider_service.get_for_order(str(order["id"]))
+    row = await _provider_service.get_for_order(
+        str(order["id"]), order_status=str(order.get("status") or "")
+    )
     return success_response(data=row or {"status": "not_booked"}, message="Shipment status fetched.")
