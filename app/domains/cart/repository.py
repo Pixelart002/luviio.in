@@ -40,6 +40,30 @@ class AsyncCartRepository:
             logger.error("DB Error fetching canonical pricing config: %s", exc, exc_info=True)
             raise RuntimeError("Unable to load pricing configuration") from exc
 
+    async def get_cart_snapshot(self, user_id: str) -> dict[str, Any]:
+        """Fetch cart, joined product fields, and canonical pricing in one DB round trip."""
+        admin_sb = await get_async_admin_supabase()
+        try:
+            res = await admin_sb.rpc(
+                "get_cart_snapshot", {"p_user_id": user_id}
+            ).execute()
+            data = getattr(res, "data", None)
+            if (
+                not isinstance(data, dict)
+                or not isinstance(data.get("cart"), dict)
+                or not data["cart"].get("id")
+                or not isinstance(data.get("pricing_config"), dict)
+                or not isinstance(data.get("items"), list)
+            ):
+                raise RuntimeError("Cart snapshot RPC returned an invalid payload")
+            return data
+        except Exception as exc:
+            logger.error("DB Error fetching cart snapshot for UID %s: %s", user_id, exc, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=CartSecurityMessages.DB_OPERATION_FAILED,
+            ) from exc
+
     async def get_or_create_cart(self, user_id: str) -> dict[str, Any]:
         """Read the cart first; create it only when the user has no cart yet."""
         admin_sb = await get_async_admin_supabase()
