@@ -41,12 +41,12 @@ BEGIN
         DETAIL = 'A successful payment record and matching payment_received ledger credit are required before an order can become paid.';
     END IF;
 
-    -- Enforce identity consistency only when the order actually carries an identity.
-    IF nullif(trim(NEW.provider_payment_id), '') IS NOT NULL
-       OR (
-         lower(coalesce(NEW.payment_provider, '')) = 'stripe'
-         AND nullif(trim(NEW.stripe_payment_intent), '') IS NOT NULL
-       ) THEN
+    -- Stripe must always have an identity. Any identity supplied by another
+    -- provider must also match; COD without a provider transaction ID uses its
+    -- separate collection/settlement evidence and still needs the ledger above.
+    IF lower(coalesce(NEW.payment_provider, '')) = 'stripe'
+       OR nullif(trim(NEW.provider_payment_id), '') IS NOT NULL
+       OR nullif(trim(NEW.stripe_payment_intent), '') IS NOT NULL THEN
       IF NOT EXISTS (
         SELECT 1
           FROM public.payments p
