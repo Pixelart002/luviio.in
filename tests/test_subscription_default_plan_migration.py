@@ -3,7 +3,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = (
     REPO_ROOT
-    / "migrations/20261017100000_repair_subscription_schema_and_default_free_plan.sql"
+    / "migrations/20261017095209_repair_subscription_schema_and_default_free_plan.sql"
 )
 
 
