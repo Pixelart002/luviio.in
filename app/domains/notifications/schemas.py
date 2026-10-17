@@ -30,10 +30,10 @@ class NotificationAction(BaseModel):
     action: str = Field(..., min_length=1, max_length=500)
     icon: str | None = Field(default=None, max_length=500)
 
-    @field_validator("action")
+    @field_validator("action", "icon")
     @classmethod
-    def validate_action_path(cls, value: str) -> str:
-        return _same_site_path(value, field_name="action") or "/"
+    def validate_action_path(cls, value: str | None, info) -> str | None:
+        return _same_site_path(value, field_name=info.field_name)
 
 
 class BatchNotificationRequest(BaseModel):
