@@ -6,9 +6,8 @@ Path: app/main.py
 To run:
   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
-import asyncio
 import logging
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
@@ -24,7 +23,6 @@ from app.core.setup_middlewares import apply_middlewares
 from app.cron.registry import CRON_JOBS
 from app.cron.scheduler import start_cron_jobs, stop_cron_jobs
 from app.domains.auth.http_client import close_auth_http_client, init_auth_http_client
-from app.events.bus import get_event_bus
 from app.events.registry import register_all_event_handlers
 from app.infrastructure.health.router import router as health_router
 from app.infrastructure.social_share.router import router as social_share_router
@@ -32,38 +30,6 @@ from app.infrastructure.social_share.router import router as social_share_router
 configure_logging()
 init_sentry()
 logger = logging.getLogger(__name__)
-
-_OUTBOX_LOOP_INTERVAL_SECONDS = 15
-_OUTBOX_LOOP_TIMEOUT_SECONDS = 20
-_OUTBOX_BATCH_SIZE = 20
-
-
-async def _durable_outbox_loop() -> None:
-    """Continuously drain durable events independently of APScheduler ownership.
-
-    Multiple workers may run this loop safely because event_outbox claims are
-    atomic. This keeps payment/order notifications alive even when the
-    container-level APScheduler owner changes or is unavailable.
-    """
-    while True:
-        try:
-            processed = await asyncio.wait_for(
-                get_event_bus().dispatch_outbox(limit=_OUTBOX_BATCH_SIZE),
-                timeout=_OUTBOX_LOOP_TIMEOUT_SECONDS,
-            )
-            if processed:
-                logger.info("[EVENT OUTBOX] Background loop dispatched %d durable events", processed)
-        except asyncio.CancelledError:
-            raise
-        except asyncio.TimeoutError:
-            logger.error(
-                "[EVENT OUTBOX] Background loop timed out after %ss",
-                _OUTBOX_LOOP_TIMEOUT_SECONDS,
-            )
-        except Exception:
-            logger.exception("[EVENT OUTBOX] Background loop failed")
-
-        await asyncio.sleep(_OUTBOX_LOOP_INTERVAL_SECONDS)
 
 
 @asynccontextmanager
@@ -92,11 +58,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not settings.push_configured:
         logger.warning("PUSH NOT CONFIGURED — web push notifications are disabled")
 
-    # The durable outbox has its own worker loop. Event claims are atomic,
-    # so this remains safe across multiple Gunicorn workers and does not rely
-    # on a single APScheduler owner.
-    outbox_task = asyncio.create_task(_durable_outbox_loop(), name="luviio-event-outbox")
-
+    # Outbox dispatch is owned by the single APScheduler worker via
+    # app.cron.tasks.event_tasks.dispatch_event_outbox. Do not also launch a
+    # polling loop in every Gunicorn worker: that duplicates wakeups and DB
+    # checks when the outbox is empty. The durable outbox remains the source
+    # of truth; the scheduled dispatcher handles retries.
     scheduler_started = start_cron_jobs()
     if not scheduler_started:
         logger.info(
@@ -112,9 +78,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         yield
     finally:
-        outbox_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await outbox_task
         stop_cron_jobs()
         await close_auth_http_client()
         logger.info("Application shutdown | service=%s", settings.APP_NAME)
