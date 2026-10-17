@@ -11,8 +11,9 @@ STRIPE_FIX = Path(
 def test_paid_order_guard_requires_successful_payment_and_matching_ledger_credit():
     migration = GUARD.read_text(encoding="utf-8")
 
+    assert "BEFORE INSERT ON public.orders" in migration
     assert "BEFORE UPDATE OF status ON public.orders" in migration
-    assert "NEW.status = 'paid' AND OLD.status IS DISTINCT FROM 'paid'" in migration
+    assert "TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'paid'" in migration
     assert "lower(coalesce(p.status, '')) = 'succeeded'" in migration
     assert "l.entry_type = 'payment_received'" in migration
     assert "l.direction = 'credit'" in migration
