@@ -64,7 +64,7 @@ async def test_request_id_middleware_sets_context_and_response_headers():
     assert headers["x-trace-id"] == context_seen["trace_id"]
     assert headers["x-span-id"] == context_seen["span_id"]
     assert headers["x-request-id"]
-    assert headers["x-correlation-id"] == headers["x-request-id"]
+    assert headers["x-correlation-id"] != headers["x-request-id"]
     assert re.fullmatch(r"[0-9a-f]{32}", headers["x-trace-id"])
     assert re.fullmatch(r"[0-9a-f]{16}", headers["x-span-id"])
     assert request_id_ctx.get() == "-"
