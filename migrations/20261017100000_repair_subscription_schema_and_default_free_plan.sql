@@ -135,6 +135,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.provision_default_free_subscription() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.provision_default_free_subscription() TO service_role;
 
 DROP TRIGGER IF EXISTS users_provision_default_free_subscription ON public.users;
 CREATE TRIGGER users_provision_default_free_subscription
