@@ -245,10 +245,12 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
     <meta name="twitter:image" content="{escaped_image}">
     <meta name="twitter:image:alt" content="{escaped_name}">
 
-    <meta http-equiv="refresh" content="0;url={escaped_url}">
 </head>
 <body>
-    <p>Opening <a href="{escaped_url}">{escaped_title}</a>…</p>
+    <main>
+        <img src="{escaped_image}" alt="{escaped_name}" style="max-width:100%;height:auto">
+        <p>View <a href="{escaped_url}">{escaped_title}</a> on Luviio.</p>
+    </main>
 </body>
 </html>"""
 
