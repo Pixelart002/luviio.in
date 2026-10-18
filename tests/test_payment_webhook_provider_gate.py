@@ -1,5 +1,4 @@
 """Webhook delivery must not depend on whether new checkouts are enabled."""
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
