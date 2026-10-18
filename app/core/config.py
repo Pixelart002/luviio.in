@@ -109,6 +109,12 @@ class Settings(BaseSettings):
         # Luviio serves its canonical storefront on www.luviio.in and redirects
         # the apex domain there. Both known HTTPS origins are safe exact
         # allowlist entries; this does not authorize arbitrary wildcard origins.
+        # The production Vercel frontend deployment is also an explicitly
+        # trusted browser origin for admin/API calls. Keep this exact hostname;
+        # do not allow *.vercel.app because preview deployments are untrusted.
+        vercel_frontend_origin = "https://my-frontend-e4v9utdl8-pixelart002s-projects.vercel.app"
+        if vercel_frontend_origin not in origins:
+            origins.append(vercel_frontend_origin)
         try:
             frontend = urlsplit(str(self.FRONTEND_URL or "").strip())
             if (
