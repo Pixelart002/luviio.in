@@ -23,6 +23,7 @@ from app.domains.payments.service import PaymentService
 from app.domains.settings.service import SettingsService
 from app.integrations.payments.context import payment_provider_context
 from app.integrations.payments.manager import PaymentPluginManager
+from app.integrations.payments.registry import PAYMENT_REGISTRY
 from app.utils.response import success_response
 
 logger = logging.getLogger("app.payments")
@@ -294,7 +295,11 @@ async def stripe_webhook(request: Request):
 @router.post("/webhook/{provider_key}")
 async def payment_webhook(request: Request, provider_key: str):
     provider_key = provider_key.strip().lower()
-    await _require_provider_enabled(provider_key)
+    # Webhooks must remain verifiable for payments created before a provider was
+    # disabled. Runtime enablement controls new checkouts, not settlement events.
+    if provider_key not in PAYMENT_REGISTRY:
+        logger.warning("Rejected webhook for unregistered provider=%s", provider_key)
+        return Response(content="Unknown payment provider", status_code=404)
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature") if provider_key == "stripe" else request.headers.get("x-payment-signature")
     if not sig_header:
