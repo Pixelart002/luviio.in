@@ -22,8 +22,8 @@ from app.domains.payments.schemas import (
 from app.domains.payments.service import PaymentService
 from app.domains.settings.service import SettingsService
 from app.integrations.payments.context import payment_provider_context
-from app.integrations.payments.registry import PAYMENT_REGISTRY
 from app.integrations.payments.manager import PaymentPluginManager
+from app.integrations.payments.registry import PAYMENT_REGISTRY
 from app.utils.response import success_response
 
 logger = logging.getLogger("app.payments")
