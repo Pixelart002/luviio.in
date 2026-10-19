@@ -105,3 +105,26 @@ def test_production_cors_normalizes_explicit_origin_trailing_slash(monkeypatch):
 
     assert "https://luviio.in" in origins
     assert "https://www.luviio.in" in origins
+
+
+
+def test_production_allows_exact_vercel_frontend_origin_for_cors_and_csrf(monkeypatch):
+    vercel_origin = "https://my-frontend-e4v9utdl8-pixelart002s-projects.vercel.app"
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://luviio.in,https://www.luviio.in")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://www.luviio.in")
+
+    assert vercel_origin in settings.cors_origins
+    assert csrf_origin_allowed(vercel_origin) is True
+    assert csrf_origin_allowed("https://untrusted-preview.vercel.app") is False
+
+    async def run():
+        async def call_next(_request):
+            return Response("ok")
+
+        return await cors_middleware(_request(vercel_origin), call_next)
+
+    response = asyncio.run(run())
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == vercel_origin
+    assert response.headers.get("access-control-allow-credentials") == "true"
