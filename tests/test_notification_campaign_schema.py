@@ -10,7 +10,7 @@ def test_legacy_batch_notification_defaults_remain_compatible():
 
     assert payload.user_ids is None
     assert payload.url == "/"
-    assert payload.icon == "/icon-192.png"
+    assert payload.icon == "/icon-512.png"
     assert payload.actions == []
     assert payload.tag is None
     assert payload.require_interaction is False
@@ -21,8 +21,8 @@ def test_rich_campaign_accepts_same_site_product_link_and_actions():
         title="New Luviio offer",
         body="Explore the new floor drainer.",
         url="/products/floor-drainer-square-ring",
-        icon="/icon-192.png",
-        badge="/icon-192.png",
+        icon="/icon-512.png",
+        badge="/icon-512.png",
         image="/assets/offer.webp",
         tag="festive-sale",
         require_interaction=True,
