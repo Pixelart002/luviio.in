@@ -1,8 +1,8 @@
 """Push notification HTTP schemas owned by the Notifications domain."""
 from typing import List
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from urllib.parse import urlsplit
 
 from app.core.config import settings
 
