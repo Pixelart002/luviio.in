@@ -140,3 +140,11 @@ def delete_all_product_images(product_id: str) -> int:
     except Exception as exc:
         logger.error("Bulk image deletion failed for product %s: %s", product_id[:8], exc, exc_info=True)
     return 0
+
+
+def upload_notification_image(file_bytes: bytes, *, filename: str = "notification-image") -> str:
+    """Validate, optimize and store an admin-selected Web Push asset."""
+    _validate_image(file_bytes, filename)
+    optimized = _process_image(file_bytes, size=THUMB_SIZE, quality=WEBP_QUALITY)
+    path = f"notifications/{uuid.uuid4().hex}.webp"
+    return _upload_to_storage(optimized, path, content_type="image/webp")
