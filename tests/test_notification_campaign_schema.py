@@ -112,3 +112,21 @@ def test_more_than_two_notification_actions_are_rejected():
                 {"title": "Three", "action": "/three"},
             ],
         )
+
+def test_unrelated_notification_campaigns_receive_unique_tags():
+    from app.domains.notifications.service import _resolve_campaign_tag
+
+    first = _resolve_campaign_tag(None, False)
+    second = _resolve_campaign_tag(None, False)
+
+    assert first.startswith("luviio-notification-")
+    assert second.startswith("luviio-notification-")
+    assert first != second
+
+
+def test_campaign_tag_is_reused_only_when_explicitly_requested():
+    from app.domains.notifications.service import _resolve_campaign_tag
+
+    assert _resolve_campaign_tag("same-campaign", False) == "same-campaign"
+    assert _resolve_campaign_tag("same-campaign", True) == "same-campaign"
+    assert _resolve_campaign_tag(None, True) == "luviio-notification"
