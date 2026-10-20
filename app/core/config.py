@@ -5,6 +5,7 @@ Central configuration using Pydantic Settings.
 Production defaults are deliberately restrictive; deployment-specific origins
 must be supplied explicitly through ALLOWED_ORIGINS.
 """
+import re
 from typing import List
 from urllib.parse import urlsplit
 
@@ -36,6 +37,13 @@ class Settings(BaseSettings):
 
     FRONTEND_URL: str = "https://www.luviio.in"
     ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in"
+    # Narrow patterns for Luviio-owned preview deployments. Never use a universal
+    # HTTPS wildcard for credentialed production API responses.
+    CORS_PREVIEW_ORIGIN_PATTERNS: str = (
+        r"^https://jubilant-space-system-[a-z0-9-]+\.app\.github\.dev$,"
+        r"^https://my-frontend-git-[a-z0-9-]+-pixelart002s-projects\.vercel\.app$,"
+        r"^https://my-frontend-ascu-git-[a-z0-9-]+-pixelart002s-projects\.vercel\.app$"
+    )
 
     RATE_LIMIT_PER_MINUTE: int = 60
     TRUSTED_PROXY_IPS: str = ""
@@ -106,9 +114,9 @@ class Settings(BaseSettings):
         if frontend_origin and frontend_origin not in origins:
             origins.append(frontend_origin)
 
-        # Luviio serves its canonical storefront on www.luviio.in and redirects
-        # the apex domain there. Both known HTTPS origins are safe exact
-        # allowlist entries; this does not authorize arbitrary wildcard origins.
+        # Luviio serves the storefront on the apex/www hosts and the app on
+        # app.luviio.in. These exact HTTPS origins are trusted; this does not
+        # authorize arbitrary wildcard origins.
         try:
             frontend = urlsplit(str(self.FRONTEND_URL or "").strip())
             if (
@@ -118,13 +126,50 @@ class Settings(BaseSettings):
                 and frontend.username is None
                 and frontend.password is None
             ):
-                for origin in ("https://luviio.in", "https://www.luviio.in"):
+                # First-party storefront and application origins.
+                for origin in (
+                    "https://luviio.in",
+                    "https://www.luviio.in",
+                    "https://app.luviio.in",
+                ):
                     if origin not in origins:
                         origins.append(origin)
         except (ValueError, TypeError):
             pass
 
         return origins
+
+    @property
+    def cors_preview_origin_patterns(self) -> List[str]:
+        return [
+            pattern.strip()
+            for pattern in self.CORS_PREVIEW_ORIGIN_PATTERNS.split(",")
+            if pattern.strip()
+        ]
+
+    def is_allowed_browser_origin(self, origin: str | None) -> bool:
+        """Check an exact origin or a narrow first-party preview-host pattern."""
+        if not origin or origin == "null":
+            return False
+
+        if origin in self.cors_origins:
+            return True
+
+        if not self.is_production and "*" in self.cors_origins:
+            return True
+
+        if not self.is_production:
+            return False
+
+        for pattern in self.cors_preview_origin_patterns:
+            try:
+                if re.fullmatch(pattern, origin):
+                    return True
+            except re.error:
+                # Malformed optional pattern configuration fails closed.
+                continue
+
+        return False
 
     @property
     def trusted_proxy_ips(self) -> List[str]:

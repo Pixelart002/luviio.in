@@ -41,7 +41,6 @@ async def cors_middleware(request: Request, call_next):
         Response with appropriate CORS headers
     """
     origin = request.headers.get("origin")
-    allowed_origins = settings.cors_origins  # List from config
 
     # ══════════════════════════════════════════════════════════════════════════
     #  STEP 1: Determine if origin is allowed
@@ -62,8 +61,8 @@ async def cors_middleware(request: Request, call_next):
         allowed = True
         final_origin = None
 
-    elif origin in allowed_origins:
-        # ── Explicit wildcard or whitelisted origin ──────────────────────────
+    elif settings.is_allowed_browser_origin(origin):
+        # ── Exact allowlist entry or narrowly scoped first-party preview ─────
         # With credentials enabled we must echo the request origin; returning
         # `*` makes browsers reject the response as a network/CORS error.
         allowed = True
