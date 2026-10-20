@@ -20,7 +20,7 @@ def _notification_asset_reference(value: str | None, *, field_name: str) -> str 
     if value is None or value == "":
         return value
 
-    if value.startswith("/") and not value.startswith("//") and "\\\\" not in value:
+    if value.startswith("/") and not value.startswith("//") and "\\" not in value:
         return value
 
     try:
@@ -39,7 +39,7 @@ def _notification_asset_reference(value: str | None, *, field_name: str) -> str 
             and parsed.path.startswith("/storage/v1/object/public/product-images/notifications/")
             and parsed.path.endswith(".webp")
             and ".." not in path_parts
-            and "\\\\" not in parsed.path
+            and "\\" not in parsed.path
         )
     except (TypeError, ValueError):
         is_luviio_notification_asset = False
