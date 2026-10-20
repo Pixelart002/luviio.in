@@ -16,6 +16,16 @@ from app.permissions.policies.push_policies import VAPID_PUBLIC_KEY, PushPolicy
 logger = logging.getLogger(__name__)
 
 
+def _resolve_campaign_tag(tag: str | None, renotify: bool) -> str:
+    """Use distinct tags by default; reuse a tag only for intentional replacement."""
+    custom_tag = str(tag or "").strip()
+    if custom_tag:
+        return custom_tag
+    if renotify:
+        return "luviio-notification"
+    return f"luviio-notification-{uuid.uuid4().hex}"
+
+
 class PushService:
     def __init__(self):
         self.repo = AsyncPushRepository()
@@ -102,11 +112,7 @@ class PushService:
 
         # Separate campaigns by default so unrelated messages do not replace each
         # other on a device. Intentional replacement requires an explicit tag.
-        custom_tag = str(tag or "").strip()
-        campaign_tag = custom_tag or (
-            "luviio-notification" if renotify
-            else f"luviio-notification-{uuid.uuid4().hex}"
-        )
+        campaign_tag = _resolve_campaign_tag(tag, renotify)
 
         results: Dict[str, Any] = {"success": 0, "failed": 0, "audience": len(audience), "details": []}
         semaphore = asyncio.Semaphore(20)
