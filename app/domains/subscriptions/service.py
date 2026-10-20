@@ -149,7 +149,7 @@ class SubscriptionService:
                 count = await push.repo.count_user_subscriptions(str(reminder["user_id"]))
                 if count:
                     await push.send_batch_notification(
-                        [str(reminder["user_id"])], reminder["title"], reminder["body"], "/icon-192.png", "/account/subscription"
+                        [str(reminder["user_id"])], reminder["title"], reminder["body"], "/icon-512.png", "/account/subscription"
                     )
                 if await self.repo.mark_reminder_sent(str(reminder["id"])):
                     sent += 1

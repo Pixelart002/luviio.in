@@ -80,7 +80,7 @@ class PushService:
             user_id=user_id,
             title="Luviio — Test Notification",
             body="If you're seeing this, push notifications are working end-to-end.",
-            icon="/icon-192.png",
+            icon="/icon-512.png",
             url="/",
         )
         return {"sent": sent, "subscriptions_targeted": count}
@@ -100,7 +100,7 @@ class PushService:
         icon: str,
         url: str,
         *,
-        badge: str = "/icon-192.png",
+        badge: str = "/icon-512.png",
         image: str | None = None,
         tag: str | None = None,
         require_interaction: bool = False,
