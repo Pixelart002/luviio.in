@@ -93,6 +93,34 @@ def test_production_cors_allows_frontend_when_deployed_allowlist_is_wildcard(mon
     assert response.headers.get("access-control-allow-credentials") == "true"
 
 
+def test_production_allows_first_party_app_subdomain(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://luviio.in,https://www.luviio.in")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://www.luviio.in")
+
+    assert settings.is_allowed_browser_origin("https://app.luviio.in") is True
+    assert csrf_origin_allowed("https://app.luviio.in") is True
+
+
+def test_production_allows_only_scoped_codespaces_and_luviio_vercel_previews(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://luviio.in,https://www.luviio.in")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://www.luviio.in")
+
+    trusted = (
+        "https://jubilant-space-system-445rgp9g9543w79-5173.app.github.dev",
+        "https://my-frontend-git-fix-orders-page-sc-2791cb-pixelart002s-projects.vercel.app",
+        "https://my-frontend-ascu-git-fix-orders-pa-f927f8-pixelart002s-projects.vercel.app",
+    )
+    for origin in trusted:
+        assert settings.is_allowed_browser_origin(origin) is True
+        assert csrf_origin_allowed(origin) is True
+
+    assert settings.is_allowed_browser_origin("https://evil.example") is False
+    assert settings.is_allowed_browser_origin("https://my-frontend-git-preview-attacker.vercel.app") is False
+    assert settings.is_allowed_browser_origin("null") is False
+
+
 def test_production_cors_normalizes_explicit_origin_trailing_slash(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "production")
     monkeypatch.setattr(
