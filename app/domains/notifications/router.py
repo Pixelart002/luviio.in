@@ -2,7 +2,8 @@
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
 from app.constants.push_messages import PushMessages
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
@@ -10,6 +11,7 @@ from app.domains.notifications.schemas import BatchNotificationRequest, PushSubs
 from app.domains.notifications.service import PushService
 from app.permissions.admin import AdminPermissions
 from app.utils.response import success_response
+from app.utils.image import MAX_FILE_BYTES, upload_notification_image
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/push", tags=["Push Notifications"])
@@ -59,3 +61,36 @@ async def send_batch_notification(request: Request, payload: BatchNotificationRe
 @router.get("/admin/stats", dependencies=[Depends(require_permission(AdminPermissions.VIEW_ANALYTICS))], status_code=status.HTTP_200_OK)
 async def push_stats(request: Request) -> Dict[str, Any]:
     return success_response(data=await PushService().get_stats())
+
+
+@router.post(
+    "/admin/assets",
+    dependencies=[Depends(require_permission(AdminPermissions.MANAGE_SETTINGS))],
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_notification_asset(
+    request: Request,
+    file: UploadFile = File(...),
+) -> Dict[str, Any]:
+    """Upload an optimized image for an admin-authored push campaign."""
+    data = await file.read(MAX_FILE_BYTES + 1)
+    if not data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose an image to upload.")
+    if len(data) > MAX_FILE_BYTES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Images must be 5 MB or smaller.")
+
+    try:
+        url = await run_in_threadpool(
+            upload_notification_image,
+            data,
+            filename=file.filename or "notification-image",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        logger.exception("Notification image upload failed")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Uploaded optimized push notification image to managed storage")
+    return success_response(data={"url": url}, message="Notification image uploaded.")
