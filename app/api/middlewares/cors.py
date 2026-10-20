@@ -41,7 +41,6 @@ async def cors_middleware(request: Request, call_next):
         Response with appropriate CORS headers
     """
     origin = request.headers.get("origin")
-    allowed_origins = settings.cors_origins  # List from config
 
     # ══════════════════════════════════════════════════════════════════════════
     #  STEP 1: Determine if origin is allowed
