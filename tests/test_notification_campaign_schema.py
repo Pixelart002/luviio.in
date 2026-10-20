@@ -12,6 +12,7 @@ def test_legacy_batch_notification_defaults_remain_compatible():
     assert payload.url == "/"
     assert payload.icon == "/icon-192.png"
     assert payload.actions == []
+    assert payload.tag is None
     assert payload.require_interaction is False
 
 
@@ -75,6 +76,24 @@ def test_notification_asset_must_belong_to_configured_supabase_project(monkeypat
         )
 
 
+def test_realert_requires_explicit_nonempty_campaign_tag():
+    with pytest.raises(ValidationError):
+        BatchNotificationRequest(body="Offer", renotify=True)
+
+    with pytest.raises(ValidationError):
+        BatchNotificationRequest(body="Offer", tag="   ", renotify=True)
+
+    payload = BatchNotificationRequest(body="Offer", tag="same-campaign", renotify=True)
+    assert payload.tag == "same-campaign"
+    assert payload.renotify is True
+
+
+def test_independent_notification_campaigns_may_omit_tag():
+    payload = BatchNotificationRequest(body="Offer")
+    assert payload.tag is None
+    assert payload.renotify is False
+
+
 def test_external_notification_action_is_rejected():
     with pytest.raises(ValidationError):
         BatchNotificationRequest(
@@ -93,3 +112,21 @@ def test_more_than_two_notification_actions_are_rejected():
                 {"title": "Three", "action": "/three"},
             ],
         )
+
+def test_unrelated_notification_campaigns_receive_unique_tags():
+    from app.domains.notifications.service import _resolve_campaign_tag
+
+    first = _resolve_campaign_tag(None, False)
+    second = _resolve_campaign_tag(None, False)
+
+    assert first.startswith("luviio-notification-")
+    assert second.startswith("luviio-notification-")
+    assert first != second
+
+
+def test_campaign_tag_is_reused_only_when_explicitly_requested():
+    from app.domains.notifications.service import _resolve_campaign_tag
+
+    assert _resolve_campaign_tag("same-campaign", False) == "same-campaign"
+    assert _resolve_campaign_tag("same-campaign", True) == "same-campaign"
+    assert _resolve_campaign_tag(None, True) == "luviio-notification"
