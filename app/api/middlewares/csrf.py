@@ -23,11 +23,8 @@ def _origin_from_referer(referer: str) -> str | None:
 
 
 def _allowed(origin: str) -> bool:
-    allowed_origins = settings.cors_origins
-    # A wildcard must never authorize cookie-authenticated state changes in production.
-    if settings.is_production:
-        return origin in allowed_origins and origin != "*"
-    return "*" in allowed_origins or origin in allowed_origins
+    # CORS and CSRF must agree: trusted preview origins pass both policies.
+    return settings.is_allowed_browser_origin(origin)
 
 
 async def csrf_middleware(request: Request, call_next):
