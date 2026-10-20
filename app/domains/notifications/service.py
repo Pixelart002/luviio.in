@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import uuid
 from typing import Any, Dict, List
 
 from fastapi import HTTPException, status
@@ -91,13 +92,22 @@ class PushService:
         *,
         badge: str = "/icon-192.png",
         image: str | None = None,
-        tag: str = "luviio-notification",
+        tag: str | None = None,
         require_interaction: bool = False,
         renotify: bool = False,
         actions: list[dict[str, Any]] | None = None,
     ) -> Dict[str, Any]:
         audience = await self._resolve_audience(user_ids)
         PushPolicy.assert_valid_batch_size(audience)
+
+        # Separate campaigns by default so unrelated messages do not replace each
+        # other on a device. Intentional replacement requires an explicit tag.
+        custom_tag = str(tag or "").strip()
+        campaign_tag = custom_tag or (
+            "luviio-notification" if renotify
+            else f"luviio-notification-{uuid.uuid4().hex}"
+        )
+
         results: Dict[str, Any] = {"success": 0, "failed": 0, "audience": len(audience), "details": []}
         semaphore = asyncio.Semaphore(20)
 
@@ -112,7 +122,7 @@ class PushService:
                         url=url,
                         badge=badge,
                         image=image,
-                        tag=tag,
+                        tag=campaign_tag,
                         require_interaction=require_interaction,
                         renotify=renotify,
                         actions=actions,
