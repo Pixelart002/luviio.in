@@ -2,7 +2,7 @@
 from typing import List
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.config import settings
 
@@ -84,7 +84,7 @@ class BatchNotificationRequest(BaseModel):
     badge: str = Field(default="/icon-192.png", min_length=1, max_length=500)
     image: str | None = Field(default=None, max_length=500)
     url: str = Field(default="/", min_length=1, max_length=500)
-    tag: str = Field(default="luviio-notification", min_length=1, max_length=100)
+    tag: str | None = Field(default=None, max_length=100)
     require_interaction: bool = False
     renotify: bool = False
     actions: List[NotificationAction] = Field(default_factory=list, max_length=2)
@@ -95,3 +95,9 @@ class BatchNotificationRequest(BaseModel):
         if info.field_name == "url":
             return _same_site_path(value, field_name=info.field_name)
         return _notification_asset_reference(value, field_name=info.field_name)
+
+    @model_validator(mode="after")
+    def require_tag_for_renotify(self):
+        if self.renotify and not (self.tag and self.tag.strip()):
+            raise ValueError("A campaign tag is required when re-alerting a replaced notification.")
+        return self
