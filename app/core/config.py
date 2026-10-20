@@ -114,9 +114,9 @@ class Settings(BaseSettings):
         if frontend_origin and frontend_origin not in origins:
             origins.append(frontend_origin)
 
-        # Luviio serves its canonical storefront on www.luviio.in and redirects
-        # the apex domain there. Both known HTTPS origins are safe exact
-        # allowlist entries; this does not authorize arbitrary wildcard origins.
+        # Luviio serves the storefront on the apex/www hosts and the app on
+        # app.luviio.in. These exact HTTPS origins are trusted; this does not
+        # authorize arbitrary wildcard origins.
         try:
             frontend = urlsplit(str(self.FRONTEND_URL or "").strip())
             if (
