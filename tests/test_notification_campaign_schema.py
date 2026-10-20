@@ -52,6 +52,29 @@ def test_notification_assets_and_click_paths_must_be_same_site(field, value):
         BatchNotificationRequest(body="Offer", **{field: value})
 
 
+def test_luviio_hosted_notification_assets_are_accepted(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "SB_URL", "https://luviio-test.supabase.co")
+    asset_url = "https://luviio-test.supabase.co/storage/v1/object/public/product-images/notifications/campaign.webp"
+    payload = BatchNotificationRequest(body="Offer", icon=asset_url, badge=asset_url, image=asset_url)
+
+    assert payload.icon == asset_url
+    assert payload.badge == asset_url
+    assert payload.image == asset_url
+
+
+def test_notification_asset_must_belong_to_configured_supabase_project(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "SB_URL", "https://luviio-test.supabase.co")
+    with pytest.raises(ValidationError):
+        BatchNotificationRequest(
+            body="Offer",
+            icon="https://other-project.supabase.co/storage/v1/object/public/product-images/notifications/evil.webp",
+        )
+
+
 def test_external_notification_action_is_rejected():
     with pytest.raises(ValidationError):
         BatchNotificationRequest(
