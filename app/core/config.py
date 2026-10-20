@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     OLA_MAPS_API_KEY: str = ""
 
     FRONTEND_URL: str = "https://www.luviio.in"
-    ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in"
+    ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in,https://app.luviio.in"
 
     RATE_LIMIT_PER_MINUTE: int = 60
     TRUSTED_PROXY_IPS: str = ""
