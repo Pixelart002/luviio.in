@@ -16,7 +16,7 @@ dependencies = [
   "PyJWT[crypto]>=2.10,<3.0",
   "email-validator==2.2.0",
   "resend==2.4.0",
-  "Pillow>=10.4.0",
+  "Pillow>=13.0.0",
   "pywebpush==2.0.0",
   "reportlab==4.2.2",
   "sentry-sdk>=2.8.0",
@@ -24,6 +24,7 @@ dependencies = [
   "apscheduler",
   "nanoid",
   "requests>=2.32.0,<3.0.0",
+  "certifi>=2026.10.19",
 ]
 
 [tool.uv]
