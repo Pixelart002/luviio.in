@@ -120,7 +120,7 @@ async def create_product(request: Request) -> Dict[str, Any]:
             except json.JSONDecodeError as exc:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Request body must contain valid JSON") from exc
             logger.info("product.create.payload request_id=%s sku=%s images=0", request_id, payload.sku or "Auto")
-            result = await ProductService().create_product(payload.model_dump())
+            result = await ProductService().create_product(payload.model_dump(mode="json"))
     except HTTPException as exc:
         logger.warning("product.create.http_error request_id=%s status=%s detail=%s", request_id, exc.status_code, str(exc.detail)[:300])
         raise
