@@ -1,13 +1,24 @@
 """Admin domain service — enterprise business logic."""
+import asyncio
+import copy
 import time
 from typing import Any, Dict
 
+from cachetools import TTLCache
 from fastapi import HTTPException, status
 
 from app.constants.admin_messages import AdminSecurityMessages
 from app.domains.admin.repository import AsyncAdminRepository
 from app.permissions.policies.admin_policies import AdminPolicy
+from app.permissions.policies.push_policies import VAPID_PUBLIC_KEY
 from app.utils.timestamp import ts_to_iso
+
+
+# A very short process-local cache avoids repeating the relatively expensive
+# aggregate RPC on rapid dashboard refreshes. Authorization/profile validation
+# still runs on every request; cached data contains no user-specific fields.
+_DASHBOARD_SNAPSHOT_CACHE: TTLCache = TTLCache(maxsize=12, ttl=3)
+_DASHBOARD_SNAPSHOT_LOCK = asyncio.Lock()
 
 
 class AdminService:
@@ -27,6 +38,35 @@ class AdminService:
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=AdminSecurityMessages.TELEMETRY_FAILED) from exc
         return {"verified": True, "stats": stats, "timestamp": ts_to_iso(time.time())}
+
+    async def get_dashboard_snapshot(self, user_id: str, days: int = 30) -> Dict[str, Any]:
+        """Return dashboard sections and real daily chart points in one cached snapshot."""
+        raw_profile = await self.repo.get_live_admin_profile(user_id)
+        AdminPolicy.assert_is_active_admin(raw_profile)
+        normalized_days = max(7, min(int(days), 90))
+        cached = _DASHBOARD_SNAPSHOT_CACHE.get(normalized_days)
+        if cached is not None:
+            return copy.deepcopy(cached)
+
+        async with _DASHBOARD_SNAPSHOT_LOCK:
+            # Recheck after waiting so concurrent dashboard loads coalesce.
+            cached = _DASHBOARD_SNAPSHOT_CACHE.get(normalized_days)
+            if cached is not None:
+                return copy.deepcopy(cached)
+            try:
+                snapshot = await self.repo.get_dashboard_snapshot(normalized_days)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=AdminSecurityMessages.TELEMETRY_FAILED,
+                ) from exc
+
+            notifications = snapshot.setdefault("notifications", {})
+            notifications["vapid_configured"] = bool(VAPID_PUBLIC_KEY)
+            snapshot["verified"] = True
+            snapshot["timestamp"] = ts_to_iso(time.time())
+            _DASHBOARD_SNAPSHOT_CACHE[normalized_days] = copy.deepcopy(snapshot)
+            return snapshot
 
     async def get_reports(self, user_id: str) -> Dict[str, Any]:
         AdminPolicy.assert_is_active_admin(await self.repo.get_live_admin_profile(user_id))
