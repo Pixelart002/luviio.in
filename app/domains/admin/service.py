@@ -66,6 +66,7 @@ class AdminService:
 
             notifications = snapshot.setdefault("notifications", {})
             notifications["vapid_configured"] = bool(VAPID_PUBLIC_KEY)
+            snapshot["admin_user_id"] = str(user_id)
             snapshot["verified"] = True
             snapshot["timestamp"] = ts_to_iso(time.time())
             _DASHBOARD_SNAPSHOT_CACHE[cache_key] = copy.deepcopy(snapshot)
