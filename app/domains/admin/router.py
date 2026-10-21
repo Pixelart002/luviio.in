@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from app.constants.admin_messages import AdminMessages
 from app.core.dependencies import get_user_id_strict, require_permission
 from app.domains.admin.service import AdminService
+from app.domains.admin.schemas import AdminDashboardLayout
 from app.domains.payments.plugin_schemas import (
     MethodRegistrationRequest,
     MethodToggleRequest,
@@ -40,6 +41,17 @@ async def admin_dashboard_snapshot(
     """Consolidated admin dashboard: one client request, one aggregate database RPC."""
     data = await AdminService().get_dashboard_snapshot(user_id, days=days)
     return success_response(data=data, message=AdminMessages.STATS_FETCHED)
+
+
+@router.put("/dashboard/layout", dependencies=[Depends(require_permission(AdminPermissions.VIEW_ANALYTICS))], status_code=status.HTTP_200_OK)
+async def save_admin_dashboard_layout(
+    request: Request,
+    payload: AdminDashboardLayout,
+    user_id: str = Depends(get_user_id_strict),
+):
+    """Persist a strictly validated widget layout for the authenticated administrator."""
+    data = await AdminService().save_dashboard_layout(user_id, payload.model_dump())
+    return success_response(data=data, message="Dashboard preferences saved.")
 
 
 @router.get("/reports/summary", dependencies=[Depends(require_permission(AdminPermissions.VIEW_ANALYTICS))], status_code=status.HTTP_200_OK)
