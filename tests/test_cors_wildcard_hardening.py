@@ -102,6 +102,15 @@ def test_production_allows_first_party_app_subdomain(monkeypatch):
     assert csrf_origin_allowed("https://app.luviio.in") is True
 
 
+def test_production_allows_first_party_admin_subdomain(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://luviio.in,https://www.luviio.in")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://www.luviio.in")
+
+    assert settings.is_allowed_browser_origin("https://admin.luviio.in") is True
+    assert csrf_origin_allowed("https://admin.luviio.in") is True
+
+
 def test_production_allows_only_scoped_codespaces_and_luviio_vercel_previews(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "production")
     monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://luviio.in,https://www.luviio.in")
