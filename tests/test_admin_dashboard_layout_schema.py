@@ -1,4 +1,5 @@
 from __future__ import annotations
+# ruff: noqa: I001 - maintain the local test import grouping.
 
 import pytest
 
