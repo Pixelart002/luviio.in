@@ -9,9 +9,10 @@ Mounted at app root so the frontend middleware can fetch it directly.
 
 import json
 import logging
+import re
 from html import escape
 from typing import Any, Dict
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlparse, urlunsplit
 
 import httpx
 from fastapi import APIRouter, Request, Response, status
@@ -31,6 +32,27 @@ _DEFAULT_IMAGE = f"{settings.FRONTEND_URL.rstrip('/')}/icon-512.png"
 def _frontend_product_url(slug: str) -> str:
     base = settings.FRONTEND_URL.rstrip("/")
     return f"{base}/product/{quote(slug, safe='')}"
+
+
+def _canonical_product_url(value: Any, slug: str) -> str:
+    """Use only clean product URLs on the configured canonical frontend host."""
+    fallback = _frontend_product_url(slug)
+    if not isinstance(value, str) or not value.strip():
+        return fallback
+
+    try:
+        candidate = urlparse(value.strip())
+        preferred = urlparse(settings.FRONTEND_URL.rstrip("/"))
+        if (
+            candidate.scheme != "https"
+            or not candidate.hostname
+            or candidate.hostname.lower() != (preferred.hostname or "").lower()
+            or not re.fullmatch(r"/product/[^/]+/?", candidate.path or "")
+        ):
+            return fallback
+        return urlunsplit(("https", preferred.netloc, (candidate.path or "").rstrip("/"), "", ""))
+    except (TypeError, ValueError):
+        return fallback
 
 
 def _first_image(product: Dict[str, Any]) -> str | None:
@@ -155,9 +177,13 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
 
     name = str(product.get("name") or "Luviio Product").strip()
     seo = product.get("product_seo") or {}
-    seo_title = str(seo.get("title") or "").strip() if isinstance(seo, dict) else ""
-    seo_description = str(seo.get("description") or "").strip() if isinstance(seo, dict) else ""
+    if not isinstance(seo, dict):
+        seo = {}
 
+    # ProductService projects normalized product_seo values onto flat fields.
+    # Read those first; the nested relation is retained as a compatibility fallback.
+    seo_title = str(product.get("seo_title") or seo.get("title") or "").strip()
+    seo_description = str(product.get("seo_description") or seo.get("description") or "").strip()
     description = (
         seo_description
         or str(product.get("short_description") or "").strip()
@@ -165,7 +191,21 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
         or f"Shop {name} on Luviio."
     )
 
-    canonical_url = _frontend_product_url(slug)
+    canonical_url = _canonical_product_url(
+        product.get("canonical_url") or seo.get("canonical_url"),
+        slug,
+    )
+    robots_index = product.get("robots_index")
+    if robots_index is None:
+        robots_index = seo.get("robots_index", True)
+    robots_follow = product.get("robots_follow")
+    if robots_follow is None:
+        robots_follow = seo.get("robots_follow", True)
+    index_directive = "index" if robots_index is not False else "noindex"
+    follow_directive = "follow" if robots_follow is not False else "nofollow"
+    robots_directive = f"{index_directive}, {follow_directive}"
+    display_title = seo_title or f"{name} | Luviio"
+
     image_url = f"{settings.FRONTEND_URL.rstrip('/')}/share/products/{quote(slug, safe='')}/image"
     display_title = seo_title or f"{name} | Luviio"
 
@@ -235,7 +275,7 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="{escaped_name}">
     <meta property="og:locale" content="en_IN">
-    <meta name="robots" content="index, follow, max-image-preview:large">
+    <meta name="robots" content="{escape(robots_directive, quote=True)}, max-image-preview:large">
 
     <script type="application/ld+json">{jsonld}</script>
 
@@ -257,6 +297,6 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
         status_code=status.HTTP_200_OK,
         headers={
             "Cache-Control": "public, max-age=60, s-maxage=300, stale-while-revalidate=86400",
-            "X-Robots-Tag": "index, follow",
+            "X-Robots-Tag": robots_directive,
         },
     )
