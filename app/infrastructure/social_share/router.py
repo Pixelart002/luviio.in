@@ -217,12 +217,17 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
         "url": canonical_url,
         "image": [image_url],
     }
+    sku = product.get("sku")
+    if sku:
+        product_jsonld["sku"] = str(sku).strip()
     brand = product.get("brand")
     if brand:
         product_jsonld["brand"] = {"@type": "Brand", "name": str(brand).strip()}
 
     price = product.get("price")
-    currency = str(product.get("currency") or product.get("price_currency") or "").strip().upper()
+    # The Luviio storefront is priced in Indian rupees; the products table
+    # stores numeric rupee amounts without a per-row currency column.
+    currency = str(product.get("currency") or product.get("price_currency") or "INR").strip().upper()
     try:
         numeric_price = float(price) if price is not None else None
     except (TypeError, ValueError):
