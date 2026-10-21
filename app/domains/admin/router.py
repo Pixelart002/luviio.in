@@ -31,6 +31,17 @@ async def admin_stats(request: Request, user_id: str = Depends(get_user_id_stric
     return success_response(data=await AdminService().get_dashboard_metrics(user_id), message=AdminMessages.STATS_FETCHED)
 
 
+@router.get("/dashboard", dependencies=[Depends(require_permission(AdminPermissions.VIEW_ANALYTICS))], status_code=status.HTTP_200_OK)
+async def admin_dashboard_snapshot(
+    request: Request,
+    days: int = Query(30, ge=7, le=90),
+    user_id: str = Depends(get_user_id_strict),
+):
+    """Consolidated admin dashboard: one client request, one aggregate database RPC."""
+    data = await AdminService().get_dashboard_snapshot(user_id, days=days)
+    return success_response(data=data, message=AdminMessages.STATS_FETCHED)
+
+
 @router.get("/reports/summary", dependencies=[Depends(require_permission(AdminPermissions.VIEW_ANALYTICS))], status_code=status.HTTP_200_OK)
 async def admin_reports(request: Request, user_id: str = Depends(get_user_id_strict)):
     return success_response(data=await AdminService().get_reports(user_id))
