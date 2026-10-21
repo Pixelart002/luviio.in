@@ -1,4 +1,5 @@
 """Admin domain service — enterprise business logic."""
+# ruff: noqa: I001 - keep imports aligned with the existing domain-module convention.
 import asyncio
 import copy
 import time
