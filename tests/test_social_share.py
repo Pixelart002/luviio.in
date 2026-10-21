@@ -44,3 +44,59 @@ def test_product_share_page_escapes_metadata(client, monkeypatch):
     assert "<script>alert(\"x\")</script>" not in response.text
     assert "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;" in response.text
     assert "Use &quot;safe&quot; &amp; reliable." in response.text
+
+
+
+def test_product_share_page_uses_flat_seo_fields_and_clean_canonical(client, monkeypatch):
+    product = {
+        "name": "Square sink waste coupling",
+        "slug": "sink-waste-coupling",
+        "seo_title": "4.5-Inch Square Sink Coupling | Luviio",
+        "seo_description": "A stainless-steel square sink coupling with a removable grid basket.",
+        "canonical_url": "https://www.luviio.in/product/sink-waste-coupling?utm_source=legacy#details",
+        "robots_index": False,
+        "robots_follow": True,
+        "short_description": "Generic catalogue description.",
+        "image_url": "https://cdn.example.com/products/coupling.webp",
+        "images": ["https://cdn.example.com/products/coupling.webp"],
+        "price": 249,
+        "price_currency": "INR",
+        "stock": 32,
+    }
+
+    mock_service = type("MockProductService", (), {"get_product": AsyncMock(return_value=product)})
+    router_module = import_module("app.infrastructure.social_share.router")
+    monkeypatch.setattr(router_module, "ProductService", mock_service)
+
+    response = client.get("/share/products/sink-waste-coupling")
+
+    assert response.status_code == 200
+    assert '<title>4.5-Inch Square Sink Coupling | Luviio</title>' in response.text
+    assert 'content="A stainless-steel square sink coupling with a removable grid basket."' in response.text
+    assert '<link rel="canonical" href="https://www.luviio.in/product/sink-waste-coupling">' in response.text
+    assert '<meta property="og:url" content="https://www.luviio.in/product/sink-waste-coupling">' in response.text
+    assert '<meta name="robots" content="noindex, follow, max-image-preview:large">' in response.text
+    assert response.headers["x-robots-tag"] == "noindex, follow"
+    assert "Generic catalogue description." not in response.text
+
+
+def test_product_share_page_rejects_off_host_canonical_and_honors_no_follow(client, monkeypatch):
+    product = {
+        "name": "Safe drain cover",
+        "slug": "safe-drain-cover",
+        "canonical_url": "https://example.com/product/not-luviio",
+        "robots_index": True,
+        "robots_follow": False,
+        "images": [],
+    }
+
+    mock_service = type("MockProductService", (), {"get_product": AsyncMock(return_value=product)})
+    router_module = import_module("app.infrastructure.social_share.router")
+    monkeypatch.setattr(router_module, "ProductService", mock_service)
+
+    response = client.get("/share/products/safe-drain-cover")
+
+    assert response.status_code == 200
+    assert '<link rel="canonical" href="https://www.luviio.in/product/safe-drain-cover">' in response.text
+    assert '<meta name="robots" content="index, nofollow, max-image-preview:large">' in response.text
+    assert response.headers["x-robots-tag"] == "index, nofollow"
