@@ -48,12 +48,17 @@ class AsyncAdminRepository:
         except (TypeError, ValueError) as exc:
             raise RuntimeError("Unable to normalize dashboard telemetry") from exc
 
-    async def get_dashboard_snapshot(self, days: int = 30) -> Dict[str, Any]:
-        """Fetch the complete dashboard payload with a single database RPC."""
+    async def get_dashboard_snapshot(self, days: int = 30, admin_user_id: str = "") -> Dict[str, Any]:
+        """Fetch dashboard metrics, chart points and this admin's layout in one RPC."""
+        if not admin_user_id:
+            raise ValueError("Administrator identity is required for a dashboard snapshot")
         sb = await get_async_admin_supabase()
         res = await sb.rpc(
             "admin_dashboard_snapshot",
-            {"p_days": max(7, min(int(days), 90))},
+            {
+                "p_days": max(7, min(int(days), 90)),
+                "p_admin_user_id": str(admin_user_id),
+            },
         ).execute()
         data = getattr(res, "data", None)
 
@@ -63,11 +68,32 @@ class AsyncAdminRepository:
         required = {
             "stats", "recent_orders", "inventory", "low_stock", "payments",
             "audit", "notifications", "stripe", "revenue_series", "date_range",
+            "dashboard_layout",
         }
         if not required.issubset(data):
             missing = sorted(required.difference(data))
             raise RuntimeError(f"Dashboard snapshot is incomplete: {', '.join(missing)}")
         return data
+
+    async def save_dashboard_layout(self, admin_user_id: str, layout: Dict[str, Any]) -> Dict[str, Any]:
+        """Persist a validated per-admin widget layout using one upsert."""
+        if not admin_user_id:
+            raise ValueError("Administrator identity is required to save a dashboard layout")
+        sb = await get_async_admin_supabase()
+        updated_at = ts_to_iso(time.time())
+        await (
+            sb.table("admin_dashboard_preferences")
+            .upsert(
+                {
+                    "admin_user_id": str(admin_user_id),
+                    "layout": layout,
+                    "updated_at": updated_at,
+                },
+                on_conflict="admin_user_id",
+            )
+            .execute()
+        )
+        return {"saved": True, "updated_at": updated_at}
 
     async def get_report_summary(self) -> Dict[str, Any]:
         sb = await get_async_admin_supabase()
