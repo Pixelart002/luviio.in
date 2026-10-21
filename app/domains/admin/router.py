@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, Query, Request, status
 
 from app.constants.admin_messages import AdminMessages
 from app.core.dependencies import get_user_id_strict, require_permission
-from app.domains.admin.service import AdminService
 from app.domains.admin.schemas import AdminDashboardLayout
+from app.domains.admin.service import AdminService
 from app.domains.payments.plugin_schemas import (
     MethodRegistrationRequest,
     MethodToggleRequest,
