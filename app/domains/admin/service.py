@@ -17,7 +17,7 @@ from app.utils.timestamp import ts_to_iso
 
 # A very short process-local cache avoids repeating the relatively expensive
 # aggregate RPC on rapid dashboard refreshes. Authorization/profile validation
-# still runs on every request; cached data contains no user-specific fields.
+# still runs on every request, and keys are scoped to each admin and date range.
 _DASHBOARD_SNAPSHOT_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3)
 _DASHBOARD_SNAPSHOT_LOCK = asyncio.Lock()
 
