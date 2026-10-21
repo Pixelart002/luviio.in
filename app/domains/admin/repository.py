@@ -48,6 +48,27 @@ class AsyncAdminRepository:
         except (TypeError, ValueError) as exc:
             raise RuntimeError("Unable to normalize dashboard telemetry") from exc
 
+    async def get_dashboard_snapshot(self, days: int = 30) -> Dict[str, Any]:
+        """Fetch the complete dashboard payload with a single database RPC."""
+        sb = await get_async_admin_supabase()
+        res = await sb.rpc(
+            "admin_dashboard_snapshot",
+            {"p_days": max(7, min(int(days), 90))},
+        ).execute()
+        data = getattr(res, "data", None)
+
+        if not isinstance(data, dict):
+            raise RuntimeError("Unable to load complete dashboard snapshot")
+
+        required = {
+            "stats", "recent_orders", "inventory", "low_stock", "payments",
+            "audit", "notifications", "stripe", "revenue_series", "date_range",
+        }
+        if not required.issubset(data):
+            missing = sorted(required.difference(data))
+            raise RuntimeError(f"Dashboard snapshot is incomplete: {', '.join(missing)}")
+        return data
+
     async def get_report_summary(self) -> Dict[str, Any]:
         sb = await get_async_admin_supabase()
         orders_res = await sb.table("orders").select("id,status,total_amount,created_at,payment_method").order("created_at", desc=True).limit(1000).execute()
