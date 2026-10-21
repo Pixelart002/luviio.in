@@ -56,11 +56,11 @@ def test_product_share_page_uses_flat_seo_fields_and_clean_canonical(client, mon
         "canonical_url": "https://www.luviio.in/product/sink-waste-coupling?utm_source=legacy#details",
         "robots_index": False,
         "robots_follow": True,
+        "sku": "LUV-SAN-SQCPL-45",
         "short_description": "Generic catalogue description.",
         "image_url": "https://cdn.example.com/products/coupling.webp",
         "images": ["https://cdn.example.com/products/coupling.webp"],
         "price": 249,
-        "price_currency": "INR",
         "stock": 32,
     }
 
@@ -77,6 +77,8 @@ def test_product_share_page_uses_flat_seo_fields_and_clean_canonical(client, mon
     assert '<meta property="og:url" content="https://www.luviio.in/product/sink-waste-coupling">' in response.text
     assert '<meta name="robots" content="noindex, follow, max-image-preview:large">' in response.text
     assert response.headers["x-robots-tag"] == "noindex, follow"
+    assert '"sku":"LUV-SAN-SQCPL-45"' in response.text
+    assert '"priceCurrency":"INR"' in response.text
     assert "Generic catalogue description." not in response.text
 
 
