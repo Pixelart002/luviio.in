@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from pydantic import ValidationError
 import pytest
+
+from pydantic import ValidationError
 
 from app.domains.admin.schemas import AdminDashboardLayout
 
