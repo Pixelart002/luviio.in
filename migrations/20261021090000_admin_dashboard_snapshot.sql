@@ -148,10 +148,12 @@ push_summary AS (
   FROM public.push_subscriptions
 ),
 stripe_setting AS (
-  SELECT COALESCE(value #>> '{}', '') AS publishable_key
-  FROM public.system_settings
-  WHERE key = 'stripe_publishable_key'
-  LIMIT 1
+  SELECT COALESCE((
+    SELECT value #>> '{}'
+    FROM public.system_settings
+    WHERE key = 'stripe_publishable_key'
+    LIMIT 1
+  ), '') AS publishable_key
 )
 SELECT jsonb_build_object(
   'stats', jsonb_build_object(
