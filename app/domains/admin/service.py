@@ -18,7 +18,7 @@ from app.utils.timestamp import ts_to_iso
 # A very short process-local cache avoids repeating the relatively expensive
 # aggregate RPC on rapid dashboard refreshes. Authorization/profile validation
 # still runs on every request; cached data contains no user-specific fields.
-_DASHBOARD_SNAPSHOT_CACHE: TTLCache = TTLCache(maxsize=12, ttl=3)
+_DASHBOARD_SNAPSHOT_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3)
 _DASHBOARD_SNAPSHOT_LOCK = asyncio.Lock()
 
 
@@ -45,17 +45,19 @@ class AdminService:
         raw_profile = await self.repo.get_live_admin_profile(user_id)
         AdminPolicy.assert_is_active_admin(raw_profile)
         normalized_days = max(7, min(int(days), 90))
-        cached = _DASHBOARD_SNAPSHOT_CACHE.get(normalized_days)
+        # Layout preferences are user-specific, so the cache key must include
+        # the verified administrator ID to prevent cross-account preference leaks.
+        cache_key = (str(user_id), normalized_days)
+        cached = _DASHBOARD_SNAPSHOT_CACHE.get(cache_key)
         if cached is not None:
             return copy.deepcopy(cached)
 
         async with _DASHBOARD_SNAPSHOT_LOCK:
-            # Recheck after waiting so concurrent dashboard loads coalesce.
-            cached = _DASHBOARD_SNAPSHOT_CACHE.get(normalized_days)
+            cached = _DASHBOARD_SNAPSHOT_CACHE.get(cache_key)
             if cached is not None:
                 return copy.deepcopy(cached)
             try:
-                snapshot = await self.repo.get_dashboard_snapshot(normalized_days)
+                snapshot = await self.repo.get_dashboard_snapshot(normalized_days, str(user_id))
             except Exception as exc:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -66,8 +68,24 @@ class AdminService:
             notifications["vapid_configured"] = bool(VAPID_PUBLIC_KEY)
             snapshot["verified"] = True
             snapshot["timestamp"] = ts_to_iso(time.time())
-            _DASHBOARD_SNAPSHOT_CACHE[normalized_days] = copy.deepcopy(snapshot)
+            _DASHBOARD_SNAPSHOT_CACHE[cache_key] = copy.deepcopy(snapshot)
             return snapshot
+
+    async def save_dashboard_layout(self, user_id: str, layout: Dict[str, Any]) -> Dict[str, Any]:
+        """Save a validated user layout and invalidate potentially stale snapshots."""
+        raw_profile = await self.repo.get_live_admin_profile(user_id)
+        AdminPolicy.assert_is_active_admin(raw_profile)
+        try:
+            result = await self.repo.save_dashboard_layout(user_id, layout)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to save dashboard preferences.",
+            ) from exc
+        # Saved layout belongs to one admin; clearing this tiny cache also avoids
+        # returning a pre-update copy during the next dashboard navigation.
+        _DASHBOARD_SNAPSHOT_CACHE.clear()
+        return result
 
     async def get_reports(self, user_id: str) -> Dict[str, Any]:
         AdminPolicy.assert_is_active_admin(await self.repo.get_live_admin_profile(user_id))
