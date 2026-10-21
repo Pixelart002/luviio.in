@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     OLA_MAPS_API_KEY: str = ""
 
     FRONTEND_URL: str = "https://www.luviio.in"
-    ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in"
+    ALLOWED_ORIGINS: str = "https://luviio.in,https://www.luviio.in,https://admin.luviio.in"
     # Narrow patterns for Luviio-owned preview deployments. Never use a universal
     # HTTPS wildcard for credentialed production API responses.
     CORS_PREVIEW_ORIGIN_PATTERNS: str = (
@@ -114,9 +114,8 @@ class Settings(BaseSettings):
         if frontend_origin and frontend_origin not in origins:
             origins.append(frontend_origin)
 
-        # Luviio serves the storefront on the apex/www hosts and the app on
-        # app.luviio.in. These exact HTTPS origins are trusted; this does not
-        # authorize arbitrary wildcard origins.
+        # Luviio's storefront, customer app, and admin console use distinct,
+        # explicitly trusted first-party HTTPS origins. Never use a wildcard.
         try:
             frontend = urlsplit(str(self.FRONTEND_URL or "").strip())
             if (
@@ -126,11 +125,12 @@ class Settings(BaseSettings):
                 and frontend.username is None
                 and frontend.password is None
             ):
-                # First-party storefront and application origins.
+                # First-party storefront, customer app, and admin console origins.
                 for origin in (
                     "https://luviio.in",
                     "https://www.luviio.in",
                     "https://app.luviio.in",
+                    "https://admin.luviio.in",
                 ):
                     if origin not in origins:
                         origins.append(origin)
