@@ -102,3 +102,79 @@ def test_product_share_page_rejects_off_host_canonical_and_honors_no_follow(clie
     assert '<link rel="canonical" href="https://www.luviio.in/product/safe-drain-cover">' in response.text
     assert '<meta name="robots" content="index, nofollow, max-image-preview:large">' in response.text
     assert response.headers["x-robots-tag"] == "index, nofollow"
+
+def test_product_share_image_falls_through_stale_primary_to_gallery_image(client, monkeypatch):
+    router_module = import_module("app.infrastructure.social_share.router")
+    storage_host = "project.supabase.co"
+    stale_image = f"https://{storage_host}/storage/v1/object/public/product-images/stale.webp"
+    working_image = f"https://{storage_host}/storage/v1/object/public/product-images/working.webp"
+    image_bytes = b"verified-product-webp-payload"
+    attempted_urls = []
+
+    product = {
+        "name": "Square floor drainer",
+        "slug": "square-floor-drainer",
+        "image_url": stale_image,
+        "images": [stale_image, working_image],
+    }
+    mock_service = type(
+        "MockProductService",
+        (),
+        {"get_product": AsyncMock(return_value=product)},
+    )
+    monkeypatch.setattr(router_module, "ProductService", mock_service)
+    monkeypatch.setattr(router_module.settings, "SB_URL", f"https://{storage_host}")
+
+    class MockUpstreamResponse:
+        def __init__(self, status_code, body=b"", content_type="image/webp"):
+            self.status_code = status_code
+            self.content = body
+            self.headers = {
+                "content-type": content_type,
+                "content-length": str(len(body)),
+            }
+
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url, headers=None):
+            attempted_urls.append(url)
+            if url == stale_image:
+                return MockUpstreamResponse(404, content_type="text/plain")
+            return MockUpstreamResponse(200, image_bytes)
+
+    monkeypatch.setattr(router_module.httpx, "AsyncClient", MockAsyncClient)
+
+    response = client.get("/share/products/square-floor-drainer/image")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/webp")
+    assert response.content == image_bytes
+    assert attempted_urls == [stale_image, working_image]
+
+
+def test_image_candidates_reject_insecure_and_untrusted_hosts():
+    router_module = import_module("app.infrastructure.social_share.router")
+    trusted = "project.supabase.co"
+    valid_image = f"https://{trusted}/storage/v1/object/public/product-images/valid.webp"
+
+    candidates = router_module._image_candidates(
+        {
+            "image_url": "http://project.supabase.co/storage/old.webp",
+            "images": [
+                "https://untrusted.example/asset.webp",
+                {"url": valid_image},
+            ],
+        },
+        trusted,
+    )
+
+    assert candidates == [valid_image]
+
