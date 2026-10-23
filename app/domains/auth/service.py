@@ -43,6 +43,12 @@ class AuthService:
             logger.warning("Welcome email dispatch failed for %s: %s", email, exc)
         return True
 
+    async def verify_password(self, email: str, password: str) -> bool:
+        return await self.auth_repo.verify_password(email, password)
+
+    async def delete_auth_user(self, user_id: str) -> None:
+        await self.auth_repo.delete_auth_user(user_id)
+
     async def login_user(self, email: str, password: str, client_ip: str) -> Dict[str, Any]:
         await AuthPolicy.assert_safe_attempt(client_ip, email)
         try:

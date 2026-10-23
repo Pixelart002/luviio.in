@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from app.constants.user_messages import UserMessages
 from app.core.dependencies import get_current_user, get_user_id_strict, require_permission
 from app.domains.users.schemas import AddressCreate, AdminUserUpdate, ProfileUpdate
+from app.domains.auth.schemas import DeleteAccountRequest
 from app.domains.users.service import UserService
 from app.enums.roles import UserRole
 from app.permissions.users import UserPermissions
@@ -47,6 +48,25 @@ async def update_me(request: Request, payload: ProfileUpdate, current: Dict[str,
     if updated and hasattr(request.state, "actions"):
         request.state.actions.append(UserMessages.PROFILE_UPDATED)
     return success_response(data=updated or current.get("profile", current), message=UserMessages.PROFILE_UPDATED)
+
+
+@router.delete("/me", status_code=status.HTTP_200_OK)
+async def delete_my_account(
+    request: Request,
+    payload: DeleteAccountRequest,
+    current: Dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_user_id_strict),
+) -> Dict[str, Any]:
+    profile = current.get("profile") or current
+    role = profile.get("role", "customer")
+    if role != "customer":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Staff accounts must be deprovisioned by an authorized administrator.")
+    if hasattr(request.state, "actions"):
+        request.state.actions.append("Customer requested account deletion after explicit confirmation")
+    await UserService().delete_account(user_id, str(current.get("email") or profile.get("email") or ""), payload.password)
+    response = success_response(message="Account deleted. Personal profile details were anonymized; historical order records may be retained where required.")
+    return response
 
 
 @router.get("/me/addresses", status_code=status.HTTP_200_OK)

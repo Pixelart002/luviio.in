@@ -117,6 +117,23 @@ class AsyncUserRepository:
         res = await q.range(offset, offset + page_size - 1).execute()
         return getattr(res, "data", None) or [], res.count or 0
 
+    async def anonymize_account_profile(self, user_id: str) -> None:
+        """Remove direct profile identifiers while preserving the FK target for historical orders."""
+        import uuid
+        admin_sb = await get_async_admin_supabase()
+        await admin_sb.table("users").update({
+            "email": f"deleted+{uuid.uuid4().hex}@deleted.luviio.invalid",
+            "full_name": "Deleted customer",
+            "phone": None,
+            "is_active": False,
+        }).eq("id", user_id).execute()
+
+    async def soft_delete_all_addresses(self, user_id: str) -> None:
+        """Hide saved addresses without breaking historical order references."""
+        from datetime import datetime, timezone
+        admin_sb = await get_async_admin_supabase()
+        await admin_sb.table("addresses").update({"deleted_at": datetime.now(timezone.utc).isoformat(), "is_default": False}).eq("user_id", user_id).is_("deleted_at", "null").execute()
+
     async def count_user_orders(self, user_id: str) -> int:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("orders").select("id", count="exact").eq("customer_id", user_id).limit(1).execute()

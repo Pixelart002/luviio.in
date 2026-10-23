@@ -24,11 +24,25 @@ class AsyncAuthRepository:
         res = await sb.auth.sign_up({
             "email": email,
             "password": password,
-            "options": {"data": {"full_name": full_name}}
+            "options": {"data": {"full_name": full_name, "terms_accepted": True, "terms_accepted_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(), "terms_version": "2026-10-11", "privacy_version": "2026-10-11"}}
         })
         if res and hasattr(res, "user") and res.user:
             return res.user.id
         return None
+
+    async def verify_password(self, email: str, password: str) -> bool:
+        """Re-authenticate before a destructive account action."""
+        sb = await get_async_supabase()
+        try:
+            result = await sb.auth.sign_in_with_password({"email": email, "password": password})
+            return bool(getattr(result, "user", None) and getattr(result, "session", None))
+        except Exception:
+            return False
+
+    async def delete_auth_user(self, user_id: str) -> None:
+        """Delete the Supabase Auth identity using the service-role client."""
+        admin_sb = await get_async_admin_supabase()
+        await admin_sb.auth.admin.delete_user(user_id)
 
     async def sign_in(self, email: str, password: str) -> Optional[Dict[str, Any]]:
         sb = await get_async_supabase()
