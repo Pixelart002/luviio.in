@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, List
 
 from fastapi import HTTPException, status
@@ -115,7 +115,7 @@ def _shipping_tax(items: List[dict[str, Any]], shipping: Decimal, subtotal: Deci
         allocated_shipping = shipping * line_value / subtotal
         tax += allocated_shipping * gst / Decimal("100")
 
-    return tax.quantize(Decimal("0.01"))
+    return tax.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 class StandardPricing(PricingStrategy):
