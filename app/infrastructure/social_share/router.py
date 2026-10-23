@@ -55,94 +55,160 @@ def _canonical_product_url(value: Any, slug: str) -> str:
         return fallback
 
 
-def _first_image(product: Dict[str, Any]) -> str | None:
-    image_url = product.get("image_url")
-    if image_url and isinstance(image_url, str) and image_url.startswith("http"):
-        return image_url
-    images = product.get("images") or []
-    for img in images:
-        if isinstance(img, str) and img.startswith("http"):
-            return img
-        if isinstance(img, dict):
-            candidate = img.get("url") or img.get("image_url") or img.get("src")
-            if isinstance(candidate, str) and candidate.startswith("http"):
-                return candidate
-    return None
+def _image_candidates(product: Dict[str, Any], allowed_host: str | None) -> list[str]:
+    """Return ordered, unique HTTPS product images from the trusted storage host.
+
+    Legacy image_url may be stale after gallery changes. Keep it first for
+    compatibility, but also inspect the normalized gallery and raw relation so
+    the image proxy can fall through to a healthy image rather than the site icon.
+    """
+    if not allowed_host:
+        return []
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+    sources = (
+        product.get("image_url"),
+        product.get("images"),
+        product.get("product_images"),
+    )
+
+    for source in sources:
+        if isinstance(source, (str, dict)):
+            items = [source]
+        elif isinstance(source, list):
+            items = source
+        else:
+            continue
+
+        for item in items:
+            if isinstance(item, str):
+                candidate = item.strip()
+            elif isinstance(item, dict):
+                candidate = ""
+                for key in ("url", "image_url", "src"):
+                    value = item.get(key)
+                    if isinstance(value, str) and value.strip():
+                        candidate = value.strip()
+                        break
+            else:
+                continue
+
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+
+            try:
+                parsed = urlparse(candidate)
+                port = parsed.port
+            except ValueError:
+                continue
+
+            # Keep the image proxy SSRF-safe: only fetch HTTPS objects from
+            # the configured Supabase storage host, with no custom port/userinfo.
+            if (
+                parsed.scheme.lower() != "https"
+                or not parsed.hostname
+                or parsed.hostname.lower() != allowed_host.lower()
+                or port not in (None, 443)
+                or parsed.username
+                or parsed.password
+            ):
+                continue
+
+            candidates.append(candidate)
+
+    return candidates
 
 
 @router.get("/share/products/{slug}/image", include_in_schema=False)
 async def product_share_image(slug: str) -> Response:
-    """Proxy a product image from the trusted public Supabase storage host."""
+    """Serve a product's actual storage image, falling through stale image URLs."""
     try:
         product = await ProductService().get_product(slug)
-        source_image = _first_image(product)
-        if not source_image:
+        configured_host = urlparse(settings.SB_URL).hostname or ""
+        candidates = _image_candidates(product, configured_host)
+
+        if not candidates:
+            logger.warning("social_share.image_missing_or_untrusted slug=%s", slug)
             return Response(
                 status_code=status.HTTP_302_FOUND,
                 headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
             )
 
-        parsed = urlparse(source_image)
-        configured_host = urlparse(settings.SB_URL).hostname
-        if parsed.scheme != "https" or not parsed.hostname or parsed.hostname != configured_host:
-            logger.warning("social_share.image_rejected slug=%s host=%s", slug, parsed.hostname)
-            return Response(
-                status_code=status.HTTP_302_FOUND,
-                headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
-            )
+        allowed_types = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+        max_bytes = 5 * 1024 * 1024
 
+        # A stale image_url must not hide a valid image in the product gallery.
+        # Cap attempts and per-request timeout so social preview fetches stay bounded.
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(5.0, connect=2.0),
+            timeout=httpx.Timeout(2.5, connect=1.0),
             follow_redirects=False,
         ) as client:
-            upstream = await client.get(
-                source_image,
-                headers={"Accept": "image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9"},
-            )
+            for source_image in candidates[:4]:
+                try:
+                    upstream = await client.get(
+                        source_image,
+                        headers={"Accept": "image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9"},
+                    )
+                except (httpx.HTTPError, ValueError) as exc:
+                    logger.warning(
+                        "social_share.image_fetch_error slug=%s error=%s",
+                        slug,
+                        type(exc).__name__,
+                    )
+                    continue
 
-        if upstream.status_code != 200:
-            logger.warning("social_share.image_fetch_failed slug=%s status=%s", slug, upstream.status_code)
-            return Response(
-                status_code=status.HTTP_302_FOUND,
-                headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
-            )
+                if upstream.status_code != 200:
+                    logger.warning(
+                        "social_share.image_fetch_failed slug=%s status=%s",
+                        slug,
+                        upstream.status_code,
+                    )
+                    continue
 
-        media_type = (upstream.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
-        allowed_types = {"image/jpeg", "image/png", "image/webp", "image/gif"}
-        if media_type not in allowed_types:
-            logger.warning("social_share.image_type_rejected slug=%s content_type=%s", slug, media_type)
-            return Response(
-                status_code=status.HTTP_302_FOUND,
-                headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
-            )
+                media_type = (upstream.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+                if media_type not in allowed_types:
+                    logger.warning(
+                        "social_share.image_type_rejected slug=%s content_type=%s",
+                        slug,
+                        media_type,
+                    )
+                    continue
 
-        content_length = upstream.headers.get("content-length")
-        if content_length:
-            try:
-                if int(content_length) > 5 * 1024 * 1024:
-                    raise ValueError("image too large")
-            except ValueError:
-                logger.warning("social_share.image_too_large slug=%s", slug)
+                content_length = upstream.headers.get("content-length")
+                if content_length:
+                    try:
+                        declared_length = int(content_length)
+                    except (TypeError, ValueError):
+                        logger.warning("social_share.image_invalid_content_length slug=%s", slug)
+                        continue
+                    if declared_length < 0 or declared_length > max_bytes:
+                        logger.warning("social_share.image_too_large slug=%s", slug)
+                        continue
+
+                body = upstream.content
+                if len(body) > max_bytes:
+                    logger.warning(
+                        "social_share.image_too_large_after_fetch slug=%s bytes=%s",
+                        slug,
+                        len(body),
+                    )
+                    continue
+
                 return Response(
-                    status_code=status.HTTP_302_FOUND,
-                    headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
+                    content=body,
+                    media_type=media_type,
+                    headers={
+                        "Cache-Control": "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
+                        "X-Content-Type-Options": "nosniff",
+                    },
                 )
 
-        body = upstream.content
-        if len(body) > 5 * 1024 * 1024:
-            logger.warning("social_share.image_too_large_after_fetch slug=%s bytes=%s", slug, len(body))
-            return Response(
-                status_code=status.HTTP_302_FOUND,
-                headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
-            )
-
+        logger.warning("social_share.image_all_candidates_failed slug=%s attempted=%s", slug, min(len(candidates), 4))
         return Response(
-            content=body,
-            media_type=media_type,
-            headers={
-                "Cache-Control": "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
-                "X-Content-Type-Options": "nosniff",
-            },
+            status_code=status.HTTP_302_FOUND,
+            headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
         )
     except Exception:
         logger.exception("social_share.image_proxy_error slug=%s", slug)
@@ -150,7 +216,6 @@ async def product_share_image(slug: str) -> Response:
             status_code=status.HTTP_302_FOUND,
             headers={"Location": _DEFAULT_IMAGE, "Cache-Control": "public, max-age=300"},
         )
-
 
 @router.get("/share/products/{slug}", response_class=HTMLResponse, include_in_schema=False)
 async def product_share_page(request: Request, slug: str) -> HTMLResponse:
