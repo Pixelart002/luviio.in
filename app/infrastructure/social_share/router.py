@@ -271,23 +271,37 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
     robots_directive = f"{index_directive}, {follow_directive}"
     display_title = seo_title or f"{name} | Luviio"
 
-    image_url = f"{settings.FRONTEND_URL.rstrip('/')}/share/products/{quote(slug, safe='')}/image"
+    # Build product-specific metadata from the product record only. Keep the
+    # marketing homepage metadata untouched; this endpoint is for product URLs.
+    frontend_origin = settings.FRONTEND_URL.rstrip("/")
+    encoded_slug = quote(slug, safe="")
+    image_url = f"{frontend_origin}/share/products/{encoded_slug}/image"
     display_title = seo_title or f"{name} | Luviio"
+    description = " ".join(description.split())[:300]
 
     product_jsonld = {
         "@context": "https://schema.org",
         "@type": "Product",
         "name": name,
-        "description": description[:500],
+        "description": description,
         "url": canonical_url,
         "image": [image_url],
     }
     sku = product.get("sku")
-    if sku:
-        product_jsonld["sku"] = str(sku).strip()
-    brand = product.get("brand")
-    if brand:
-        product_jsonld["brand"] = {"@type": "Brand", "name": str(brand).strip()}
+    if isinstance(sku, str) and sku.strip():
+        product_jsonld["sku"] = sku.strip()
+
+    brand = product.get("brand") or product.get("manufacturer")
+    if isinstance(brand, str) and brand.strip():
+        product_jsonld["brand"] = {"@type": "Brand", "name": brand.strip()}
+
+    gtin = product.get("gtin") or product.get("ean")
+    if isinstance(gtin, str) and gtin.strip():
+        product_jsonld["gtin"] = gtin.strip()
+
+    category = product.get("category_name") or product.get("category")
+    if isinstance(category, str) and category.strip():
+        product_jsonld["category"] = category.strip()
 
     price = product.get("price")
     # The Luviio storefront is priced in Indian rupees; the products table
@@ -315,6 +329,11 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
                 )
         except (TypeError, ValueError):
             pass
+
+        # Never publish invented shipping, return, rating, or review values.
+        # Add seller only when a real brand is available from the product record.
+        if isinstance(brand, str) and brand.strip():
+            offer["seller"] = {"@type": "Organization", "name": "Luviio"}
         product_jsonld["offers"] = offer
 
     jsonld = json.dumps(product_jsonld, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
@@ -341,19 +360,16 @@ async def product_share_page(request: Request, slug: str) -> HTMLResponse:
     <meta property="og:url" content="{escaped_url}">
     <meta property="og:image" content="{escaped_image}">
     <meta property="og:image:secure_url" content="{escaped_image}">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="{escaped_name}">
     <meta property="og:locale" content="en_IN">
-    <meta name="robots" content="{escape(robots_directive, quote=True)}, max-image-preview:large">
-
-    <script type="application/ld+json">{jsonld}</script>
-
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{escaped_title}">
     <meta name="twitter:description" content="{escaped_description}">
     <meta name="twitter:image" content="{escaped_image}">
     <meta name="twitter:image:alt" content="{escaped_name}">
+    <meta name="robots" content="{escape(robots_directive, quote=True)}, max-image-preview:large">
+
+    <script type="application/ld+json">{jsonld}</script>
 
 </head>
 <body>
