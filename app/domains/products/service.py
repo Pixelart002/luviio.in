@@ -129,13 +129,6 @@ class ProductService:
 
     async def _prepare_product_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         data.setdefault("is_active", True)
-        # Normalize JSON-mode UUID/Decimal fields before sending data to PostgREST.
-        # Pydantic JSON output serializes UUIDs and Decimal values for HTTP safely;
-        # PostgreSQL numeric columns still receive numeric values, not Decimal objects.
-        for field in ("price", "compare_price", "weight", "measurement_value", "volume", "quantity"):
-            value = data.get(field)
-            if value is not None:
-                data[field] = float(value)
         sku = data.get("sku")
         requested_slug = data.get("slug")
         if sku:

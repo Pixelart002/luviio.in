@@ -111,7 +111,7 @@ async def create_product(request: Request) -> Dict[str, Any]:
                 if isinstance(value, UploadFile):
                     image_files.append((await value.read(), value.filename or "unknown"))
             logger.info("product.create.payload request_id=%s sku=%s images=%s", request_id, payload.sku or "Auto", len(image_files))
-            result = await ProductService().create_product_with_images(payload.model_dump(mode="json"), image_files)
+            result = await ProductService().create_product_with_images(payload.model_dump(), image_files)
         else:
             try:
                 payload = ProductCreate.model_validate(await request.json())
