@@ -210,6 +210,31 @@ def _line_discount(item: dict[str, Any], unit_price: float, qty: int) -> tuple[f
     return display_mrp, discount
 
 
+def _discount_breakdown(order: dict[str, Any]) -> list[tuple[str, float]]:
+    """Return explicit order-level discount labels without double-counting legacy totals."""
+    membership = max(
+        0.0,
+        _f(order.get("membership_discount_amount", order.get("member_discount_amount"))),
+    )
+    coupon = max(0.0, _f(order.get("coupon_discount_amount")))
+    total = max(0.0, _f(order.get("discount_amount")))
+    split_total = membership + coupon
+
+    if split_total <= 0.009:
+        return [("Discount", total)] if total > 0.009 else []
+
+    rows: list[tuple[str, float]] = []
+    if membership > 0.009:
+        rows.append(("Membership discount", membership))
+    if coupon > 0.009:
+        rows.append(("Coupon discount", coupon))
+
+    residual = max(0.0, total - split_total)
+    if residual > 0.009:
+        rows.append(("Discount", residual))
+    return rows
+
+
 def _tax_mode(order: dict[str, Any], seller: dict[str, Any], shipping: dict[str, Any]) -> str:
     explicit = _s(order.get("tax_type")).upper().replace(" ", "")
     if explicit in {"IGST", "CGST+SGST", "CGST/SGST", "CGSTSGST"}:
@@ -358,6 +383,11 @@ def build_snapshot_invoice_pdf(invoice_order: dict[str, Any], customer: dict[str
         [Paragraph("Price Summary:",ST["label"])," "],
         [Paragraph("Subtotal",ST["sum_l"]),Paragraph(_money(subtotal),ST["sum_v"])],
     ]
+    for discount_label, discount_amount in _discount_breakdown(order):
+        summary_rows.append([
+            Paragraph(discount_label, ST["sum_l"]),
+            Paragraph(f"−{_money(discount_amount)}", ST["sum_v"]),
+        ])
     if shipping_enabled:
         summary_rows.append([Paragraph("Shipping",ST["sum_l"]),Paragraph(_money(shipping_cost) if shipping_cost else "FREE",ST["sum_v"])])
     if tax_visible:
