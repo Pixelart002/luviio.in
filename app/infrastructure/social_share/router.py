@@ -125,7 +125,7 @@ def _image_candidates(product: Dict[str, Any], allowed_host: str | None) -> list
 async def product_share_image(slug: str) -> Response:
     """Serve a product's actual storage image, falling through stale image URLs."""
     try:
-        product = await ProductService().get_product(slug)
+        product = await ProductService().get_product_for_share(slug)
         configured_host = urlparse(settings.SB_URL).hostname or ""
         candidates = _image_candidates(product, configured_host)
 
@@ -221,7 +221,7 @@ async def product_share_image(slug: str) -> Response:
 async def product_share_page(request: Request, slug: str) -> HTMLResponse:
     """Return crawler-readable OG metadata for a product."""
     try:
-        product = await ProductService().get_product(slug)
+        product = await ProductService().get_product_for_share(slug)
     except HTTPException as exc:
         if exc.status_code == status.HTTP_404_NOT_FOUND:
             return HTMLResponse(
