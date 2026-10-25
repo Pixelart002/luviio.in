@@ -127,6 +127,29 @@ class ProductService:
         product["images"] = product.get("images") or []
         return self._project_product(self._enrich_discount(product))
 
+    async def get_product_for_share(self, slug: str) -> Dict[str, Any]:
+        """Return crawler metadata, falling back when optional joined data fails."""
+        try:
+            product = await self.repo.get_product_by_slug(slug)
+        except Exception as exc:
+            logger.warning(
+                "Rich product preview projection failed; retrying core product query | slug=%s error=%s",
+                slug,
+                type(exc).__name__,
+            )
+            product = await self.repo.get_product_preview_by_slug(slug)
+
+        if not product:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ProductSecurityMessages.PRODUCT_NOT_FOUND,
+            )
+
+        product["images"] = product.get("images") or (
+            [product["image_url"]] if product.get("image_url") else []
+        )
+        return self._project_product(self._enrich_discount(product))
+
     async def _prepare_product_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         data.setdefault("is_active", True)
         sku = data.get("sku")
