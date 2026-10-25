@@ -119,6 +119,143 @@ class AsyncProductRepository:
         data_list = getattr(res, "data", None)
         return self._format_product_images(data_list[0]) if data_list else None
 
+    async def get_product_preview_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
+        """Fetch core product data without requiring every optional SEO/gallery relation.
+
+        Used only when the rich joined projection fails. Core product availability,
+        name, description, price and primary image remain the source of truth.
+        Optional relations are best-effort and must not prevent crawlers receiving
+        valid product metadata.
+        """
+        admin_sb = await get_async_admin_supabase()
+        res = await (
+            admin_sb.table("products")
+            .select(
+                "id, name, slug, sku, category_id, description, short_description, "
+                "price, compare_price, stock, image_url, is_active"
+            )
+            .eq("slug", slug)
+            .eq("is_active", True)
+            .limit(1)
+            .execute()
+        )
+        data_list = getattr(res, "data", None) or []
+        if not data_list:
+            return None
+
+        product = dict(data_list[0])
+        product["images"] = [product["image_url"]] if product.get("image_url") else []
+        product["specifications"] = {}
+
+        product_id = product.get("id")
+
+        # These relations are helpful for richer previews, but failures here must
+        # not hide a valid product. The image_url and name remain safe fallbacks.
+        try:
+            seo_res = await (
+                admin_sb.table("product_seo")
+                .select("title, description, canonical_url, robots_index, robots_follow")
+                .eq("product_id", product_id)
+                .limit(1)
+                .execute()
+            )
+            seo_rows = getattr(seo_res, "data", None) or []
+            if seo_rows:
+                seo = seo_rows[0]
+                product["seo_title"] = seo.get("title")
+                product["seo_description"] = seo.get("description")
+                product["canonical_url"] = seo.get("canonical_url")
+                product["robots_index"] = seo.get("robots_index", True)
+                product["robots_follow"] = seo.get("robots_follow", True)
+        except Exception as exc:
+            logger.warning(
+                "Product preview SEO relation unavailable slug=%s error=%s",
+                slug,
+                type(exc).__name__,
+            )
+
+        try:
+            images_res = await (
+                admin_sb.table("product_images")
+                .select("url, position")
+                .eq("product_id", product_id)
+                .order("position")
+                .execute()
+            )
+            image_rows = getattr(images_res, "data", None) or []
+            gallery = [
+                row["url"]
+                for row in sorted(
+                    image_rows,
+                    key=lambda row: row.get("position") if row.get("position") is not None else 0,
+                )
+                if isinstance(row.get("url"), str) and row["url"].strip()
+            ]
+            if gallery:
+                product["images"] = gallery
+        except Exception as exc:
+            logger.warning(
+                "Product preview image relation unavailable slug=%s error=%s",
+                slug,
+                type(exc).__name__,
+            )
+
+        try:
+            specs_res = await (
+                admin_sb.table("product_specifications")
+                .select("specification_code, value_text, value_numeric, position")
+                .eq("product_id", product_id)
+                .order("position")
+                .execute()
+            )
+            spec_rows = getattr(specs_res, "data", None) or []
+            for row in spec_rows:
+                code = row.get("specification_code")
+                if not code:
+                    continue
+                value = row.get("value_numeric")
+                if value is None:
+                    value = row.get("value_text")
+                if code in product["specifications"]:
+                    if not isinstance(product["specifications"][code], list):
+                        product["specifications"][code] = [product["specifications"][code]]
+                    product["specifications"][code].append(value)
+                else:
+                    product["specifications"][code] = value
+
+            for field in (
+                "brand", "manufacturer", "model_number", "gtin", "ean",
+                "part_number", "material", "finish", "color", "size", "dimensions", "warranty",
+            ):
+                product[field] = product["specifications"].get(field)
+        except Exception as exc:
+            logger.warning(
+                "Product preview specifications unavailable slug=%s error=%s",
+                slug,
+                type(exc).__name__,
+            )
+
+        try:
+            if product.get("category_id"):
+                category_res = await (
+                    admin_sb.table("categories")
+                    .select("name, slug")
+                    .eq("id", product["category_id"])
+                    .limit(1)
+                    .execute()
+                )
+                category_rows = getattr(category_res, "data", None) or []
+                if category_rows:
+                    product["category_name"] = category_rows[0].get("name")
+        except Exception as exc:
+            logger.warning(
+                "Product preview category unavailable slug=%s error=%s",
+                slug,
+                type(exc).__name__,
+            )
+
+        return product
+
     async def get_product_by_id(self, product_id: str) -> Optional[Dict[str, Any]]:
         admin_sb = await get_async_admin_supabase()
         res = await admin_sb.table("products").select("id, name, slug, sku, category_id, description, short_description, price, compare_price, stock, weight, weight_unit, measurement_type, measurement_value, measurement_unit, image_url, is_active, hsn_code, gst_percentage, country_of_origin, product_specifications(id, specification_code, value_text, value_numeric, unit_code, position), product_seo(product_id, title, description, canonical_url, robots_index, robots_follow), product_images(id, url, alt, position), categories(name, slug)").eq("id", product_id).limit(1).execute()
