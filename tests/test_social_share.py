@@ -1,5 +1,8 @@
+import asyncio
 from importlib import import_module
 from unittest.mock import AsyncMock
+
+from app.domains.products.service import ProductService
 
 
 def test_product_share_page_contains_dynamic_og_metadata(client, monkeypatch):
@@ -11,7 +14,7 @@ def test_product_share_page_contains_dynamic_og_metadata(client, monkeypatch):
         "image_url": "https://cdn.example.com/products/drain-cover.webp",
     }
 
-    mock_service = type("MockProductService", (), {"get_product": AsyncMock(return_value=product)})
+    mock_service = type("MockProductService", (), {"get_product_for_share": AsyncMock(return_value=product)})
     router_module = import_module("app.infrastructure.social_share.router")
     monkeypatch.setattr(router_module, "ProductService", mock_service)
 
@@ -36,7 +39,7 @@ def test_product_share_page_escapes_metadata(client, monkeypatch):
         "images": [],
     }
 
-    mock_service = type("MockProductService", (), {"get_product": AsyncMock(return_value=product)})
+    mock_service = type("MockProductService", (), {"get_product_for_share": AsyncMock(return_value=product)})
     router_module = import_module("app.infrastructure.social_share.router")
     monkeypatch.setattr(router_module, "ProductService", mock_service)
 
@@ -66,7 +69,7 @@ def test_product_share_page_uses_flat_seo_fields_and_clean_canonical(client, mon
         "stock": 32,
     }
 
-    mock_service = type("MockProductService", (), {"get_product": AsyncMock(return_value=product)})
+    mock_service = type("MockProductService", (), {"get_product_for_share": AsyncMock(return_value=product)})
     router_module = import_module("app.infrastructure.social_share.router")
     monkeypatch.setattr(router_module, "ProductService", mock_service)
 
@@ -94,7 +97,7 @@ def test_product_share_page_rejects_off_host_canonical_and_honors_no_follow(clie
         "images": [],
     }
 
-    mock_service = type("MockProductService", (), {"get_product": AsyncMock(return_value=product)})
+    mock_service = type("MockProductService", (), {"get_product_for_share": AsyncMock(return_value=product)})
     router_module = import_module("app.infrastructure.social_share.router")
     monkeypatch.setattr(router_module, "ProductService", mock_service)
 
@@ -122,7 +125,7 @@ def test_product_share_image_falls_through_stale_primary_to_gallery_image(client
     mock_service = type(
         "MockProductService",
         (),
-        {"get_product": AsyncMock(return_value=product)},
+        {"get_product_for_share": AsyncMock(return_value=product)},
     )
     monkeypatch.setattr(router_module, "ProductService", mock_service)
     monkeypatch.setattr(router_module.settings, "SB_URL", f"https://{storage_host}")
@@ -180,3 +183,30 @@ def test_image_candidates_reject_insecure_and_untrusted_hosts():
 
     assert candidates == [valid_image]
 
+
+
+
+def test_product_share_service_falls_back_when_rich_projection_fails(monkeypatch):
+    service = ProductService()
+    product = {
+        "id": "product-id",
+        "name": "Square floor drainer",
+        "slug": "square-floor-drainer",
+        "short_description": "A practical square floor drainer.",
+        "image_url": "https://storage.example.test/drainer.webp",
+        "price": 250,
+        "stock": 8,
+        "is_active": True,
+    }
+    rich_query = AsyncMock(side_effect=RuntimeError("optional relation unavailable"))
+    fallback_query = AsyncMock(return_value=product)
+    monkeypatch.setattr(service.repo, "get_product_by_slug", rich_query)
+    monkeypatch.setattr(service.repo, "get_product_preview_by_slug", fallback_query)
+
+    result = asyncio.run(service.get_product_for_share("square-floor-drainer"))
+
+    rich_query.assert_awaited_once_with("square-floor-drainer")
+    fallback_query.assert_awaited_once_with("square-floor-drainer")
+    assert result["name"] == "Square floor drainer"
+    assert result["images"] == ["https://storage.example.test/drainer.webp"]
+    assert result["price"] == 250
